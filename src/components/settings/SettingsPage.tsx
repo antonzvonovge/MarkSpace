@@ -42,7 +42,6 @@ export function SettingsPage({ onClose }: Props) {
       <header className="settings-header">
         <div className="settings-header-title">
           <h1>Settings</h1>
-          <p>Configure MarkSpace</p>
         </div>
         <button
           type="button"

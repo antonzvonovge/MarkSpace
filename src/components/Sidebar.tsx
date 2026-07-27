@@ -9,8 +9,8 @@ export { loadLastVault, saveLastVault };
 function SettingsGearIcon() {
   return (
     <svg
-      width="16"
-      height="16"
+      width="18"
+      height="18"
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -28,11 +28,7 @@ function SettingsGearIcon() {
 }
 
 export function Sidebar() {
-  const vaultPath = useVaultStore((s) => s.vaultPath);
   const openVaultAt = useVaultStore((s) => s.openVaultAt);
-  const dirty = useVaultStore((s) => s.dirty);
-  const saving = useVaultStore((s) => s.saving);
-  const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
   const settingsOpen = usePrefsStore((s) => s.settingsOpen);
   const openSettings = usePrefsStore((s) => s.openSettings);
   const closeSettings = usePrefsStore((s) => s.closeSettings);
@@ -49,46 +45,17 @@ export function Sidebar() {
     }
   };
 
-  const selectionLabel =
-    selectedFolderPath === ""
-      ? "root"
-      : selectedFolderPath;
-
-  const statusLabel = !vaultPath
-    ? "No vault"
-    : saving
-      ? "Saving…"
-      : dirty
-        ? "Unsaved"
-        : "Saved";
-
   return (
     <aside className="sidebar">
       <div className="sidebar-top">
         <div className="brand-block">
           <div className="brand">MarkSpace</div>
-          <p className="brand-sub">Markdown vault</p>
         </div>
-
-        <button type="button" className="primary-btn" onClick={() => void pickVault()}>
-          Open folder…
-        </button>
-
-        {vaultPath && (
-          <div className="vault-meta">
-            <div className="vault-name" title={selectedFolderPath || vaultPath}>
-              New in: {selectionLabel}
-            </div>
-          </div>
-        )}
 
         <FileTree />
       </div>
 
       <footer className="sidebar-footer">
-        <span className="sidebar-footer-status" title={statusLabel}>
-          {statusLabel}
-        </span>
         <button
           type="button"
           className={
@@ -104,6 +71,13 @@ export function Sidebar() {
           }}
         >
           <SettingsGearIcon />
+        </button>
+        <button
+          type="button"
+          className="sidebar-footer-open"
+          onClick={() => void pickVault()}
+        >
+          Open folder…
         </button>
       </footer>
     </aside>

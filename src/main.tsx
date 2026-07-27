@@ -6,6 +6,8 @@ import { DEFAULT_PREFS } from "./settings/types";
 
 applyPrefsToDom(DEFAULT_PREFS);
 
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <App />

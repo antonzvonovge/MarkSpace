@@ -10,6 +10,7 @@ import {
   openVault,
   parentPath,
   readNote,
+  renamePath,
   writeNote,
 } from "../lib/vaultApi";
 import {
@@ -35,6 +36,8 @@ type VaultStore = {
   tabs: EditorTab[];
   activePath: string | null;
   selectedFolderPath: string;
+  /** True only after the user clicks a folder in the tree (not when opening a note). */
+  selectedFolderExplicit: boolean;
   expandedPaths: string[];
   content: string;
   viewMode: ViewMode;
@@ -58,6 +61,7 @@ type VaultStore = {
   createNoteInSelection: (name: string) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
   moveTreeEntry: (from: string, toParent: string, toIndex: number) => Promise<void>;
+  renameTreeEntry: (from: string, nextName: string) => Promise<void>;
   removePath: (path: string) => Promise<void>;
   markExternalWrite: () => void;
 };
@@ -98,6 +102,7 @@ function activateLoaded(
     dirty: false,
     loading: false,
     selectedFolderPath: parentPath(path),
+    selectedFolderExplicit: false,
   });
 }
 
@@ -107,6 +112,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   tabs: [],
   activePath: null,
   selectedFolderPath: "",
+  selectedFolderExplicit: false,
   expandedPaths: [],
   content: "",
   viewMode: "live",
@@ -129,6 +135,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         content: "",
         dirty: false,
         selectedFolderPath: "",
+        selectedFolderExplicit: false,
         expandedPaths,
         tabs: [],
       });
@@ -172,7 +179,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           ? tabs.map((t) => (t.path === path ? { ...t, preview: false } : t))
           : tabs;
       if (activePath === path) {
-        if (nextTabs !== tabs) set({ tabs: nextTabs });
+        if (nextTabs !== tabs) {
+          set({ tabs: nextTabs, selectedFolderExplicit: false });
+        } else {
+          set({ selectedFolderExplicit: false });
+        }
         return;
       }
       set({ loading: true, error: null });
@@ -299,7 +310,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
-  selectFolder: (path) => set({ selectedFolderPath: path }),
+  selectFolder: (path) =>
+    set({ selectedFolderPath: path, selectedFolderExplicit: true }),
 
   isExpanded: (path) => {
     if (path === "") return true;
@@ -343,7 +355,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         set({ expandedPaths: nextExpanded });
         if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       }
-      set({ selectedFolderPath: created });
+      set({ selectedFolderPath: created, selectedFolderExplicit: true });
       await get().refreshTree();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -387,6 +399,64 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set(patch);
 
       // Reload content if the open note moved (asset refs may have been rewritten).
+      const openAfter = get().activePath;
+      if (openAfter && (activePath === from || (activePath && openAfter !== activePath))) {
+        try {
+          const content = await readNote(openAfter);
+          set({ content, dirty: false });
+        } catch {
+          /* keep previous content */
+        }
+      }
+
+      await get().refreshTree();
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  renameTreeEntry: async (from, nextName) => {
+    const trimmed = nextName.trim().replace(/[\\/]/g, "");
+    if (!trimmed || !from) return;
+
+    const to = joinPath(parentPath(from), trimmed);
+    if (to === from || to === from.replace(/\.md$/i, "")) return;
+
+    const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
+      get();
+    try {
+      if (dirty && activePath) {
+        await saveActive();
+      }
+      set({ suppressWatchUntil: Date.now() + 1200 });
+      const nextPath = await renamePath(from, to);
+
+      let nextExpanded = expandedPaths;
+      if (from !== nextPath) {
+        nextExpanded = remapExpanded(expandedPaths, from, nextPath);
+        set({ expandedPaths: nextExpanded });
+        if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+      }
+
+      const patch: Partial<VaultStore> = {
+        tabs: remapTabs(tabs, from, nextPath),
+      };
+      if (activePath === from || activePath?.startsWith(`${from}/`)) {
+        if (activePath === from) {
+          patch.activePath = nextPath;
+        } else if (activePath) {
+          patch.activePath = `${nextPath}${activePath.slice(from.length)}`;
+        }
+      }
+      if (selectedFolderPath === from || selectedFolderPath.startsWith(`${from}/`)) {
+        if (selectedFolderPath === from) {
+          patch.selectedFolderPath = nextPath;
+        } else {
+          patch.selectedFolderPath = `${nextPath}${selectedFolderPath.slice(from.length)}`;
+        }
+      }
+      set(patch);
+
       const openAfter = get().activePath;
       if (openAfter && (activePath === from || (activePath && openAfter !== activePath))) {
         try {
