@@ -43,6 +43,7 @@ input {
 
 .app-shell {
   display: flex;
+  flex-direction: column;
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -51,6 +52,57 @@ input {
     radial-gradient(1200px 600px at 10% -10%, rgba(47, 143, 123, 0.12), transparent 55%),
     radial-gradient(900px 500px at 100% 0%, rgba(31, 42, 48, 0.08), transparent 50%),
     var(--bg);
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 10px 16px;
+  background: rgba(47, 143, 123, 0.14);
+  color: var(--accent-strong);
+  border-bottom: 1px solid rgba(47, 143, 123, 0.22);
+  font-size: 0.92rem;
+}
+
+.update-banner.is-error {
+  background: rgba(180, 72, 72, 0.1);
+  color: var(--danger);
+  border-bottom-color: rgba(180, 72, 72, 0.22);
+}
+
+.update-banner span {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-banner-btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.update-banner-btn:hover {
+  background: var(--accent-strong);
+}
+
+.update-banner-dismiss {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 2px 6px;
+  opacity: 0.7;
+}
+
+.update-banner-dismiss:hover {
+  opacity: 1;
 }
 
 .app-panels {

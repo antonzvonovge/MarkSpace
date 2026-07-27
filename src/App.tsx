@@ -8,6 +8,7 @@ import {
 } from "react-resizable-panels";
 import { Sidebar, loadLastVault } from "./components/Sidebar";
 import { TabBar } from "./components/TabBar";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { NoteEditor } from "./editor/NoteEditor";
 import type { VaultChange } from "./lib/vaultApi";
 import { readNote } from "./lib/vaultApi";
@@ -84,6 +85,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      <UpdateBanner />
       <Group
         className="app-panels"
         orientation="horizontal"

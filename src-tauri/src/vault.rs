@@ -373,7 +373,11 @@ fn is_descendant_or_same(ancestor: &str, maybe_child: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn open_vault(path: String, state: State<VaultState>, app: AppHandle) -> Result<TreeNode, String> {
+pub fn open_vault(
+    path: String,
+    state: State<VaultState>,
+    app: AppHandle,
+) -> Result<TreeNode, String> {
     let root = PathBuf::from(&path);
     if !root.is_dir() {
         return Err("Selected path is not a directory".into());
@@ -400,9 +404,9 @@ pub fn open_vault(path: String, state: State<VaultState>, app: AppHandle) -> Res
             let p = e.path();
             p.is_file()
                 && p.extension().and_then(|x| x.to_str()) == Some("md")
-                && !p
-                    .components()
-                    .any(|c| matches!(c, Component::Normal(n) if n.to_string_lossy().starts_with('.')))
+                && !p.components().any(
+                    |c| matches!(c, Component::Normal(n) if n.to_string_lossy().starts_with('.')),
+                )
         });
 
     if !has_md {
@@ -672,7 +676,10 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
 }
 
 #[tauri::command]
-pub fn resolve_wiki_target(target: String, state: State<VaultState>) -> Result<Option<String>, String> {
+pub fn resolve_wiki_target(
+    target: String,
+    state: State<VaultState>,
+) -> Result<Option<String>, String> {
     let root = get_root(&state)?;
     let target = target.trim().trim_start_matches('/');
     let direct = if target.ends_with(".md") {
