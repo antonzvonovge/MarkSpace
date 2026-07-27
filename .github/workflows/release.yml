@@ -66,7 +66,7 @@ jobs:
 
             Windows: prefer the installer (`.msi` / setup `.exe`).
             `MarkSpace_*_x64-portable.zip` is a portable build (requires WebView2; no auto-update).
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true
           args: ${{ matrix.args }}
