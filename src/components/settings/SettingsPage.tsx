@@ -4,44 +4,65 @@ import {
   SETTINGS_REGISTRY,
   matchesQuery,
   settingsForCategory,
-  type SettingCategory,
 } from "../../settings/registry";
 import type { PrefKey } from "../../settings/types";
 import { usePrefsStore } from "../../store/prefsStore";
 import { SettingRow } from "./SettingRow";
+import { SyncSettingsPanel } from "./SyncSettingsPanel";
 
 type Props = {
   onClose: () => void;
 };
 
+function queryMatchesSync(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    "sync".includes(q) ||
+    q.includes("sync") ||
+    q.includes("github") ||
+    q.includes("git") ||
+    q.includes("token") ||
+    q.includes("remote")
+  );
+}
+
 export function SettingsPage({ onClose }: Props) {
   const prefs = usePrefsStore((s) => s.prefs);
   const setPref = usePrefsStore((s) => s.setPref);
-  const [category, setCategory] = useState<SettingCategory>("appearance");
+  const category = usePrefsStore((s) => s.settingsCategory);
+  const setCategory = usePrefsStore((s) => s.setSettingsCategory);
   const [query, setQuery] = useState("");
 
   const searching = query.trim().length > 0;
+  const showSyncInSearch = searching && queryMatchesSync(query);
 
   const rows = useMemo(() => {
     if (searching) {
       return SETTINGS_REGISTRY.filter((s) => matchesQuery(s, query));
     }
+    if (category === "sync") return [];
     return settingsForCategory(category);
   }, [category, query, searching]);
 
   const grouped = useMemo(() => {
     if (!searching) return null;
-    return CATEGORIES.map((cat) => ({
-      ...cat,
-      settings: rows.filter((s) => s.category === cat.id),
-    })).filter((g) => g.settings.length > 0);
+    return CATEGORIES.filter((cat) => cat.id !== "sync")
+      .map((cat) => ({
+        ...cat,
+        settings: rows.filter((s) => s.category === cat.id),
+      }))
+      .filter((g) => g.settings.length > 0);
   }, [rows, searching]);
+
+  const showSyncPanel = (!searching && category === "sync") || showSyncInSearch;
 
   return (
     <div className="settings-page">
       <header className="settings-header">
         <div className="settings-header-title">
           <h1>Settings</h1>
+          <p>Configure MarkSpace</p>
         </div>
         <button
           type="button"
@@ -68,24 +89,28 @@ export function SettingsPage({ onClose }: Props) {
         {!searching && (
           <nav className="settings-nav" aria-label="Settings categories">
             {CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                className={
-                  category === cat.id
-                    ? "settings-nav-item is-active"
-                    : "settings-nav-item"
-                }
-                onClick={() => setCategory(cat.id)}
-              >
-                {cat.label}
-              </button>
+              <div key={cat.id} className="settings-nav-group">
+                {cat.separatorBefore && (
+                  <div className="settings-nav-separator" role="separator" />
+                )}
+                <button
+                  type="button"
+                  className={
+                    category === cat.id
+                      ? "settings-nav-item is-active"
+                      : "settings-nav-item"
+                  }
+                  onClick={() => setCategory(cat.id)}
+                >
+                  {cat.label}
+                </button>
+              </div>
             ))}
           </nav>
         )}
 
         <div className="settings-list">
-          {rows.length === 0 && (
+          {rows.length === 0 && !showSyncPanel && (
             <div className="settings-empty">No settings match “{query.trim()}”</div>
           )}
 
@@ -104,7 +129,15 @@ export function SettingsPage({ onClose }: Props) {
               </section>
             ))}
 
+          {showSyncPanel && (
+            <section className="settings-section">
+              {searching && <h2 className="settings-section-title">Sync</h2>}
+              <SyncSettingsPanel />
+            </section>
+          )}
+
           {!searching &&
+            category !== "sync" &&
             rows.map((setting) => (
               <SettingRow
                 key={setting.id}

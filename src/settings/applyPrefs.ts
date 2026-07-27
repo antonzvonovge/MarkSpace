@@ -1,7 +1,8 @@
 import type { EditorFontFamilyId, Prefs } from "./types";
 
-const SANS_STACK = '"DM Sans", "Segoe UI", sans-serif';
-const MONO_STACK = '"IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace';
+const SANS_STACK =
+  '"Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif';
+const MONO_STACK = '"JetBrains Mono", ui-monospace, monospace';
 
 export function editorFontStack(family: EditorFontFamilyId): string {
   return family === "mono" ? MONO_STACK : SANS_STACK;

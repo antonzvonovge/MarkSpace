@@ -101,3 +101,106 @@ export async function saveExpandedPaths(
   await store.set("expandedByVault", map);
   await store.save();
 }
+
+export type AutoSyncMinutes = 0 | 5 | 15 | 30 | 60;
+
+export type VaultSyncMeta = {
+  /** GitHub remote for this vault (URL or resolved origin) */
+  remoteUrl: string;
+  lastSyncAt: string | null;
+  /**
+   * Auto-sync interval in minutes for this vault.
+   * `0` = off. When set, MarkSpace also syncs when the window becomes visible.
+   */
+  autoSyncMinutes: AutoSyncMinutes;
+};
+
+export const AUTO_SYNC_OPTIONS: { value: AutoSyncMinutes; label: string }[] = [
+  { value: 0, label: "Off" },
+  { value: 5, label: "Every 5 minutes" },
+  { value: 15, label: "Every 15 minutes" },
+  { value: 30, label: "Every 30 minutes" },
+  { value: 60, label: "Every hour" },
+];
+
+export function normalizeAutoSyncMinutes(value: unknown): AutoSyncMinutes {
+  return value === 5 || value === 15 || value === 30 || value === 60 ? value : 0;
+}
+
+/**
+ * Persisted in settings.json as `githubSync`.
+ *
+ * Sync connection is vault-specific: `byVault[absoluteVaultPath]` holds
+ * remote URL, last sync time, and auto-sync interval for that folder only.
+ * `token` is a machine-local GitHub credential shared across vaults
+ * (not written into the vault / git repo).
+ */
+export type GithubSyncStore = {
+  token: string | null;
+  byVault: Record<string, VaultSyncMeta>;
+};
+
+const GITHUB_SYNC_KEY = "githubSync";
+
+function normalizeVaultMeta(
+  raw: Partial<VaultSyncMeta> | undefined,
+): VaultSyncMeta | null {
+  if (!raw || typeof raw.remoteUrl !== "string" || !raw.remoteUrl.trim()) {
+    return null;
+  }
+  return {
+    remoteUrl: raw.remoteUrl,
+    lastSyncAt: typeof raw.lastSyncAt === "string" ? raw.lastSyncAt : null,
+    autoSyncMinutes: normalizeAutoSyncMinutes(raw.autoSyncMinutes),
+  };
+}
+
+export async function loadGithubSync(): Promise<GithubSyncStore> {
+  const store = await Store.load(STORE_FILE);
+  const raw = await store.get<Partial<GithubSyncStore>>(GITHUB_SYNC_KEY);
+  const byVault: Record<string, VaultSyncMeta> = {};
+  if (raw?.byVault && typeof raw.byVault === "object") {
+    for (const [path, meta] of Object.entries(raw.byVault)) {
+      const normalized = normalizeVaultMeta(meta);
+      if (normalized) byVault[path] = normalized;
+    }
+  }
+  return {
+    token: typeof raw?.token === "string" && raw.token.length > 0 ? raw.token : null,
+    byVault,
+  };
+}
+
+export async function saveGithubToken(token: string | null): Promise<void> {
+  const store = await Store.load(STORE_FILE);
+  const current = await loadGithubSync();
+  await store.set(GITHUB_SYNC_KEY, {
+    token: token && token.trim() ? token.trim() : null,
+    byVault: current.byVault,
+  } satisfies GithubSyncStore);
+  await store.save();
+}
+
+/** Save or clear sync meta for one vault path (does not affect other vaults). */
+export async function saveVaultSyncMeta(
+  vaultPath: string,
+  meta: VaultSyncMeta | null,
+): Promise<void> {
+  const store = await Store.load(STORE_FILE);
+  const current = await loadGithubSync();
+  const byVault = { ...current.byVault };
+  if (meta) {
+    byVault[vaultPath] = {
+      remoteUrl: meta.remoteUrl,
+      lastSyncAt: meta.lastSyncAt,
+      autoSyncMinutes: normalizeAutoSyncMinutes(meta.autoSyncMinutes),
+    };
+  } else {
+    delete byVault[vaultPath];
+  }
+  await store.set(GITHUB_SYNC_KEY, {
+    token: current.token,
+    byVault,
+  } satisfies GithubSyncStore);
+  await store.save();
+}

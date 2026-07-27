@@ -9,6 +9,8 @@ import {
 import { Sidebar, loadLastVault } from "./components/Sidebar";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { SettingsPage } from "./components/settings/SettingsPage";
+import { StatusBar } from "./components/StatusBar";
+import { SyncConflictBanner } from "./components/SyncConflictBanner";
 import { TabBar } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
@@ -16,7 +18,9 @@ import { NoteEditor } from "./editor/NoteEditor";
 import type { VaultChange } from "./lib/vaultApi";
 import { readNote } from "./lib/vaultApi";
 import { usePrefsStore } from "./store/prefsStore";
+import { useSyncStore } from "./store/syncStore";
 import { useVaultStore } from "./store/vaultStore";
+import { useAutoSync } from "./hooks/useAutoSync";
 import "./App.css";
 
 function App() {
@@ -35,7 +39,10 @@ function App() {
   const openSettings = usePrefsStore((s) => s.openSettings);
   const closeSettings = usePrefsStore((s) => s.closeSettings);
   const hydratePrefs = usePrefsStore((s) => s.hydrate);
+  const refreshSyncStatus = useSyncStore((s) => s.refreshStatus);
   const timer = useRef<number | null>(null);
+
+  useAutoSync();
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "markspace-shell",
@@ -88,6 +95,7 @@ function App() {
     void listen<VaultChange>("vault-change", async (event) => {
       if (Date.now() < useVaultStore.getState().suppressWatchUntil) return;
       await refreshTree();
+      void refreshSyncStatus();
       const { activePath: current, dirty } = useVaultStore.getState();
       if (!current || dirty) return;
       if (
@@ -106,7 +114,7 @@ function App() {
       unlisten = fn;
     });
     return () => unlisten?.();
-  }, [refreshTree, suppressWatchUntil]);
+  }, [refreshTree, suppressWatchUntil, refreshSyncStatus]);
 
   const onEditorChange = (markdown: string) => {
     setContent(markdown);
@@ -141,52 +149,56 @@ function App() {
         <Panel id="main" className="main-panel" minSize={360}>
           <main className="main-pane">
             {error && <div className="error-banner">{error}</div>}
-            {settingsOpen ? (
-              <SettingsPage onClose={closeSettings} />
-            ) : (
-              <>
-                {!vaultPath && (
-                  <div className="empty-state">
-                    <h1>MarkSpace</h1>
-                    <p>
-                      Open a local folder as your vault. Notes are plain Markdown — editable here
-                      or in VS Code / Cursor.
-                    </p>
-                  </div>
-                )}
-                {vaultPath && !activePath && (
-                  <div className="empty-state">
-                    <h1>Select a note</h1>
-                    <p>Or create one from the sidebar.</p>
-                  </div>
-                )}
-                {activePath && (
-                  <>
-                    <TabBar />
-                    <div className="document-column">
-                      <DocumentToolbar />
-                      <div className="document-body">
-                        {viewMode === "live" ? (
-                          <NoteEditor
-                            key={activePath}
-                            path={activePath}
-                            content={content}
-                            onChange={onEditorChange}
-                          />
-                        ) : (
-                          <MarkdownSourceEditor
-                            key={activePath}
-                            path={activePath}
-                            content={content}
-                            onChange={onEditorChange}
-                          />
-                        )}
-                      </div>
+            <SyncConflictBanner />
+            <div className="main-pane-body">
+              {settingsOpen ? (
+                <SettingsPage onClose={closeSettings} />
+              ) : (
+                <>
+                  {!vaultPath && (
+                    <div className="empty-state">
+                      <h1>MarkSpace</h1>
+                      <p>
+                        Open a local folder as your vault. Notes are plain Markdown — editable here
+                        or in VS Code / Cursor.
+                      </p>
                     </div>
-                  </>
-                )}
-              </>
-            )}
+                  )}
+                  {vaultPath && !activePath && (
+                    <div className="empty-state">
+                      <h1>Select a note</h1>
+                      <p>Or create one from the sidebar.</p>
+                    </div>
+                  )}
+                  {activePath && (
+                    <>
+                      <TabBar />
+                      <div className="document-column">
+                        <DocumentToolbar />
+                        <div className="document-body">
+                          {viewMode === "live" ? (
+                            <NoteEditor
+                              key={activePath}
+                              path={activePath}
+                              content={content}
+                              onChange={onEditorChange}
+                            />
+                          ) : (
+                            <MarkdownSourceEditor
+                              key={activePath}
+                              path={activePath}
+                              content={content}
+                              onChange={onEditorChange}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            <StatusBar />
           </main>
         </Panel>
       </Group>

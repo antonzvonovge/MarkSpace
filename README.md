@@ -4,21 +4,22 @@ Local Markdown vault with a Notion-like block editor.
 
 Your notes are ordinary `.md` files in a folder. Open the same vault in VS Code or Cursor and edit them as text. MarkSpace watches the folder and reloads external changes.
 
-## Features (v0.1)
+## Features
 
 - Open any local folder as a vault
 - Sidebar file tree with visible root folder
 - Create notes and folders in the selected folder (root if none)
 - Drag-and-drop to reorder siblings and move into folders
-- TipTap block editor with `/` slash commands
+- BlockNote editor with `/` slash commands
 - Saves clean Markdown to disk (debounced + Ctrl/Cmd+S)
 - Wiki-links: `[[Note]]`, `[[Note|alias]]`
 - External links: `[Example](https://example.com)`
 - Auto-creates `Welcome.md` and `.markspace/` for empty vaults
+- **GitHub sync** via built-in git (no separate Git install) — Settings → Sync
 
 ## Run
 
-Prerequisites: Node.js, Rust, and [Tauri Linux deps](https://tauri.app/start/prerequisites/).
+Prerequisites: Node.js, Rust, and [Tauri Linux deps](https://tauri.app/start/prerequisites/). Building with GitHub sync also needs a C toolchain (libgit2 is vendored; OpenSSL may be required for HTTPS).
 
 ```bash
 npm install
@@ -37,7 +38,7 @@ my-vault/
     order.json
 ```
 
-Hidden folders (names starting with `.`) are ignored by the sidebar.
+Hidden folders (names starting with `.`) are ignored by the sidebar. After you connect sync, the vault becomes a normal git repository (`.git/` stays hidden from the tree).
 
 ### Custom order
 
@@ -54,6 +55,34 @@ Keys are folder paths relative to the vault (`""` = root). Values are child name
 
 Expand/collapse state is **not** stored in the vault — it lives in the app settings so git stays clean. The root folder is always expanded.
 
+## GitHub sync
+
+MarkSpace can sync the open vault with a GitHub repository using an embedded git client (`libgit2`). You do **not** need to install Git separately.
+
+1. Create a GitHub repo (prefer **private** for personal notes).
+2. Open your vault in MarkSpace.
+3. Open **Settings → Sync** (or the sync icon in the sidebar footer).
+4. Sign in:
+   - **Personal Access Token** (always available): classic token with `repo` scope, or a fine-grained token with Contents read/write on that repository. The token is stored only on this machine.
+   - **Sign in with GitHub** (Device Flow): available when the app is built with `MARKSPACE_GITHUB_CLIENT_ID` set to a GitHub OAuth App client id.
+5. Enter the repo URL or `owner/repo`, then **Connect**.
+6. Use **Sync Now** (or the status bar menu → Synchronize) to commit local changes, pull, and push.
+7. Optionally enable **Auto-sync** (5 / 15 / 30 / 60 minutes). While the app is open it syncs on that interval and when you return to the window.
+
+Conflicts appear in Settings → Sync and as a banner in the editor. Choose **Keep mine** / **Keep theirs**, or open the file and edit conflict markers manually, then sync again.
+
+App UI prefs (theme, fonts, last vault path, tree expand state) stay on the device and are not synced. Sync connection (remote URL, auto-sync interval) is stored per vault in the app settings file (`githubSync.byVault`); the GitHub token is machine-local and shared across vaults.
+
+### Device Flow (optional, for maintainers)
+
+Register a GitHub OAuth App, enable Device Flow, then build with:
+
+```bash
+MARKSPACE_GITHUB_CLIENT_ID=Iv1.xxxxxxxx npm run tauri build
+```
+
+Without this, users authenticate with a Personal Access Token.
+
 ## Linking
 
 | In Markdown | Behavior |
@@ -65,4 +94,4 @@ Expand/collapse state is **not** stored in the vault — it lives in the app set
 
 ## Stack
 
-Tauri 2 · React · TypeScript · TipTap · Zustand · [@minoru/react-dnd-treeview](https://github.com/minop1205/react-dnd-treeview)
+Tauri 2 · React · TypeScript · BlockNote · Zustand · git2 · [@minoru/react-dnd-treeview](https://github.com/minop1205/react-dnd-treeview)

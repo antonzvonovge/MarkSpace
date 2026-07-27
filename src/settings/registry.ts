@@ -1,7 +1,7 @@
 import type { PrefKey, Prefs } from "./types";
 import { DEFAULT_PREFS } from "./types";
 
-export type SettingCategory = "appearance" | "editor";
+export type SettingCategory = "appearance" | "editor" | "sync";
 
 export type SettingControl =
   | {
@@ -24,14 +24,24 @@ export type SettingDescriptor = {
   default: Prefs[PrefKey];
 };
 
-export const CATEGORIES: { id: SettingCategory; label: string }[] = [
-  { id: "appearance", label: "Appearance" },
-  { id: "editor", label: "Editor" },
+export type CategoryDescriptor = {
+  id: SettingCategory;
+  label: string;
+  /** `vault` = applies to the open vault only; `app` = global machine prefs */
+  scope: "app" | "vault";
+  /** Draw a horizontal rule before this nav item */
+  separatorBefore?: boolean;
+};
+
+export const CATEGORIES: CategoryDescriptor[] = [
+  { id: "appearance", label: "Appearance", scope: "app" },
+  { id: "editor", label: "Editor", scope: "app" },
+  { id: "sync", label: "Sync", scope: "vault", separatorBefore: true },
 ];
 
 const FONT_FAMILY_OPTIONS = [
-  { value: "sans", label: "Sans (DM Sans)" },
-  { value: "mono", label: "Mono (IBM Plex Mono)" },
+  { value: "sans", label: "Sans (Inter)" },
+  { value: "mono", label: "Mono (JetBrains Mono)" },
 ];
 
 export const SETTINGS_REGISTRY: SettingDescriptor[] = [

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { applyPrefsToDom } from "../settings/applyPrefs";
+import type { SettingCategory } from "../settings/registry";
 import { DEFAULT_PREFS, type PrefKey, type Prefs } from "../settings/types";
 import { loadPrefs, savePrefs } from "../lib/settingsStore";
 import { useVaultStore } from "./vaultStore";
@@ -8,11 +9,13 @@ type PrefsStore = {
   prefs: Prefs;
   hydrated: boolean;
   settingsOpen: boolean;
+  settingsCategory: SettingCategory;
   hydrate: () => Promise<void>;
   setPref: <K extends PrefKey>(key: K, value: Prefs[K]) => void;
-  openSettings: () => void;
+  openSettings: (category?: SettingCategory) => void;
   closeSettings: () => void;
   toggleSettings: () => void;
+  setSettingsCategory: (category: SettingCategory) => void;
 };
 
 function persistAndApply(prefs: Prefs) {
@@ -24,6 +27,7 @@ export const usePrefsStore = create<PrefsStore>((set, get) => ({
   prefs: { ...DEFAULT_PREFS },
   hydrated: false,
   settingsOpen: false,
+  settingsCategory: "appearance",
 
   hydrate: async () => {
     const prefs = await loadPrefs();
@@ -41,7 +45,12 @@ export const usePrefsStore = create<PrefsStore>((set, get) => ({
     }
   },
 
-  openSettings: () => set({ settingsOpen: true }),
+  openSettings: (category) =>
+    set({
+      settingsOpen: true,
+      ...(category ? { settingsCategory: category } : {}),
+    }),
   closeSettings: () => set({ settingsOpen: false }),
   toggleSettings: () => set({ settingsOpen: !get().settingsOpen }),
+  setSettingsCategory: (category) => set({ settingsCategory: category }),
 }));
