@@ -1,0 +1,13 @@
+---
+description: Brand accent color — always use Wildberries magenta, never teal/green
+alwaysApply: true
+---
+
+# Brand accent
+
+Primary accent is **Wildberries magenta**: `#cb11ab` (`--accent-wb` / `--accent`).
+
+- Use `--accent` / `--accent-wb` / `--accent-strong` for interactive highlights, selected states, carets, switchers, focus rings, and similar UI chrome.
+- Do **not** introduce teal/green accents (e.g. `#2f8f7b`, `#237463`, `rgba(47, 143, 123, …)`) for brand UI.
+- Prefer CSS variables over hard-coded hex when styling React/CSS.
+- Darker companion: `--accent-strong` (`#a00e89`).

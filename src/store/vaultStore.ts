@@ -22,6 +22,8 @@ export type EditorTab = {
   preview: boolean;
 };
 
+export type ViewMode = "live" | "source";
+
 type OpenNoteOptions = {
   /** VS Code preview mode — default true */
   preview?: boolean;
@@ -35,6 +37,7 @@ type VaultStore = {
   selectedFolderPath: string;
   expandedPaths: string[];
   content: string;
+  viewMode: ViewMode;
   dirty: boolean;
   saving: boolean;
   loading: boolean;
@@ -46,6 +49,8 @@ type VaultStore = {
   pinTab: (path: string) => void;
   closeTab: (path: string) => Promise<void>;
   setContent: (content: string) => void;
+  setViewMode: (mode: ViewMode) => void;
+  toggleViewMode: () => void;
   saveActive: () => Promise<void>;
   selectFolder: (path: string) => void;
   toggleExpanded: (path: string) => void;
@@ -104,6 +109,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   selectedFolderPath: "",
   expandedPaths: [],
   content: "",
+  viewMode: "live",
   dirty: false,
   saving: false,
   loading: false,
@@ -269,6 +275,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
     }
     set(patch);
+  },
+
+  setViewMode: (mode) => set({ viewMode: mode }),
+
+  toggleViewMode: () => {
+    const { viewMode } = get();
+    set({ viewMode: viewMode === "live" ? "source" : "live" });
   },
 
   saveActive: async () => {

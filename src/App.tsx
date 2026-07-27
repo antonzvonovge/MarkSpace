@@ -7,11 +7,15 @@ import {
   useDefaultLayout,
 } from "react-resizable-panels";
 import { Sidebar, loadLastVault } from "./components/Sidebar";
+import { DocumentToolbar } from "./components/DocumentToolbar";
+import { SettingsPage } from "./components/settings/SettingsPage";
 import { TabBar } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { NoteEditor } from "./editor/NoteEditor";
 import type { VaultChange } from "./lib/vaultApi";
 import { readNote } from "./lib/vaultApi";
+import { usePrefsStore } from "./store/prefsStore";
 import { useVaultStore } from "./store/vaultStore";
 import "./App.css";
 
@@ -19,18 +23,28 @@ function App() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const activePath = useVaultStore((s) => s.activePath);
   const content = useVaultStore((s) => s.content);
+  const viewMode = useVaultStore((s) => s.viewMode);
   const error = useVaultStore((s) => s.error);
   const setContent = useVaultStore((s) => s.setContent);
+  const toggleViewMode = useVaultStore((s) => s.toggleViewMode);
   const saveActive = useVaultStore((s) => s.saveActive);
   const openVaultAt = useVaultStore((s) => s.openVaultAt);
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const suppressWatchUntil = useVaultStore((s) => s.suppressWatchUntil);
+  const settingsOpen = usePrefsStore((s) => s.settingsOpen);
+  const openSettings = usePrefsStore((s) => s.openSettings);
+  const closeSettings = usePrefsStore((s) => s.closeSettings);
+  const hydratePrefs = usePrefsStore((s) => s.hydrate);
   const timer = useRef<number | null>(null);
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "markspace-shell",
     storage: localStorage,
   });
+
+  useEffect(() => {
+    void hydratePrefs();
+  }, [hydratePrefs]);
 
   useEffect(() => {
     void (async () => {
@@ -45,10 +59,22 @@ function App() {
         e.preventDefault();
         void saveActive();
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        toggleViewMode();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        openSettings();
+      }
+      if (e.key === "Escape" && usePrefsStore.getState().settingsOpen) {
+        e.preventDefault();
+        closeSettings();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [saveActive]);
+  }, [saveActive, toggleViewMode, openSettings, closeSettings]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -108,30 +134,50 @@ function App() {
         <Panel id="main" className="main-panel" minSize={360}>
           <main className="main-pane">
             {error && <div className="error-banner">{error}</div>}
-            {!vaultPath && (
-              <div className="empty-state">
-                <h1>MarkSpace</h1>
-                <p>
-                  Open a local folder as your vault. Notes are plain Markdown — editable here
-                  or in VS Code / Cursor.
-                </p>
-              </div>
-            )}
-            {vaultPath && !activePath && (
-              <div className="empty-state">
-                <h1>Select a note</h1>
-                <p>Or create one from the sidebar.</p>
-              </div>
-            )}
-            {activePath && (
+            {settingsOpen ? (
+              <SettingsPage onClose={closeSettings} />
+            ) : (
               <>
-                <TabBar />
-                <NoteEditor
-                  key={activePath}
-                  path={activePath}
-                  content={content}
-                  onChange={onEditorChange}
-                />
+                {!vaultPath && (
+                  <div className="empty-state">
+                    <h1>MarkSpace</h1>
+                    <p>
+                      Open a local folder as your vault. Notes are plain Markdown — editable here
+                      or in VS Code / Cursor.
+                    </p>
+                  </div>
+                )}
+                {vaultPath && !activePath && (
+                  <div className="empty-state">
+                    <h1>Select a note</h1>
+                    <p>Or create one from the sidebar.</p>
+                  </div>
+                )}
+                {activePath && (
+                  <>
+                    <TabBar />
+                    <div className="document-column">
+                      <DocumentToolbar />
+                      <div className="document-body">
+                        {viewMode === "live" ? (
+                          <NoteEditor
+                            key={activePath}
+                            path={activePath}
+                            content={content}
+                            onChange={onEditorChange}
+                          />
+                        ) : (
+                          <MarkdownSourceEditor
+                            key={activePath}
+                            path={activePath}
+                            content={content}
+                            onChange={onEditorChange}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </main>
