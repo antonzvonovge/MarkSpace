@@ -10,6 +10,7 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { normalizeMarkdown } from "../lib/normalizeMarkdown";
 import {
   isExternalHref,
   isWikiHref,
@@ -179,7 +180,9 @@ export function NoteEditor({ path, content, onChange }: Props) {
     if (!pathChanged && !externalChange) return;
 
     applyingRef.current = true;
-    const blocks = editor.tryParseMarkdownToBlocks(wikiToMarkdown(content));
+    const blocks = editor.tryParseMarkdownToBlocks(
+      wikiToMarkdown(normalizeMarkdown(content)),
+    );
     editor.replaceBlocks(editor.document, blocks);
     lastPathRef.current = path;
     lastExternalRef.current = content;

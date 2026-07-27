@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { normalizeMarkdown } from "./normalizeMarkdown";
 
 export type TreeNode = {
   name: string;
@@ -21,11 +22,12 @@ export async function listTree(): Promise<TreeNode> {
 }
 
 export async function readNote(path: string): Promise<string> {
-  return invoke("read_note", { path });
+  const raw = await invoke<string>("read_note", { path });
+  return normalizeMarkdown(raw);
 }
 
 export async function writeNote(path: string, content: string): Promise<void> {
-  return invoke("write_note", { path, content });
+  return invoke("write_note", { path, content: normalizeMarkdown(content) });
 }
 
 export async function createNote(path: string): Promise<string> {

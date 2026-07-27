@@ -717,6 +717,11 @@ pub fn list_tree(state: State<VaultState>) -> Result<TreeNode, String> {
     make_root_node(&root, &order)
 }
 
+/// Normalize EOLs to LF so BlockNote's markdown parser can detect fenced code.
+fn normalize_newlines(content: &str) -> String {
+    content.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 #[tauri::command]
 pub fn read_note(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
@@ -724,7 +729,8 @@ pub fn read_note(path: String, state: State<VaultState>) -> Result<String, Strin
     if !full.is_file() {
         return Err("Note not found".into());
     }
-    fs::read_to_string(&full).map_err(|e| format!("Cannot read note: {e}"))
+    let raw = fs::read_to_string(&full).map_err(|e| format!("Cannot read note: {e}"))?;
+    Ok(normalize_newlines(&raw))
 }
 
 #[tauri::command]
@@ -734,6 +740,7 @@ pub fn write_note(path: String, content: String, state: State<VaultState>) -> Re
     if let Some(parent) = full.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
     }
+    let content = normalize_newlines(&content);
     fs::write(&full, content).map_err(|e| format!("Cannot write note: {e}"))
 }
 
