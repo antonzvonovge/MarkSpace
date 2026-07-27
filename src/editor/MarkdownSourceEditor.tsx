@@ -1,10 +1,10 @@
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, redo, undo } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import {
   HighlightStyle,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { useEffect, useRef } from "react";
@@ -112,6 +112,27 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
         markspaceTheme,
         EditorView.lineWrapping,
         keymap.of([...defaultKeymap, ...historyKeymap]),
+        // Ctrl/Cmd+Z/Y by physical key so undo works on Russian layout.
+        Prec.highest(
+          EditorView.domEventHandlers({
+            keydown(event, view) {
+              if (!(event.ctrlKey || event.metaKey) || event.altKey) return false;
+              if (/^[a-z]$/i.test(event.key)) return false;
+              if (event.code === "KeyZ" && !event.shiftKey) {
+                event.preventDefault();
+                return undo(view);
+              }
+              if (
+                (event.code === "KeyZ" && event.shiftKey) ||
+                (event.code === "KeyY" && !event.shiftKey)
+              ) {
+                event.preventDefault();
+                return redo(view);
+              }
+              return false;
+            },
+          }),
+        ),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged || applyingRef.current) return;
           const next = update.state.doc.toString();

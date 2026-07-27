@@ -848,6 +848,140 @@ li.dnd-drop-target > .tree-row {
   color: #9aa7af;
 }
 
+.editor-canvas .bn-file-block-content-wrapper {
+  max-width: 100%;
+}
+
+.editor-canvas .bn-visual-media-wrapper {
+  max-width: 100% !important;
+}
+
+.editor-canvas img.bn-visual-media {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.editor-canvas .bn-resize-handle {
+  background: var(--accent);
+}
+
+/* Guard against stacked duplicate group headers in the slash menu */
+.editor-canvas .bn-suggestion-menu-label + .bn-suggestion-menu-label {
+  display: none;
+}
+
+.diagram-block {
+  width: 100%;
+  margin: 0.35em 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  overflow: hidden;
+}
+
+.diagram-block__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(28, 36, 40, 0.03);
+}
+
+:root[data-theme="dark"] .diagram-block__toolbar {
+  background: rgba(231, 238, 242, 0.04);
+}
+
+.diagram-block__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.diagram-block__modes {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgba(28, 36, 40, 0.06);
+}
+
+.diagram-block__mode {
+  appearance: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.diagram-block__mode:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.diagram-block__mode.is-active {
+  color: var(--text);
+  background: var(--editor-surface);
+  box-shadow: 0 0 0 1px rgba(203, 17, 171, 0.25);
+}
+
+.diagram-block__mode:not(:disabled):hover {
+  color: var(--text);
+}
+
+.diagram-block__editor {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  resize: vertical;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: transparent;
+  outline: none;
+}
+
+.diagram-block__preview {
+  position: relative;
+  min-height: 3rem;
+  padding: 12px;
+  overflow-x: auto;
+}
+
+.diagram-block__svg {
+  display: flex;
+  justify-content: center;
+}
+
+.diagram-block__svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-block__empty,
+.diagram-block__pending,
+.diagram-block__error {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.diagram-block__error {
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+
 .source-editor-shell {
   height: 100%;
   min-height: 0;

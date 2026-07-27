@@ -112,6 +112,248 @@ fn join_parent(parent: &str, name: &str) -> String {
     }
 }
 
+fn assets_dir_rel(note_parent: &str) -> String {
+    join_parent(note_parent, ".assets")
+}
+
+fn sanitize_asset_filename(name: &str) -> String {
+    let base = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(name)
+        .trim();
+    if base.is_empty() || base == "." || base == ".." {
+        return "image.png".into();
+    }
+    base.to_string()
+}
+
+fn unique_filename(dir: &Path, desired: &str) -> String {
+    let desired = sanitize_asset_filename(desired);
+    if !dir.join(&desired).exists() {
+        return desired;
+    }
+    let path = Path::new(&desired);
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "image".into());
+    let ext = path.extension().and_then(|s| s.to_str());
+    for i in 1..10_000 {
+        let candidate = match ext {
+            Some(e) => format!("{stem}-{i}.{e}"),
+            None => format!("{stem}-{i}"),
+        };
+        if !dir.join(&candidate).exists() {
+            return candidate;
+        }
+    }
+    match ext {
+        Some(e) => format!(
+            "{stem}-{}.{e}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ),
+        None => format!(
+            "{stem}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ),
+    }
+}
+
+fn extract_asset_refs(content: &str) -> Vec<String> {
+    let mut refs = Vec::new();
+    let needle = ".assets/";
+    let mut search_from = 0;
+    while let Some(idx) = content[search_from..].find(needle) {
+        let start = search_from + idx;
+        let after = &content[start + needle.len()..];
+        let end_rel = after
+            .find(|c: char| {
+                matches!(
+                    c,
+                    ')' | '"' | '\'' | '>' | ' ' | ']' | '\n' | '\r' | '?' | '#' | '\\'
+                )
+            })
+            .unwrap_or(after.len());
+        let filename = &after[..end_rel];
+        if !filename.is_empty()
+            && !filename.contains("..")
+            && !filename.contains('/')
+            && !filename.contains('\\')
+        {
+            refs.push(format!(".assets/{filename}"));
+        }
+        search_from = start + needle.len() + end_rel.max(1);
+    }
+    refs.sort();
+    refs.dedup();
+    refs
+}
+
+fn try_remove_empty_dir(path: &Path) {
+    if path.is_dir() {
+        let _ = fs::remove_dir(path);
+    }
+}
+
+fn sibling_notes(root: &Path, parent_rel: &str) -> Result<Vec<PathBuf>, String> {
+    let dir = if parent_rel.is_empty() {
+        root.to_path_buf()
+    } else {
+        ensure_inside(root, Path::new(parent_rel))?
+    };
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut notes = Vec::new();
+    let read = fs::read_dir(&dir).map_err(|e| format!("Cannot read directory: {e}"))?;
+    for entry in read {
+        let entry = entry.map_err(|e| format!("Cannot read entry: {e}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if is_hidden(&name) {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_file() && name.ends_with(".md") {
+            notes.push(path);
+        }
+    }
+    Ok(notes)
+}
+
+fn asset_referenced_by_other_notes(
+    root: &Path,
+    parent_rel: &str,
+    exclude_note_rel: &str,
+    asset_url: &str,
+) -> Result<bool, String> {
+    let exclude = ensure_inside(root, Path::new(exclude_note_rel)).ok();
+    for note in sibling_notes(root, parent_rel)? {
+        if exclude.as_ref().is_some_and(|ex| ex == &note) {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&note) else {
+            continue;
+        };
+        if content.contains(asset_url) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn migrate_note_assets(
+    root: &Path,
+    from_note_rel: &str,
+    to_note_rel: &str,
+    content: &str,
+) -> Result<String, String> {
+    let from_parent = parent_rel(from_note_rel);
+    let to_parent = parent_rel(to_note_rel);
+    if from_parent == to_parent {
+        return Ok(content.to_string());
+    }
+
+    let refs = extract_asset_refs(content);
+    if refs.is_empty() {
+        return Ok(content.to_string());
+    }
+
+    let from_assets_rel = assets_dir_rel(&from_parent);
+    let to_assets_rel = assets_dir_rel(&to_parent);
+    let from_assets = ensure_inside(root, Path::new(&from_assets_rel))?;
+    let to_assets = ensure_inside(root, Path::new(&to_assets_rel))?;
+    fs::create_dir_all(&to_assets).map_err(|e| format!("Cannot create .assets: {e}"))?;
+
+    let mut new_content = content.to_string();
+    let mut replacements: Vec<(String, String)> = Vec::new();
+
+    for rel_url in refs {
+        let filename = rel_url.trim_start_matches(".assets/");
+        let src = from_assets.join(filename);
+        if !src.is_file() {
+            continue;
+        }
+
+        let still_needed =
+            asset_referenced_by_other_notes(root, &from_parent, from_note_rel, &rel_url)?;
+        let unique = unique_filename(&to_assets, filename);
+        let dest = to_assets.join(&unique);
+        let new_url = format!(".assets/{unique}");
+
+        if still_needed {
+            fs::copy(&src, &dest).map_err(|e| format!("Cannot copy asset: {e}"))?;
+        } else if let Err(e) = fs::rename(&src, &dest) {
+            fs::copy(&src, &dest).map_err(|copy_e| {
+                format!("Cannot move asset ({e}); copy also failed: {copy_e}")
+            })?;
+            let _ = fs::remove_file(&src);
+        }
+
+        if rel_url != new_url {
+            replacements.push((rel_url, new_url));
+        }
+    }
+
+    replacements.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    for (old, new) in replacements {
+        new_content = new_content.replace(&old, &new);
+    }
+
+    try_remove_empty_dir(&from_assets);
+    Ok(new_content)
+}
+
+fn cleanup_note_assets(root: &Path, note_rel: &str, content: &str) -> Result<(), String> {
+    let parent = parent_rel(note_rel);
+    let assets_rel = assets_dir_rel(&parent);
+    let assets = ensure_inside(root, Path::new(&assets_rel))?;
+    if !assets.is_dir() {
+        return Ok(());
+    }
+
+    for rel_url in extract_asset_refs(content) {
+        if asset_referenced_by_other_notes(root, &parent, note_rel, &rel_url)? {
+            continue;
+        }
+        let filename = rel_url.trim_start_matches(".assets/");
+        let path = assets.join(filename);
+        if path.is_file() {
+            let _ = fs::remove_file(path);
+        }
+    }
+    try_remove_empty_dir(&assets);
+    Ok(())
+}
+
+fn maybe_migrate_moved_note(
+    root: &Path,
+    from_rel: &str,
+    to_rel: &str,
+    was_file: bool,
+) -> Result<(), String> {
+    if !was_file || !to_rel.ends_with(".md") {
+        return Ok(());
+    }
+    if parent_rel(from_rel) == parent_rel(to_rel) {
+        return Ok(());
+    }
+    let to_full = ensure_inside(root, Path::new(to_rel))?;
+    let content =
+        fs::read_to_string(&to_full).map_err(|e| format!("Cannot read note after move: {e}"))?;
+    let new_content = migrate_note_assets(root, from_rel, to_rel, &content)?;
+    if new_content != content {
+        fs::write(&to_full, new_content).map_err(|e| format!("Cannot update note assets: {e}"))?;
+    }
+    Ok(())
+}
+
 fn order_path(root: &Path) -> PathBuf {
     root.join(".markspace").join("order.json")
 }
@@ -575,6 +817,8 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     let to_parent = parent_rel(&to_rel);
     let to_name = entry_name(&to_rel);
 
+    maybe_migrate_moved_note(&root, &from_rel, &to_rel, !was_dir)?;
+
     let mut order = read_order(&root);
     order_remove_child(&mut order, &from_parent, &from_name);
     order_insert_child(&mut order, &to_parent, &to_name, None);
@@ -624,6 +868,7 @@ pub fn move_entry(
             fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
         }
         fs::rename(&from_full, &to_full).map_err(|e| format!("Cannot move: {e}"))?;
+        maybe_migrate_moved_note(&root, &from, &new_rel, !was_dir)?;
     }
 
     let mut order = read_order(&root);
@@ -659,6 +904,12 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     let parent = parent_rel(&rel);
     let name = entry_name(&rel);
     let was_dir = full.is_dir();
+
+    if !was_dir && rel.ends_with(".md") {
+        if let Ok(content) = fs::read_to_string(&full) {
+            cleanup_note_assets(&root, &rel, &content)?;
+        }
+    }
 
     if was_dir {
         fs::remove_dir_all(&full).map_err(|e| format!("Cannot delete folder: {e}"))?;
@@ -729,4 +980,48 @@ pub fn resolve_wiki_target(
 pub fn get_vault_path(state: State<VaultState>) -> Result<Option<String>, String> {
     let guard = state.root.lock().map_err(|_| "Vault state lock poisoned")?;
     Ok(guard.as_ref().map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub fn absolute_path(path: String, state: State<VaultState>) -> Result<String, String> {
+    let root = get_root(&state)?;
+    let full = ensure_inside(&root, Path::new(&path))?;
+    Ok(full.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn write_asset(
+    note_path: String,
+    file_name: String,
+    data_base64: String,
+    state: State<VaultState>,
+) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    let root = get_root(&state)?;
+    let note_rel = note_path.trim().trim_start_matches('/').to_string();
+    if note_rel.is_empty() {
+        return Err("Note path required".into());
+    }
+    let note_full = ensure_inside(&root, Path::new(&note_rel))?;
+    if !note_full.is_file() {
+        return Err("Note not found".into());
+    }
+
+    let data = STANDARD
+        .decode(data_base64.trim())
+        .map_err(|e| format!("Invalid asset data: {e}"))?;
+    if data.is_empty() {
+        return Err("Empty asset data".into());
+    }
+
+    let parent = parent_rel(&note_rel);
+    let assets_rel = assets_dir_rel(&parent);
+    let assets = ensure_inside(&root, Path::new(&assets_rel))?;
+    fs::create_dir_all(&assets).map_err(|e| format!("Cannot create .assets: {e}"))?;
+
+    let unique = unique_filename(&assets, &file_name);
+    let dest = assets.join(&unique);
+    fs::write(&dest, data).map_err(|e| format!("Cannot write asset: {e}"))?;
+    Ok(format!(".assets/{unique}"))
 }

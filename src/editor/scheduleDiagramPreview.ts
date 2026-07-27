@@ -1,0 +1,82 @@
+import {
+  diagramCacheKey,
+  hydrateDiagramSvg,
+  peekDiagramSvg,
+  type DiagramEngine,
+} from "./diagramCache";
+import { normalizePlantUmlSource } from "./plantuml/renderPlantUml";
+
+const DEBOUNCE_MS = 300;
+
+export type DiagramPreviewState = {
+  svg: string | null;
+  error: string | null;
+  pending: boolean;
+};
+
+function cacheSource(engine: DiagramEngine, code: string): string {
+  const trimmed = code.trim();
+  return engine === "plantuml" ? normalizePlantUmlSource(trimmed) : trimmed;
+}
+
+/**
+ * Resolve diagram SVG with memory + disk cache.
+ * - Memory hit: sync, no spinner
+ * - Disk hit: async, no debounce (usually ms)
+ * - Miss: debounce then render (persists to disk)
+ */
+export function scheduleDiagramPreview(options: {
+  engine: DiagramEngine;
+  code: string;
+  dark: boolean;
+  render: (code: string, dark: boolean) => Promise<string>;
+  onUpdate: (state: DiagramPreviewState) => void;
+}): () => void {
+  const source = cacheSource(options.engine, options.code);
+  if (!source) {
+    options.onUpdate({ svg: null, error: null, pending: false });
+    return () => {};
+  }
+
+  const key = diagramCacheKey(options.engine, source, options.dark);
+  const cached = peekDiagramSvg(key);
+  if (cached !== undefined) {
+    options.onUpdate({ svg: cached, error: null, pending: false });
+    return () => {};
+  }
+
+  let cancelled = false;
+  let debounceTimer: number | undefined;
+  options.onUpdate({ svg: null, error: null, pending: true });
+
+  void (async () => {
+    const fromDisk = await hydrateDiagramSvg(key);
+    if (cancelled) return;
+    if (fromDisk !== undefined) {
+      options.onUpdate({ svg: fromDisk, error: null, pending: false });
+      return;
+    }
+
+    debounceTimer = window.setTimeout(() => {
+      void options.render(source, options.dark).then(
+        (svg) => {
+          if (cancelled) return;
+          options.onUpdate({ svg, error: null, pending: false });
+        },
+        (err) => {
+          if (cancelled) return;
+          options.onUpdate({
+            svg: null,
+            error: err instanceof Error ? err.message : String(err),
+            pending: false,
+          });
+        },
+      );
+    }, DEBOUNCE_MS);
+  })();
+
+  return () => {
+    cancelled = true;
+    if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
+  };
+}

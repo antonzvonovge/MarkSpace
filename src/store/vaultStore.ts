@@ -386,6 +386,17 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
       set(patch);
 
+      // Reload content if the open note moved (asset refs may have been rewritten).
+      const openAfter = get().activePath;
+      if (openAfter && (activePath === from || (activePath && openAfter !== activePath))) {
+        try {
+          const content = await readNote(openAfter);
+          set({ content, dirty: false });
+        } catch {
+          /* keep previous content */
+        }
+      }
+
       await get().refreshTree();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });

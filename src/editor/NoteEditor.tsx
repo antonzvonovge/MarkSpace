@@ -1,8 +1,13 @@
 import "@blocknote/mantine/style.css";
 
 import { BlockNoteView } from "@blocknote/mantine";
-import { useCreateBlockNote, useEditorChange } from "@blocknote/react";
 import type { Theme } from "@blocknote/mantine";
+import {
+  SuggestionMenuController,
+  useCreateBlockNote,
+  useEditorChange,
+} from "@blocknote/react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
@@ -12,11 +17,23 @@ import {
   wikiTargetFromHref,
   wikiToMarkdown,
 } from "../lib/wikiMarkdown";
-import { createNote, resolveWikiTarget } from "../lib/vaultApi";
+import {
+  absolutePath,
+  createNote,
+  joinPath,
+  parentPath,
+  resolveWikiTarget,
+  writeAsset,
+} from "../lib/vaultApi";
 import { editorFontStack } from "../settings/applyPrefs";
 import type { ThemeId } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
+import { createLayoutAgnosticKeymapExtension } from "./layoutAgnosticKeymap";
+import { NoteSlashSuggestionMenu } from "./NoteSlashSuggestionMenu";
+import { createImagePasteHandler } from "./pasteImages";
+import { noteEditorSchema } from "./schema";
+import { getNoteSlashMenuItems } from "./slashMenuItems";
 
 function buildEditorTheme(
   theme: ThemeId,
@@ -69,6 +86,10 @@ function buildEditorTheme(
   };
 }
 
+function isRemoteOrDataUrl(url: string): boolean {
+  return /^(https?:|data:|blob:|asset:|tauri:)/i.test(url);
+}
+
 type Props = {
   path: string;
   content: string;
@@ -83,13 +104,61 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const applyingRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
   const lastExternalRef = useRef(content);
+  const notePathRef = useRef(path);
+  notePathRef.current = path;
+  const editorRef = useRef<ReturnType<typeof useCreateBlockNote> | null>(null);
 
   const editorTheme = useMemo(
     () => buildEditorTheme(theme, editorFontStack(liveFontFamily)),
     [theme, liveFontFamily],
   );
 
-  const editor = useCreateBlockNote({}, [path]);
+  const uploadFile = useCallback(async (file: File, _blockId?: string) => {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const name = file.name?.trim() || "image.png";
+    return writeAsset(notePathRef.current, name, bytes);
+  }, []);
+
+  const resolveFileUrl = useCallback(async (url: string) => {
+    if (!url || isRemoteOrDataUrl(url)) return url;
+    const cleaned = url.replace(/^\.\//, "");
+    const noteParent = parentPath(notePathRef.current);
+    const assetRel = joinPath(noteParent, cleaned);
+    try {
+      const abs = await absolutePath(assetRel);
+      return convertFileSrc(abs);
+    } catch {
+      return url;
+    }
+  }, []);
+
+  const pasteHandler = useMemo(() => createImagePasteHandler(), []);
+
+  const uploadFileRef = useRef(uploadFile);
+  uploadFileRef.current = uploadFile;
+  const resolveFileUrlRef = useRef(resolveFileUrl);
+  resolveFileUrlRef.current = resolveFileUrl;
+  const pasteHandlerRef = useRef(pasteHandler);
+  pasteHandlerRef.current = pasteHandler;
+
+  const layoutKeymap = useMemo(
+    () => createLayoutAgnosticKeymapExtension(() => editorRef.current),
+    [],
+  );
+
+  const editor = useCreateBlockNote(
+    {
+      schema: noteEditorSchema,
+      uploadFile: (file, blockId) => uploadFileRef.current(file, blockId),
+      resolveFileUrl: (url) => resolveFileUrlRef.current(url),
+      pasteHandler: (ctx) => pasteHandlerRef.current(ctx),
+      _tiptapOptions: {
+        extensions: [layoutKeymap],
+      },
+    },
+    [path],
+  );
+  editorRef.current = editor;
 
   useEditorChange((ed) => {
     if (applyingRef.current) return;
@@ -98,6 +167,11 @@ export function NoteEditor({ path, content, onChange }: Props) {
     lastExternalRef.current = wikiMd;
     onChange(wikiMd);
   }, editor);
+
+  const getSlashMenuItems = useCallback(
+    async (query: string) => getNoteSlashMenuItems(editor, query),
+    [editor],
+  );
 
   useEffect(() => {
     const pathChanged = lastPathRef.current !== path;
@@ -149,7 +223,13 @@ export function NoteEditor({ path, content, onChange }: Props) {
   return (
     <div className="editor-shell" onClick={handleLinkClick}>
       <div className="editor-canvas">
-        <BlockNoteView editor={editor} theme={editorTheme} slashMenu={true} />
+        <BlockNoteView editor={editor} theme={editorTheme} slashMenu={false}>
+          <SuggestionMenuController
+            triggerCharacter="/"
+            getItems={getSlashMenuItems}
+            suggestionMenuComponent={NoteSlashSuggestionMenu}
+          />
+        </BlockNoteView>
       </div>
     </div>
   );

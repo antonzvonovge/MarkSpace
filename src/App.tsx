@@ -55,21 +55,28 @@ function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) {
+        if (e.key === "Escape" && usePrefsStore.getState().settingsOpen) {
+          e.preventDefault();
+          closeSettings();
+        }
+        return;
+      }
+
+      // Use event.code so shortcuts work on non-English layouts (e.g. Ctrl+Ы).
+      const code = e.code;
+      if (code === "KeyS") {
         e.preventDefault();
         void saveActive();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
+      if (code === "KeyE") {
         e.preventDefault();
         toggleViewMode();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+      if (e.key === "," || code === "Comma") {
         e.preventDefault();
         openSettings();
-      }
-      if (e.key === "Escape" && usePrefsStore.getState().settingsOpen) {
-        e.preventDefault();
-        closeSettings();
       }
     };
     window.addEventListener("keydown", onKey);

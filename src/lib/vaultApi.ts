@@ -60,6 +60,31 @@ export async function getVaultPath(): Promise<string | null> {
   return invoke("get_vault_path");
 }
 
+export async function absolutePath(path: string): Promise<string> {
+  return invoke("absolute_path", { path });
+}
+
+export async function writeAsset(
+  notePath: string,
+  fileName: string,
+  data: Uint8Array,
+): Promise<string> {
+  return invoke("write_asset", {
+    notePath,
+    fileName,
+    dataBase64: uint8ToBase64(data),
+  });
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 export function joinPath(parent: string, name: string): string {
   if (!parent) return name;
   return `${parent.replace(/\/$/, "")}/${name}`;
