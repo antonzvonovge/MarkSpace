@@ -51,7 +51,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - uses: tauri-apps/tauri-action@v1
+      - name: Build Tauri
+        id: tauri
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -61,7 +63,34 @@ jobs:
           releaseName: MarkSpace v__VERSION__
           releaseBody: |
             See the assets below to download and install MarkSpace.
+
+            Windows: prefer the installer (`.msi` / setup `.exe`).
+            `MarkSpace_*_x64-portable.zip` is a portable build (requires WebView2; no auto-update).
           releaseDraft: true
           prerelease: false
           uploadUpdaterJson: true
           args: ${{ matrix.args }}
+
+      - name: Upload Windows portable zip
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $exe = "src-tauri/target/release/markspace.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Portable build failed: missing $exe"
+          }
+
+          $stage = Join-Path $env:RUNNER_TEMP "markspace-portable"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item $exe (Join-Path $stage "MarkSpace.exe") -Force
+
+          $zipName = "MarkSpace_${version}_x64-portable.zip"
+          $zipPath = Join-Path $PWD $zipName
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path (Join-Path $stage "MarkSpace.exe") -DestinationPath $zipPath
+
+          $tag = "v$version"
+          gh release upload $tag $zipPath --clobber
