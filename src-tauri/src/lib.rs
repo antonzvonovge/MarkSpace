@@ -17,6 +17,7 @@ pub fn run() {
             vault::create_note,
             vault::create_folder,
             vault::rename_path,
+            vault::move_entry,
             vault::delete_path,
             vault::resolve_wiki_target,
             vault::get_vault_path,

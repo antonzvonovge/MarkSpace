@@ -1,26 +1,16 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { Store } from "@tauri-apps/plugin-store";
 import { FileTree } from "./FileTree";
+import { loadLastVault, saveLastVault } from "../lib/settingsStore";
 import { useVaultStore } from "../store/vaultStore";
 
-const STORE_FILE = "settings.json";
-
-export async function loadLastVault(): Promise<string | null> {
-  const store = await Store.load(STORE_FILE);
-  return (await store.get<string>("lastVault")) ?? null;
-}
-
-export async function saveLastVault(path: string): Promise<void> {
-  const store = await Store.load(STORE_FILE);
-  await store.set("lastVault", path);
-  await store.save();
-}
+export { loadLastVault, saveLastVault };
 
 export function Sidebar() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const openVaultAt = useVaultStore((s) => s.openVaultAt);
   const dirty = useVaultStore((s) => s.dirty);
   const saving = useVaultStore((s) => s.saving);
+  const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
 
   const pickVault = async () => {
     const selected = await open({
@@ -34,8 +24,10 @@ export function Sidebar() {
     }
   };
 
-  const parts = vaultPath?.split(/[\\/]/).filter(Boolean) ?? [];
-  const folderName = parts[parts.length - 1] ?? "No vault";
+  const selectionLabel =
+    selectedFolderPath === ""
+      ? "root"
+      : selectedFolderPath;
 
   return (
     <aside className="sidebar">
@@ -50,8 +42,8 @@ export function Sidebar() {
 
       {vaultPath && (
         <div className="vault-meta">
-          <div className="vault-name" title={vaultPath}>
-            {folderName}
+          <div className="vault-name" title={selectedFolderPath || vaultPath}>
+            New in: {selectionLabel}
           </div>
           <div className="vault-status">
             {saving ? "Saving…" : dirty ? "Unsaved" : "Saved"}

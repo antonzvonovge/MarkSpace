@@ -1,6 +1,13 @@
 import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
+import {
+  Group,
+  Panel,
+  Separator,
+  useDefaultLayout,
+} from "react-resizable-panels";
 import { Sidebar, loadLastVault } from "./components/Sidebar";
+import { TabBar } from "./components/TabBar";
 import { NoteEditor } from "./editor/NoteEditor";
 import type { VaultChange } from "./lib/vaultApi";
 import { readNote } from "./lib/vaultApi";
@@ -18,6 +25,11 @@ function App() {
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const suppressWatchUntil = useVaultStore((s) => s.suppressWatchUntil);
   const timer = useRef<number | null>(null);
+
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: "markspace-shell",
+    storage: localStorage,
+  });
 
   useEffect(() => {
     void (async () => {
@@ -72,38 +84,57 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar />
-      <main className="main-pane">
-        {error && <div className="error-banner">{error}</div>}
-        {!vaultPath && (
-          <div className="empty-state">
-            <h1>MarkSpace</h1>
-            <p>
-              Open a local folder as your vault. Notes are plain Markdown — editable here
-              or in VS Code / Cursor.
-            </p>
-          </div>
-        )}
-        {vaultPath && !activePath && (
-          <div className="empty-state">
-            <h1>Select a note</h1>
-            <p>Or create one from the sidebar.</p>
-          </div>
-        )}
-        {activePath && (
-          <>
-            <header className="note-header">
-              <div className="note-path">{activePath}</div>
-            </header>
-            <NoteEditor
-              key={activePath}
-              path={activePath}
-              content={content}
-              onChange={onEditorChange}
-            />
-          </>
-        )}
-      </main>
+      <Group
+        className="app-panels"
+        orientation="horizontal"
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
+      >
+        <Panel
+          id="sidebar"
+          className="sidebar-panel"
+          defaultSize={280}
+          minSize={200}
+          maxSize={480}
+          groupResizeBehavior="preserve-pixel-size"
+        >
+          <Sidebar />
+        </Panel>
+
+        <Separator className="app-splitter" />
+
+        <Panel id="main" className="main-panel" minSize={360}>
+          <main className="main-pane">
+            {error && <div className="error-banner">{error}</div>}
+            {!vaultPath && (
+              <div className="empty-state">
+                <h1>MarkSpace</h1>
+                <p>
+                  Open a local folder as your vault. Notes are plain Markdown — editable here
+                  or in VS Code / Cursor.
+                </p>
+              </div>
+            )}
+            {vaultPath && !activePath && (
+              <div className="empty-state">
+                <h1>Select a note</h1>
+                <p>Or create one from the sidebar.</p>
+              </div>
+            )}
+            {activePath && (
+              <>
+                <TabBar />
+                <NoteEditor
+                  key={activePath}
+                  path={activePath}
+                  content={content}
+                  onChange={onEditorChange}
+                />
+              </>
+            )}
+          </main>
+        </Panel>
+      </Group>
     </div>
   );
 }
