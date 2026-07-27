@@ -21,6 +21,8 @@ pub fn run() {
             vault::read_note,
             vault::write_note,
             vault::create_note,
+            vault::create_drawio,
+            vault::import_drawio,
             vault::create_folder,
             vault::rename_path,
             vault::move_entry,

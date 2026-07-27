@@ -23,15 +23,32 @@ export async function listTree(): Promise<TreeNode> {
 
 export async function readNote(path: string): Promise<string> {
   const raw = await invoke<string>("read_note", { path });
+  // Don't run markdown fence healing on draw.io XML.
+  if (path.toLowerCase().endsWith(".drawio")) return raw;
   return normalizeMarkdown(raw);
 }
 
 export async function writeNote(path: string, content: string): Promise<void> {
-  return invoke("write_note", { path, content: normalizeMarkdown(content) });
+  const payload = path.toLowerCase().endsWith(".drawio")
+    ? content
+    : normalizeMarkdown(content);
+  return invoke("write_note", { path, content: payload });
 }
 
 export async function createNote(path: string): Promise<string> {
   return invoke("create_note", { path });
+}
+
+export async function createDrawio(path: string): Promise<string> {
+  return invoke("create_drawio", { path });
+}
+
+/** Embed path for a .drawio: vault-relative if already inside, else copy next to the note. */
+export async function importDrawio(
+  notePath: string,
+  sourceAbsPath: string,
+): Promise<string> {
+  return invoke("import_drawio", { notePath, source: sourceAbsPath });
 }
 
 export async function createFolder(path: string): Promise<string> {
@@ -96,4 +113,14 @@ export function parentPath(path: string): string {
   const cleaned = path.replace(/^\/+|\/+$/g, "");
   const i = cleaned.lastIndexOf("/");
   return i === -1 ? "" : cleaned.slice(0, i);
+}
+
+export type DocumentKind = "markdown" | "drawio";
+
+export function documentKind(path: string): DocumentKind {
+  return path.toLowerCase().endsWith(".drawio") ? "drawio" : "markdown";
+}
+
+export function isDrawioPath(path: string): boolean {
+  return documentKind(path) === "drawio";
 }

@@ -14,16 +14,36 @@ import { saveExpandedPaths } from "../lib/settingsStore";
 import { useVaultStore } from "../store/vaultStore";
 import { PromptDialog, ConfirmDialog } from "./AppDialog";
 import { FcDocument, FcFolder, FcOpenedFolder } from "react-icons/fc";
+import {
+  beginDrawioTreeDrag,
+  endDrawioTreeDrag,
+} from "../editor/drawio/treeDrag";
 
 const TREE_ROOT = "__tree_root__";
 const VAULT_ID = "__vault__";
+
+/** Keeps module-level drawio drag path in sync with react-dnd isDragging. */
+function DrawioTreeDragBridge({
+  active,
+  path,
+}: {
+  active: boolean;
+  path: string;
+}) {
+  useEffect(() => {
+    if (!active) return;
+    beginDrawioTreeDrag(path);
+    return () => endDrawioTreeDrag();
+  }, [active, path]);
+  return null;
+}
 
 type NodeData = {
   path: string;
   isDir: boolean;
 };
 
-type PromptKind = "note" | "folder";
+type PromptKind = "note" | "folder" | "drawio";
 
 type ContextMenuState = {
   x: number;
@@ -118,7 +138,9 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
     nodes.push({
       id,
       parent: parentId,
-      text: node.isDir ? node.name : node.name.replace(/\.md$/i, ""),
+      text: node.isDir
+        ? node.name
+        : node.name.replace(/\.md$/i, "").replace(/\.drawio$/i, ""),
       droppable: node.isDir,
       data: { path: node.path, isDir: node.isDir },
     });
@@ -135,9 +157,11 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
 
 function TreeCreateMenu({
   onNewNote,
+  onNewDiagram,
   onNewFolder,
 }: {
   onNewNote: () => void;
+  onNewDiagram: () => void;
   onNewFolder: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -193,6 +217,18 @@ function TreeCreateMenu({
             className="tree-create-item"
             onClick={() => {
               setOpen(false);
+              onNewDiagram();
+            }}
+          >
+            <DiagramIcon />
+            <span>New diagram</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-create-item"
+            onClick={() => {
+              setOpen(false);
               onNewFolder();
             }}
           >
@@ -202,6 +238,37 @@ function TreeCreateMenu({
         </div>
       )}
     </div>
+  );
+}
+
+function DiagramIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="2.5"
+        width="5"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <rect
+        x="8.5"
+        y="9.5"
+        width="5"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M5 6.5v2.2c0 .7.5 1.3 1.2 1.3H8.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -338,6 +405,7 @@ export function FileTree() {
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
   const selectedFolderExplicit = useVaultStore((s) => s.selectedFolderExplicit);
   const createNoteInSelection = useVaultStore((s) => s.createNoteInSelection);
+  const createDrawioInSelection = useVaultStore((s) => s.createDrawioInSelection);
   const createFolderInSelection = useVaultStore((s) => s.createFolderInSelection);
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
   const renameTreeEntry = useVaultStore((s) => s.renameTreeEntry);
@@ -346,10 +414,19 @@ export function FileTree() {
   const openNote = useVaultStore((s) => s.openNote);
 
   const treeRef = useRef<TreeMethods>(null);
+  const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
   const [promptKind, setPromptKind] = useState<PromptKind | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+
+  const backendOptions = useMemo(
+    () =>
+      dndRoot
+        ? getBackendOptions({ html5: { rootElement: dndRoot } })
+        : null,
+    [dndRoot],
+  );
 
   const flatTree = useMemo(() => (tree ? flattenTree(tree) : []), [tree]);
 
@@ -390,6 +467,13 @@ export function FileTree() {
       });
       return;
     }
+    if (kind === "drawio") {
+      void createDrawioInSelection(name).then(() => {
+        treeRef.current?.open(VAULT_ID);
+        treeRef.current?.open(toNodeId(parent));
+      });
+      return;
+    }
     void createFolderInSelection(name).then(() => {
       treeRef.current?.open(toNodeId(parent));
       treeRef.current?.open(VAULT_ID);
@@ -400,14 +484,28 @@ export function FileTree() {
     <div className="file-tree">
       <PromptDialog
         open={promptKind !== null}
-        title={promptKind === "folder" ? "New folder" : "New note"}
+        title={
+          promptKind === "folder"
+            ? "New folder"
+            : promptKind === "drawio"
+              ? "New diagram"
+              : "New note"
+        }
         description={
           promptKind === "folder"
             ? "Create a folder in the selected location."
-            : "Create a markdown note in the selected location."
+            : promptKind === "drawio"
+              ? "Create a Draw.io diagram in the selected location."
+              : "Create a markdown note in the selected location."
         }
         label="Name"
-        defaultValue={promptKind === "folder" ? "Folder" : "Untitled"}
+        defaultValue={
+          promptKind === "folder"
+            ? "Folder"
+            : promptKind === "drawio"
+              ? "Diagram"
+              : "Untitled"
+        }
         confirmLabel="Create"
         onCancel={() => setPromptKind(null)}
         onConfirm={submitCreate}
@@ -430,7 +528,13 @@ export function FileTree() {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title={deleteTarget?.isDir ? "Удалить папку" : "Удалить заметку"}
+        title={
+          deleteTarget?.isDir
+            ? "Удалить папку"
+            : deleteTarget?.path.endsWith(".drawio")
+              ? "Удалить диаграмму"
+              : "Удалить заметку"
+        }
         description={
           deleteTarget?.isDir
             ? `Удалить «${deleteTarget.name}» и всё её содержимое? Это действие нельзя отменить.`
@@ -445,169 +549,189 @@ export function FileTree() {
         }}
       />
 
-      <div className="tree-scroll">
-        <DndProvider backend={MultiBackend} options={getBackendOptions()}>
-          <Tree
-            ref={treeRef}
-            key={vaultPath}
-            tree={flatTree}
-            rootId={TREE_ROOT}
-            sort={false}
-            insertDroppableFirst={false}
-            dropTargetOffset={10}
-            initialOpen={initialOpen}
-            classes={{
-              root: "dnd-tree-root",
-              draggingSource: "dnd-dragging",
-              dropTarget: "dnd-drop-target",
-              placeholder: "dnd-placeholder",
-            }}
-            canDrag={(node) =>
-              node?.id !== VAULT_ID && node?.data?.path !== renamingPath
-            }
-            canDrop={(_current, { dropTargetId, dragSourceId, dropTarget }) => {
-              if (dragSourceId == null) return false;
-              if (dropTargetId === TREE_ROOT) return false;
-
-              const from = toStorePath(dragSourceId);
-              const targetPath = toStorePath(dropTargetId);
-
-              if (from === targetPath || targetPath.startsWith(`${from}/`)) {
-                return false;
+      <div
+        className="tree-scroll"
+        ref={(node) => {
+          if (node !== dndRoot) setDndRoot(node);
+        }}
+      >
+        {backendOptions ? (
+          <DndProvider backend={MultiBackend} options={backendOptions}>
+            <Tree
+              ref={treeRef}
+              key={vaultPath}
+              tree={flatTree}
+              rootId={TREE_ROOT}
+              sort={false}
+              insertDroppableFirst={false}
+              dropTargetOffset={10}
+              initialOpen={initialOpen}
+              classes={{
+                root: "dnd-tree-root",
+                draggingSource: "dnd-dragging",
+                dropTarget: "dnd-drop-target",
+                placeholder: "dnd-placeholder",
+              }}
+              canDrag={(node) =>
+                node?.id !== VAULT_ID && node?.data?.path !== renamingPath
               }
+              canDrop={(_current, { dropTargetId, dragSourceId, dropTarget }) => {
+                if (dragSourceId == null) return false;
+                if (dropTargetId === TREE_ROOT) return false;
 
-              if (dropTargetId === VAULT_ID) return true;
-              if (dropTarget?.droppable) return true;
+                const from = toStorePath(dragSourceId);
+                const targetPath = toStorePath(dropTargetId);
 
-              return false;
-            }}
-            onChangeOpen={(openIds) => {
-              const next = openIds
-                .map(String)
-                .filter((id) => id !== VAULT_ID)
-                .map(toStorePath);
-              useVaultStore.setState({ expandedPaths: next });
-              void saveExpandedPaths(vaultPath, next);
-            }}
-            onDrop={handleDrop}
-            dragPreviewRender={(monitor) => (
-              <div className="dnd-preview">
-                <span className="dnd-preview-icon" aria-hidden>
-                  {monitor.item.droppable ? (
-                    <FcFolder size={16} />
-                  ) : (
-                    <FcDocument size={16} />
-                  )}
-                </span>
-                <span className="dnd-preview-label">{monitor.item.text}</span>
-              </div>
-            )}
-            placeholderRender={() => <div className="dnd-placeholder-line" />}
-            render={(node, { depth, isOpen, onToggle, isDropTarget, isDragging }) => {
-              const path = node.data?.path ?? toStorePath(node.id);
-              const isDir = Boolean(node.droppable);
-              const isVault = node.id === VAULT_ID;
-              const selected =
-                isDir && selectedFolderExplicit && selectedFolderPath === path;
-              const active =
-                !isDir && !selectedFolderExplicit && activePath === path;
-              const renaming = renamingPath === path;
+                if (from === targetPath || targetPath.startsWith(`${from}/`)) {
+                  return false;
+                }
 
-              return (
-                <div
-                  className={[
-                    "tree-row",
-                    isDir ? "tree-folder-row" : "tree-file",
-                    isVault ? "is-vault-root" : "",
-                    selected || active ? "is-selected" : "",
-                    isDropTarget ? "is-drop-target" : "",
-                    isDragging ? "is-dragging" : "",
-                    renaming ? "is-renaming" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  style={{ paddingLeft: 10 + depth * 14, paddingRight: 10 }}
-                  onContextMenu={(e) => {
-                    if (isVault) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setContextMenu({
-                      x: e.clientX,
-                      y: e.clientY,
-                      path,
-                      name: node.text,
-                      isDir,
-                    });
-                    if (isDir) selectFolder(path);
-                    else void openNote(path, { preview: true });
-                  }}
-                >
-                  {isDir ? (
-                    <button
-                      type="button"
-                      className="tree-chevron-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggle();
-                      }}
-                      aria-label={isOpen ? "Collapse" : "Expand"}
-                    >
-                      <ChevronIcon open={isOpen} />
-                    </button>
-                  ) : (
-                    <span className="tree-file-spacer" />
-                  )}
+                if (dropTargetId === VAULT_ID) return true;
+                if (dropTarget?.droppable) return true;
 
-                  <span className="tree-node-icon" aria-hidden>
-                    {isDir ? (
-                      isOpen ? (
-                        <FcOpenedFolder size={20} />
-                      ) : (
-                        <FcFolder size={20} />
-                      )
+                return false;
+              }}
+              onChangeOpen={(openIds) => {
+                const next = openIds
+                  .map(String)
+                  .filter((id) => id !== VAULT_ID)
+                  .map(toStorePath);
+                useVaultStore.setState({ expandedPaths: next });
+                void saveExpandedPaths(vaultPath, next);
+              }}
+              onDrop={handleDrop}
+              dragPreviewRender={(monitor) => (
+                <div className="dnd-preview">
+                  <span className="dnd-preview-icon" aria-hidden>
+                    {monitor.item.droppable ? (
+                      <FcFolder size={16} />
                     ) : (
-                      <FcDocument size={20} />
+                      <FcDocument size={16} />
                     )}
                   </span>
-
-                  {renaming ? (
-                    <InlineRenameInput
-                      key={path}
-                      initialValue={node.text}
-                      onCancel={() => setRenamingPath(null)}
-                      onCommit={(nextName) => {
-                        setRenamingPath(null);
-                        void renameTreeEntry(path, nextName);
-                      }}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className={isDir ? "tree-folder-btn" : "tree-file-btn"}
-                      onClick={() => {
-                        if (isDir) selectFolder(path);
-                        else void openNote(path, { preview: true });
-                      }}
-                      onDoubleClick={() => {
-                        if (isDir) return;
-                        void openNote(path, { preview: false });
-                      }}
-                    >
-                      {node.text}
-                    </button>
-                  )}
-
-                  {isVault ? (
-                    <TreeCreateMenu
-                      onNewNote={() => setPromptKind("note")}
-                      onNewFolder={() => setPromptKind("folder")}
-                    />
-                  ) : null}
+                  <span className="dnd-preview-label">{monitor.item.text}</span>
                 </div>
-              );
-            }}
-          />
-        </DndProvider>
+              )}
+              placeholderRender={() => <div className="dnd-placeholder-line" />}
+              render={(node, { depth, isOpen, onToggle, isDropTarget, isDragging }) => {
+                const path = node.data?.path ?? toStorePath(node.id);
+                const isDir = Boolean(node.droppable);
+                const isVault = node.id === VAULT_ID;
+                const selected =
+                  isDir && selectedFolderExplicit && selectedFolderPath === path;
+                const active =
+                  !isDir && !selectedFolderExplicit && activePath === path;
+                const renaming = renamingPath === path;
+
+                return (
+                  <div
+                    className={[
+                      "tree-row",
+                      isDir ? "tree-folder-row" : "tree-file",
+                      isVault ? "is-vault-root" : "",
+                      selected || active ? "is-selected" : "",
+                      isDropTarget ? "is-drop-target" : "",
+                      isDragging ? "is-dragging" : "",
+                      renaming ? "is-renaming" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    style={{ paddingLeft: 10 + depth * 14, paddingRight: 10 }}
+                    onContextMenu={(e) => {
+                      if (isVault) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        path,
+                        name: node.text,
+                        isDir,
+                      });
+                      if (isDir) selectFolder(path);
+                      else void openNote(path, { preview: true });
+                    }}
+                  >
+                    <DrawioTreeDragBridge
+                      active={
+                        isDragging &&
+                        !isDir &&
+                        path.toLowerCase().endsWith(".drawio")
+                      }
+                      path={path}
+                    />
+                    {isDir ? (
+                      <button
+                        type="button"
+                        className="tree-chevron-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggle();
+                        }}
+                        aria-label={isOpen ? "Collapse" : "Expand"}
+                      >
+                        <ChevronIcon open={isOpen} />
+                      </button>
+                    ) : (
+                      <span className="tree-file-spacer" />
+                    )}
+
+                    <span className="tree-node-icon" aria-hidden>
+                      {isDir ? (
+                        isOpen ? (
+                          <FcOpenedFolder size={20} />
+                        ) : (
+                          <FcFolder size={20} />
+                        )
+                      ) : path.toLowerCase().endsWith(".drawio") ? (
+                        <span className="tree-drawio-icon">
+                          <DiagramIcon />
+                        </span>
+                      ) : (
+                        <FcDocument size={20} />
+                      )}
+                    </span>
+
+                    {renaming ? (
+                      <InlineRenameInput
+                        key={path}
+                        initialValue={node.text}
+                        onCancel={() => setRenamingPath(null)}
+                        onCommit={(nextName) => {
+                          setRenamingPath(null);
+                          void renameTreeEntry(path, nextName);
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={isDir ? "tree-folder-btn" : "tree-file-btn"}
+                        onClick={() => {
+                          if (isDir) selectFolder(path);
+                          else void openNote(path, { preview: true });
+                        }}
+                        onDoubleClick={() => {
+                          if (isDir) return;
+                          void openNote(path, { preview: false });
+                        }}
+                      >
+                        {node.text}
+                      </button>
+                    )}
+
+                    {isVault ? (
+                      <TreeCreateMenu
+                        onNewNote={() => setPromptKind("note")}
+                        onNewDiagram={() => setPromptKind("drawio")}
+                        onNewFolder={() => setPromptKind("folder")}
+                      />
+                    ) : null}
+                  </div>
+                );
+              }}
+            />
+          </DndProvider>
+        ) : null}
       </div>
     </div>
   );

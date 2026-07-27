@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "npm run drawio:download && tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "drawio:download": "node scripts/download-drawio.mjs",
+    "postinstall": "node scripts/download-drawio.mjs"
   },
   "dependencies": {
     "@blocknote/core": "^0.52.1",

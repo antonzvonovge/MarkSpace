@@ -15,8 +15,9 @@ import { TabBar } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { NoteEditor } from "./editor/NoteEditor";
+import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import type { VaultChange } from "./lib/vaultApi";
-import { readNote } from "./lib/vaultApi";
+import { documentKind, readNote } from "./lib/vaultApi";
 import { usePrefsStore } from "./store/prefsStore";
 import { useSyncStore } from "./store/syncStore";
 import { useVaultStore } from "./store/vaultStore";
@@ -79,6 +80,8 @@ function App() {
       }
       if (code === "KeyE") {
         e.preventDefault();
+        const path = useVaultStore.getState().activePath;
+        if (path && documentKind(path) === "drawio") return;
         toggleViewMode();
       }
       if (e.key === "," || code === "Comma") {
@@ -174,9 +177,18 @@ function App() {
                     <>
                       <TabBar />
                       <div className="document-column">
-                        <DocumentToolbar />
+                        {documentKind(activePath) === "markdown" ? (
+                          <DocumentToolbar />
+                        ) : null}
                         <div className="document-body">
-                          {viewMode === "live" ? (
+                          {documentKind(activePath) === "drawio" ? (
+                            <DrawioEditor
+                              key={activePath}
+                              path={activePath}
+                              content={content}
+                              onChange={onEditorChange}
+                            />
+                          ) : viewMode === "live" ? (
                             <NoteEditor
                               key={activePath}
                               path={activePath}

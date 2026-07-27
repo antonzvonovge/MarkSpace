@@ -45,6 +45,30 @@ fn is_hidden(name: &str) -> bool {
     name.starts_with('.')
 }
 
+fn is_markdown(name: &str) -> bool {
+    name.ends_with(".md")
+}
+
+fn is_drawio(name: &str) -> bool {
+    name.ends_with(".drawio")
+}
+
+fn is_vault_document(name: &str) -> bool {
+    is_markdown(name) || is_drawio(name)
+}
+
+const EMPTY_DRAWIO: &str = r#"<mxfile host="MarkSpace" agent="MarkSpace" version="28.2.5" type="device">
+  <diagram id="page-1" name="Page-1">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+"#;
+
 fn ensure_inside(root: &Path, candidate: &Path) -> Result<PathBuf, String> {
     let root = root
         .canonicalize()
@@ -332,6 +356,225 @@ fn cleanup_note_assets(root: &Path, note_rel: &str, content: &str) -> Result<(),
     Ok(())
 }
 
+fn collect_drawio_under(root: &Path, dir_rel: &str) -> Result<Vec<String>, String> {
+    let dir = if dir_rel.is_empty() {
+        root.to_path_buf()
+    } else {
+        ensure_inside(root, Path::new(dir_rel))?
+    };
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for entry in WalkDir::new(&dir).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path
+            .components()
+            .any(|c| matches!(c, Component::Normal(n) if n.to_string_lossy().starts_with('.')))
+        {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if is_drawio(&name) {
+            out.push(relative_to_root(root, path));
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+fn all_markdown_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut notes = Vec::new();
+    for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path
+            .components()
+            .any(|c| matches!(c, Component::Normal(n) if n.to_string_lossy().starts_with('.')))
+        {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if is_markdown(&name) {
+            notes.push(path.to_path_buf());
+        }
+    }
+    Ok(notes)
+}
+
+/// Rewrite `![[old]]` / `![[old|width]]` and `data-drawio-src="old"` across note content.
+fn rewrite_drawio_refs_in_content(content: &str, from: &str, to: &str) -> String {
+    if from.is_empty() || from == to {
+        return content.to_string();
+    }
+
+    let mut out = String::with_capacity(content.len());
+    let mut rest = content;
+    while let Some(start) = rest.find("![[") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 3..];
+        if let Some(end) = after.find("]]") {
+            let inner = &after[..end];
+            let (target, width) = match inner.split_once('|') {
+                Some((t, w)) => (t.trim(), Some(w.trim())),
+                None => (inner.trim(), None),
+            };
+            if target == from {
+                out.push_str("![[");
+                out.push_str(to);
+                if let Some(w) = width {
+                    if !w.is_empty() {
+                        out.push('|');
+                        out.push_str(w);
+                    }
+                }
+                out.push_str("]]");
+            } else {
+                out.push_str(&rest[start..start + 3 + end + 2]);
+            }
+            rest = &after[end + 2..];
+        } else {
+            out.push_str(&rest[start..]);
+            rest = "";
+            break;
+        }
+    }
+    out.push_str(rest);
+
+    let mut next = out.replace(
+        &format!("data-drawio-src=\"{from}\""),
+        &format!("data-drawio-src=\"{to}\""),
+    );
+
+    // Also rewrite ```drawio fence bodies (intermediate / legacy on-disk form).
+    next = rewrite_drawio_fences(&next, from, to);
+    next
+}
+
+fn rewrite_drawio_fences(content: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    let mut rest = content;
+    let open = "```drawio";
+    while let Some(start) = rest.find(open) {
+        out.push_str(&rest[..start]);
+        let after_open = &rest[start + open.len()..];
+        // Skip optional language trailing spaces / newline
+        let body_start = after_open.find('\n').map(|i| i + 1).unwrap_or(0);
+        let body = &after_open[body_start..];
+        if let Some(end) = body.find("```") {
+            let fence_body = &body[..end];
+            let rewritten = fence_body.lines()
+                .map(|line| {
+                    let trimmed = line.trim();
+                    if trimmed == from || trimmed.starts_with(&format!("{from}|")) {
+                        format!("{}{}", to, &trimmed[from.len()..])
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            out.push_str(open);
+            out.push_str(&after_open[..body_start]);
+            out.push_str(&rewritten);
+            out.push_str("```");
+            rest = &body[end + 3..];
+        } else {
+            out.push_str(&rest[start..]);
+            rest = "";
+            break;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn rewrite_drawio_embeds_vault(root: &Path, from: &str, to: &str) -> Result<(), String> {
+    if from.is_empty() || from == to {
+        return Ok(());
+    }
+    for note in all_markdown_files(root)? {
+        let Ok(content) = fs::read_to_string(&note) else {
+            continue;
+        };
+        if !content.contains(from) {
+            continue;
+        }
+        let next = rewrite_drawio_refs_in_content(&content, from, to);
+        if next != content {
+            fs::write(&note, next).map_err(|e| format!("Cannot rewrite drawio embeds: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn rewrite_drawio_after_path_change(
+    root: &Path,
+    from_rel: &str,
+    to_rel: &str,
+    was_dir: bool,
+    was_drawio_file: bool,
+) -> Result<(), String> {
+    if was_drawio_file {
+        return rewrite_drawio_embeds_vault(root, from_rel, to_rel);
+    }
+    if !was_dir {
+        return Ok(());
+    }
+    let drawios = collect_drawio_under(root, to_rel)?;
+    for new_path in drawios {
+        let suffix = if new_path == to_rel {
+            String::new()
+        } else if let Some(rest) = new_path.strip_prefix(&format!("{to_rel}/")) {
+            rest.to_string()
+        } else {
+            continue;
+        };
+        let old_path = if suffix.is_empty() {
+            from_rel.to_string()
+        } else {
+            format!("{from_rel}/{suffix}")
+        };
+        rewrite_drawio_embeds_vault(root, &old_path, &new_path)?;
+    }
+    Ok(())
+}
+
+fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
+    let mut to_rel = to_rel.trim().trim_start_matches('/').to_string();
+    if !from_full.is_file() {
+        return to_rel;
+    }
+    let from_name = from_full
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if is_drawio(&from_name) {
+        if !to_rel.ends_with(".drawio") {
+            if to_rel.ends_with(".md") {
+                to_rel.truncate(to_rel.len() - 3);
+            }
+            to_rel.push_str(".drawio");
+        }
+        return to_rel;
+    }
+    if is_markdown(&from_name) && !to_rel.ends_with(".md") && !to_rel.ends_with(".drawio") {
+        to_rel.push_str(".md");
+    }
+    to_rel
+}
+
 fn maybe_migrate_moved_note(
     root: &Path,
     from_rel: &str,
@@ -451,7 +694,7 @@ fn build_tree(root: &Path, dir: &Path, order: &OrderMap) -> Result<Vec<TreeNode>
                 is_dir: true,
                 children: Some(children),
             });
-        } else if name.ends_with(".md") {
+        } else if is_vault_document(&name) {
             entries.push(TreeNode {
                 name,
                 path: rel,
@@ -507,7 +750,7 @@ fn materialize_parent_order(root: &Path, order: &mut OrderMap, parent: &str) -> 
             continue;
         }
         let path = entry.path();
-        if path.is_dir() || name.ends_with(".md") {
+        if path.is_dir() || is_vault_document(&name) {
             names.push(name);
         }
     }
@@ -776,6 +1019,97 @@ pub fn create_note(path: String, state: State<VaultState>) -> Result<String, Str
 }
 
 #[tauri::command]
+pub fn create_drawio(path: String, state: State<VaultState>) -> Result<String, String> {
+    let root = get_root(&state)?;
+    let mut rel = path.trim().trim_start_matches('/').to_string();
+    if !rel.ends_with(".drawio") {
+        if rel.ends_with(".md") {
+            rel.truncate(rel.len() - 3);
+        }
+        rel.push_str(".drawio");
+    }
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    if full.exists() {
+        return Err("Diagram already exists".into());
+    }
+    if let Some(parent) = full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
+    }
+    fs::write(&full, EMPTY_DRAWIO).map_err(|e| format!("Cannot create diagram: {e}"))?;
+
+    let created = relative_to_root(&root, &full);
+    let parent = parent_rel(&created);
+    let name = entry_name(&created);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent, &name, None);
+    write_order(&root, &order)?;
+
+    Ok(created)
+}
+
+/// Resolve a .drawio path for embedding next to a note.
+/// If `source` is already inside the vault, returns its vault-relative path.
+/// Otherwise copies the file into the note's folder and returns the new relative path.
+#[tauri::command]
+pub fn import_drawio(
+    note_path: String,
+    source: String,
+    state: State<VaultState>,
+) -> Result<String, String> {
+    let root = get_root(&state)?;
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve vault root: {e}"))?;
+
+    let note_rel = note_path.trim().trim_start_matches('/').to_string();
+    if note_rel.is_empty() {
+        return Err("Note path required".into());
+    }
+    let _note_full = ensure_inside(&root, Path::new(&note_rel))?;
+
+    let source_path = PathBuf::from(source.trim());
+    if !source_path.is_file() {
+        return Err("Selected file not found".into());
+    }
+    let source_canon = source_path
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve selected file: {e}"))?;
+
+    let source_name = source_canon
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "diagram.drawio".into());
+    if !is_drawio(&source_name) {
+        return Err("Selected file must be a .drawio diagram".into());
+    }
+
+    if source_canon.starts_with(&root_canon) {
+        return Ok(relative_to_root(&root_canon, &source_canon));
+    }
+
+    let dest_parent_rel = parent_rel(&note_rel);
+    let dest_dir = if dest_parent_rel.is_empty() {
+        root_canon.clone()
+    } else {
+        ensure_inside(&root, Path::new(&dest_parent_rel))?
+    };
+    fs::create_dir_all(&dest_dir).map_err(|e| format!("Cannot create folders: {e}"))?;
+
+    let unique = unique_filename(&dest_dir, &source_name);
+    let dest = dest_dir.join(&unique);
+    fs::copy(&source_canon, &dest).map_err(|e| format!("Cannot copy diagram into vault: {e}"))?;
+
+    let created = relative_to_root(&root_canon, &dest);
+    let parent = parent_rel(&created);
+    let name = entry_name(&created);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent, &name, None);
+    write_order(&root, &order)?;
+
+    Ok(created)
+}
+
+#[tauri::command]
 pub fn create_folder(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let rel = path.trim().trim_start_matches('/').to_string();
@@ -802,10 +1136,7 @@ pub fn create_folder(path: String, state: State<VaultState>) -> Result<String, S
 pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let from_full = ensure_inside(&root, Path::new(&from))?;
-    let mut to_rel = to.trim().trim_start_matches('/').to_string();
-    if from_full.is_file() && !to_rel.ends_with(".md") {
-        to_rel.push_str(".md");
-    }
+    let to_rel = ensure_document_extension(&from_full, &to);
     let to_full = ensure_inside(&root, Path::new(&to_rel))?;
     if to_full.exists() {
         return Err("Target already exists".into());
@@ -818,6 +1149,7 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     let from_parent = parent_rel(&from_rel);
     let from_name = entry_name(&from_rel);
     let was_dir = from_full.is_dir();
+    let was_drawio = !was_dir && is_drawio(&from_name);
 
     fs::rename(&from_full, &to_full).map_err(|e| format!("Cannot rename: {e}"))?;
     let to_rel = relative_to_root(&root, &to_full);
@@ -825,6 +1157,7 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     let to_name = entry_name(&to_rel);
 
     maybe_migrate_moved_note(&root, &from_rel, &to_rel, !was_dir)?;
+    rewrite_drawio_after_path_change(&root, &from_rel, &to_rel, was_dir, was_drawio)?;
 
     let mut order = read_order(&root);
     order_remove_child(&mut order, &from_parent, &from_name);
@@ -863,6 +1196,7 @@ pub fn move_entry(
     let name = entry_name(&from);
     let from_parent = parent_rel(&from);
     let was_dir = from_full.is_dir();
+    let was_drawio = !was_dir && is_drawio(&name);
     let new_rel = join_parent(&to_parent, &name);
     let same_parent = from_parent == to_parent;
 
@@ -876,6 +1210,7 @@ pub fn move_entry(
         }
         fs::rename(&from_full, &to_full).map_err(|e| format!("Cannot move: {e}"))?;
         maybe_migrate_moved_note(&root, &from, &new_rel, !was_dir)?;
+        rewrite_drawio_after_path_change(&root, &from, &new_rel, was_dir, was_drawio)?;
     }
 
     let mut order = read_order(&root);

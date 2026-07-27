@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# draw.io offline webapp (downloaded by scripts/download-drawio.mjs)
+public/drawio/
+public/.drawio-download/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -21,6 +21,7 @@ import {
 import {
   absolutePath,
   createNote,
+  isDrawioPath,
   joinPath,
   parentPath,
   resolveWikiTarget,
@@ -35,6 +36,11 @@ import { NoteSlashSuggestionMenu } from "./NoteSlashSuggestionMenu";
 import { createImagePasteHandler } from "./pasteImages";
 import { noteEditorSchema } from "./schema";
 import { getNoteSlashMenuItems } from "./slashMenuItems";
+import { insertDrawioEmbed } from "./drawio/slashItem";
+import {
+  clearDrawioTreeDrag,
+  getActiveDrawioTreeDrag,
+} from "./drawio/treeDrag";
 
 function buildEditorTheme(
   theme: ThemeId,
@@ -170,8 +176,8 @@ export function NoteEditor({ path, content, onChange }: Props) {
   }, editor);
 
   const getSlashMenuItems = useCallback(
-    async (query: string) => getNoteSlashMenuItems(editor, query),
-    [editor],
+    async (query: string) => getNoteSlashMenuItems(editor, query, path),
+    [editor, path],
   );
 
   useEffect(() => {
@@ -212,10 +218,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
           await openUrl(href);
           return;
         }
-        const cleaned = href.replace(/^\.\//, "");
-        let resolved = await resolveWikiTarget(cleaned.replace(/\.md$/i, ""));
-        if (!resolved && cleaned.endsWith(".md")) {
-          resolved = await resolveWikiTarget(cleaned);
+        const cleanedHref = href.replace(/^\.\//, "");
+        let resolved = await resolveWikiTarget(cleanedHref.replace(/\.md$/i, ""));
+        if (!resolved && cleanedHref.endsWith(".md")) {
+          resolved = await resolveWikiTarget(cleanedHref);
         }
         if (resolved) await openNote(resolved);
       })();
@@ -223,8 +229,47 @@ export function NoteEditor({ path, content, onChange }: Props) {
     [openNote, refreshTree],
   );
 
+  // Tree DnD is scoped to the sidebar so HTML5Backend does not kill BlockNote's
+  // native block drag. Draw.io embeds from the tree use a path bridge + native drop.
+  const shellRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+
+    const overEditor = (target: EventTarget | null) =>
+      Boolean(target && target instanceof Node && shell.contains(target));
+
+    const onDragOver = (event: DragEvent) => {
+      if (!overEditor(event.target)) return;
+      if (!getActiveDrawioTreeDrag()) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    };
+
+    const onDrop = (event: DragEvent) => {
+      if (!overEditor(event.target)) return;
+      const src = getActiveDrawioTreeDrag();
+      if (!src || !isDrawioPath(src)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      insertDrawioEmbed(editor, src, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      clearDrawioTreeDrag();
+    };
+
+    document.addEventListener("dragover", onDragOver, true);
+    document.addEventListener("drop", onDrop, true);
+    return () => {
+      document.removeEventListener("dragover", onDragOver, true);
+      document.removeEventListener("drop", onDrop, true);
+    };
+  }, [editor]);
+
   return (
-    <div className="editor-shell" onClick={handleLinkClick}>
+    <div ref={shellRef} className="editor-shell" onClick={handleLinkClick}>
       <div className="editor-canvas">
         <BlockNoteView editor={editor} theme={editorTheme} slashMenu={false}>
           <SuggestionMenuController

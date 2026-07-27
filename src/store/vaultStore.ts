@@ -1,9 +1,11 @@
 import { create } from "zustand";
 import type { TreeNode } from "../lib/vaultApi";
 import {
+  createDrawio,
   createFolder,
   createNote,
   deletePath,
+  documentKind,
   joinPath,
   listTree,
   moveEntry,
@@ -59,6 +61,7 @@ type VaultStore = {
   toggleExpanded: (path: string) => void;
   isExpanded: (path: string) => boolean;
   createNoteInSelection: (name: string) => Promise<void>;
+  createDrawioInSelection: (name: string) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
   moveTreeEntry: (from: string, toParent: string, toIndex: number) => Promise<void>;
   renameTreeEntry: (from: string, nextName: string) => Promise<void>;
@@ -86,7 +89,7 @@ function remapTabs(tabs: EditorTab[], from: string, to: string): EditorTab[] {
 
 function tabLabel(path: string): string {
   const name = path.split("/").pop() ?? path;
-  return name.replace(/\.md$/i, "");
+  return name.replace(/\.md$/i, "").replace(/\.drawio$/i, "");
 }
 
 function activateLoaded(
@@ -142,7 +145,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
       const welcome =
         tree.children?.find((c) => c.path === "Welcome.md") ??
-        tree.children?.find((c) => !c.isDir);
+        tree.children?.find((c) => !c.isDir && c.path.toLowerCase().endsWith(".md"));
       if (welcome) {
         await get().openNote(welcome.path, { preview: true });
       }
@@ -342,6 +345,20 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
+  createDrawioInSelection: async (name) => {
+    const { selectedFolderPath } = get();
+    const trimmed = name.trim().replace(/\.drawio$/i, "").replace(/\.md$/i, "");
+    if (!trimmed) return;
+    try {
+      const rel = joinPath(selectedFolderPath, trimmed);
+      const created = await createDrawio(rel);
+      await get().refreshTree();
+      await get().openNote(created, { preview: false });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   createFolderInSelection: async (name) => {
     const { selectedFolderPath, vaultPath, expandedPaths } = get();
     const trimmed = name.trim().replace(/\/+$/g, "");
@@ -420,7 +437,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     if (!trimmed || !from) return;
 
     const to = joinPath(parentPath(from), trimmed);
-    if (to === from || to === from.replace(/\.md$/i, "")) return;
+    const fromKind = documentKind(from);
+    if (fromKind === "drawio") {
+      if (to === from || to === from.replace(/\.drawio$/i, "")) return;
+    } else if (to === from || to === from.replace(/\.md$/i, "")) {
+      return;
+    }
 
     const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
       get();
