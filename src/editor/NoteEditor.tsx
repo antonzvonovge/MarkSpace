@@ -39,6 +39,7 @@ import { createSelectAtomBlockAfterDropExtension } from "./selectAtomBlockAfterD
 import { getNoteSlashMenuItems } from "./slashMenuItems";
 import { insertDrawioEmbed } from "./drawio/slashItem";
 import {
+  clearBlockNoteDropCursor,
   clearDrawioTreeDrag,
   DRAWIO_TREE_MIME,
   drawioPathFromDrop,
@@ -238,6 +239,8 @@ export function NoteEditor({ path, content, onChange }: Props) {
 
   // Tree DnD is scoped to the sidebar so HTML5Backend does not kill BlockNote's
   // native block drag. Draw.io embeds from the tree use a path bridge + native drop.
+  // Capture+stopPropagation keeps ProseMirror's drop pipeline out (it breaks atom
+  // diagram selection); clear the drop-cursor via dragleave only.
   const shellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -246,6 +249,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
 
     const overEditor = (target: EventTarget | null) =>
       Boolean(target && target instanceof Node && shell.contains(target));
+
+    const clearDropCursor = () => {
+      clearBlockNoteDropCursor(editor.prosemirrorView?.dom);
+    };
 
     const onDragOver = (event: DragEvent) => {
       if (!overEditor(event.target)) return;
@@ -269,13 +276,21 @@ export function NoteEditor({ path, content, onChange }: Props) {
         y: event.clientY,
       });
       clearDrawioTreeDrag();
+      clearDropCursor();
+    };
+
+    const onDragEnd = () => {
+      if (!getActiveDrawioTreeDrag()) return;
+      clearDropCursor();
     };
 
     document.addEventListener("dragover", onDragOver, true);
     document.addEventListener("drop", onDrop, true);
+    document.addEventListener("dragend", onDragEnd, true);
     return () => {
       document.removeEventListener("dragover", onDragOver, true);
       document.removeEventListener("drop", onDrop, true);
+      document.removeEventListener("dragend", onDragEnd, true);
     };
   }, [editor]);
 

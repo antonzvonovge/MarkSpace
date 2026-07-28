@@ -44,3 +44,20 @@ export function clearDrawioTreeDrag() {
 export function getActiveDrawioTreeDrag(): string | null {
   return activePath;
 }
+
+/**
+ * Hide BlockNote's drop-cursor stripe without going through ProseMirror's `drop`
+ * handler (that path breaks atom/diagram NodeSelection afterward).
+ *
+ * DropCursor clears on dragleave when relatedTarget is outside the editor.
+ */
+export function clearBlockNoteDropCursor(editorDom: HTMLElement | null | undefined) {
+  if (!editorDom) return;
+  editorDom.dispatchEvent(
+    new DragEvent("dragleave", {
+      bubbles: false,
+      cancelable: true,
+      relatedTarget: document.body,
+    }),
+  );
+}
