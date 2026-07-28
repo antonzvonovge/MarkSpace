@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { estimateContextTokens } from "../../ai/estimateTokens";
 import { contextWindowForModel, type AiModelOption } from "../../ai/types";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
@@ -7,6 +7,7 @@ import { ChatContextMeter } from "./ChatContextMeter";
 import { ChatModelPicker } from "./ChatModelPicker";
 
 export function ChatComposer() {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
   const mode = useChatStore((s) => s.mode);
@@ -51,19 +52,29 @@ export function ChatComposer() {
 
   const limit = contextWindowForModel(settings, modelId || settings.modelId);
 
+  const focusInput = () => {
+    queueMicrotask(() => inputRef.current?.focus());
+  };
+
+  const handleSend = () => {
+    if (streaming || !draft.trim()) return;
+    void send();
+    focusInput();
+  };
+
   return (
     <div className="chat-composer">
       <textarea
+        ref={inputRef}
         className="chat-composer-input"
         rows={2}
         placeholder={streaming ? "Streaming…" : "Message…"}
         value={draft}
-        disabled={streaming}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            if (!streaming) void send();
+            handleSend();
           }
         }}
       />
@@ -102,7 +113,10 @@ export function ChatComposer() {
           <button
             type="button"
             className="chat-send-btn is-stop"
-            onClick={() => stop()}
+            onClick={() => {
+              stop();
+              focusInput();
+            }}
             title="Stop"
             aria-label="Stop"
           >
@@ -114,7 +128,7 @@ export function ChatComposer() {
           <button
             type="button"
             className="chat-send-btn"
-            onClick={() => void send()}
+            onClick={handleSend}
             disabled={!draft.trim()}
             title="Send"
             aria-label="Send"

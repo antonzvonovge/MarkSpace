@@ -68,7 +68,8 @@ type VaultStore = {
   moveTreeEntry: (from: string, toParent: string, toIndex: number) => Promise<void>;
   renameTreeEntry: (from: string, nextName: string) => Promise<void>;
   removePath: (path: string) => Promise<void>;
-  markExternalWrite: () => void;
+  /** Suppress vault-change handling for `ms` (default 1200). */
+  markExternalWrite: (ms?: number) => void;
 };
 
 function remapExpanded(expanded: string[], from: string, to: string): string[] {
@@ -195,14 +196,24 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
-  refreshTree: async () => {
-    try {
-      const tree = await listTree();
-      set({ tree });
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-    }
-  },
+  refreshTree: (() => {
+    let tail: Promise<void> = Promise.resolve();
+    let scheduled = false;
+    return () => {
+      if (scheduled) return tail;
+      scheduled = true;
+      tail = tail.then(async () => {
+        scheduled = false;
+        try {
+          const tree = await listTree();
+          set({ tree });
+        } catch (e) {
+          set({ error: e instanceof Error ? e.message : String(e) });
+        }
+      });
+      return tail;
+    };
+  })(),
 
   openNote: async (path, options) => {
     const asPreview = options?.preview !== false;
@@ -600,7 +611,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
-  markExternalWrite: () => set({ suppressWatchUntil: Date.now() + 1200 }),
+  markExternalWrite: (ms = 1200) =>
+    set((s) => ({
+      suppressWatchUntil: Math.max(s.suppressWatchUntil, Date.now() + ms),
+    })),
 }));
 
 export { tabLabel };

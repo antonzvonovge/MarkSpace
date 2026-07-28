@@ -40,6 +40,8 @@ import { getNoteSlashMenuItems } from "./slashMenuItems";
 import { insertDrawioEmbed } from "./drawio/slashItem";
 import {
   clearDrawioTreeDrag,
+  DRAWIO_TREE_MIME,
+  drawioPathFromDrop,
   getActiveDrawioTreeDrag,
 } from "./drawio/treeDrag";
 
@@ -247,14 +249,18 @@ export function NoteEditor({ path, content, onChange }: Props) {
 
     const onDragOver = (event: DragEvent) => {
       if (!overEditor(event.target)) return;
-      if (!getActiveDrawioTreeDrag()) return;
+      const types = event.dataTransfer
+        ? Array.from(event.dataTransfer.types as ArrayLike<string>)
+        : [];
+      const hasMime = types.includes(DRAWIO_TREE_MIME);
+      if (!getActiveDrawioTreeDrag() && !hasMime) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
     };
 
     const onDrop = (event: DragEvent) => {
       if (!overEditor(event.target)) return;
-      const src = getActiveDrawioTreeDrag();
+      const src = drawioPathFromDrop(event.dataTransfer);
       if (!src || !isDrawioPath(src)) return;
       event.preventDefault();
       event.stopPropagation();

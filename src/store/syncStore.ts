@@ -18,6 +18,11 @@ import {
   type DeviceCodeResponse,
   type SyncStatus,
 } from "../lib/syncApi";
+import { useVaultStore } from "./vaultStore";
+
+/** Keep vault-change quiet for the whole sync + FS settle. */
+const SYNC_WATCH_SUPPRESS_MS = 120_000;
+const SYNC_WATCH_SETTLE_MS = 2_500;
 
 type SyncStore = {
   hydrated: boolean;
@@ -225,6 +230,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
 
   runSync: async (vaultPath, flushSave) => {
     set({ busy: true, error: null, message: null });
+    useVaultStore.getState().markExternalWrite(SYNC_WATCH_SUPPRESS_MS);
     try {
       await flushSave();
       const result = await syncNow(get().token);
@@ -253,6 +259,8 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         busy: false,
         error: e instanceof Error ? e.message : String(e),
       });
+    } finally {
+      useVaultStore.getState().markExternalWrite(SYNC_WATCH_SETTLE_MS);
     }
   },
 
@@ -327,6 +335,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
 
   resolveConflict: async (path, choice) => {
     set({ busy: true, error: null });
+    useVaultStore.getState().markExternalWrite(SYNC_WATCH_SUPPRESS_MS);
     try {
       const status = await syncResolveConflict(path, choice);
       set({
@@ -342,6 +351,8 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         busy: false,
         error: e instanceof Error ? e.message : String(e),
       });
+    } finally {
+      useVaultStore.getState().markExternalWrite(SYNC_WATCH_SETTLE_MS);
     }
   },
 }));

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 import {
   Tree,
-  MultiBackend,
-  getBackendOptions,
   type NodeModel,
   type DropOptions,
   type TreeMethods,
@@ -16,6 +15,7 @@ import { PromptDialog, ConfirmDialog } from "./AppDialog";
 import { FcDocument, FcFolder, FcOpenedFolder } from "react-icons/fc";
 import {
   beginDrawioTreeDrag,
+  DRAWIO_TREE_MIME,
   endDrawioTreeDrag,
 } from "../editor/drawio/treeDrag";
 
@@ -184,7 +184,8 @@ function TreeCreateMenu({
   }, [open]);
 
   return (
-    <div className="tree-create" ref={rootRef}>
+    // Row div has its own click handler — keep menu clicks from bubbling into it.
+    <div className="tree-create" ref={rootRef} onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
         className={open ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
@@ -420,13 +421,39 @@ export function FileTree() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
+  // Scope HTML5Backend to the sidebar so it does not steal BlockNote block drag.
+  // Prefer HTML5Backend alone: MultiBackend+TouchBackend breaks mouse DnD on
+  // Windows WebView2 (especially with nested interactive controls).
   const backendOptions = useMemo(
-    () =>
-      dndRoot
-        ? getBackendOptions({ html5: { rootElement: dndRoot } })
-        : null,
+    () => (dndRoot ? { rootElement: dndRoot } : null),
     [dndRoot],
   );
+
+  // Mirror .drawio drags into dataTransfer so the editor (outside the DnD root)
+  // can accept native drops for embedding.
+  useEffect(() => {
+    if (!dndRoot) return;
+    const onDragStart = (event: DragEvent) => {
+      // dragstart target is the draggable <li>, not the inner row — look up and down.
+      const target = event.target as HTMLElement | null;
+      const el = (target?.closest?.("[data-drawio-path]") ??
+        target?.querySelector?.("[data-drawio-path]")) as HTMLElement | null;
+      const path = el?.dataset.drawioPath;
+      if (!path || !event.dataTransfer) return;
+      event.dataTransfer.setData(DRAWIO_TREE_MIME, path);
+      event.dataTransfer.setData("text/plain", path);
+      event.dataTransfer.effectAllowed = "copyMove";
+      beginDrawioTreeDrag(path);
+    };
+    const onDragEnd = () => endDrawioTreeDrag();
+
+    dndRoot.addEventListener("dragstart", onDragStart, true);
+    dndRoot.addEventListener("dragend", onDragEnd, true);
+    return () => {
+      dndRoot.removeEventListener("dragstart", onDragStart, true);
+      dndRoot.removeEventListener("dragend", onDragEnd, true);
+    };
+  }, [dndRoot]);
 
   const flatTree = useMemo(() => (tree ? flattenTree(tree) : []), [tree]);
 
@@ -549,14 +576,12 @@ export function FileTree() {
         }}
       />
 
-      <div
-        className="tree-scroll"
-        ref={(node) => {
-          if (node !== dndRoot) setDndRoot(node);
-        }}
-      >
+      {/* Stable ref callback: an inline closure here re-runs on every render
+          (detach with null → setDndRoot(null) → Tree unmounts → remounts with
+          initialOpen), silently resetting expand/collapse state. */}
+      <div className="tree-scroll" ref={setDndRoot}>
         {backendOptions ? (
-          <DndProvider backend={MultiBackend} options={backendOptions}>
+          <DndProvider backend={HTML5Backend} options={backendOptions}>
             <Tree
               ref={treeRef}
               key={vaultPath}
@@ -617,11 +642,26 @@ export function FileTree() {
                 const path = node.data?.path ?? toStorePath(node.id);
                 const isDir = Boolean(node.droppable);
                 const isVault = node.id === VAULT_ID;
+                const isDrawio =
+                  !isDir && path.toLowerCase().endsWith(".drawio");
                 const selected =
                   isDir && selectedFolderExplicit && selectedFolderPath === path;
                 const active =
                   !isDir && !selectedFolderExplicit && activePath === path;
                 const renaming = renamingPath === path;
+
+                // No <button>/<a> inside the row: Chromium (WebView2) refuses to
+                // start an HTML5 drag from form controls, which killed row drags
+                // on Windows. Plain spans + a row-level click handler instead.
+                const handleRowClick = () => {
+                  if (renaming) return;
+                  if (isDir) {
+                    selectFolder(path);
+                    if (!isVault) onToggle();
+                    return;
+                  }
+                  void openNote(path, { preview: true });
+                };
 
                 return (
                   <div
@@ -637,6 +677,12 @@ export function FileTree() {
                       .filter(Boolean)
                       .join(" ")}
                     style={{ paddingLeft: 10 + depth * 14, paddingRight: 10 }}
+                    data-drawio-path={isDrawio ? path : undefined}
+                    onClick={handleRowClick}
+                    onDoubleClick={() => {
+                      if (isDir || renaming) return;
+                      void openNote(path, { preview: false });
+                    }}
                     onContextMenu={(e) => {
                       if (isVault) return;
                       e.preventDefault();
@@ -653,25 +699,30 @@ export function FileTree() {
                     }}
                   >
                     <DrawioTreeDragBridge
-                      active={
-                        isDragging &&
-                        !isDir &&
-                        path.toLowerCase().endsWith(".drawio")
-                      }
+                      active={isDragging && isDrawio}
                       path={path}
                     />
                     {isDir ? (
-                      <button
-                        type="button"
+                      <span
+                        role="button"
+                        tabIndex={0}
                         className="tree-chevron-btn"
+                        aria-label={isOpen ? "Collapse" : "Expand"}
+                        aria-expanded={isOpen}
                         onClick={(e) => {
                           e.stopPropagation();
                           onToggle();
                         }}
-                        aria-label={isOpen ? "Collapse" : "Expand"}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onToggle();
+                          }
+                        }}
                       >
                         <ChevronIcon open={isOpen} />
-                      </button>
+                      </span>
                     ) : (
                       <span className="tree-file-spacer" />
                     )}
@@ -683,7 +734,7 @@ export function FileTree() {
                         ) : (
                           <FcFolder size={20} />
                         )
-                      ) : path.toLowerCase().endsWith(".drawio") ? (
+                      ) : isDrawio ? (
                         <span className="tree-drawio-icon">
                           <DiagramIcon />
                         </span>
@@ -703,20 +754,7 @@ export function FileTree() {
                         }}
                       />
                     ) : (
-                      <button
-                        type="button"
-                        className={isDir ? "tree-folder-btn" : "tree-file-btn"}
-                        onClick={() => {
-                          if (isDir) selectFolder(path);
-                          else void openNote(path, { preview: true });
-                        }}
-                        onDoubleClick={() => {
-                          if (isDir) return;
-                          void openNote(path, { preview: false });
-                        }}
-                      >
-                        {node.text}
-                      </button>
+                      <span className="tree-node-label">{node.text}</span>
                     )}
 
                     {isVault ? (

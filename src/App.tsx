@@ -44,7 +44,6 @@ function App() {
   const saveActive = useVaultStore((s) => s.saveActive);
   const openVaultAt = useVaultStore((s) => s.openVaultAt);
   const refreshTree = useVaultStore((s) => s.refreshTree);
-  const suppressWatchUntil = useVaultStore((s) => s.suppressWatchUntil);
   const settingsOpen = usePrefsStore((s) => s.settingsOpen);
   const openSettings = usePrefsStore((s) => s.openSettings);
   const closeSettings = usePrefsStore((s) => s.closeSettings);
@@ -136,29 +135,56 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    void listen<VaultChange>("vault-change", async (event) => {
-      if (Date.now() < useVaultStore.getState().suppressWatchUntil) return;
+    let debounceTimer: number | null = null;
+    const pendingPaths = new Set<string>();
+
+    const flush = async () => {
+      debounceTimer = null;
+      if (useSyncStore.getState().busy) {
+        debounceTimer = window.setTimeout(() => void flush(), 400);
+        return;
+      }
+      if (Date.now() < useVaultStore.getState().suppressWatchUntil) {
+        pendingPaths.clear();
+        return;
+      }
+
+      const paths = [...pendingPaths];
+      pendingPaths.clear();
+
       await refreshTree();
       void refreshSyncStatus();
+
       const { activePath: current, dirty } = useVaultStore.getState();
       if (!current || dirty) return;
-      if (
-        event.payload.path === current ||
-        event.payload.path.endsWith(`/${current}`) ||
-        current.endsWith(event.payload.path)
-      ) {
-        try {
-          const next = await readNote(current);
-          useVaultStore.setState({ content: next, dirty: false });
-        } catch {
-          // file may have been deleted
-        }
+      const hit = paths.some(
+        (path) =>
+          path === current ||
+          path.endsWith(`/${current}`) ||
+          current.endsWith(path),
+      );
+      if (!hit) return;
+      try {
+        const next = await readNote(current);
+        useVaultStore.setState({ content: next, dirty: false });
+      } catch {
+        // file may have been deleted
       }
+    };
+
+    void listen<VaultChange>("vault-change", (event) => {
+      pendingPaths.add(event.payload.path);
+      if (debounceTimer != null) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => void flush(), 400);
     }).then((fn) => {
       unlisten = fn;
     });
-    return () => unlisten?.();
-  }, [refreshTree, suppressWatchUntil, refreshSyncStatus]);
+
+    return () => {
+      unlisten?.();
+      if (debounceTimer != null) window.clearTimeout(debounceTimer);
+    };
+  }, [refreshTree, refreshSyncStatus]);
 
   const onEditorChange = (markdown: string) => {
     setContent(markdown);
