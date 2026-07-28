@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
+use crate::order_merge::{self, ORDER_REL};
 use crate::vault::VaultState;
 
 const DEFAULT_GITIGNORE: &str = "\
@@ -358,9 +359,85 @@ fn do_merge(repo: &Repository, fetch_commit: &AnnotatedCommit<'_>) -> Result<Vec
     repo.merge(&[fetch_commit], None, None)
         .map_err(|e| format!("Merge failed: {e}"))?;
 
+    let _ = auto_resolve_order_conflict(repo)?;
     let conflicts = conflicted_paths(repo);
     if !conflicts.is_empty() {
         return Ok(conflicts);
+    }
+
+    finalize_merge_commit(repo)?;
+    Ok(Vec::new())
+}
+
+fn blob_text_at_stage(
+    repo: &Repository,
+    rel: &str,
+    stage: i32,
+) -> Result<String, String> {
+    let index = repo
+        .index()
+        .map_err(|e| format!("Cannot read index: {e}"))?;
+    let Some(entry) = index.get_path(Path::new(rel), stage) else {
+        return Ok(String::new());
+    };
+    let blob = repo
+        .find_blob(entry.id)
+        .map_err(|e| format!("Cannot read blob for {rel} stage {stage}: {e}"))?;
+    String::from_utf8(blob.content().to_vec())
+        .map_err(|e| format!("order.json is not UTF-8: {e}"))
+}
+
+/// If `.markspace/order.json` is conflicted, merge it semantically and stage the result.
+/// Returns true when a conflict was resolved.
+fn auto_resolve_order_conflict(repo: &Repository) -> Result<bool, String> {
+    let conflicts = conflicted_paths(repo);
+    let order_conflicted = conflicts.iter().any(|p| {
+        p == ORDER_REL || p.replace('\\', "/") == ORDER_REL
+    });
+    if !order_conflicted {
+        return Ok(false);
+    }
+
+    let base_raw = blob_text_at_stage(repo, ORDER_REL, 1)?;
+    let ours_raw = blob_text_at_stage(repo, ORDER_REL, 2)?;
+    let theirs_raw = blob_text_at_stage(repo, ORDER_REL, 3)?;
+
+    let base = order_merge::parse_order(&base_raw);
+    let ours = order_merge::parse_order(&ours_raw);
+    let theirs = order_merge::parse_order(&theirs_raw);
+    let merged = order_merge::merge_order_maps(&base, &ours, &theirs);
+    let content = order_merge::serialize_order(&merged);
+
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Repository has no working directory".to_string())?;
+    let abs = workdir.join(ORDER_REL);
+    if let Some(parent) = abs.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir .markspace: {e}"))?;
+    }
+    std::fs::write(&abs, content).map_err(|e| format!("write order.json: {e}"))?;
+
+    let mut index = repo
+        .index()
+        .map_err(|e| format!("Cannot read index: {e}"))?;
+    index
+        .add_path(Path::new(ORDER_REL))
+        .map_err(|e| format!("Cannot stage merged order.json: {e}"))?;
+    index
+        .write()
+        .map_err(|e| format!("Cannot write index: {e}"))?;
+
+    Ok(true)
+}
+
+fn finalize_merge_commit(repo: &Repository) -> Result<(), String> {
+    if !matches!(
+        repo.state(),
+        git2::RepositoryState::Merge
+            | git2::RepositoryState::Revert
+            | git2::RepositoryState::CherryPick
+    ) {
+        return Ok(());
     }
 
     let mut index = repo
@@ -378,9 +455,17 @@ fn do_merge(repo: &Repository, fetch_commit: &AnnotatedCommit<'_>) -> Result<Vec
         .map_err(|e| format!("HEAD: {e}"))?
         .peel_to_commit()
         .map_err(|e| format!("HEAD commit: {e}"))?;
-    let fetch_commit_obj = repo
-        .find_commit(fetch_commit.id())
-        .map_err(|e| format!("Fetch commit: {e}"))?;
+
+    let merge_head = repo
+        .find_reference("MERGE_HEAD")
+        .ok()
+        .and_then(|r| r.target())
+        .and_then(|oid| repo.find_commit(oid).ok());
+
+    let parents: Vec<&git2::Commit> = match &merge_head {
+        Some(m) => vec![&head_commit, m],
+        None => vec![&head_commit],
+    };
 
     repo.commit(
         Some("HEAD"),
@@ -388,13 +473,13 @@ fn do_merge(repo: &Repository, fetch_commit: &AnnotatedCommit<'_>) -> Result<Vec
         &sig,
         "MarkSpace merge",
         &tree,
-        &[&head_commit, &fetch_commit_obj],
+        &parents,
     )
     .map_err(|e| format!("Merge commit failed: {e}"))?;
 
     repo.cleanup_state()
         .map_err(|e| format!("cleanup_state: {e}"))?;
-    Ok(Vec::new())
+    Ok(())
 }
 
 fn do_push(repo: &Repository, token: Option<&str>) -> Result<(), String> {
@@ -532,11 +617,17 @@ pub fn sync_now(
 
     let existing_conflicts = conflicted_paths(&repo);
     if !existing_conflicts.is_empty() {
-        return Ok(SyncResult {
-            status: build_status(&repo),
-            message: "Resolve conflicts before syncing".into(),
-            conflicted: existing_conflicts,
-        });
+        let _ = auto_resolve_order_conflict(&repo)?;
+        let remaining = conflicted_paths(&repo);
+        if remaining.is_empty() {
+            finalize_merge_commit(&repo)?;
+        } else {
+            return Ok(SyncResult {
+                status: build_status(&repo),
+                message: "Resolve conflicts before syncing".into(),
+                conflicted: remaining,
+            });
+        }
     }
 
     let _ = commit_all_if_dirty(&repo, "MarkSpace sync")?;
@@ -615,48 +706,9 @@ pub fn sync_resolve_conflict(
         .write()
         .map_err(|e| format!("Cannot write index: {e}"))?;
 
-    // If no conflicts remain, finalize merge commit
-    if conflicted_paths(&repo).is_empty()
-        && matches!(
-            repo.state(),
-            git2::RepositoryState::Merge
-                | git2::RepositoryState::Revert
-                | git2::RepositoryState::CherryPick
-        )
-    {
-        let mut index = repo.index().map_err(|e| format!("{e}"))?;
-        let tree_oid = index.write_tree().map_err(|e| format!("{e}"))?;
-        let tree = repo.find_tree(tree_oid).map_err(|e| format!("{e}"))?;
-        let sig = make_signature()?;
-        let head_commit = repo
-            .head()
-            .map_err(|e| format!("{e}"))?
-            .peel_to_commit()
-            .map_err(|e| format!("{e}"))?;
-
-        // MERGE_HEAD
-        let merge_head = repo
-            .find_reference("MERGE_HEAD")
-            .ok()
-            .and_then(|r| r.target())
-            .and_then(|oid| repo.find_commit(oid).ok());
-
-        let parents: Vec<&git2::Commit> = match &merge_head {
-            Some(m) => vec![&head_commit, m],
-            None => vec![&head_commit],
-        };
-
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            "MarkSpace merge",
-            &tree,
-            &parents,
-        )
-        .map_err(|e| format!("Merge commit failed: {e}"))?;
-        repo.cleanup_state()
-            .map_err(|e| format!("cleanup_state: {e}"))?;
+    let _ = auto_resolve_order_conflict(&repo)?;
+    if conflicted_paths(&repo).is_empty() {
+        finalize_merge_commit(&repo)?;
     }
 
     Ok(build_status(&repo))

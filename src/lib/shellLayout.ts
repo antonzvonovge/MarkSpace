@@ -51,8 +51,9 @@ export function saveShellLayout(layout: ShellLayout): void {
 export function toGroupLayout(
   saved: ShellLayout,
   chatOpen: boolean,
+  sidebarOpen = true,
 ): { sidebar: number; main: number; chat: number } {
-  const sidebar = clamp(saved.sidebar, 10, 45);
+  const sidebar = sidebarOpen ? clamp(saved.sidebar, 10, 45) : 0;
   const chat = chatOpen ? clamp(saved.chat, 15, 55) : 0;
   const main = Math.max(20, 100 - sidebar - chat);
   const sum = sidebar + main + chat;

@@ -28,6 +28,7 @@ import {
 import { useAiSettingsStore } from "./store/aiSettingsStore";
 import { useChatUiStore } from "./store/chatUiStore";
 import { usePrefsStore } from "./store/prefsStore";
+import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
 import { useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
@@ -50,13 +51,14 @@ function App() {
   const hydratePrefs = usePrefsStore((s) => s.hydrate);
   const hydrateAi = useAiSettingsStore((s) => s.hydrate);
   const refreshSyncStatus = useSyncStore((s) => s.refreshStatus);
+  const sidebarOpen = useSidebarUiStore((s) => s.open);
   const chatOpen = useChatUiStore((s) => s.open);
   const toggleChat = useChatUiStore((s) => s.toggle);
   const timer = useRef<number | null>(null);
   const groupRef = useGroupRef();
   const applyingRef = useRef(false);
   const savedRef = useRef<ShellLayout>(loadShellLayout());
-  const initialLayout = toGroupLayout(savedRef.current, chatOpen);
+  const initialLayout = toGroupLayout(savedRef.current, chatOpen, sidebarOpen);
 
   useAutoSync();
 
@@ -72,7 +74,7 @@ function App() {
     })();
   }, [openVaultAt]);
 
-  // Re-apply persisted sizes when chat open state changes (and once on mount).
+  // Re-apply persisted sizes when sidebar/chat open state changes (and once on mount).
   useEffect(() => {
     let tries = 0;
     const apply = () => {
@@ -81,7 +83,7 @@ function App() {
         if (tries++ < 40) requestAnimationFrame(apply);
         return;
       }
-      const next = toGroupLayout(savedRef.current, chatOpen);
+      const next = toGroupLayout(savedRef.current, chatOpen, sidebarOpen);
       applyingRef.current = true;
       try {
         group.setLayout(next);
@@ -96,7 +98,7 @@ function App() {
     };
     const id = requestAnimationFrame(apply);
     return () => cancelAnimationFrame(id);
-  }, [chatOpen, groupRef]);
+  }, [chatOpen, sidebarOpen, groupRef]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -194,11 +196,19 @@ function App() {
     }, 500);
   };
 
+  const panelClass = [
+    "app-panels",
+    sidebarOpen ? "" : "is-sidebar-collapsed",
+    chatOpen ? "" : "is-chat-collapsed",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div className="app-shell">
       <UpdateBanner />
       <Group
-        className={chatOpen ? "app-panels" : "app-panels is-chat-collapsed"}
+        className={panelClass}
         orientation="horizontal"
         groupRef={groupRef}
         defaultLayout={initialLayout}
@@ -206,12 +216,15 @@ function App() {
           // Ignore programmatic setLayout / collapse noise — that was wiping sizes.
           if (applyingRef.current || !meta.isUserInteraction) return;
 
-          const sidebar = layout.sidebar;
+          const sidebarPct = layout.sidebar;
           const chatPct = layout.chat;
-          if (typeof sidebar !== "number" || !Number.isFinite(sidebar)) return;
+          if (typeof sidebarPct !== "number" || !Number.isFinite(sidebarPct)) {
+            return;
+          }
 
           const next: ShellLayout = {
-            sidebar,
+            sidebar:
+              sidebarPct >= 5 ? sidebarPct : savedRef.current.sidebar,
             chat:
               typeof chatPct === "number" && chatPct >= 5
                 ? chatPct
@@ -219,6 +232,9 @@ function App() {
           };
           savedRef.current = next;
           saveShellLayout(next);
+          if (sidebarPct >= 5) {
+            useSidebarUiStore.getState().rememberSizePercent(sidebarPct);
+          }
           if (typeof chatPct === "number" && chatPct >= 5) {
             useChatUiStore.getState().rememberSizePercent(chatPct);
           }
@@ -227,6 +243,8 @@ function App() {
         <Panel
           id="sidebar"
           className="sidebar-panel"
+          collapsible
+          collapsedSize={0}
           defaultSize={`${initialLayout.sidebar}%`}
           minSize={200}
           maxSize={480}
@@ -235,7 +253,10 @@ function App() {
           <Sidebar />
         </Panel>
 
-        <Separator className="app-splitter" />
+        <Separator
+          className="app-splitter app-splitter-sidebar"
+          disabled={!sidebarOpen}
+        />
 
         <Panel
           id="main"

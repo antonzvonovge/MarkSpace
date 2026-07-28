@@ -1,5 +1,6 @@
 mod chat_history;
 mod git_sync;
+mod order_merge;
 mod vault;
 
 use git_sync::SyncRuntime;

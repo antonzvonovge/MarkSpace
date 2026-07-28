@@ -9,6 +9,7 @@ import {
   type TreeNode,
 } from "../lib/vaultApi";
 import { useVaultStore } from "../store/vaultStore";
+import { buildDrawioTools } from "./drawio/tools";
 import type { ChatMode } from "./types";
 
 function flattenPaths(node: TreeNode, out: string[] = []): string[] {
@@ -139,12 +140,15 @@ export function buildVaultTools(mode: ChatMode) {
     }),
   };
 
+  const drawioTools = buildDrawioTools(mode);
+
   if (mode === "ask") {
-    return readTools;
+    return { ...readTools, ...drawioTools };
   }
 
   return {
     ...readTools,
+    ...drawioTools,
     edit_note: tool({
       description:
         "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note.",
@@ -241,6 +245,7 @@ export function buildSystemPrompt(opts: {
   const lines = [
     "You are MarkSpace, an AI assistant embedded in a local Markdown vault app.",
     "You mostly read and edit Markdown (.md) notes — plain text with Markdown formatting.",
+    "You can also inspect and edit Draw.io diagrams (.drawio) via diagram tools (read_diagram, add_diagram_node, add_diagram_edge, update_diagram_element, remove_diagram_element, create_diagram).",
     `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes via tools)"}.`,
     "Be concise. Prefer tools over guessing vault contents.",
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
@@ -251,6 +256,7 @@ export function buildSystemPrompt(opts: {
       "When editing notes: prefer edit_note (partial replace) over write_note (full overwrite) to save tokens.",
       "When reading long notes: use read_note/get_active_note with start_line and end_line instead of loading the whole file.",
       "Preserve existing Markdown structure; keep one empty line between paragraphs in any text you insert or rewrite.",
+      "For .drawio files: always use read_diagram / add_diagram_* / update_diagram_element / remove_diagram_element — never raw edit_note on XML.",
     );
   }
   if (opts.vaultPath) {

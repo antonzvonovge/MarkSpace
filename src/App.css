@@ -263,6 +263,22 @@ select {
   background: var(--accent);
 }
 
+.app-panels.is-sidebar-collapsed .app-splitter-sidebar {
+  width: 0;
+  flex-basis: 0;
+  margin: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-panels.is-sidebar-collapsed .app-splitter-sidebar::before {
+  display: none;
+}
+
+.app-panels.is-sidebar-collapsed .sidebar-panel {
+  overflow: hidden;
+}
+
 .app-panels.is-chat-collapsed .app-splitter-chat {
   width: 0;
   flex-basis: 0;
@@ -951,6 +967,7 @@ li.dnd-drop-target > .tree-row {
   background: transparent;
 }
 
+.sidebar-toggle-btn,
 .chat-toggle-btn {
   flex-shrink: 0;
   display: inline-flex;
@@ -961,21 +978,31 @@ li.dnd-drop-target > .tree-row {
   margin: 0;
   padding: 0;
   border: 0;
-  border-left: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
 }
 
+.sidebar-toggle-btn {
+  border-right: 1px solid var(--line);
+}
+
+.chat-toggle-btn {
+  border-left: 1px solid var(--line);
+}
+
+.sidebar-toggle-btn:hover,
 .chat-toggle-btn:hover {
   background: rgba(0, 0, 0, 0.06);
   color: var(--text);
 }
 
+:root[data-theme="dark"] .sidebar-toggle-btn:hover,
 :root[data-theme="dark"] .chat-toggle-btn:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.sidebar-toggle-btn.is-active,
 .chat-toggle-btn.is-active {
   color: var(--accent);
   background: var(--sidebar-active);
