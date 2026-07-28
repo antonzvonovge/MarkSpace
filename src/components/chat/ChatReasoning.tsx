@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { isReasoningUIPart, type UIMessage } from "ai";
-import { ChatMarkdown } from "./ChatMarkdown";
+import { useChatStore } from "../../store/chatStore";
 
 type ReasoningPart = Extract<
   UIMessage["parts"][number],
@@ -13,9 +13,18 @@ type Props = {
   defaultOpen?: boolean;
 };
 
-export function ChatReasoning({ part, defaultOpen }: Props) {
+/** Keep DOM text cheap while thinking — show only the recent tail. */
+const STREAM_TAIL = 2200;
+
+function formatStreamTail(text: string): string {
+  if (text.length <= STREAM_TAIL) return text;
+  return `…${text.slice(-STREAM_TAIL)}`;
+}
+
+function ChatReasoningInner({ part, defaultOpen }: Props) {
   const streaming = part.state === "streaming";
   const [open, setOpen] = useState(defaultOpen ?? streaming);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (streaming) {
@@ -24,6 +33,24 @@ export function ChatReasoning({ part, defaultOpen }: Props) {
     }
     if (defaultOpen === false) setOpen(false);
   }, [streaming, defaultOpen]);
+
+  // Patch DOM directly from the light preview store — no React re-render storm,
+  // and `messages` is not rewritten on every reasoning token.
+  useEffect(() => {
+    if (!streaming || !open) return;
+    const el = bodyRef.current;
+    if (!el) return;
+
+    const paint = (text: string | null) => {
+      el.textContent = formatStreamTail(text ?? "");
+    };
+
+    paint(useChatStore.getState().streamReasoningText);
+    return useChatStore.subscribe((state, prev) => {
+      if (state.streamReasoningText === prev.streamReasoningText) return;
+      paint(state.streamReasoningText);
+    });
+  }, [streaming, open]);
 
   if (!isReasoningUIPart(part)) return null;
   if (!part.text.trim() && !streaming) return null;
@@ -45,15 +72,23 @@ export function ChatReasoning({ part, defaultOpen }: Props) {
       </button>
       {open && (
         <div className="chat-reasoning-body">
-          {part.text.trim() ? (
-            <ChatMarkdown className="chat-reasoning-md" text={part.text} />
+          {streaming ? (
+            <div
+              ref={bodyRef}
+              className="chat-md chat-reasoning-md chat-md-plain is-streaming-plain"
+            />
+          ) : part.text.trim() ? (
+            // Plain text only — full remark parse of long thoughts freezes the UI.
+            <div className="chat-md chat-reasoning-md chat-md-plain">
+              {part.text}
+            </div>
           ) : (
-            <span className="chat-reasoning-placeholder">
-              {streaming ? "…" : ""}
-            </span>
+            <span className="chat-reasoning-placeholder" />
           )}
         </div>
       )}
     </div>
   );
 }
+
+export const ChatReasoning = memo(ChatReasoningInner);

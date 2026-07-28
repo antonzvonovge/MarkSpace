@@ -1,5 +1,6 @@
 import type { UIMessage } from "ai";
 import { create } from "zustand";
+import { generateChatTitle } from "../ai/generateChatTitle";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
 import { buildSystemPrompt } from "../ai/vaultTools";
@@ -30,6 +31,14 @@ function userText(message: UIMessage): string {
     .join("\n");
 }
 
+/** True while title is still the default or a truncated first user message. */
+function isProvisionalTitle(title: string | undefined, messages: UIMessage[]): boolean {
+  if (!title || title === "New chat") return true;
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser) return true;
+  return title === titleFromMessage(userText(firstUser));
+}
+
 type ChatStore = {
   threads: ChatThreadMeta[];
   /** Ordered open chat tabs (may be empty). */
@@ -44,6 +53,8 @@ type ChatStore = {
   vaultBound: string | null;
   abort: AbortController | null;
   streamStartedAt: number | null;
+  /** Live thinking text; updated without rewriting `messages`. */
+  streamReasoningText: string | null;
   hydrateForVault: (vaultPath: string | null) => Promise<void>;
   setDraft: (draft: string) => void;
   setMode: (mode: ChatMode) => void;
@@ -83,6 +94,7 @@ function emptySession(vaultBound: string | null = null) {
     error: null as string | null,
     abort: null as AbortController | null,
     streamStartedAt: null as number | null,
+    streamReasoningText: null as string | null,
     draft: "",
     ...defaultsFromSettings(),
   };
@@ -109,7 +121,59 @@ async function loadThreadIntoState(
     error: null,
     abort: null,
     streamStartedAt: null,
+    streamReasoningText: null,
   };
+}
+
+/** Replace provisional title with a short LLM-generated name (best-effort). */
+async function maybeRefreshTitle(
+  threadId: string,
+  messages: UIMessage[],
+  api: { apiKey: string; baseUrl: string; modelId: string },
+) {
+  const state = useChatStore.getState();
+  const meta = state.threads.find((t) => t.id === threadId);
+  if (!meta || !isProvisionalTitle(meta.title, messages)) return;
+
+  const title = await generateChatTitle({
+    messages,
+    apiKey: api.apiKey,
+    baseUrl: api.baseUrl,
+    fallbackModelId: api.modelId,
+  });
+  if (!title) return;
+
+  const latest = useChatStore.getState();
+  const latestMeta = latest.threads.find((t) => t.id === threadId);
+  if (!latestMeta || !isProvisionalTitle(latestMeta.title, messages)) return;
+
+  const vaultPath = latest.vaultBound;
+  if (!vaultPath) return;
+
+  const now = Date.now();
+  useChatStore.setState({
+    threads: latest.threads.map((t) =>
+      t.id === threadId ? { ...t, title, updatedAt: now } : t,
+    ),
+  });
+
+  if (latest.activeThreadId === threadId) {
+    await useChatStore.getState().persistActive();
+    return;
+  }
+
+  // Thread is open in background — persist title without touching active messages.
+  try {
+    const file = await getChatThread(vaultPath, threadId);
+    await upsertChatThread(vaultPath, { ...file, title, updatedAt: now });
+    const listed = await listChatThreads(vaultPath);
+    useChatStore.setState({
+      threads: listed.threads,
+      openTabIds: listed.openTabIds,
+    });
+  } catch {
+    /* best-effort */
+  }
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -125,6 +189,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   vaultBound: null,
   abort: null,
   streamStartedAt: null,
+  streamReasoningText: null,
 
   hydrateForVault: async (vaultPath) => {
     const prev = get().abort;
@@ -336,11 +401,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const meta = threads.find((t) => t.id === activeThreadId);
     const now = Date.now();
     const title =
-      meta?.title && meta.title !== "New chat"
+      meta?.title && !isProvisionalTitle(meta.title, messages)
         ? meta.title
         : (() => {
             const firstUser = messages.find((m) => m.role === "user");
-            return firstUser ? titleFromMessage(userText(firstUser)) : "New chat";
+            return firstUser
+              ? titleFromMessage(userText(firstUser))
+              : meta?.title && meta.title !== "New chat"
+                ? meta.title
+                : "New chat";
           })();
     const file = {
       id: activeThreadId,
@@ -391,8 +460,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       parts: [{ type: "text", text: content }],
     };
     const messages = [...get().messages, userMessage];
+    const prevMeta = get().threads.find((t) => t.id === activeThreadId);
+    const provisional = isProvisionalTitle(prevMeta?.title, messages);
     const firstUser = messages.find((m) => m.role === "user");
-    const title = firstUser ? titleFromMessage(userText(firstUser)) : "New chat";
+    const title = provisional
+      ? firstUser
+        ? titleFromMessage(userText(firstUser))
+        : "New chat"
+      : (prevMeta?.title ?? "New chat");
 
     set({
       messages,
@@ -400,6 +475,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       status: "streaming",
       error: null,
       streamStartedAt: Date.now(),
+      streamReasoningText: null,
       threads: get().threads.map((t) =>
         t.id === activeThreadId ? { ...t, title, updatedAt: Date.now() } : t,
       ),
@@ -432,21 +508,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           if (get().abort !== controller) return;
           set({ messages: next });
         },
+        onReasoningPreview: (text) => {
+          if (get().abort !== controller) return;
+          set({ streamReasoningText: text });
+        },
       });
       set({
         messages: finalMessages,
         status: "ready",
         abort: null,
         streamStartedAt: null,
+        streamReasoningText: null,
         error: null,
       });
       await get().persistActive();
+      await maybeRefreshTitle(activeThreadId, finalMessages, {
+        apiKey: settings.apiKey,
+        baseUrl: settings.baseUrl || "https://openrouter.ai/api/v1",
+        modelId: resolveModelId(
+          settings.baseUrl,
+          get().modelId || settings.modelId,
+        ),
+      });
     } catch (e) {
       const aborted =
         controller.signal.aborted ||
         (e instanceof Error && e.name === "AbortError");
       if (aborted) {
-        set({ status: "ready", abort: null, streamStartedAt: null });
+        set({
+          status: "ready",
+          abort: null,
+          streamStartedAt: null,
+          streamReasoningText: null,
+        });
         await get().persistActive();
         return;
       }
@@ -474,6 +568,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         error: message,
         abort: null,
         streamStartedAt: null,
+        streamReasoningText: null,
       });
       await get().persistActive();
     }
@@ -482,7 +577,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   stop: () => {
     const { abort } = get();
     if (abort) abort.abort();
-    set({ abort: null, status: "ready", streamStartedAt: null });
+    set({
+      abort: null,
+      status: "ready",
+      streamStartedAt: null,
+      streamReasoningText: null,
+    });
   },
 
   systemPromptPreview: () => {

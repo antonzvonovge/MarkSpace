@@ -145,6 +145,8 @@ function mergeAi(raw: Partial<AiSettings> | null | undefined): AiSettings {
   return {
     baseUrl: OPENROUTER_BASE_URL,
     apiKey: typeof raw.apiKey === "string" ? raw.apiKey : "",
+    tavilyApiKey:
+      typeof raw.tavilyApiKey === "string" ? raw.tavilyApiKey : "",
     modelId: known,
     defaultMode: mode,
     contextWindow:

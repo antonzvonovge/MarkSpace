@@ -24,6 +24,11 @@ export type RunChatParams = {
   activeExcerpt: string | null;
   abortSignal?: AbortSignal;
   onMessages: (messages: UIMessage[]) => void;
+  /**
+   * Live thinking text without rewriting `messages` (avoids full chat re-renders).
+   * Pass `null` when reasoning ends or is cleared.
+   */
+  onReasoningPreview?: (text: string | null) => void;
 };
 
 type AssistantPart = UIMessage["parts"][number];
@@ -59,14 +64,78 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
   const reasoningIndex = new Map<string, number>();
   const textIndex = new Map<string, number>();
 
-  const emit = () => {
+  /** High-frequency text deltas coalesce to one UI update per animation frame. */
+  let emitScheduled = false;
+  let emitRaf = 0;
+  /** Reasoning preview is throttled separately — never pushes into `messages`. */
+  let reasoningPreviewTimer = 0;
+  let reasoningPreviewPending: string | null = null;
+
+  const flush = () => {
+    emitScheduled = false;
+    if (emitRaf) {
+      cancelAnimationFrame(emitRaf);
+      emitRaf = 0;
+    }
     params.onMessages([
       ...inputMessages,
       { id: assistantId, role: "assistant", parts: [...parts] },
     ]);
   };
 
-  emit();
+  const emit = (immediate = false) => {
+    if (immediate) {
+      flush();
+      return;
+    }
+    if (emitScheduled) return;
+    emitScheduled = true;
+    emitRaf = requestAnimationFrame(() => {
+      emitRaf = 0;
+      flush();
+    });
+  };
+
+  const flushReasoningPreview = () => {
+    if (reasoningPreviewTimer) {
+      clearTimeout(reasoningPreviewTimer);
+      reasoningPreviewTimer = 0;
+    }
+    if (reasoningPreviewPending === null) return;
+    const text = reasoningPreviewPending;
+    reasoningPreviewPending = null;
+    params.onReasoningPreview?.(text);
+  };
+
+  const previewReasoning = (text: string, immediate = false) => {
+    if (!params.onReasoningPreview) return;
+    if (immediate) {
+      reasoningPreviewPending = null;
+      if (reasoningPreviewTimer) {
+        clearTimeout(reasoningPreviewTimer);
+        reasoningPreviewTimer = 0;
+      }
+      params.onReasoningPreview(text);
+      return;
+    }
+    reasoningPreviewPending = text;
+    if (reasoningPreviewTimer) return;
+    reasoningPreviewTimer = window.setTimeout(() => {
+      reasoningPreviewTimer = 0;
+      flushReasoningPreview();
+    }, 120);
+  };
+
+  const clearReasoningPreview = () => {
+    reasoningPreviewPending = null;
+    if (reasoningPreviewTimer) {
+      clearTimeout(reasoningPreviewTimer);
+      reasoningPreviewTimer = 0;
+    }
+    params.onReasoningPreview?.(null);
+  };
+
+  emit(true);
 
   const modelId = resolveModelId(params.baseUrl, params.modelId);
   const wantsReasoning = modelSupportsReasoning(modelId);
@@ -125,7 +194,8 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
             state: "streaming",
             providerMetadata: part.providerMetadata,
           });
-          emit();
+          previewReasoning("", true);
+          emit(true);
           break;
         }
         case "reasoning-delta": {
@@ -138,16 +208,20 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
               text: "",
               state: "streaming",
             });
+            previewReasoning("", true);
+            emit(true);
           }
           const current = parts[idx];
           if (current && isReasoningUIPart(current)) {
+            const nextText = current.text + part.text;
             parts[idx] = {
               type: "reasoning",
-              text: current.text + part.text,
+              text: nextText,
               state: "streaming",
               providerMetadata: part.providerMetadata ?? current.providerMetadata,
             };
-            emit();
+            // Keep thinking out of `messages` until end — only update light preview.
+            previewReasoning(nextText);
           }
           break;
         }
@@ -163,7 +237,8 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
                 providerMetadata:
                   part.providerMetadata ?? current.providerMetadata,
               };
-              emit();
+              clearReasoningPreview();
+              emit(true);
             }
           }
           break;
@@ -172,7 +247,7 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
           const idx = parts.length;
           textIndex.set(part.id, idx);
           parts.push({ type: "text", text: "" });
-          emit();
+          emit(true);
           break;
         }
         case "text-delta": {
@@ -209,7 +284,7 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
             state: "input-available",
             input: part.input,
           } as AssistantPart);
-          emit();
+          emit(true);
           break;
         }
         case "tool-result": {
@@ -228,7 +303,7 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
           } as AssistantPart;
           if (idx >= 0) parts[idx] = toolPart;
           else parts.push(toolPart);
-          emit();
+          emit(true);
           break;
         }
         case "tool-error": {
@@ -247,7 +322,7 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
           } as AssistantPart;
           if (idx >= 0) parts[idx] = toolPart;
           else parts.push(toolPart);
-          emit();
+          emit(true);
           break;
         }
         case "error": {
@@ -265,12 +340,14 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
           parts[i] = { ...p, state: "done" };
         }
       }
-      emit();
+      clearReasoningPreview();
+      emit(true);
       return [
         ...inputMessages,
         { id: assistantId, role: "assistant", parts: [...parts] },
       ];
     }
+    clearReasoningPreview();
     throw error instanceof Error ? error : new Error(formatAiError(error));
   }
 
@@ -299,6 +376,12 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     ...inputMessages,
     { id: assistantId, role: "assistant", parts: cleaned },
   ];
+  if (emitRaf) {
+    cancelAnimationFrame(emitRaf);
+    emitRaf = 0;
+    emitScheduled = false;
+  }
+  clearReasoningPreview();
   params.onMessages(finalMessages);
   return finalMessages;
 }

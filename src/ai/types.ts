@@ -19,6 +19,11 @@ export type AiSettings = {
   /** Always OpenRouter; kept for persistence / SDK baseURL. */
   baseUrl: string;
   apiKey: string;
+  /**
+   * Optional Tavily API key. When set, web_search + fetch_url use Tavily;
+   * otherwise free DuckDuckGo search + Jina Reader fetch.
+   */
+  tavilyApiKey: string;
   modelId: string;
   defaultMode: ChatMode;
   /** Default context window when model does not override */
@@ -29,6 +34,7 @@ export type AiSettings = {
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   baseUrl: OPENROUTER_BASE_URL,
   apiKey: "",
+  tavilyApiKey: "",
   modelId: "anthropic/claude-sonnet-4.6",
   defaultMode: "ask",
   contextWindow: 200_000,

@@ -409,13 +409,12 @@ export type AddNodeInput = {
   parent?: string;
   page?: string;
   id?: string;
+  /** Alias resolved within the same mutate_diagram call (and for edges). */
+  temp_id?: string;
 };
 
-export async function addNode(
-  xml: string,
-  input: AddNodeInput,
-): Promise<{ xml: string; id: string }> {
-  const { doc, root } = await openMutable(xml, input.page);
+function applyAddNode(ctx: MutableDoc, input: AddNodeInput): string {
+  const { doc, root } = ctx;
   const id = input.id ?? nextCellId(root);
   if (findCell(root, id)) throw new Error(`Cell id already exists: ${id}`);
 
@@ -447,8 +446,16 @@ export async function addNode(
   geo.setAttribute("as", "geometry");
   cell.appendChild(geo);
   root.appendChild(cell);
+  return id;
+}
 
-  return { xml: serializeXml(doc), id };
+export async function addNode(
+  xml: string,
+  input: AddNodeInput,
+): Promise<{ xml: string; id: string }> {
+  const ctx = await openMutable(xml, input.page);
+  const id = applyAddNode(ctx, input);
+  return { xml: serializeXml(ctx.doc), id };
 }
 
 export type AddEdgeInput = {
@@ -463,17 +470,29 @@ export type AddEdgeInput = {
   id?: string;
 };
 
-export async function addEdge(
-  xml: string,
+function resolveRef(
+  ref: string,
+  aliases: Map<string, string>,
+  root: Element,
+  kind: "source" | "target",
+): string {
+  const mapped = aliases.get(ref) ?? ref;
+  if (!findCell(root, mapped)) {
+    throw new Error(
+      `${kind} cell not found: ${ref}${mapped !== ref ? ` (resolved ${mapped})` : ""}`,
+    );
+  }
+  return mapped;
+}
+
+function applyAddEdge(
+  ctx: MutableDoc,
   input: AddEdgeInput,
-): Promise<{ xml: string; id: string }> {
-  const { doc, root } = await openMutable(xml, input.page);
-  if (!findCell(root, input.source)) {
-    throw new Error(`Source cell not found: ${input.source}`);
-  }
-  if (!findCell(root, input.target)) {
-    throw new Error(`Target cell not found: ${input.target}`);
-  }
+  aliases: Map<string, string>,
+): string {
+  const { doc, root } = ctx;
+  const source = resolveRef(input.source, aliases, root, "source");
+  const target = resolveRef(input.target, aliases, root, "target");
   const id = input.id ?? nextCellId(root);
   if (findCell(root, id)) throw new Error(`Cell id already exists: ${id}`);
 
@@ -489,16 +508,24 @@ export async function addEdge(
   cell.setAttribute("style", style);
   cell.setAttribute("edge", "1");
   cell.setAttribute("parent", "1");
-  cell.setAttribute("source", input.source);
-  cell.setAttribute("target", input.target);
+  cell.setAttribute("source", source);
+  cell.setAttribute("target", target);
 
   const geo = doc.createElement("mxGeometry");
   geo.setAttribute("relative", "1");
   geo.setAttribute("as", "geometry");
   cell.appendChild(geo);
   root.appendChild(cell);
+  return id;
+}
 
-  return { xml: serializeXml(doc), id };
+export async function addEdge(
+  xml: string,
+  input: AddEdgeInput,
+): Promise<{ xml: string; id: string }> {
+  const ctx = await openMutable(xml, input.page);
+  const id = applyAddEdge(ctx, input, new Map());
+  return { xml: serializeXml(ctx.doc), id };
 }
 
 export type UpdateElementInput = {
@@ -517,12 +544,13 @@ export type UpdateElementInput = {
   page?: string;
 };
 
-export async function updateElement(
-  xml: string,
+function applyUpdateElement(
+  ctx: MutableDoc,
   input: UpdateElementInput,
-): Promise<{ xml: string; id: string }> {
-  const { doc, root } = await openMutable(xml, input.page);
-  const cell = findCell(root, input.id);
+  aliases: Map<string, string>,
+): string {
+  const { doc, root } = ctx;
+  const cell = findCell(root, aliases.get(input.id) ?? input.id);
   if (!cell) throw new Error(`Cell not found: ${input.id}`);
 
   if (input.label != null) cell.setAttribute("value", input.label);
@@ -542,8 +570,18 @@ export async function updateElement(
       }),
     );
   }
-  if (input.source != null) cell.setAttribute("source", input.source);
-  if (input.target != null) cell.setAttribute("target", input.target);
+  if (input.source != null) {
+    cell.setAttribute(
+      "source",
+      resolveRef(input.source, aliases, root, "source"),
+    );
+  }
+  if (input.target != null) {
+    cell.setAttribute(
+      "target",
+      resolveRef(input.target, aliases, root, "target"),
+    );
+  }
 
   if (
     input.x != null ||
@@ -563,26 +601,31 @@ export async function updateElement(
     if (input.height != null) geo.setAttribute("height", String(input.height));
   }
 
-  return { xml: serializeXml(doc), id: input.id };
+  return cell.getAttribute("id") ?? input.id;
 }
 
-export async function removeElement(
+export async function updateElement(
   xml: string,
-  opts: { id: string; page?: string },
-): Promise<{ xml: string; removed: string[]; id: string }> {
-  const { doc, root } = await openMutable(xml, opts.page);
-  const cell = findCell(root, opts.id);
-  if (!cell) throw new Error(`Cell not found: ${opts.id}`);
+  input: UpdateElementInput,
+): Promise<{ xml: string; id: string }> {
+  const ctx = await openMutable(xml, input.page);
+  const id = applyUpdateElement(ctx, input, new Map());
+  return { xml: serializeXml(ctx.doc), id };
+}
 
-  const removed = [opts.id];
-  // Cascade-delete edges connected to a vertex.
+function applyRemoveElement(ctx: MutableDoc, id: string): string[] {
+  const { root } = ctx;
+  const cell = findCell(root, id);
+  if (!cell) throw new Error(`Cell not found: ${id}`);
+
+  const removed = [id];
   if (cell.getAttribute("vertex") === "1") {
     for (const other of [...root.children]) {
       if (other.localName !== "mxCell") continue;
       if (other.getAttribute("edge") !== "1") continue;
       const src = other.getAttribute("source");
       const tgt = other.getAttribute("target");
-      if (src === opts.id || tgt === opts.id) {
+      if (src === id || tgt === id) {
         const eid = other.getAttribute("id");
         if (eid) removed.push(eid);
         root.removeChild(other);
@@ -590,7 +633,80 @@ export async function removeElement(
     }
   }
   root.removeChild(cell);
-  return { xml: serializeXml(doc), removed, id: opts.id };
+  return removed;
+}
+
+export async function removeElement(
+  xml: string,
+  opts: { id: string; page?: string },
+): Promise<{ xml: string; removed: string[]; id: string }> {
+  const ctx = await openMutable(xml, opts.page);
+  const removed = applyRemoveElement(ctx, opts.id);
+  return { xml: serializeXml(ctx.doc), removed, id: opts.id };
+}
+
+export type MutateDiagramInput = {
+  page?: string;
+  remove?: string[];
+  updates?: Omit<UpdateElementInput, "page">[];
+  add_nodes?: AddNodeInput[];
+  add_edges?: AddEdgeInput[];
+};
+
+export type MutateDiagramResult = {
+  xml: string;
+  removed: string[];
+  updated: string[];
+  added_nodes: { id: string; temp_id?: string; label: string }[];
+  added_edges: { id: string; source: string; target: string }[];
+};
+
+/**
+ * Apply many diagram edits in one parse/serialize pass.
+ * Order: remove → update → add_nodes → add_edges.
+ * Edge source/target may use temp_id from add_nodes in the same call.
+ */
+export async function mutateDiagram(
+  xml: string,
+  input: MutateDiagramInput,
+): Promise<MutateDiagramResult> {
+  const ctx = await openMutable(xml, input.page);
+  const aliases = new Map<string, string>();
+  const removed: string[] = [];
+  const updated: string[] = [];
+  const added_nodes: MutateDiagramResult["added_nodes"] = [];
+  const added_edges: MutateDiagramResult["added_edges"] = [];
+
+  for (const id of input.remove ?? []) {
+    removed.push(...applyRemoveElement(ctx, id));
+  }
+  for (const u of input.updates ?? []) {
+    updated.push(applyUpdateElement(ctx, u, aliases));
+  }
+  for (const n of input.add_nodes ?? []) {
+    const id = applyAddNode(ctx, n);
+    if (n.temp_id) {
+      if (aliases.has(n.temp_id)) {
+        throw new Error(`Duplicate temp_id: ${n.temp_id}`);
+      }
+      aliases.set(n.temp_id, id);
+    }
+    added_nodes.push({ id, temp_id: n.temp_id, label: n.label });
+  }
+  for (const e of input.add_edges ?? []) {
+    const id = applyAddEdge(ctx, e, aliases);
+    const source = aliases.get(e.source) ?? e.source;
+    const target = aliases.get(e.target) ?? e.target;
+    added_edges.push({ id, source, target });
+  }
+
+  return {
+    xml: serializeXml(ctx.doc),
+    removed,
+    updated,
+    added_nodes,
+    added_edges,
+  };
 }
 
 export { SHAPE_STYLES, DEFAULT_EDGE_STYLE };

@@ -2322,6 +2322,12 @@ li.dnd-drop-target > .tree-row {
   word-break: break-word;
 }
 
+/* Plain text while tokens stream — avoids remark/GFM on every chunk. */
+.chat-md-plain {
+  white-space: pre-wrap;
+  margin: 0;
+}
+
 .chat-md > :first-child {
   margin-top: 0;
 }
@@ -2485,6 +2491,12 @@ li.dnd-drop-target > .tree-row {
   margin: 4px 0 8px;
   padding: 0 0 0 12px;
   border-left: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+
+.chat-reasoning.is-streaming .chat-reasoning-body {
+  max-height: 11rem;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
 }
 
 .chat-reasoning-md {

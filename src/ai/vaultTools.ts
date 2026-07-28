@@ -11,6 +11,7 @@ import {
 import { useVaultStore } from "../store/vaultStore";
 import { buildDrawioTools } from "./drawio/tools";
 import type { ChatMode } from "./types";
+import { buildWebTools } from "./webTools";
 
 function flattenPaths(node: TreeNode, out: string[] = []): string[] {
   if (!node.isDir && node.path) out.push(node.path);
@@ -141,14 +142,16 @@ export function buildVaultTools(mode: ChatMode) {
   };
 
   const drawioTools = buildDrawioTools(mode);
+  const webTools = buildWebTools();
 
   if (mode === "ask") {
-    return { ...readTools, ...drawioTools };
+    return { ...readTools, ...drawioTools, ...webTools };
   }
 
   return {
     ...readTools,
     ...drawioTools,
+    ...webTools,
     edit_note: tool({
       description:
         "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note.",
@@ -245,9 +248,11 @@ export function buildSystemPrompt(opts: {
   const lines = [
     "You are MarkSpace, an AI assistant embedded in a local Markdown vault app.",
     "You mostly read and edit Markdown (.md) notes — plain text with Markdown formatting.",
-    "You can also inspect and edit Draw.io diagrams (.drawio) via diagram tools (read_diagram, add_diagram_node, add_diagram_edge, update_diagram_element, remove_diagram_element, create_diagram).",
+    "You can also inspect and edit Draw.io diagrams (.drawio) via diagram tools. Prefer mutate_diagram for any multi-element change (add/update/color/connect in one call). Also: read_diagram, create_diagram, and single-element helpers.",
+    "You can search the public web (web_search) and fetch pages as markdown (fetch_url) when vault notes are not enough.",
     `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes via tools)"}.`,
-    "Be concise. Prefer tools over guessing vault contents.",
+    "Be concise. Prefer tools over guessing vault contents or the web.",
+    "For external facts/docs: web_search first, then fetch_url on the best 1–3 links. Do not invent URLs.",
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
     "When writing or editing Markdown: put exactly one blank line between paragraphs (and between a paragraph and a list/heading/code block). Do not collapse paragraphs into a single block and do not leave multiple consecutive blank lines.",
   ];
@@ -256,7 +261,7 @@ export function buildSystemPrompt(opts: {
       "When editing notes: prefer edit_note (partial replace) over write_note (full overwrite) to save tokens.",
       "When reading long notes: use read_note/get_active_note with start_line and end_line instead of loading the whole file.",
       "Preserve existing Markdown structure; keep one empty line between paragraphs in any text you insert or rewrite.",
-      "For .drawio files: always use read_diagram / add_diagram_* / update_diagram_element / remove_diagram_element — never raw edit_note on XML.",
+      "For .drawio files: use mutate_diagram for batch edits (never many parallel single updates — they race). Use temp_id on new nodes and reference them from add_edges in the same call. Never raw edit_note on XML.",
     );
   }
   if (opts.vaultPath) {

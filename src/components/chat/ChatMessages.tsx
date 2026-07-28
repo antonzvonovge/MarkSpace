@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   isReasoningUIPart,
   isToolUIPart,
@@ -25,7 +25,12 @@ function assistantHasVisibleContent(message: UIMessage | undefined): boolean {
   if (!message || message.role !== "assistant") return false;
   return (message.parts ?? []).some((part) => {
     if (part.type === "text") return part.text.trim().length > 0;
-    if (part.type === "reasoning") return part.text.trim().length > 0;
+    // Streaming reasoning may still have empty `text` in messages (preview is separate).
+    if (part.type === "reasoning") {
+      return (
+        part.state === "streaming" || part.text.trim().length > 0
+      );
+    }
     if (isToolUIPart(part)) return true;
     return false;
   });
@@ -80,11 +85,107 @@ function WaitingIndicator() {
   );
 }
 
+type UserRowProps = {
+  message: UIMessage;
+  sticky: boolean;
+  stickyRef: React.RefObject<HTMLDivElement | null>;
+};
+
+const UserMessageRow = memo(function UserMessageRow({
+  message,
+  sticky,
+  stickyRef,
+}: UserRowProps) {
+  return (
+    <div
+      ref={sticky ? stickyRef : undefined}
+      className={
+        sticky ? "chat-msg chat-msg-user is-sticky" : "chat-msg chat-msg-user"
+      }
+    >
+      <div className="chat-bubble">{textFrom(message)}</div>
+    </div>
+  );
+});
+
+type AssistantRowProps = {
+  message: UIMessage;
+  streaming: boolean;
+  isLast: boolean;
+};
+
+const AssistantMessageRow = memo(function AssistantMessageRow({
+  message,
+  streaming,
+  isLast,
+}: AssistantRowProps) {
+  const msgParts = message.parts ?? [];
+  const hasAnswerText = msgParts.some(
+    (p) => p.type === "text" && p.text.trim().length > 0,
+  );
+  const streamingThis = streaming && isLast;
+
+  return (
+    <div className="chat-msg chat-msg-assistant">
+      {msgParts.map((part, i) => {
+        if (isReasoningUIPart(part)) {
+          const laterHasAnswer = msgParts
+            .slice(i + 1)
+            .some(
+              (p) =>
+                (p.type === "text" && p.text.trim()) || isToolUIPart(p),
+            );
+          return (
+            <ChatReasoning
+              key={`${message.id}-r-${i}`}
+              part={part}
+              defaultOpen={
+                part.state === "streaming" ||
+                !(hasAnswerText || laterHasAnswer)
+              }
+            />
+          );
+        }
+        if (part.type === "text") {
+          if (!part.text) return null;
+          if (isErrorText(part.text)) {
+            return (
+              <div
+                key={`${message.id}-t-${i}`}
+                className="chat-error-inthread"
+                role="alert"
+              >
+                {part.text}
+              </div>
+            );
+          }
+          return (
+            <ChatMarkdown
+              key={`${message.id}-t-${i}`}
+              className="chat-assistant-text"
+              text={part.text}
+              streaming={streamingThis && i === msgParts.length - 1}
+              caret={streamingThis && i === msgParts.length - 1}
+            />
+          );
+        }
+        if (isToolUIPart(part)) {
+          return (
+            <ChatToolCall key={`${message.id}-tool-${i}`} part={part} />
+          );
+        }
+        return null;
+      })}
+    </div>
+  );
+});
+
 export function ChatMessages({ messages, streaming }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const pinnedUserIdRef = useRef<string | null>(null);
   const followBottomRef = useRef(true);
+  const scrollRafRef = useRef(0);
 
   const stickyIdx = lastStickyUserIndex(messages);
   const stickyId = stickyIdx >= 0 ? messages[stickyIdx]!.id : null;
@@ -110,17 +211,27 @@ export function ChatMessages({ messages, streaming }: Props) {
   useEffect(() => {
     if (!followBottomRef.current) return;
     if (stickyId && stickyId !== pinnedUserIdRef.current) return;
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-    const sticky = stickyRef.current;
-    if (sticky) {
-      const roomBelow =
-        scroller.scrollHeight -
-        (sticky.offsetTop + sticky.offsetHeight) -
-        scroller.clientHeight;
-      if (roomBelow <= 0) return;
-    }
-    scroller.scrollTop = scroller.scrollHeight;
+    if (scrollRafRef.current) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = 0;
+      const scroller = scrollerRef.current;
+      if (!scroller || !followBottomRef.current) return;
+      const sticky = stickyRef.current;
+      if (sticky) {
+        const roomBelow =
+          scroller.scrollHeight -
+          (sticky.offsetTop + sticky.offsetHeight) -
+          scroller.clientHeight;
+        if (roomBelow <= 0) return;
+      }
+      scroller.scrollTop = scroller.scrollHeight;
+    });
+    return () => {
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = 0;
+      }
+    };
   }, [messages, streaming, showWaiting, stickyId]);
 
   useEffect(() => {
@@ -147,19 +258,13 @@ export function ChatMessages({ messages, streaming }: Props) {
     <div className="chat-messages" ref={scrollerRef}>
       {messages.map((message, index) => {
         if (message.role === "user") {
-          const sticky = index === stickyIdx;
           return (
-            <div
+            <UserMessageRow
               key={message.id}
-              ref={sticky ? stickyRef : undefined}
-              className={
-                sticky
-                  ? "chat-msg chat-msg-user is-sticky"
-                  : "chat-msg chat-msg-user"
-              }
-            >
-              <div className="chat-bubble">{textFrom(message)}</div>
-            </div>
+              message={message}
+              sticky={index === stickyIdx}
+              stickyRef={stickyRef}
+            />
           );
         }
         if (message.role !== "assistant") return null;
@@ -172,66 +277,13 @@ export function ChatMessages({ messages, streaming }: Props) {
           return null;
         }
 
-        const msgParts = message.parts ?? [];
-        const hasAnswerText = msgParts.some(
-          (p) => p.type === "text" && p.text.trim().length > 0,
-        );
-
         return (
-          <div key={message.id} className="chat-msg chat-msg-assistant">
-            {msgParts.map((part, i) => {
-              if (isReasoningUIPart(part)) {
-                const laterHasAnswer = msgParts
-                  .slice(i + 1)
-                  .some(
-                    (p) =>
-                      (p.type === "text" && p.text.trim()) || isToolUIPart(p),
-                  );
-                return (
-                  <ChatReasoning
-                    key={`${message.id}-r-${i}`}
-                    part={part}
-                    defaultOpen={
-                      part.state === "streaming" ||
-                      !(hasAnswerText || laterHasAnswer)
-                    }
-                  />
-                );
-              }
-              if (part.type === "text") {
-                if (!part.text) return null;
-                if (isErrorText(part.text)) {
-                  return (
-                    <div
-                      key={`${message.id}-t-${i}`}
-                      className="chat-error-inthread"
-                      role="alert"
-                    >
-                      {part.text}
-                    </div>
-                  );
-                }
-                return (
-                  <ChatMarkdown
-                    key={`${message.id}-t-${i}`}
-                    className="chat-assistant-text"
-                    text={part.text}
-                    caret={
-                      streaming &&
-                      message.id === last?.id &&
-                      i === msgParts.length - 1
-                    }
-                  />
-                );
-              }
-              if (isToolUIPart(part)) {
-                return (
-                  <ChatToolCall key={`${message.id}-tool-${i}`} part={part} />
-                );
-              }
-              return null;
-            })}
-          </div>
+          <AssistantMessageRow
+            key={message.id}
+            message={message}
+            streaming={streaming}
+            isLast={message.id === last?.id}
+          />
         );
       })}
       {showWaiting && (

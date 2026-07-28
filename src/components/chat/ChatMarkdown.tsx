@@ -1,3 +1,4 @@
+import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -6,11 +7,27 @@ type Props = {
   className?: string;
   /** Trailing caret while streaming */
   caret?: boolean;
+  /**
+   * While streaming, render plain text instead of full markdown parse.
+   * Avoids main-thread freezes from remark/GFM on every token.
+   */
+  streaming?: boolean;
 };
 
-export function ChatMarkdown({ text, className, caret }: Props) {
+function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
+  const rootClass = ["chat-md", className].filter(Boolean).join(" ");
+
+  if (streaming) {
+    return (
+      <div className={`${rootClass} is-streaming-plain`}>
+        <div className="chat-md-plain">{text}</div>
+        {caret ? <span className="chat-caret" aria-hidden="true" /> : null}
+      </div>
+    );
+  }
+
   return (
-    <div className={["chat-md", className].filter(Boolean).join(" ")}>
+    <div className={rootClass}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -29,3 +46,5 @@ export function ChatMarkdown({ text, className, caret }: Props) {
     </div>
   );
 }
+
+export const ChatMarkdown = memo(ChatMarkdownInner);

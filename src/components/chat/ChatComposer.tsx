@@ -39,16 +39,20 @@ export function ChatComposer() {
     ];
   }, [models, modelId]);
 
-  const used = useMemo(
-    () =>
-      estimateContextTokens({
-        system: systemPromptPreview(),
-        messages,
-        draft,
-        toolOverhead: mode === "agent" ? 1200 : 900,
-      }),
-    [messages, draft, mode, systemPromptPreview],
-  );
+  const usedFrozenRef = useRef(0);
+  const wasStreamingRef = useRef(false);
+  const used = useMemo(() => {
+    if (streaming && wasStreamingRef.current) return usedFrozenRef.current;
+    wasStreamingRef.current = streaming;
+    const next = estimateContextTokens({
+      system: systemPromptPreview(),
+      messages,
+      draft: streaming ? "" : draft,
+      toolOverhead: mode === "agent" ? 1200 : 900,
+    });
+    usedFrozenRef.current = next;
+    return next;
+  }, [messages, draft, mode, systemPromptPreview, streaming]);
 
   const limit = contextWindowForModel(settings, modelId || settings.modelId);
 

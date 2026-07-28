@@ -42,6 +42,26 @@ export function AiSettingsPanel() {
       </section>
 
       <section className="sync-block">
+        <h3 className="sync-block-title">Tavily API key</h3>
+        <p className="sync-block-desc">
+          Optional. Without it, the agent uses free DuckDuckGo search + Jina
+          page fetch. With a key from{" "}
+          <a href="https://tavily.com" target="_blank" rel="noreferrer">
+            Tavily
+          </a>
+          , both web_search and fetch_url use Tavily (~1k free credits/month).
+        </p>
+        <input
+          type="password"
+          className="sync-input"
+          value={settings.tavilyApiKey}
+          onChange={(e) => setSettings({ tavilyApiKey: e.target.value })}
+          placeholder="tvly-…"
+          autoComplete="off"
+        />
+      </section>
+
+      <section className="sync-block">
         <h3 className="sync-block-title">Default model</h3>
         <p className="sync-block-desc">
           Used for new chats. Reasoning models think before answering (slower,

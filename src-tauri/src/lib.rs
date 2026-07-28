@@ -1,5 +1,6 @@
 mod chat_history;
 mod git_sync;
+mod http_fetch;
 mod order_merge;
 mod vault;
 
@@ -35,6 +36,7 @@ pub fn run() {
             vault::absolute_path,
             vault::write_asset,
             vault::search_notes,
+            http_fetch::http_fetch,
             chat_history::list_chat_threads,
             chat_history::get_chat_thread,
             chat_history::upsert_chat_thread,

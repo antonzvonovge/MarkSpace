@@ -3,6 +3,7 @@ import { EMPTY_DRAWIO_XML } from "../../editor/drawio/constants";
 import {
   addEdge,
   addNode,
+  mutateDiagram,
   removeElement,
   summarizeDrawio,
   updateElement,
@@ -63,7 +64,7 @@ describe("drawio semantic model", () => {
   it("rejects edges to missing nodes", async () => {
     await expect(
       addEdge(EMPTY_DRAWIO_XML, { source: "2", target: "3" }),
-    ).rejects.toThrow(/Source cell not found/);
+    ).rejects.toThrow(/source cell not found/i);
   });
 
   it("applies and updates fill/stroke/font colors", async () => {
@@ -104,5 +105,39 @@ describe("drawio semantic model", () => {
         fill_color: "magenta",
       }),
     ).rejects.toThrow(/fill_color must be/);
+  });
+
+  it("mutate_diagram applies nodes, colors, and edges atomically with temp_id", async () => {
+    const result = await mutateDiagram(EMPTY_DRAWIO_XML, {
+      add_nodes: [
+        {
+          label: "A",
+          temp_id: "a",
+          x: 0,
+          y: 0,
+          fill_color: "#cb11ab",
+        },
+        {
+          label: "B",
+          temp_id: "b",
+          x: 200,
+          y: 0,
+          fill_color: "#cb11ab",
+        },
+      ],
+      add_edges: [{ source: "a", target: "b", label: "link" }],
+    });
+
+    expect(result.added_nodes).toHaveLength(2);
+    expect(result.added_edges).toHaveLength(1);
+
+    const summary = await summarizeDrawio(result.xml);
+    expect(summary.pages[0]!.nodes).toHaveLength(2);
+    expect(summary.pages[0]!.nodes.every((n) => n.fill_color === "#cb11ab")).toBe(
+      true,
+    );
+    expect(summary.pages[0]!.edges).toHaveLength(1);
+    expect(summary.pages[0]!.edges[0]!.source).toBe(result.added_nodes[0]!.id);
+    expect(summary.pages[0]!.edges[0]!.target).toBe(result.added_nodes[1]!.id);
   });
 });
