@@ -21,6 +21,7 @@ import {
   loadVaultSession,
   saveVaultSession,
 } from "../lib/settingsStore";
+import { arrayMove } from "../lib/arrayMove";
 
 export type EditorTab = {
   path: string;
@@ -54,6 +55,7 @@ type VaultStore = {
   refreshTree: () => Promise<void>;
   openNote: (path: string, options?: OpenNoteOptions) => Promise<void>;
   pinTab: (path: string) => void;
+  reorderTabs: (fromIndex: number, toIndex: number) => void;
   closeTab: (path: string) => Promise<void>;
   setContent: (content: string) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -128,6 +130,82 @@ function activateLoaded(
     selectedFolderPath: parentPath(path),
     selectedFolderExplicit: false,
   });
+}
+
+/** Prefer the next surviving tab after `activePath`, else the previous one. */
+function pickFallbackTab(
+  tabs: EditorTab[],
+  nextTabs: EditorTab[],
+  activePath: string,
+): EditorTab {
+  const idx = tabs.findIndex((t) => t.path === activePath);
+  if (idx >= 0) {
+    for (let i = idx + 1; i < tabs.length; i++) {
+      const hit = nextTabs.find((t) => t.path === tabs[i]!.path);
+      if (hit) return hit;
+    }
+    for (let i = idx - 1; i >= 0; i--) {
+      const hit = nextTabs.find((t) => t.path === tabs[i]!.path);
+      if (hit) return hit;
+    }
+  }
+  return nextTabs[0]!;
+}
+
+/**
+ * Drop editor tabs whose files no longer exist in `tree` (e.g. removed by sync).
+ * If the active note vanished, activate a neighbour or clear the editor.
+ */
+async function pruneMissingTabs(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  tree: TreeNode,
+): Promise<void> {
+  const existing = new Set(collectFilePaths(tree));
+  const { tabs, activePath } = get();
+  const nextTabs = tabs.filter((t) => existing.has(t.path));
+  const lostActive = activePath != null && !existing.has(activePath);
+
+  if (nextTabs.length === tabs.length && !lostActive) {
+    set({ tree });
+    return;
+  }
+
+  if (!lostActive) {
+    set({ tree, tabs: nextTabs });
+    persistSession(get());
+    return;
+  }
+
+  // File gone from disk — discard dirty buffer; do not try to save.
+  if (!nextTabs.length) {
+    set({
+      tree,
+      tabs: [],
+      activePath: null,
+      content: "",
+      dirty: false,
+      loading: false,
+    });
+    persistSession(get());
+    return;
+  }
+
+  const fallback = pickFallbackTab(tabs, nextTabs, activePath!);
+  set({ tree, loading: true, tabs: nextTabs, dirty: false });
+  try {
+    const content = await readNote(fallback.path);
+    activateLoaded(set, fallback.path, content, nextTabs);
+  } catch {
+    set({
+      loading: false,
+      tabs: nextTabs,
+      activePath: null,
+      content: "",
+      dirty: false,
+    });
+  }
+  persistSession(get());
 }
 
 export const useVaultStore = create<VaultStore>((set, get) => ({
@@ -206,7 +284,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         scheduled = false;
         try {
           const tree = await listTree();
-          set({ tree });
+          await pruneMissingTabs(set, get, tree);
         } catch (e) {
           set({ error: e instanceof Error ? e.message : String(e) });
         }
@@ -286,6 +364,14 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({
       tabs: tabs.map((t) => (t.path === path ? { ...t, preview: false } : t)),
     });
+    persistSession(get());
+  },
+
+  reorderTabs: (fromIndex, toIndex) => {
+    const { tabs } = get();
+    const nextTabs = arrayMove(tabs, fromIndex, toIndex);
+    if (nextTabs === tabs) return;
+    set({ tabs: nextTabs });
     persistSession(get());
   },
 

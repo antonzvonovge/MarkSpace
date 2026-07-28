@@ -237,6 +237,8 @@ export function buildVaultTools(mode: ChatMode) {
       }),
       execute: async ({ path }) => {
         const created = await createNote(path);
+        await useVaultStore.getState().refreshTree();
+        await yieldToUi();
         return { ok: true, path: created };
       },
     }),

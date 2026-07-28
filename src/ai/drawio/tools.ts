@@ -214,6 +214,7 @@ export function buildDrawioTools(mode: ChatMode) {
       execute: async ({ path }) => {
         try {
           const created = await createDrawio(path);
+          await useVaultStore.getState().refreshTree();
           return { ok: true as const, path: created };
         } catch (e) {
           return fail(path, e);

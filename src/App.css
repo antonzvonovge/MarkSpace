@@ -351,10 +351,21 @@ select {
   flex: 1;
 }
 
+.tree-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .tree-create {
   position: relative;
   flex-shrink: 0;
-  margin-left: auto;
+}
+
+.tree-refresh-icon.is-spinning {
+  animation: status-sync-spin 0.9s linear infinite;
 }
 
 .tree-toolbar-btn {
@@ -376,6 +387,11 @@ select {
 .tree-toolbar-btn.is-open {
   background: var(--sidebar-hover);
   color: var(--accent-wb);
+}
+
+.tree-toolbar-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .tree-create-menu {
@@ -1098,6 +1114,30 @@ li.dnd-drop-target > .tree-row {
 
 .editor-tab.is-active:hover {
   background: var(--editor-surface);
+}
+
+.editor-tab.is-dragging {
+  opacity: 0.45;
+}
+
+.editor-tab.is-drop-before::after,
+.editor-tab.is-drop-after::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.editor-tab.is-drop-before::after {
+  left: 0;
+}
+
+.editor-tab.is-drop-after::after {
+  right: 0;
 }
 
 .editor-tab.is-preview .editor-tab-label {

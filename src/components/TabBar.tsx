@@ -1,12 +1,23 @@
+import { useCallback } from "react";
 import { useVaultStore, tabLabel, type EditorTab } from "../store/vaultStore";
 import { useChatUiStore } from "../store/chatUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
+import { useTabReorder } from "../hooks/useTabReorder";
 
-function TabItem({ tab }: { tab: EditorTab }) {
+function TabItem({
+  tab,
+  index,
+  bindReorder,
+}: {
+  tab: EditorTab;
+  index: number;
+  bindReorder: ReturnType<typeof useTabReorder>;
+}) {
   const activePath = useVaultStore((s) => s.activePath);
   const openNote = useVaultStore((s) => s.openNote);
   const pinTab = useVaultStore((s) => s.pinTab);
   const closeTab = useVaultStore((s) => s.closeTab);
+  const reorder = bindReorder(index);
 
   const active = activePath === tab.path;
 
@@ -16,14 +27,28 @@ function TabItem({ tab }: { tab: EditorTab }) {
         "editor-tab",
         active ? "is-active" : "",
         tab.preview ? "is-preview" : "",
+        reorder.className,
       ]
         .filter(Boolean)
         .join(" ")}
       title={tab.path}
+      draggable={reorder.draggable}
+      onDragStart={reorder.onDragStart}
+      onDragEnd={reorder.onDragEnd}
+      onDragOver={reorder.onDragOver}
+      onDragLeave={reorder.onDragLeave}
+      onDrop={reorder.onDrop}
       onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        if ((e.target as HTMLElement).closest(".editor-tab-close")) return;
+        // Activate on press (VS Code-style) so HTML5 DnD does not eat the click.
         if (e.detail > 1) e.preventDefault();
+        void openNote(tab.path, { preview: tab.preview });
       }}
-      onClick={() => void openNote(tab.path, { preview: tab.preview })}
+      onClick={() => {
+        // Swallow only the spurious post-drop click; activation is on mousedown.
+        reorder.shouldIgnoreClick();
+      }}
       onDoubleClick={(e) => {
         e.preventDefault();
         pinTab(tab.path);
@@ -43,6 +68,7 @@ function TabItem({ tab }: { tab: EditorTab }) {
         className="editor-tab-close"
         title="Close"
         aria-label={`Close ${tabLabel(tab.path)}`}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
           void closeTab(tab.path);
@@ -61,10 +87,19 @@ function TabItem({ tab }: { tab: EditorTab }) {
 
 export function EditorChrome() {
   const tabs = useVaultStore((s) => s.tabs);
+  const reorderTabs = useVaultStore((s) => s.reorderTabs);
   const sidebarOpen = useSidebarUiStore((s) => s.open);
   const toggleSidebar = useSidebarUiStore((s) => s.toggle);
   const chatOpen = useChatUiStore((s) => s.open);
   const toggleChat = useChatUiStore((s) => s.toggle);
+
+  const onReorder = useCallback(
+    (from: number, to: number) => {
+      reorderTabs(from, to);
+    },
+    [reorderTabs],
+  );
+  const bindReorder = useTabReorder(tabs.length, onReorder);
 
   return (
     <div className="editor-chrome">
@@ -94,8 +129,13 @@ export function EditorChrome() {
         </svg>
       </button>
       <div className="editor-tabbar" role="tablist">
-        {tabs.map((tab) => (
-          <TabItem key={tab.path} tab={tab} />
+        {tabs.map((tab, index) => (
+          <TabItem
+            key={tab.path}
+            tab={tab}
+            index={index}
+            bindReorder={bindReorder}
+          />
         ))}
       </div>
       <button

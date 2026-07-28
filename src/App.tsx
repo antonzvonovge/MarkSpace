@@ -147,7 +147,8 @@ function App() {
         return;
       }
       if (Date.now() < useVaultStore.getState().suppressWatchUntil) {
-        pendingPaths.clear();
+        // Keep pending paths — only defer until suppress window ends.
+        debounceTimer = window.setTimeout(() => void flush(), 400);
         return;
       }
 

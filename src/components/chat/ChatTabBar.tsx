@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatStore } from "../../store/chatStore";
 import { useVaultStore } from "../../store/vaultStore";
+import { useTabReorder } from "../../hooks/useTabReorder";
 import { ChatHistoryMenu } from "./ChatHistoryMenu";
 
 export function ChatTabBar() {
@@ -10,6 +11,7 @@ export function ChatTabBar() {
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const selectThread = useChatStore((s) => s.selectThread);
   const closeTab = useChatStore((s) => s.closeTab);
+  const reorderOpenTabs = useChatStore((s) => s.reorderOpenTabs);
   const newThread = useChatStore((s) => s.newThread);
   const [historyOpen, setHistoryOpen] = useState(false);
   const activeRef = useRef<HTMLDivElement>(null);
@@ -20,6 +22,14 @@ export function ChatTabBar() {
       .map((id) => byId.get(id))
       .filter((t): t is NonNullable<typeof t> => !!t);
   }, [threads, openTabIds]);
+
+  const onReorder = useCallback(
+    (from: number, to: number) => {
+      void reorderOpenTabs(from, to);
+    },
+    [reorderOpenTabs],
+  );
+  const bindReorder = useTabReorder(tabs.length, onReorder);
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({
@@ -32,22 +42,36 @@ export function ChatTabBar() {
   return (
     <div className="chat-chrome">
       <div className="editor-tabbar chat-tabbar" role="tablist">
-        {tabs.map((tab) => {
+        {tabs.map((tab, index) => {
           const active = tab.id === activeThreadId;
+          const reorder = bindReorder(index);
           return (
             <div
               key={tab.id}
               ref={active ? activeRef : undefined}
-              className={["editor-tab", active ? "is-active" : ""]
+              className={["editor-tab", active ? "is-active" : "", reorder.className]
                 .filter(Boolean)
                 .join(" ")}
               title={tab.title}
               role="tab"
               aria-selected={active}
+              draggable={reorder.draggable}
+              onDragStart={reorder.onDragStart}
+              onDragEnd={reorder.onDragEnd}
+              onDragOver={reorder.onDragOver}
+              onDragLeave={reorder.onDragLeave}
+              onDrop={reorder.onDrop}
               onMouseDown={(e) => {
+                if (e.button !== 0) return;
+                if ((e.target as HTMLElement).closest(".editor-tab-close")) return;
+                // Activate on press so HTML5 DnD does not eat the click.
                 if (e.detail > 1) e.preventDefault();
+                void selectThread(tab.id);
               }}
-              onClick={() => void selectThread(tab.id)}
+              onClick={() => {
+                // Swallow only the spurious post-drop click; activation is on mousedown.
+                reorder.shouldIgnoreClick();
+              }}
               onAuxClick={(e) => {
                 if (e.button === 1) {
                   e.preventDefault();
@@ -61,6 +85,7 @@ export function ChatTabBar() {
                 className="editor-tab-close"
                 title="Close"
                 aria-label={`Close ${tab.title}`}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   void closeTab(tab.id);

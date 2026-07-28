@@ -13,6 +13,7 @@ import {
   upsertChatThread,
   type ChatThreadMeta,
 } from "../lib/chatHistoryApi";
+import { arrayMove } from "../lib/arrayMove";
 import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
@@ -62,6 +63,7 @@ type ChatStore = {
   newThread: () => Promise<void>;
   selectThread: (threadId: string) => Promise<void>;
   closeTab: (threadId: string) => Promise<void>;
+  reorderOpenTabs: (fromIndex: number, toIndex: number) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
   send: (text?: string) => Promise<void>;
   stop: () => void;
@@ -355,6 +357,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activeThreadId: listed.activeThreadId,
       });
     }
+  },
+
+  reorderOpenTabs: async (fromIndex, toIndex) => {
+    const vaultPath = get().vaultBound;
+    if (!vaultPath) return;
+    const prev = get().openTabIds;
+    const openTabIds = arrayMove(prev, fromIndex, toIndex);
+    if (openTabIds === prev) return;
+    set({ openTabIds });
+    const listed = await setOpenChatTabs(
+      vaultPath,
+      openTabIds,
+      get().activeThreadId,
+    );
+    set({
+      threads: listed.threads,
+      openTabIds: listed.openTabIds,
+      activeThreadId: listed.activeThreadId,
+    });
   },
 
   deleteThread: async (threadId) => {

@@ -81,6 +81,34 @@ function PlusIcon() {
   );
 }
 
+function RefreshIcon({ spinning }: { spinning?: boolean }) {
+  return (
+    <svg
+      className={spinning ? "tree-refresh-icon is-spinning" : "tree-refresh-icon"}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M3 8a5 5 0 0 1 8.9-2.1M13 4v2.5H10.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13 8a5 5 0 0 1-8.9 2.1M3 12v-2.5H5.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -184,8 +212,7 @@ function TreeCreateMenu({
   }, [open]);
 
   return (
-    // Row div has its own click handler — keep menu clicks from bubbling into it.
-    <div className="tree-create" ref={rootRef} onClick={(e) => e.stopPropagation()}>
+    <div className="tree-create" ref={rootRef}>
       <button
         type="button"
         className={open ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
@@ -238,6 +265,44 @@ function TreeCreateMenu({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function TreeToolbarActions({
+  onRefresh,
+  refreshing,
+  onNewNote,
+  onNewDiagram,
+  onNewFolder,
+}: {
+  onRefresh: () => void;
+  refreshing: boolean;
+  onNewNote: () => void;
+  onNewDiagram: () => void;
+  onNewFolder: () => void;
+}) {
+  return (
+    // Row div has its own click handler — keep toolbar clicks from selecting the vault.
+    <div
+      className="tree-toolbar-actions"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        className="tree-toolbar-btn"
+        title="Refresh"
+        aria-label="Refresh file tree"
+        disabled={refreshing}
+        onClick={onRefresh}
+      >
+        <RefreshIcon spinning={refreshing} />
+      </button>
+      <TreeCreateMenu
+        onNewNote={onNewNote}
+        onNewDiagram={onNewDiagram}
+        onNewFolder={onNewFolder}
+      />
     </div>
   );
 }
@@ -413,6 +478,7 @@ export function FileTree() {
   const removePath = useVaultStore((s) => s.removePath);
   const selectFolder = useVaultStore((s) => s.selectFolder);
   const openNote = useVaultStore((s) => s.openNote);
+  const refreshTree = useVaultStore((s) => s.refreshTree);
 
   const treeRef = useRef<TreeMethods>(null);
   const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
@@ -420,6 +486,7 @@ export function FileTree() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Scope HTML5Backend to the sidebar so it does not steal BlockNote block drag.
   // Prefer HTML5Backend alone: MultiBackend+TouchBackend breaks mouse DnD on
@@ -758,7 +825,13 @@ export function FileTree() {
                     )}
 
                     {isVault ? (
-                      <TreeCreateMenu
+                      <TreeToolbarActions
+                        refreshing={refreshing}
+                        onRefresh={() => {
+                          if (refreshing) return;
+                          setRefreshing(true);
+                          void refreshTree().finally(() => setRefreshing(false));
+                        }}
                         onNewNote={() => setPromptKind("note")}
                         onNewDiagram={() => setPromptKind("drawio")}
                         onNewFolder={() => setPromptKind("folder")}
