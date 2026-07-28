@@ -52,9 +52,50 @@ async function findWebapp(extractedRoot) {
   throw new Error("Could not find src/main/webapp/index.html in archive");
 }
 
+/**
+ * spin.js crashes with `Cannot read properties of undefined (reading 'insertRule')`
+ * when `style.sheet` is null (Tauri CSP nonces void unsafe-inline; WebView2 is strict).
+ * Harden stylesheet creation + guard insertRule so draw.io embeds still boot.
+ */
+async function patchSpinJs() {
+  const files = [
+    "js/spin/spin.min.js",
+    "js/app.min.js",
+    "js/integrate.min.js",
+    "js/viewer.min.js",
+    "js/viewer-static.min.js",
+  ];
+  const sheetNeedle =
+    'function(){var c=a("style",{type:"text/css"});return b(document.getElementsByTagName("head")[0],c),c.sheet||c.styleSheet}()';
+  const sheetFixed =
+    'function(){var c=a("style",{type:"text/css"});c.appendChild(document.createTextNode(""));b(document.getElementsByTagName("head")[0],c);var s=c.sheet||c.styleSheet;return s||{cssRules:[],insertRule:function(){return 0},deleteRule:function(){}}}()';
+  const insertNeedle =
+    'return l[e]||(m.insertRule("@"+i+"keyframes "+e+"{0%{opacity:"+g+"}"+f+"%{opacity:"+a+"}"+(f+.01)+"%{opacity:1}"+(f+b)%100+"%{opacity:"+a+"}100%{opacity:"+g+"}}",m.cssRules.length),l[e]=1),e';
+  const insertFixed =
+    'return l[e]||(m&&m.insertRule&&m.insertRule("@"+i+"keyframes "+e+"{0%{opacity:"+g+"}"+f+"%{opacity:"+a+"}"+(f+.01)+"%{opacity:1}"+(f+b)%100+"%{opacity:"+a+"}100%{opacity:"+g+"}}",m.cssRules.length),l[e]=1),e';
+
+  let patched = 0;
+  for (const rel of files) {
+    const file = path.join(OUT_DIR, rel);
+    if (!existsSync(file)) continue;
+    let src = await readFile(file, "utf8");
+    const before = src;
+    src = src.split(sheetNeedle).join(sheetFixed);
+    src = src.split(insertNeedle).join(insertFixed);
+    if (src !== before) {
+      await writeFile(file, src, "utf8");
+      patched += 1;
+    }
+  }
+  if (patched > 0) {
+    console.log(`Patched spin.js insertRule guard in ${patched} file(s)`);
+  }
+}
+
 async function main() {
   if (await alreadyBundled()) {
     console.log(`draw.io ${DRAWIO_VERSION} already present in public/drawio`);
+    await patchSpinJs();
     return;
   }
 
@@ -75,6 +116,7 @@ async function main() {
   await cp(webapp, OUT_DIR, { recursive: true });
   await writeFile(STAMP, `${DRAWIO_VERSION}\n`, "utf8");
   await rm(TMP_DIR, { recursive: true, force: true });
+  await patchSpinJs();
   console.log(`draw.io ${DRAWIO_VERSION} installed → public/drawio`);
 }
 
