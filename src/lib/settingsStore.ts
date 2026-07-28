@@ -102,6 +102,65 @@ export async function saveExpandedPaths(
   await store.save();
 }
 
+export type SavedEditorTab = {
+  path: string;
+  preview: boolean;
+};
+
+export type VaultSession = {
+  tabs: SavedEditorTab[];
+  activePath: string | null;
+};
+
+const VAULT_SESSIONS_KEY = "vaultSessions";
+
+export async function loadVaultSession(
+  vaultPath: string,
+): Promise<VaultSession | null> {
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, VaultSession>>(VAULT_SESSIONS_KEY)) ?? {};
+  const raw = map[vaultPath];
+  if (!raw || !Array.isArray(raw.tabs)) return null;
+  const tabs = raw.tabs
+    .filter(
+      (t): t is SavedEditorTab =>
+        !!t &&
+        typeof t === "object" &&
+        typeof t.path === "string" &&
+        t.path.length > 0,
+    )
+    .map((t) => ({
+      path: t.path,
+      preview: Boolean(t.preview),
+    }));
+  if (!tabs.length) return null;
+  const activePath =
+    typeof raw.activePath === "string" &&
+    tabs.some((t) => t.path === raw.activePath)
+      ? raw.activePath
+      : tabs[0].path;
+  return { tabs, activePath };
+}
+
+export async function saveVaultSession(
+  vaultPath: string,
+  session: VaultSession,
+): Promise<void> {
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, VaultSession>>(VAULT_SESSIONS_KEY)) ?? {};
+  map[vaultPath] = {
+    tabs: session.tabs.map((t) => ({
+      path: t.path,
+      preview: Boolean(t.preview),
+    })),
+    activePath: session.activePath,
+  };
+  await store.set(VAULT_SESSIONS_KEY, map);
+  await store.save();
+}
+
 export type AutoSyncMinutes = 0 | 5 | 15 | 30 | 60;
 
 export type VaultSyncMeta = {

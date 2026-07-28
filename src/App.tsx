@@ -4,20 +4,29 @@ import {
   Group,
   Panel,
   Separator,
-  useDefaultLayout,
+  useGroupRef,
 } from "react-resizable-panels";
 import { Sidebar, loadLastVault } from "./components/Sidebar";
+import { ChatSidebar } from "./components/chat/ChatSidebar";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { StatusBar } from "./components/StatusBar";
 import { SyncConflictBanner } from "./components/SyncConflictBanner";
-import { TabBar } from "./components/TabBar";
+import { EditorChrome } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import type { VaultChange } from "./lib/vaultApi";
 import { documentKind, readNote } from "./lib/vaultApi";
+import {
+  loadShellLayout,
+  saveShellLayout,
+  toGroupLayout,
+  type ShellLayout,
+} from "./lib/shellLayout";
+import { useAiSettingsStore } from "./store/aiSettingsStore";
+import { useChatUiStore } from "./store/chatUiStore";
 import { usePrefsStore } from "./store/prefsStore";
 import { useSyncStore } from "./store/syncStore";
 import { useVaultStore } from "./store/vaultStore";
@@ -40,19 +49,22 @@ function App() {
   const openSettings = usePrefsStore((s) => s.openSettings);
   const closeSettings = usePrefsStore((s) => s.closeSettings);
   const hydratePrefs = usePrefsStore((s) => s.hydrate);
+  const hydrateAi = useAiSettingsStore((s) => s.hydrate);
   const refreshSyncStatus = useSyncStore((s) => s.refreshStatus);
+  const chatOpen = useChatUiStore((s) => s.open);
+  const toggleChat = useChatUiStore((s) => s.toggle);
   const timer = useRef<number | null>(null);
+  const groupRef = useGroupRef();
+  const applyingRef = useRef(false);
+  const savedRef = useRef<ShellLayout>(loadShellLayout());
+  const initialLayout = toGroupLayout(savedRef.current, chatOpen);
 
   useAutoSync();
 
-  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
-    id: "markspace-shell",
-    storage: localStorage,
-  });
-
   useEffect(() => {
     void hydratePrefs();
-  }, [hydratePrefs]);
+    void hydrateAi();
+  }, [hydratePrefs, hydrateAi]);
 
   useEffect(() => {
     void (async () => {
@@ -60,6 +72,32 @@ function App() {
       if (last) await openVaultAt(last);
     })();
   }, [openVaultAt]);
+
+  // Re-apply persisted sizes when chat open state changes (and once on mount).
+  useEffect(() => {
+    let tries = 0;
+    const apply = () => {
+      const group = groupRef.current;
+      if (!group) {
+        if (tries++ < 40) requestAnimationFrame(apply);
+        return;
+      }
+      const next = toGroupLayout(savedRef.current, chatOpen);
+      applyingRef.current = true;
+      try {
+        group.setLayout(next);
+      } catch {
+        // group may not be ready
+      } finally {
+        // Allow layout callbacks from setLayout to settle first
+        requestAnimationFrame(() => {
+          applyingRef.current = false;
+        });
+      }
+    };
+    const id = requestAnimationFrame(apply);
+    return () => cancelAnimationFrame(id);
+  }, [chatOpen, groupRef]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -72,7 +110,6 @@ function App() {
         return;
       }
 
-      // Use event.code so shortcuts work on non-English layouts (e.g. Ctrl+Ы).
       const code = e.code;
       if (code === "KeyS") {
         e.preventDefault();
@@ -88,10 +125,14 @@ function App() {
         e.preventDefault();
         openSettings();
       }
+      if (e.shiftKey && code === "KeyL") {
+        e.preventDefault();
+        toggleChat();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [saveActive, toggleViewMode, openSettings, closeSettings]);
+  }, [saveActive, toggleViewMode, openSettings, closeSettings, toggleChat]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -131,15 +172,36 @@ function App() {
     <div className="app-shell">
       <UpdateBanner />
       <Group
-        className="app-panels"
+        className={chatOpen ? "app-panels" : "app-panels is-chat-collapsed"}
         orientation="horizontal"
-        defaultLayout={defaultLayout}
-        onLayoutChanged={onLayoutChanged}
+        groupRef={groupRef}
+        defaultLayout={initialLayout}
+        onLayoutChanged={(layout, meta) => {
+          // Ignore programmatic setLayout / collapse noise — that was wiping sizes.
+          if (applyingRef.current || !meta.isUserInteraction) return;
+
+          const sidebar = layout.sidebar;
+          const chatPct = layout.chat;
+          if (typeof sidebar !== "number" || !Number.isFinite(sidebar)) return;
+
+          const next: ShellLayout = {
+            sidebar,
+            chat:
+              typeof chatPct === "number" && chatPct >= 5
+                ? chatPct
+                : savedRef.current.chat,
+          };
+          savedRef.current = next;
+          saveShellLayout(next);
+          if (typeof chatPct === "number" && chatPct >= 5) {
+            useChatUiStore.getState().rememberSizePercent(chatPct);
+          }
+        }}
       >
         <Panel
           id="sidebar"
           className="sidebar-panel"
-          defaultSize={280}
+          defaultSize={`${initialLayout.sidebar}%`}
           minSize={200}
           maxSize={480}
           groupResizeBehavior="preserve-pixel-size"
@@ -149,7 +211,12 @@ function App() {
 
         <Separator className="app-splitter" />
 
-        <Panel id="main" className="main-panel" minSize={360}>
+        <Panel
+          id="main"
+          className="main-panel"
+          defaultSize={`${initialLayout.main}%`}
+          minSize={360}
+        >
           <main className="main-pane">
             {error && <div className="error-banner">{error}</div>}
             <SyncConflictBanner />
@@ -167,44 +234,46 @@ function App() {
                       </p>
                     </div>
                   )}
-                  {vaultPath && !activePath && (
-                    <div className="empty-state">
-                      <h1>Select a note</h1>
-                      <p>Or create one from the sidebar.</p>
-                    </div>
-                  )}
-                  {activePath && (
+                  {vaultPath && (
                     <>
-                      <TabBar />
-                      <div className="document-column">
-                        {documentKind(activePath) === "markdown" ? (
-                          <DocumentToolbar />
-                        ) : null}
-                        <div className="document-body">
-                          {documentKind(activePath) === "drawio" ? (
-                            <DrawioEditor
-                              key={activePath}
-                              path={activePath}
-                              content={content}
-                              onChange={onEditorChange}
-                            />
-                          ) : viewMode === "live" ? (
-                            <NoteEditor
-                              key={activePath}
-                              path={activePath}
-                              content={content}
-                              onChange={onEditorChange}
-                            />
-                          ) : (
-                            <MarkdownSourceEditor
-                              key={activePath}
-                              path={activePath}
-                              content={content}
-                              onChange={onEditorChange}
-                            />
-                          )}
+                      <EditorChrome />
+                      {!activePath && (
+                        <div className="empty-state">
+                          <h1>Select a note</h1>
+                          <p>Or create one from the sidebar.</p>
                         </div>
-                      </div>
+                      )}
+                      {activePath && (
+                        <div className="document-column">
+                          {documentKind(activePath) === "markdown" ? (
+                            <DocumentToolbar />
+                          ) : null}
+                          <div className="document-body">
+                            {documentKind(activePath) === "drawio" ? (
+                              <DrawioEditor
+                                key={activePath}
+                                path={activePath}
+                                content={content}
+                                onChange={onEditorChange}
+                              />
+                            ) : viewMode === "live" ? (
+                              <NoteEditor
+                                key={activePath}
+                                path={activePath}
+                                content={content}
+                                onChange={onEditorChange}
+                              />
+                            ) : (
+                              <MarkdownSourceEditor
+                                key={activePath}
+                                path={activePath}
+                                content={content}
+                                onChange={onEditorChange}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </>
@@ -212,6 +281,24 @@ function App() {
             </div>
             <StatusBar />
           </main>
+        </Panel>
+
+        <Separator
+          className="app-splitter app-splitter-chat"
+          disabled={!chatOpen}
+        />
+
+        <Panel
+          id="chat"
+          className="chat-panel-host"
+          collapsible
+          collapsedSize={0}
+          defaultSize={`${initialLayout.chat}%`}
+          minSize={280}
+          maxSize={800}
+          groupResizeBehavior="preserve-pixel-size"
+        >
+          <ChatSidebar />
         </Panel>
       </Group>
     </div>

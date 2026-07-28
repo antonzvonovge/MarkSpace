@@ -31,7 +31,9 @@ base64 = "0.22"
 tauri-plugin-clipboard-manager = "2.3.2"
 git2 = { version = "0.20", default-features = false, features = ["https", "vendored-libgit2"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+sha2 = "0.11.0"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2"
 

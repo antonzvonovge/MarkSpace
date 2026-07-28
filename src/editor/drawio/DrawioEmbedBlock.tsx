@@ -1,12 +1,20 @@
 import { createExtension } from "@blocknote/core";
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type TouchEvent as ReactTouchEvent,
+} from "react";
 import { isDrawioPath, readNote } from "../../lib/vaultApi";
 import {
   formatDrawioFenceBody,
   parseDrawioFenceBody,
 } from "../../lib/wikiMarkdown";
 import { useVaultStore } from "../../store/vaultStore";
+import { selectAtomBlockOnMouseDown } from "../selectAtomBlock";
 import { DEFAULT_DRAWIO_PREVIEW_WIDTH } from "./constants";
 import { exportDrawioXmlToSvg, normalizeExportedSvg } from "./exportSvg";
 import {
@@ -78,6 +86,12 @@ function DrawioPreview({
   );
 }
 
+function clientXOf(
+  event: ReactMouseEvent | ReactTouchEvent | MouseEvent | TouchEvent,
+) {
+  return "touches" in event ? event.touches[0].clientX : event.clientX;
+}
+
 function DrawioEmbedView(props: {
   block: {
     id: string;
@@ -85,6 +99,8 @@ function DrawioEmbedView(props: {
   };
   editor: {
     isEditable: boolean;
+    domElement: HTMLElement | undefined;
+    prosemirrorView?: import("prosemirror-view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: Partial<{ src: string; previewWidth: number }> },
@@ -94,109 +110,88 @@ function DrawioEmbedView(props: {
   const { block, editor } = props;
   const openNote = useVaultStore((s) => s.openNote);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const width = block.props.previewWidth || DEFAULT_DRAWIO_PREVIEW_WIDTH;
+  const [width, setWidth] = useState(
+    block.props.previewWidth || DEFAULT_DRAWIO_PREVIEW_WIDTH,
+  );
+  const widthRef = useRef(width);
+  widthRef.current = width;
+  const [hovered, setHovered] = useState(false);
+  const [resizeParams, setResizeParams] = useState<
+    | {
+        initialWidth: number;
+        initialClientX: number;
+        handleUsed: "left" | "right";
+      }
+    | undefined
+  >(undefined);
 
   useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper || !editor.isEditable) return;
+    if (resizeParams) return;
+    setWidth(block.props.previewWidth || DEFAULT_DRAWIO_PREVIEW_WIDTH);
+  }, [block.props.previewWidth, resizeParams]);
 
-    const left = document.createElement("div");
-    left.className = "bn-resize-handle";
-    left.style.left = "4px";
-    left.style.display = "none";
-    const right = document.createElement("div");
-    right.className = "bn-resize-handle";
-    right.style.right = "4px";
-    right.style.display = "none";
-    wrapper.appendChild(left);
-    wrapper.appendChild(right);
+  useEffect(() => {
+    if (!resizeParams) return;
 
-    let resize:
-      | {
-          handle: "left" | "right";
-          initialWidth: number;
-          initialX: number;
-        }
-      | undefined;
-    let currentWidth = width;
-
-    const onMove = (event: MouseEvent) => {
-      if (!resize) return;
+    const onMove = (event: MouseEvent | TouchEvent) => {
+      const x = clientXOf(event);
       const delta =
-        resize.handle === "left"
-          ? resize.initialX - event.clientX
-          : event.clientX - resize.initialX;
-      currentWidth = Math.min(
-        Math.max(resize.initialWidth + delta, 64),
-        wrapper.parentElement?.clientWidth || 1200,
+        resizeParams.handleUsed === "left"
+          ? resizeParams.initialClientX - x
+          : x - resizeParams.initialClientX;
+      const maxWidth =
+        editor.domElement?.firstElementChild?.clientWidth ||
+        wrapperRef.current?.parentElement?.clientWidth ||
+        Number.MAX_VALUE;
+      setWidth(
+        Math.min(Math.max(resizeParams.initialWidth + delta, 64), maxWidth),
       );
-      wrapper.style.width = `${currentWidth}px`;
     };
 
     const onUp = () => {
-      if (!resize) return;
-      resize = undefined;
-      left.style.display = "none";
-      right.style.display = "none";
-      if (currentWidth !== block.props.previewWidth) {
-        editor.updateBlock(block, { props: { previewWidth: currentWidth } });
+      setResizeParams(undefined);
+      const next = Math.round(widthRef.current);
+      if (next !== block.props.previewWidth) {
+        editor.updateBlock(block, { props: { previewWidth: next } });
       }
     };
 
-    const leftDown = (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      resize = {
-        handle: "left",
-        initialWidth: wrapper.getBoundingClientRect().width,
-        initialX: event.clientX,
-      };
-      left.style.display = "";
-      right.style.display = "";
-    };
-    const rightDown = (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      resize = {
-        handle: "right",
-        initialWidth: wrapper.getBoundingClientRect().width,
-        initialX: event.clientX,
-      };
-      left.style.display = "";
-      right.style.display = "";
-    };
-
-    const onEnter = () => {
-      left.style.display = "";
-      right.style.display = "";
-    };
-    const onLeave = () => {
-      if (resize) return;
-      left.style.display = "none";
-      right.style.display = "none";
-    };
-
-    left.addEventListener("mousedown", leftDown);
-    right.addEventListener("mousedown", rightDown);
-    wrapper.addEventListener("mouseenter", onEnter);
-    wrapper.addEventListener("mouseleave", onLeave);
     window.addEventListener("mousemove", onMove);
+    window.addEventListener("touchmove", onMove);
     window.addEventListener("mouseup", onUp);
-
+    window.addEventListener("touchend", onUp);
     return () => {
-      left.removeEventListener("mousedown", leftDown);
-      right.removeEventListener("mousedown", rightDown);
-      wrapper.removeEventListener("mouseenter", onEnter);
-      wrapper.removeEventListener("mouseleave", onLeave);
       window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("touchmove", onMove);
       window.removeEventListener("mouseup", onUp);
-      left.remove();
-      right.remove();
+      window.removeEventListener("touchend", onUp);
     };
-  }, [block, editor, width]);
+  }, [block, editor, resizeParams]);
+
+  const startResize = useCallback(
+    (handleUsed: "left" | "right") =>
+      (event: ReactMouseEvent | ReactTouchEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setResizeParams({
+          handleUsed,
+          initialWidth: wrapperRef.current?.clientWidth ?? widthRef.current,
+          initialClientX: clientXOf(event),
+        });
+      },
+    [],
+  );
+
+  const showHandles = editor.isEditable && (hovered || Boolean(resizeParams));
 
   return (
-    <div className="drawio-embed" contentEditable={false}>
+    <div
+      className="drawio-embed"
+      contentEditable={false}
+      onMouseDown={(event) =>
+        selectAtomBlockOnMouseDown(event, editor, block.id)
+      }
+    >
       <div className="diagram-block__toolbar">
         <span className="diagram-block__label">Draw.io</span>
         <span className="drawio-embed__src" title={block.props.src}>
@@ -215,13 +210,47 @@ function DrawioEmbedView(props: {
       </div>
       <div
         ref={wrapperRef}
-        className="drawio-embed__frame"
-        style={{ width, position: "relative" }}
+        className="drawio-embed__frame bn-visual-media-wrapper"
+        style={{ width, position: "relative", maxWidth: "100%" }}
+        onMouseEnter={() => {
+          if (editor.isEditable) setHovered(true);
+        }}
+        onMouseLeave={() => setHovered(false)}
         onDoubleClick={() => {
           if (block.props.src) void openNote(block.props.src, { preview: false });
         }}
       >
         <DrawioPreview src={block.props.src} width={width} />
+        {editor.isEditable ? (
+          <>
+            <div
+              className="bn-resize-handle"
+              style={{
+                left: "4px",
+                display: showHandles ? "block" : "none",
+              }}
+              onMouseDown={startResize("left")}
+              onTouchStart={startResize("left")}
+            />
+            <div
+              className="bn-resize-handle"
+              style={{
+                right: "4px",
+                display: showHandles ? "block" : "none",
+              }}
+              onMouseDown={startResize("right")}
+              onTouchStart={startResize("right")}
+            />
+            {resizeParams ? (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                }}
+              />
+            ) : null}
+          </>
+        ) : null}
       </div>
     </div>
   );

@@ -95,6 +95,16 @@ export async function writeAsset(
   });
 }
 
+export type SearchHit = {
+  path: string;
+  line: number;
+  snippet: string;
+};
+
+export async function searchNotes(query: string): Promise<SearchHit[]> {
+  return invoke("search_notes", { query });
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000;
   let binary = "";

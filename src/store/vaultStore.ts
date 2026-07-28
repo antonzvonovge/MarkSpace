@@ -18,6 +18,8 @@ import {
 import {
   loadExpandedPaths,
   saveExpandedPaths,
+  loadVaultSession,
+  saveVaultSession,
 } from "../lib/settingsStore";
 
 export type EditorTab = {
@@ -92,6 +94,24 @@ function tabLabel(path: string): string {
   return name.replace(/\.md$/i, "").replace(/\.drawio$/i, "");
 }
 
+function collectFilePaths(node: TreeNode, out: string[] = []): string[] {
+  if (!node.isDir && node.path) out.push(node.path);
+  for (const child of node.children ?? []) collectFilePaths(child, out);
+  return out;
+}
+
+function persistSession(state: {
+  vaultPath: string | null;
+  tabs: EditorTab[];
+  activePath: string | null;
+}) {
+  if (!state.vaultPath) return;
+  void saveVaultSession(state.vaultPath, {
+    tabs: state.tabs.map((t) => ({ path: t.path, preview: t.preview })),
+    activePath: state.activePath,
+  });
+}
+
 function activateLoaded(
   set: (partial: Partial<VaultStore>) => void,
   path: string,
@@ -130,6 +150,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     try {
       const tree = await openVault(path);
       const expandedPaths = await loadExpandedPaths(path);
+      const session = await loadVaultSession(path);
+      const existing = new Set(collectFilePaths(tree));
+      const restoredTabs = (session?.tabs ?? []).filter((t) =>
+        existing.has(t.path),
+      );
+
       set({
         vaultPath: path,
         tree,
@@ -140,8 +166,20 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         selectedFolderPath: "",
         selectedFolderExplicit: false,
         expandedPaths,
-        tabs: [],
+        tabs: restoredTabs,
       });
+
+      if (restoredTabs.length > 0) {
+        const active =
+          session?.activePath &&
+          restoredTabs.some((t) => t.path === session.activePath)
+            ? session.activePath
+            : restoredTabs[0].path;
+        const preview =
+          restoredTabs.find((t) => t.path === active)?.preview ?? false;
+        await get().openNote(active, { preview });
+        return;
+      }
 
       const welcome =
         tree.children?.find((c) => c.path === "Welcome.md") ??
@@ -184,6 +222,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (activePath === path) {
         if (nextTabs !== tabs) {
           set({ tabs: nextTabs, selectedFolderExplicit: false });
+          persistSession(get());
         } else {
           set({ selectedFolderExplicit: false });
         }
@@ -193,6 +232,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       try {
         const content = await readNote(path);
         activateLoaded(set, path, content, nextTabs);
+        persistSession(get());
       } catch (e) {
         set({
           loading: false,
@@ -220,6 +260,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
 
       activateLoaded(set, path, content, nextTabs);
+      persistSession(get());
     } catch (e) {
       set({
         loading: false,
@@ -234,6 +275,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({
       tabs: tabs.map((t) => (t.path === path ? { ...t, preview: false } : t)),
     });
+    persistSession(get());
   },
 
   closeTab: async (path) => {
@@ -248,6 +290,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
     if (activePath !== path) {
       set({ tabs: nextTabs });
+      persistSession(get());
       return;
     }
 
@@ -259,6 +302,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         content: "",
         dirty: false,
       });
+      persistSession(get());
       return;
     }
 
@@ -266,6 +310,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     try {
       const content = await readNote(fallback.path);
       activateLoaded(set, fallback.path, content, nextTabs);
+      persistSession(get());
     } catch (e) {
       set({
         loading: false,
@@ -274,6 +319,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         dirty: false,
         error: e instanceof Error ? e.message : String(e),
       });
+      persistSession(get());
     }
   },
 
@@ -289,6 +335,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
     }
     set(patch);
+    if (patch.tabs) persistSession(get());
   },
 
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -426,6 +473,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
+      persistSession(get());
       await get().refreshTree();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -489,6 +537,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
+      persistSession(get());
       await get().refreshTree();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -544,6 +593,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       );
       set({ expandedPaths: nextExpanded });
       if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+      persistSession(get());
       await get().refreshTree();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });

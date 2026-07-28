@@ -35,6 +35,7 @@ import { createLayoutAgnosticKeymapExtension } from "./layoutAgnosticKeymap";
 import { NoteSlashSuggestionMenu } from "./NoteSlashSuggestionMenu";
 import { createImagePasteHandler } from "./pasteImages";
 import { noteEditorSchema } from "./schema";
+import { createSelectAtomBlockAfterDropExtension } from "./selectAtomBlockAfterDrop";
 import { getNoteSlashMenuItems } from "./slashMenuItems";
 import { insertDrawioEmbed } from "./drawio/slashItem";
 import {
@@ -152,6 +153,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
     () => createLayoutAgnosticKeymapExtension(() => editorRef.current),
     [],
   );
+  const selectAtomAfterDrop = useMemo(
+    () => createSelectAtomBlockAfterDropExtension(),
+    [],
+  );
 
   const editor = useCreateBlockNote(
     {
@@ -160,7 +165,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
       resolveFileUrl: (url) => resolveFileUrlRef.current(url),
       pasteHandler: (ctx) => pasteHandlerRef.current(ctx),
       _tiptapOptions: {
-        extensions: [layoutKeymap],
+        extensions: [layoutKeymap, selectAtomAfterDrop],
       },
     },
     [path],

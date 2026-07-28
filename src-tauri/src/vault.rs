@@ -1331,6 +1331,86 @@ pub fn absolute_path(path: String, state: State<VaultState>) -> Result<String, S
     Ok(full.to_string_lossy().to_string())
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    pub path: String,
+    pub line: usize,
+    pub snippet: String,
+}
+
+#[tauri::command]
+pub fn search_notes(
+    query: String,
+    state: State<VaultState>,
+) -> Result<Vec<SearchHit>, String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(vec![]);
+    }
+    let q_lower = q.to_lowercase();
+    let root = get_root(&state)?;
+    let mut hits: Vec<SearchHit> = Vec::new();
+    const MAX_FILES: usize = 40;
+    const MAX_HITS_PER_FILE: usize = 5;
+    const MAX_TOTAL: usize = 80;
+
+    let mut files_searched = 0usize;
+    for entry in WalkDir::new(&root)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            e.file_name()
+                .to_str()
+                .map(|n| !is_hidden(n))
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.ok())
+    {
+        if hits.len() >= MAX_TOTAL || files_searched >= MAX_FILES {
+            break;
+        }
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy();
+        if !is_markdown(&name) {
+            continue;
+        }
+        files_searched += 1;
+        let full = entry.path();
+        let rel = relative_to_root(&root, full);
+        let Ok(content) = fs::read_to_string(full) else {
+            continue;
+        };
+        let mut file_hits = 0usize;
+        for (idx, line) in content.lines().enumerate() {
+            if file_hits >= MAX_HITS_PER_FILE || hits.len() >= MAX_TOTAL {
+                break;
+            }
+            if line.to_lowercase().contains(&q_lower) {
+                let snippet = line.trim();
+                let snippet = if snippet.chars().count() > 200 {
+                    let truncated: String = snippet.chars().take(200).collect();
+                    format!("{truncated}…")
+                } else {
+                    snippet.to_string()
+                };
+                hits.push(SearchHit {
+                    path: rel.clone(),
+                    line: idx + 1,
+                    snippet,
+                });
+                file_hits += 1;
+            }
+        }
+    }
+
+    Ok(hits)
+}
+
 #[tauri::command]
 pub fn write_asset(
     note_path: String,

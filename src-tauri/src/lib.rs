@@ -1,3 +1,4 @@
+mod chat_history;
 mod git_sync;
 mod vault;
 
@@ -13,6 +14,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(VaultState::default())
         .manage(SyncRuntime::default())
         .invoke_handler(tauri::generate_handler![
@@ -31,6 +33,13 @@ pub fn run() {
             vault::get_vault_path,
             vault::absolute_path,
             vault::write_asset,
+            vault::search_notes,
+            chat_history::list_chat_threads,
+            chat_history::get_chat_thread,
+            chat_history::upsert_chat_thread,
+            chat_history::delete_chat_thread,
+            chat_history::set_active_chat_thread,
+            chat_history::set_open_chat_tabs,
             git_sync::sync_github_client_id,
             git_sync::sync_status,
             git_sync::sync_connect,

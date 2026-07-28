@@ -3,6 +3,7 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useRef, useState } from "react";
 import { usePrefsStore } from "../../store/prefsStore";
 import { scheduleDiagramPreview } from "../scheduleDiagramPreview";
+import { selectAtomBlockOnMouseDown } from "../selectAtomBlock";
 import { renderMermaidToSvg } from "./renderMermaid";
 
 export const DEFAULT_MERMAID_CODE = `flowchart TD
@@ -54,6 +55,7 @@ function MermaidBlockView(props: {
   block: { id: string; props: { code: string } };
   editor: {
     isEditable: boolean;
+    prosemirrorView?: import("prosemirror-view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: { code: string } },
@@ -78,7 +80,13 @@ function MermaidBlockView(props: {
   };
 
   return (
-    <div className="diagram-block" contentEditable={false}>
+    <div
+      className="diagram-block"
+      contentEditable={false}
+      onMouseDown={(event) =>
+        selectAtomBlockOnMouseDown(event, editor, block.id)
+      }
+    >
       <div className="diagram-block__toolbar">
         <span className="diagram-block__label">Mermaid</span>
         <div className="diagram-block__modes" role="tablist">

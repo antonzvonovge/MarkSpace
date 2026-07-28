@@ -1,7 +1,7 @@
 import type { PrefKey, Prefs } from "./types";
 import { DEFAULT_PREFS } from "./types";
 
-export type SettingCategory = "appearance" | "editor" | "sync";
+export type SettingCategory = "appearance" | "editor" | "ai" | "sync";
 
 export type SettingControl =
   | {
@@ -36,6 +36,7 @@ export type CategoryDescriptor = {
 export const CATEGORIES: CategoryDescriptor[] = [
   { id: "appearance", label: "Appearance", scope: "app" },
   { id: "editor", label: "Editor", scope: "app" },
+  { id: "ai", label: "AI", scope: "app", separatorBefore: true },
   { id: "sync", label: "Sync", scope: "vault", separatorBefore: true },
 ];
 
