@@ -107,8 +107,13 @@ function assertDrawioPath(path: string): string {
 function syncOpenEditor(path: string, content: string) {
   const state = useVaultStore.getState();
   if (state.activePath !== path) return;
-  useVaultStore.setState({ content, dirty: false });
-  state.markExternalWrite();
+  // Defer iframe/XML push so chat UI stays responsive during agent edits.
+  window.setTimeout(() => {
+    const latest = useVaultStore.getState();
+    if (latest.activePath !== path) return;
+    useVaultStore.setState({ content, dirty: false });
+    latest.markExternalWrite();
+  }, 0);
 }
 
 async function loadXml(path: string): Promise<string> {
@@ -122,6 +127,9 @@ async function saveXml(path: string, xml: string) {
   const p = assertDrawioPath(path);
   await writeNote(p, xml);
   syncOpenEditor(p, xml);
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
 }
 
 async function runMutate(path: string, input: MutateDiagramInput) {

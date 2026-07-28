@@ -49,6 +49,35 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+
+/* Cursor-like: fixed thin scrollbars (no thickness change on hover) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 65%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 html,
@@ -2104,26 +2133,6 @@ li.dnd-drop-target > .tree-row {
   min-width: 0;
   border-bottom: 0;
   background: transparent;
-  /* Cursor-like: thin scrollbar under the tabs */
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
-}
-
-.chat-tabbar::-webkit-scrollbar {
-  height: 6px;
-}
-
-.chat-tabbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chat-tabbar::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 40%, transparent);
-  border-radius: 3px;
-}
-
-.chat-tabbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted) 65%, transparent);
 }
 
 .chat-chrome-actions {

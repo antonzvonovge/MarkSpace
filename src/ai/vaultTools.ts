@@ -13,6 +13,13 @@ import { buildDrawioTools } from "./drawio/tools";
 import type { ChatMode } from "./types";
 import { buildWebTools } from "./webTools";
 
+/** Let the browser paint chat UI between heavy tool steps. */
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
+}
+
 function flattenPaths(node: TreeNode, out: string[] = []): string[] {
   if (!node.isDir && node.path) out.push(node.path);
   for (const child of node.children ?? []) flattenPaths(child, out);
@@ -30,6 +37,7 @@ export function buildVaultTools(mode: ChatMode) {
         const paths = flattenPaths(tree).filter(
           (p) => p.endsWith(".md") || p.endsWith(".drawio"),
         );
+        await yieldToUi();
         return { count: paths.length, paths: paths.slice(0, 500) };
       },
     }),
@@ -67,6 +75,7 @@ export function buildVaultTools(mode: ChatMode) {
       execute: async ({ path, start_line: startLine, end_line: endLine }) => {
         const content = await readNote(path);
         const lines = content.split("\n");
+        await yieldToUi();
         if (startLine != null || endLine != null) {
           const start = Math.max(1, startLine ?? 1);
           const end = Math.min(lines.length, endLine ?? lines.length);
@@ -198,6 +207,7 @@ export function buildVaultTools(mode: ChatMode) {
           : content.replace(oldString, newString);
         await writeNote(path, next);
         syncOpenEditor(path, next);
+        await yieldToUi();
         return {
           ok: true as const,
           path,
@@ -215,6 +225,7 @@ export function buildVaultTools(mode: ChatMode) {
       execute: async ({ path, content }) => {
         await writeNote(path, content);
         syncOpenEditor(path, content);
+        await yieldToUi();
         return { ok: true, path };
       },
     }),
@@ -235,8 +246,13 @@ export function buildVaultTools(mode: ChatMode) {
 function syncOpenEditor(path: string, content: string) {
   const state = useVaultStore.getState();
   if (state.activePath !== path) return;
-  useVaultStore.setState({ content, dirty: false });
-  state.markExternalWrite();
+  // Defer editor remount so chat can paint the tool chip first.
+  window.setTimeout(() => {
+    const latest = useVaultStore.getState();
+    if (latest.activePath !== path) return;
+    useVaultStore.setState({ content, dirty: false });
+    latest.markExternalWrite();
+  }, 0);
 }
 
 export function buildSystemPrompt(opts: {

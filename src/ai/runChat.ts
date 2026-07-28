@@ -4,6 +4,7 @@ import {
   convertToModelMessages,
   isReasoningUIPart,
   isTextUIPart,
+  isToolUIPart,
   stepCountIs,
   streamText,
   type UIMessage,
@@ -32,6 +33,46 @@ export type RunChatParams = {
 };
 
 type AssistantPart = UIMessage["parts"][number];
+
+/** Cap tool payloads in live UI state; full data stays in `parts` for the final message. */
+const UI_TOOL_STRING_CAP = 480;
+
+function slimJsonValue(value: unknown, depth = 0): unknown {
+  if (value == null) return value;
+  if (typeof value === "string") {
+    if (value.length <= UI_TOOL_STRING_CAP) return value;
+    return `${value.slice(0, UI_TOOL_STRING_CAP)}…[+${(
+      value.length - UI_TOOL_STRING_CAP
+    ).toLocaleString()} chars]`;
+  }
+  if (typeof value !== "object") return value;
+  if (depth > 5) return "…";
+  if (Array.isArray(value)) {
+    const head = value
+      .slice(0, 30)
+      .map((item) => slimJsonValue(item, depth + 1));
+    if (value.length > 30) head.push(`…+${value.length - 30} items`);
+    return head;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    out[key] = slimJsonValue(nested, depth + 1);
+  }
+  return out;
+}
+
+function slimToolPart(part: AssistantPart): AssistantPart {
+  if (!isToolUIPart(part)) return part;
+  const next = { ...part } as AssistantPart & {
+    input?: unknown;
+    output?: unknown;
+  };
+  if ("input" in part) next.input = slimJsonValue(part.input);
+  if ("output" in part) next.output = slimJsonValue(part.output);
+  return next;
+}
 
 export function formatAiError(error: unknown): string {
   if (APICallError.isInstance(error)) {
@@ -63,6 +104,8 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
   const parts: AssistantPart[] = [];
   const reasoningIndex = new Map<string, number>();
   const textIndex = new Map<string, number>();
+  /** Avoid re-slimming huge tool payloads on every text-delta frame. */
+  const slimToolByCallId = new Map<string, AssistantPart>();
 
   /** High-frequency text deltas coalesce to one UI update per animation frame. */
   let emitScheduled = false;
@@ -71,15 +114,40 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
   let reasoningPreviewTimer = 0;
   let reasoningPreviewPending: string | null = null;
 
+  const partsForLiveUi = (): AssistantPart[] =>
+    parts.map((part) => {
+      if (!isToolUIPart(part)) return part;
+      const callId =
+        "toolCallId" in part && typeof part.toolCallId === "string"
+          ? part.toolCallId
+          : "";
+      const state = "state" in part ? String(part.state) : "";
+      const cacheKey = `${callId}:${state}`;
+      const cached = slimToolByCallId.get(cacheKey);
+      if (cached) return cached;
+      const slimmed = slimToolPart(part);
+      // Drop older states for this call id.
+      for (const key of slimToolByCallId.keys()) {
+        if (key.startsWith(`${callId}:`)) slimToolByCallId.delete(key);
+      }
+      slimToolByCallId.set(cacheKey, slimmed);
+      return slimmed;
+    });
+
   const flush = () => {
     emitScheduled = false;
     if (emitRaf) {
       cancelAnimationFrame(emitRaf);
       emitRaf = 0;
     }
+    // Slim tool I/O in live UI updates — full payloads only in the final message.
     params.onMessages([
       ...inputMessages,
-      { id: assistantId, role: "assistant", parts: [...parts] },
+      {
+        id: assistantId,
+        role: "assistant",
+        parts: partsForLiveUi(),
+      },
     ]);
   };
 

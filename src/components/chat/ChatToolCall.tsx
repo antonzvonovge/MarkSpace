@@ -1,11 +1,29 @@
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { isToolUIPart, type UIMessage } from "ai";
 
 type Props = {
   part: UIMessage["parts"][number];
 };
 
-export function ChatToolCall({ part }: Props) {
+const DISPLAY_CAP = 4_000;
+
+function formatToolPayload(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value === "string") {
+    return value.length > DISPLAY_CAP
+      ? `${value.slice(0, DISPLAY_CAP)}\n…truncated (${value.length.toLocaleString()} chars)`
+      : value;
+  }
+  try {
+    const raw = JSON.stringify(value, null, 2);
+    if (raw.length <= DISPLAY_CAP) return raw;
+    return `${raw.slice(0, DISPLAY_CAP)}\n…truncated (${raw.length.toLocaleString()} chars)`;
+  } catch {
+    return String(value);
+  }
+}
+
+function ChatToolCallInner({ part }: Props) {
   const [open, setOpen] = useState(false);
   if (!isToolUIPart(part)) return null;
 
@@ -25,16 +43,21 @@ export function ChatToolCall({ part }: Props) {
   const done = state === "output-available" || state === "output-error";
   const err = state === "output-error";
 
-  const input =
-    "input" in part && part.input !== undefined
-      ? JSON.stringify(part.input, null, 2)
-      : "";
-  const output =
-    "output" in part && part.output !== undefined
-      ? JSON.stringify(part.output, null, 2)
-      : "errorText" in part && part.errorText
-        ? String(part.errorText)
-        : "";
+  // Only serialize when expanded — pretty-printing 80KB+ payloads every render freezes UI.
+  const input = useMemo(() => {
+    if (!open) return "";
+    if (!("input" in part) || part.input === undefined) return "";
+    return formatToolPayload(part.input);
+  }, [open, part]);
+
+  const output = useMemo(() => {
+    if (!open) return "";
+    if ("output" in part && part.output !== undefined) {
+      return formatToolPayload(part.output);
+    }
+    if ("errorText" in part && part.errorText) return String(part.errorText);
+    return "";
+  }, [open, part]);
 
   return (
     <div className={`chat-tool-call ${err ? "is-error" : ""}`}>
@@ -68,3 +91,5 @@ export function ChatToolCall({ part }: Props) {
     </div>
   );
 }
+
+export const ChatToolCall = memo(ChatToolCallInner);
