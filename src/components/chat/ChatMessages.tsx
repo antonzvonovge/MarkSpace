@@ -1,7 +1,9 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  isFileUIPart,
   isReasoningUIPart,
   isToolUIPart,
+  type FileUIPart,
   type UIMessage,
 } from "ai";
 import { useChatStore } from "../../store/chatStore";
@@ -19,6 +21,26 @@ function textFrom(message: UIMessage): string {
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
     .map((p) => p.text)
     .join("");
+}
+
+function filePartsFrom(message: UIMessage): FileUIPart[] {
+  return (message.parts ?? []).filter(isFileUIPart);
+}
+
+/** Strip injected "Attached file:" blocks from bubble text for cleaner UI. */
+function displayUserText(message: UIMessage): string {
+  const raw = textFrom(message).trim();
+  if (!raw) return "";
+  // Keep user-authored lines; drop large fenced attachment dumps for display.
+  const withoutDocs = raw
+    .replace(
+      /Attached file: [^\n]+\n```[\s\S]*?```/g,
+      "",
+    )
+    .replace(/\(see attached image\)/g, "")
+    .replace(/\[Attachment [^\]]+\]/g, "")
+    .trim();
+  return withoutDocs;
 }
 
 function assistantHasVisibleContent(message: UIMessage | undefined): boolean {
@@ -43,7 +65,9 @@ function isStickyUserCandidate(message: UIMessage): boolean {
     metadata?: { kind?: string };
   }).metadata;
   if (meta?.kind === "question-answer") return false;
-  return textFrom(message).trim().length > 0;
+  return (
+    textFrom(message).trim().length > 0 || filePartsFrom(message).length > 0
+  );
 }
 
 function lastStickyUserIndex(messages: UIMessage[]): number {
@@ -96,6 +120,18 @@ const UserMessageRow = memo(function UserMessageRow({
   sticky,
   stickyRef,
 }: UserRowProps) {
+  const files = filePartsFrom(message);
+  const text = displayUserText(message);
+  const attachedDocNames = (message.parts ?? [])
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .flatMap((p) => {
+      const names: string[] = [];
+      const re = /Attached file: ([^\n]+)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(p.text))) names.push(m[1]!.trim());
+      return names;
+    });
+
   return (
     <div
       ref={sticky ? stickyRef : undefined}
@@ -103,7 +139,34 @@ const UserMessageRow = memo(function UserMessageRow({
         sticky ? "chat-msg chat-msg-user is-sticky" : "chat-msg chat-msg-user"
       }
     >
-      <div className="chat-bubble">{textFrom(message)}</div>
+      {(files.length > 0 || attachedDocNames.length > 0) && (
+        <div className="chat-msg-attachments">
+          {files.map((file, i) => (
+            <div key={`${message.id}-f-${i}`} className="chat-msg-attach">
+              {file.mediaType.startsWith("image/") ? (
+                <img
+                  className="chat-msg-attach-img"
+                  src={file.url}
+                  alt={file.filename ?? "attachment"}
+                />
+              ) : (
+                <span className="chat-msg-attach-file">
+                  {file.filename ?? "file"}
+                </span>
+              )}
+            </div>
+          ))}
+          {attachedDocNames.map((name) => (
+            <div key={`${message.id}-d-${name}`} className="chat-msg-attach">
+              <span className="chat-msg-attach-file">{name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {text ? <div className="chat-bubble">{text}</div> : null}
+      {!text && files.length === 0 && attachedDocNames.length === 0 ? (
+        <div className="chat-bubble">{textFrom(message)}</div>
+      ) : null}
     </div>
   );
 });

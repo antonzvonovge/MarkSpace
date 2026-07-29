@@ -32,6 +32,20 @@ function SyncIcon({ spinning }: { spinning?: boolean }) {
   );
 }
 
+function relativeSyncAge(iso: string | null, nowMs: number): string | null {
+  if (!iso) return null;
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return null;
+  const diff = Math.max(0, nowMs - ts);
+  const m = Math.floor(diff / 60_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
 function syncLabel(opts: {
   vaultPath: string | null;
   connected: boolean;
@@ -40,7 +54,8 @@ function syncLabel(opts: {
   dirty: boolean;
   ahead: number;
   behind: number;
-  autoSyncMinutes: number;
+  lastSyncAt: string | null;
+  nowMs: number;
 }): string {
   const {
     vaultPath,
@@ -50,18 +65,23 @@ function syncLabel(opts: {
     dirty,
     ahead,
     behind,
-    autoSyncMinutes,
+    lastSyncAt,
+    nowMs,
   } = opts;
   if (!vaultPath) return "No vault";
   if (busy) return "Syncing…";
   if (!connected) return "Sync off";
   if (conflicted) return "Conflicts";
+  const age = relativeSyncAge(lastSyncAt, nowMs);
   const parts: string[] = [];
   if (ahead) parts.push(`↑${ahead}`);
   if (behind) parts.push(`↓${behind}`);
   if (dirty) parts.push("•");
-  if (parts.length) return parts.join(" ");
-  return autoSyncMinutes > 0 ? `Synced · auto ${autoSyncMinutes}m` : "Synced";
+  if (parts.length) {
+    return age ? `${parts.join(" ")} · ${age}` : parts.join(" ");
+  }
+  if (!lastSyncAt) return "Never synced";
+  return age ? `Synced · ${age}` : "Synced";
 }
 
 export function StatusBar() {
@@ -74,12 +94,14 @@ export function StatusBar() {
   const status = useSyncStore((s) => s.status);
   const busy = useSyncStore((s) => s.busy);
   const autoSyncMinutes = useSyncStore((s) => s.autoSyncMinutes);
+  const lastSyncAt = useSyncStore((s) => s.lastSyncAt);
   const hydrate = useSyncStore((s) => s.hydrate);
   const hydrated = useSyncStore((s) => s.hydrated);
   const refreshStatus = useSyncStore((s) => s.refreshStatus);
   const runSync = useSyncStore((s) => s.runSync);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -90,6 +112,13 @@ export function StatusBar() {
     if (!vaultPath) return;
     void refreshStatus();
   }, [vaultPath, refreshStatus]);
+
+  useEffect(() => {
+    if (!lastSyncAt || !status?.connected) return;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [lastSyncAt, status?.connected]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -120,8 +149,19 @@ export function StatusBar() {
     dirty,
     ahead,
     behind,
-    autoSyncMinutes,
+    lastSyncAt,
+    nowMs,
   });
+  const titleParts = ["GitHub sync"];
+  if (autoSyncMinutes > 0) titleParts.push(`auto every ${autoSyncMinutes}m`);
+  if (lastSyncAt) {
+    try {
+      titleParts.push(`last ${new Date(lastSyncAt).toLocaleString()}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  const title = titleParts.join(" · ");
 
   const tone = conflicted
     ? "is-conflict"
@@ -162,7 +202,7 @@ export function StatusBar() {
               ? `status-bar-item is-open ${tone}`.trim()
               : `status-bar-item ${tone}`.trim()
           }
-          title="GitHub sync"
+          title={title}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           disabled={busy}

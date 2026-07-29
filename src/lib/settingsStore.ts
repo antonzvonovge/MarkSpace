@@ -35,6 +35,10 @@ function mergePrefs(raw: LegacyPrefs | null | undefined): Prefs {
 
   return {
     theme: raw.theme === "dark" || raw.theme === "light" ? raw.theme : DEFAULT_PREFS.theme,
+    uiDensity:
+      raw.uiDensity === "compact" || raw.uiDensity === "comfortable"
+        ? raw.uiDensity
+        : DEFAULT_PREFS.uiDensity,
     uiFontSize:
       typeof raw.uiFontSize === "number" && Number.isFinite(raw.uiFontSize)
         ? Math.min(20, Math.max(11, Math.round(raw.uiFontSize)))

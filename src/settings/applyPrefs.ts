@@ -12,6 +12,7 @@ export function editorFontStack(family: EditorFontFamilyId): string {
 export function applyPrefsToDom(prefs: Prefs): void {
   const root = document.documentElement;
   root.dataset.theme = prefs.theme;
+  root.dataset.density = prefs.uiDensity;
   root.style.fontSize = `${prefs.uiFontSize}px`;
   root.style.setProperty("--live-font-size", `${prefs.liveFontSize}px`);
   root.style.setProperty("--font-live", editorFontStack(prefs.liveFontFamily));

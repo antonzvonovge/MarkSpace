@@ -61,6 +61,20 @@ export const SETTINGS_REGISTRY: SettingDescriptor[] = [
     default: DEFAULT_PREFS.theme,
   },
   {
+    id: "uiDensity",
+    category: "appearance",
+    label: "Compact Mode",
+    description: "Sidebar file tree density. Compact uses thin Cursor-like rows.",
+    control: {
+      type: "enum",
+      options: [
+        { value: "comfortable", label: "Comfortable" },
+        { value: "compact", label: "Compact" },
+      ],
+    },
+    default: DEFAULT_PREFS.uiDensity,
+  },
+  {
     id: "uiFontSize",
     category: "appearance",
     label: "UI Font Size",

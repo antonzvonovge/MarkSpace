@@ -1,4 +1,10 @@
 import type { UIMessage } from "ai";
+import {
+  estimateAttachmentTokens,
+  IMAGE_TOKEN_ESTIMATE,
+  isFilePart,
+  type ChatAttachment,
+} from "./chatAttachments";
 
 /** Rough token estimate: ~4 chars per token + fixed tool schema overhead. */
 export function estimateTokensFromText(text: string): number {
@@ -9,6 +15,7 @@ export function estimateTokensFromText(text: string): number {
 function partText(part: UIMessage["parts"][number]): string {
   if (part.type === "text") return part.text;
   if (part.type === "reasoning") return part.text ?? "";
+  if (isFilePart(part)) return "";
   if (typeof part === "object" && part !== null && "type" in part) {
     const p = part as Record<string, unknown>;
     if (typeof p.input === "object" || typeof p.output === "object") {
@@ -28,6 +35,10 @@ export function estimateMessagesTokens(messages: UIMessage[]): number {
   for (const msg of messages) {
     total += 4; // role overhead
     for (const part of msg.parts ?? []) {
+      if (isFilePart(part)) {
+        total += IMAGE_TOKEN_ESTIMATE;
+        continue;
+      }
       total += estimateTokensFromText(partText(part));
     }
   }
@@ -38,6 +49,7 @@ export function estimateContextTokens(opts: {
   system: string;
   messages: UIMessage[];
   draft: string;
+  draftAttachments?: ChatAttachment[];
   toolOverhead?: number;
 }): number {
   const toolOverhead = opts.toolOverhead ?? 900;
@@ -45,6 +57,7 @@ export function estimateContextTokens(opts: {
     estimateTokensFromText(opts.system) +
     estimateMessagesTokens(opts.messages) +
     estimateTokensFromText(opts.draft) +
+    estimateAttachmentTokens(opts.draftAttachments ?? []) +
     toolOverhead
   );
 }

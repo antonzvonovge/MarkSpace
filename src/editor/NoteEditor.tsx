@@ -10,7 +10,16 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  applyImagePreviewWidths,
+  collectImageSizeRefs,
+  restoreImagePreviewWidthsFromAlt,
+} from "../lib/imageMarkdown";
 import { normalizeMarkdown } from "../lib/normalizeMarkdown";
+import {
+  applyColoredTableHtml,
+  projectColoredTables,
+} from "../lib/tableMarkdown";
 import {
   isExternalHref,
   isWikiHref,
@@ -164,6 +173,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const editor = useCreateBlockNote(
     {
       schema: noteEditorSchema,
+      tables: {
+        cellBackgroundColor: true,
+        cellTextColor: true,
+      },
       uploadFile: (file, blockId) => uploadFileRef.current(file, blockId),
       resolveFileUrl: (url) => resolveFileUrlRef.current(url),
       pasteHandler: (ctx) => pasteHandlerRef.current(ctx),
@@ -177,7 +190,16 @@ export function NoteEditor({ path, content, onChange }: Props) {
 
   useEditorChange((ed) => {
     if (applyingRef.current) return;
-    const md = ed.blocksToMarkdownLossy();
+    let md = applyImagePreviewWidths(
+      ed.blocksToMarkdownLossy(),
+      collectImageSizeRefs(ed.document),
+    );
+    md = applyColoredTableHtml(
+      md,
+      projectColoredTables(ed.document, (blocks) =>
+        ed.blocksToHTMLLossy(blocks as typeof ed.document),
+      ),
+    );
     const wikiMd = markdownToWiki(md);
     lastExternalRef.current = wikiMd;
     onChange(wikiMd);
@@ -194,8 +216,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
     if (!pathChanged && !externalChange) return;
 
     applyingRef.current = true;
-    const blocks = editor.tryParseMarkdownToBlocks(
-      wikiToMarkdown(normalizeMarkdown(content)),
+    const blocks = restoreImagePreviewWidthsFromAlt(
+      editor.tryParseMarkdownToBlocks(
+        wikiToMarkdown(normalizeMarkdown(content)),
+      ),
     );
     editor.replaceBlocks(editor.document, blocks);
     lastPathRef.current = path;

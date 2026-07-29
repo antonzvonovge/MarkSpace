@@ -1,5 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { FileTree } from "./FileTree";
+import { useRef } from "react";
+import brandLogo from "../assets/m.png";
+import { FileTree, type FileTreeHandle } from "./FileTree";
 import { loadLastVault, saveLastVault } from "../lib/settingsStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
@@ -32,6 +34,7 @@ export function Sidebar() {
   const settingsOpen = usePrefsStore((s) => s.settingsOpen);
   const openSettings = usePrefsStore((s) => s.openSettings);
   const closeSettings = usePrefsStore((s) => s.closeSettings);
+  const fileTreeRef = useRef<FileTreeHandle>(null);
 
   const pickVault = async () => {
     const selected = await open({
@@ -46,13 +49,27 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="sidebar">
+    <aside
+      className="sidebar"
+      onContextMenu={(e) => {
+        const el = e.target as HTMLElement;
+        if (el.closest(".tree-row")) return;
+        if (el.closest(".sidebar-footer")) return;
+        if (el.closest("button")) return;
+        if (el.closest(".tree-context-menu")) return;
+        e.preventDefault();
+        fileTreeRef.current?.openCreateMenu(e.clientX, e.clientY);
+      }}
+    >
       <div className="sidebar-top">
         <div className="brand-block">
-          <div className="brand">MarkSpace</div>
+          <div className="brand">
+            <img className="brand-logo" src={brandLogo} alt="" />
+            MarkSpace
+          </div>
         </div>
 
-        <FileTree />
+        <FileTree ref={fileTreeRef} />
       </div>
 
       <footer className="sidebar-footer">

@@ -1,13 +1,16 @@
 import { Extension } from "@tiptap/core";
 import { Plugin } from "prosemirror-state";
 import type { BlockNoteEditor } from "@blocknote/core";
-import { pasteImagesFromSystemClipboard } from "./pasteImages";
+import { pasteImagesFromSystemClipboard, readTextFromSystemClipboard } from "./pasteImages";
 
 /**
  * ProseMirror/TipTap bind Mod-z to event.key, which becomes "я" on a Russian
  * layout. Handle physical keys via event.code so Ctrl/Cmd shortcuts work
- * regardless of input language. Also force-image paste on Ctrl+V when the
- * DOM paste event doesn't carry image files (common in Tauri/Linux).
+ * regardless of input language.
+ *
+ * For Ctrl+V on non-Latin layouts: take over paste — try system clipboard
+ * images (Tauri + navigator), then fall back to clipboard text so we don't
+ * swallow normal paste entirely when there is no image.
  */
 export function createLayoutAgnosticKeymapExtension(
   getEditor: () => BlockNoteEditor<any, any, any> | null,
@@ -29,15 +32,16 @@ export function createLayoutAgnosticKeymapExtension(
               const code = event.code;
               const latin = /^[a-z]$/i.test(event.key);
 
-              // Image paste via physical V when layout is non-Latin (paste
-              // event may not fire). Latin layouts keep the native paste path.
               if (code === "KeyV" && !event.shiftKey) {
-                if (!latin) {
-                  event.preventDefault();
-                  void pasteImagesFromSystemClipboard(editor);
-                  return true;
-                }
-                return false;
+                if (latin) return false;
+
+                event.preventDefault();
+                void (async () => {
+                  if (await pasteImagesFromSystemClipboard(editor)) return;
+                  const text = await readTextFromSystemClipboard();
+                  if (text) editor.pasteText(text);
+                })();
+                return true;
               }
 
               if (latin) return false;

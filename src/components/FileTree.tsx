@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -8,7 +8,9 @@ import {
   type DropOptions,
   type TreeMethods,
 } from "@minoru/react-dnd-treeview";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { TreeNode } from "../lib/vaultApi";
+import { absolutePath, parentPath } from "../lib/vaultApi";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { useVaultStore } from "../store/vaultStore";
 import { PromptDialog, ConfirmDialog } from "./AppDialog";
@@ -18,6 +20,11 @@ import {
   DRAWIO_TREE_MIME,
   endDrawioTreeDrag,
 } from "../editor/drawio/treeDrag";
+import {
+  beginVaultTreeDrag,
+  endVaultTreeDrag,
+  VAULT_TREE_MIME,
+} from "../lib/vaultTreeDrag";
 
 const TREE_ROOT = "__tree_root__";
 const VAULT_ID = "__vault__";
@@ -41,6 +48,7 @@ function DrawioTreeDragBridge({
 type NodeData = {
   path: string;
   isDir: boolean;
+  hasChildren: boolean;
 };
 
 type PromptKind = "note" | "folder" | "drawio";
@@ -51,6 +59,12 @@ type ContextMenuState = {
   path: string;
   name: string;
   isDir: boolean;
+  /** Empty sidebar / background — create only, no rename/delete. */
+  createOnly?: boolean;
+};
+
+export type FileTreeHandle = {
+  openCreateMenu: (x: number, y: number) => void;
 };
 
 type DeleteTarget = {
@@ -163,6 +177,7 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
 
   const walk = (node: TreeNode, parentId: string) => {
     const id = toNodeId(node.path);
+    const children = node.children ?? [];
     nodes.push({
       id,
       parent: parentId,
@@ -170,10 +185,14 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
         ? node.name
         : node.name.replace(/\.md$/i, "").replace(/\.drawio$/i, ""),
       droppable: node.isDir,
-      data: { path: node.path, isDir: node.isDir },
+      data: {
+        path: node.path,
+        isDir: node.isDir,
+        hasChildren: node.isDir && children.length > 0,
+      },
     });
     if (node.isDir) {
-      for (const child of node.children ?? []) {
+      for (const child of children) {
         walk(child, id);
       }
     }
@@ -338,18 +357,91 @@ function DiagramIcon() {
   );
 }
 
+function RenameIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M9.5 3.25 12.75 6.5 6 13.25H2.75V10l6.75-6.75Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.25 4.5 11.5 7.75"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.5 4.5h9M6.25 4.5V3.25h3.5V4.5M5 4.5l.5 8.25h5L11 4.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function RevealIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 5.25V12a1.25 1.25 0 0 0 1.25 1.25h8.5A1.25 1.25 0 0 0 13.5 12V5.75"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      <path
+        d="M2.5 5.5 4.1 3.4A1 1 0 0 1 4.9 3h2.35l1.1 1.5H13a.75.75 0 0 1 .75.75V5.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.25 8.25 11.5 10.5 9.25 12.75M11.25 10.5H6.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+async function revealPathInExplorer(relPath: string) {
+  const abs = await absolutePath(relPath);
+  await revealItemInDir(abs);
+}
+
 function TreeContextMenu({
   menu,
   onClose,
+  onNewNote,
+  onNewDiagram,
+  onNewFolder,
   onRename,
   onDelete,
+  onReveal,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
+  onNewNote: () => void;
+  onNewDiagram: () => void;
+  onNewFolder: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onReveal: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const showEditActions = !menu.createOnly && menu.path !== "";
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -369,8 +461,8 @@ function TreeContextMenu({
     };
   }, [onClose]);
 
-  const left = Math.min(menu.x, window.innerWidth - 180);
-  const top = Math.min(menu.y, window.innerHeight - 90);
+  const left = Math.min(menu.x, window.innerWidth - 280);
+  const top = Math.min(menu.y, window.innerHeight - 280);
 
   return createPortal(
     <div
@@ -385,22 +477,78 @@ function TreeContextMenu({
         className="tree-context-item"
         onClick={() => {
           onClose();
-          onRename();
+          onNewNote();
         }}
       >
-        Переименовать
+        <PlusIcon />
+        <span>New note</span>
       </button>
       <button
         type="button"
         role="menuitem"
-        className="tree-context-item is-danger"
+        className="tree-context-item"
         onClick={() => {
           onClose();
-          onDelete();
+          onNewDiagram();
         }}
       >
-        Удалить
+        <DiagramIcon />
+        <span>New diagram</span>
       </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        onClick={() => {
+          onClose();
+          onNewFolder();
+        }}
+      >
+        <CollectionPlusIcon />
+        <span>New folder</span>
+      </button>
+      <div className="tree-context-sep" role="separator" />
+      <button
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        onClick={() => {
+          onClose();
+          onReveal();
+        }}
+      >
+        <RevealIcon />
+        <span>Reveal in file manager</span>
+      </button>
+      {showEditActions ? (
+        <>
+          <div className="tree-context-sep" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onRename();
+            }}
+          >
+            <RenameIcon />
+            <span>Rename</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item is-danger"
+            onClick={() => {
+              onClose();
+              onDelete();
+            }}
+          >
+            <TrashIcon />
+            <span>Delete</span>
+          </button>
+        </>
+      ) : null}
     </div>,
     document.body,
   );
@@ -463,7 +611,7 @@ function InlineRenameInput({
   );
 }
 
-export function FileTree() {
+export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref) {
   const tree = useVaultStore((s) => s.tree);
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
@@ -488,6 +636,20 @@ export function FileTree() {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  useImperativeHandle(ref, () => ({
+    openCreateMenu: (x, y) => {
+      if (!useVaultStore.getState().vaultPath) return;
+      setContextMenu({
+        x,
+        y,
+        path: useVaultStore.getState().selectedFolderPath,
+        name: "",
+        isDir: true,
+        createOnly: true,
+      });
+    },
+  }));
+
   // Scope HTML5Backend to the sidebar so it does not steal BlockNote block drag.
   // Prefer HTML5Backend alone: MultiBackend+TouchBackend breaks mouse DnD on
   // Windows WebView2 (especially with nested interactive controls).
@@ -496,23 +658,30 @@ export function FileTree() {
     [dndRoot],
   );
 
-  // Mirror .drawio drags into dataTransfer so the editor (outside the DnD root)
-  // can accept native drops for embedding.
+  // Mirror vault file drags into dataTransfer so panes outside the DnD root
+  // (chat composer, note editor for .drawio) can accept native drops.
   useEffect(() => {
     if (!dndRoot) return;
     const onDragStart = (event: DragEvent) => {
       // dragstart target is the draggable <li>, not the inner row — look up and down.
       const target = event.target as HTMLElement | null;
-      const el = (target?.closest?.("[data-drawio-path]") ??
-        target?.querySelector?.("[data-drawio-path]")) as HTMLElement | null;
-      const path = el?.dataset.drawioPath;
+      const el = (target?.closest?.("[data-vault-path]") ??
+        target?.querySelector?.("[data-vault-path]")) as HTMLElement | null;
+      const path = el?.dataset.vaultPath;
       if (!path || !event.dataTransfer) return;
-      event.dataTransfer.setData(DRAWIO_TREE_MIME, path);
+      event.dataTransfer.setData(VAULT_TREE_MIME, path);
       event.dataTransfer.setData("text/plain", path);
       event.dataTransfer.effectAllowed = "copyMove";
-      beginDrawioTreeDrag(path);
+      beginVaultTreeDrag(path);
+      if (path.toLowerCase().endsWith(".drawio")) {
+        event.dataTransfer.setData(DRAWIO_TREE_MIME, path);
+        beginDrawioTreeDrag(path);
+      }
     };
-    const onDragEnd = () => endDrawioTreeDrag();
+    const onDragEnd = () => {
+      endVaultTreeDrag();
+      endDrawioTreeDrag();
+    };
 
     dndRoot.addEventListener("dragstart", onDragStart, true);
     dndRoot.addEventListener("dragend", onDragEnd, true);
@@ -609,6 +778,24 @@ export function FileTree() {
         <TreeContextMenu
           menu={contextMenu}
           onClose={() => setContextMenu(null)}
+          onNewNote={() => {
+            selectFolder(
+              contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
+            );
+            setPromptKind("note");
+          }}
+          onNewDiagram={() => {
+            selectFolder(
+              contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
+            );
+            setPromptKind("drawio");
+          }}
+          onNewFolder={() => {
+            selectFolder(
+              contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
+            );
+            setPromptKind("folder");
+          }}
           onRename={() => setRenamingPath(contextMenu.path)}
           onDelete={() =>
             setDeleteTarget({
@@ -617,6 +804,9 @@ export function FileTree() {
               isDir: contextMenu.isDir,
             })
           }
+          onReveal={() => {
+            void revealPathInExplorer(contextMenu.path);
+          }}
         />
       ) : null}
 
@@ -624,17 +814,17 @@ export function FileTree() {
         open={deleteTarget !== null}
         title={
           deleteTarget?.isDir
-            ? "Удалить папку"
+            ? "Delete folder"
             : deleteTarget?.path.endsWith(".drawio")
-              ? "Удалить диаграмму"
-              : "Удалить заметку"
+              ? "Delete diagram"
+              : "Delete note"
         }
         description={
           deleteTarget?.isDir
-            ? `Удалить «${deleteTarget.name}» и всё её содержимое? Это действие нельзя отменить.`
-            : `Удалить «${deleteTarget?.name ?? ""}»? Это действие нельзя отменить.`
+            ? `Delete “${deleteTarget.name}” and all of its contents? This cannot be undone.`
+            : `Delete “${deleteTarget?.name ?? ""}”? This cannot be undone.`
         }
-        confirmLabel="Удалить"
+        confirmLabel="Delete"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
           const target = deleteTarget;
@@ -708,6 +898,7 @@ export function FileTree() {
               render={(node, { depth, isOpen, onToggle, isDropTarget, isDragging }) => {
                 const path = node.data?.path ?? toStorePath(node.id);
                 const isDir = Boolean(node.droppable);
+                const hasChildren = Boolean(node.data?.hasChildren);
                 const isVault = node.id === VAULT_ID;
                 const isDrawio =
                   !isDir && path.toLowerCase().endsWith(".drawio");
@@ -724,7 +915,7 @@ export function FileTree() {
                   if (renaming) return;
                   if (isDir) {
                     selectFolder(path);
-                    if (!isVault) onToggle();
+                    if (!isVault && hasChildren) onToggle();
                     return;
                   }
                   void openNote(path, { preview: true });
@@ -743,7 +934,11 @@ export function FileTree() {
                     ]
                       .filter(Boolean)
                       .join(" ")}
-                    style={{ paddingLeft: 10 + depth * 14, paddingRight: 10 }}
+                    style={{
+                      paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
+                      paddingRight: "var(--tree-pad-x)",
+                    }}
+                    data-vault-path={isDir ? undefined : path}
                     data-drawio-path={isDrawio ? path : undefined}
                     onClick={handleRowClick}
                     onDoubleClick={() => {
@@ -751,7 +946,6 @@ export function FileTree() {
                       void openNote(path, { preview: false });
                     }}
                     onContextMenu={(e) => {
-                      if (isVault) return;
                       e.preventDefault();
                       e.stopPropagation();
                       setContextMenu({
@@ -771,22 +965,41 @@ export function FileTree() {
                     />
                     {isDir ? (
                       <span
-                        role="button"
-                        tabIndex={0}
-                        className="tree-chevron-btn"
-                        aria-label={isOpen ? "Collapse" : "Expand"}
-                        aria-expanded={isOpen}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggle();
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onToggle();
-                          }
-                        }}
+                        role={hasChildren ? "button" : undefined}
+                        tabIndex={hasChildren ? 0 : undefined}
+                        className={
+                          hasChildren
+                            ? "tree-chevron-btn"
+                            : "tree-chevron-btn is-empty"
+                        }
+                        aria-hidden={hasChildren ? undefined : true}
+                        aria-label={
+                          hasChildren
+                            ? isOpen
+                              ? "Collapse"
+                              : "Expand"
+                            : undefined
+                        }
+                        aria-expanded={hasChildren ? isOpen : undefined}
+                        onClick={
+                          hasChildren
+                            ? (e) => {
+                                e.stopPropagation();
+                                onToggle();
+                              }
+                            : undefined
+                        }
+                        onKeyDown={
+                          hasChildren
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  onToggle();
+                                }
+                              }
+                            : undefined
+                        }
                       >
                         <ChevronIcon open={isOpen} />
                       </span>
@@ -846,4 +1059,4 @@ export function FileTree() {
       </div>
     </div>
   );
-}
+});

@@ -1,17 +1,31 @@
-import { tool } from "ai";
+import { tool, type UIMessage } from "ai";
 import { z } from "zod";
 import {
   createNote,
   listTree,
   readNote,
   searchNotes,
+  writeAsset,
   writeNote,
   type TreeNode,
 } from "../lib/vaultApi";
 import { useVaultStore } from "../store/vaultStore";
+import {
+  dataUrlToBytes,
+  findAttachmentFilePart,
+} from "./chatAttachments";
 import { buildDrawioTools } from "./drawio/tools";
 import type { ChatMode } from "./types";
 import { buildWebTools } from "./webTools";
+
+const MAX_WRITE_ASSET_BYTES = 10 * 1024 * 1024;
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 /** Let the browser paint chat UI between heavy tool steps. */
 function yieldToUi(): Promise<void> {
@@ -26,7 +40,12 @@ function flattenPaths(node: TreeNode, out: string[] = []): string[] {
   return out;
 }
 
-export function buildVaultTools(mode: ChatMode) {
+export function buildVaultTools(
+  mode: ChatMode,
+  opts?: { getMessages?: () => UIMessage[] },
+) {
+  const getMessages = opts?.getMessages ?? (() => [] as UIMessage[]);
+
   const readTools = {
     list_notes: tool({
       description:
@@ -242,6 +261,118 @@ export function buildVaultTools(mode: ChatMode) {
         return { ok: true, path: created };
       },
     }),
+    save_attachment: tool({
+      description:
+        "Save an image the user attached in chat into the note's sibling .assets/ folder. Returns a relative url like .assets/name.png — insert into markdown as ![alt](.assets/name.png) via edit_note (one blank line around the image).",
+      inputSchema: z.object({
+        note_path: z
+          .string()
+          .describe("Vault-relative note path that owns the .assets folder"),
+        attachment_name: z
+          .string()
+          .optional()
+          .describe("Filename of the chat attachment (preferred)"),
+        attachment_index: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe("1-based index among user image attachments in this thread"),
+        file_name: z
+          .string()
+          .optional()
+          .describe("Optional destination filename inside .assets/"),
+      }),
+      execute: async ({
+        note_path: notePath,
+        attachment_name: attachmentName,
+        attachment_index: attachmentIndex,
+        file_name: fileName,
+      }) => {
+        const part = findAttachmentFilePart(getMessages(), {
+          attachment_name: attachmentName,
+          attachment_index: attachmentIndex,
+        });
+        if (!part) {
+          return {
+            ok: false as const,
+            error:
+              "No matching chat image attachment found. Ask the user to attach an image, or pass attachment_name / attachment_index.",
+          };
+        }
+        if (!part.mediaType.startsWith("image/")) {
+          return {
+            ok: false as const,
+            error: `Attachment is not an image (${part.mediaType})`,
+          };
+        }
+        try {
+          const bytes = dataUrlToBytes(part.url);
+          if (bytes.byteLength > MAX_WRITE_ASSET_BYTES) {
+            return {
+              ok: false as const,
+              error: `Attachment too large (max ${MAX_WRITE_ASSET_BYTES} bytes)`,
+            };
+          }
+          const destName =
+            fileName?.trim() || part.filename?.trim() || "image.png";
+          const url = await writeAsset(notePath, destName, bytes);
+          await yieldToUi();
+          return {
+            ok: true as const,
+            note_path: notePath,
+            url,
+            markdown: `![${destName}](${url})`,
+          };
+        } catch (e) {
+          return {
+            ok: false as const,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+      },
+    }),
+    write_asset: tool({
+      description:
+        "Write raw image bytes (base64) into a note's sibling .assets/ folder. Prefer save_attachment for chat images. Returns .assets/… url for markdown ![alt](.assets/…).",
+      inputSchema: z.object({
+        note_path: z.string().describe("Vault-relative note path"),
+        file_name: z.string().describe("Destination filename, e.g. shot.png"),
+        data_base64: z
+          .string()
+          .min(1)
+          .describe("Raw base64 image bytes (no data: URL prefix)"),
+      }),
+      execute: async ({
+        note_path: notePath,
+        file_name: fileName,
+        data_base64: dataBase64,
+      }) => {
+        try {
+          const cleaned = dataBase64.replace(/^data:[^;]+;base64,/, "");
+          const bytes = base64ToBytes(cleaned);
+          if (bytes.byteLength > MAX_WRITE_ASSET_BYTES) {
+            return {
+              ok: false as const,
+              error: `Payload too large (max ${MAX_WRITE_ASSET_BYTES} bytes)`,
+            };
+          }
+          const url = await writeAsset(notePath, fileName, bytes);
+          await yieldToUi();
+          return {
+            ok: true as const,
+            note_path: notePath,
+            url,
+            markdown: `![${fileName}](${url})`,
+          };
+        } catch (e) {
+          return {
+            ok: false as const,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+      },
+    }),
   };
 }
 
@@ -280,6 +411,7 @@ export function buildSystemPrompt(opts: {
       "When reading long notes: use read_note/get_active_note with start_line and end_line instead of loading the whole file.",
       "Preserve existing Markdown structure; keep one empty line between paragraphs in any text you insert or rewrite.",
       "For .drawio files: use mutate_diagram for batch edits (never many parallel single updates — they race). Use temp_id on new nodes and reference them from add_edges in the same call. Never raw edit_note on XML.",
+      "Images in notes: save with save_attachment (chat images) or write_asset (raw base64), then edit_note to insert ![alt](.assets/filename.ext) using the returned url. Put exactly one blank line before and after the image markdown. Never invent .assets paths.",
     );
   }
   if (opts.vaultPath) {

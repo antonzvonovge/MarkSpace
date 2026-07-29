@@ -224,7 +224,9 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     activeExcerpt: params.activeExcerpt,
   });
 
-  const tools = buildVaultTools(params.mode);
+  const tools = buildVaultTools(params.mode, {
+    getMessages: () => inputMessages,
+  });
   const modelMessages = await convertToModelMessages(inputMessages);
 
   const result = streamText({

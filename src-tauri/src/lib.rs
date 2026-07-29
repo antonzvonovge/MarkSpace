@@ -9,7 +9,113 @@ use vault::VaultState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Keep classic (non-overlay) scrollbars on Linux. Overlay bars thicken on hover.
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: once at process start, before GTK / other threads initialize.
+        unsafe {
+            std::env::set_var("GTK_OVERLAY_SCROLLING", "0");
+        }
+    }
+
     tauri::Builder::default()
+        .setup(|app| {
+            // Bundle icons are baked in at compile time; set explicitly so the
+            // taskbar/dock picks up updates even when only icons/ changed.
+            {
+                use tauri::{image::Image, Manager};
+                let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
+                    .expect("app icon");
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_icon(icon);
+                }
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                use gtk::prelude::*;
+                use tauri::Manager;
+                use webkit2gtk::{WebContextExt, WebViewExt};
+
+                // Style native GTK scrollbars used by WebKitGTK: thin, no white trough.
+                let css = r#"
+                    scrollbar {
+                        background: transparent;
+                        border: none;
+                        box-shadow: none;
+                        min-width: 6px;
+                        min-height: 6px;
+                        padding: 0;
+                        margin: 0;
+                    }
+                    scrollbar.vertical {
+                        min-width: 6px;
+                        padding: 0;
+                    }
+                    scrollbar.horizontal {
+                        min-height: 6px;
+                        padding: 0;
+                    }
+                    scrollbar contents,
+                    scrollbar trough,
+                    scrollbar overshoot,
+                    scrollbar undershoot {
+                        background: transparent;
+                        border: none;
+                        box-shadow: none;
+                        min-width: 6px;
+                        min-height: 6px;
+                    }
+                    scrollbar slider {
+                        background-color: alpha(#5d6b73, 0.14);
+                        border: none;
+                        box-shadow: none;
+                        border-radius: 6px;
+                        min-width: 6px;
+                        min-height: 24px;
+                        margin: 0;
+                        transition: background-color 120ms ease;
+                    }
+                    scrollbar slider:hover,
+                    scrollbar slider:active {
+                        background-color: alpha(#5d6b73, 0.5);
+                        min-width: 6px;
+                        min-height: 24px;
+                    }
+                    scrollbar button {
+                        opacity: 0;
+                        min-width: 0;
+                        min-height: 0;
+                        padding: 0;
+                        margin: 0;
+                        border: none;
+                    }
+                "#;
+
+                if let Some(display) = gdk::Display::default() {
+                    let provider = gtk::CssProvider::new();
+                    if provider.load_from_data(css.as_bytes()).is_ok() {
+                        gtk::StyleContext::add_provider_for_screen(
+                            &display.default_screen(),
+                            &provider,
+                            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                        );
+                    }
+                }
+
+                // wry defaults this to false (custom/CSS bars). Re-enable GTK painting
+                // so our CssProvider above actually applies.
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.with_webview(|platform| {
+                        let webview = platform.inner();
+                        if let Some(context) = webview.context() {
+                            context.set_use_system_appearance_for_scrollbars(true);
+                        }
+                    });
+                }
+            }
+            Ok(())
+        })
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())

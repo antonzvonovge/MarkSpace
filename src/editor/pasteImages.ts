@@ -1,5 +1,5 @@
 import type { BlockNoteEditor } from "@blocknote/core";
-import { readImage } from "@tauri-apps/plugin-clipboard-manager";
+import { readImage, readText } from "@tauri-apps/plugin-clipboard-manager";
 
 function isEmptyTextBlock(
   block: { content?: unknown; type: string },
@@ -156,6 +156,36 @@ async function readImagesFromTauriClipboard(): Promise<File[]> {
   }
 }
 
+/** Browser Clipboard API (works on Windows when Tauri image read fails). */
+async function readImagesFromNavigatorClipboard(): Promise<File[]> {
+  try {
+    if (!navigator.clipboard?.read) return [];
+    const items = await navigator.clipboard.read();
+    const files: File[] = [];
+    let i = 0;
+    for (const item of items) {
+      for (const type of item.types) {
+        if (!type.startsWith("image/")) continue;
+        const blob = await item.getType(type);
+        const ext = type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+        files.push(
+          new File([blob], `clipboard-${++i}.${ext}`, { type }),
+        );
+      }
+    }
+    return files;
+  } catch {
+    return [];
+  }
+}
+
+/** Prefer Tauri, then navigator.clipboard.read(). */
+export async function readImagesFromSystemClipboard(): Promise<File[]> {
+  const fromTauri = await readImagesFromTauriClipboard();
+  if (fromTauri.length) return fromTauri;
+  return readImagesFromNavigatorClipboard();
+}
+
 let pasteInFlight = false;
 
 async function uploadImages(
@@ -225,10 +255,12 @@ export function createImagePasteHandler() {
       (t) => t === "Files" || t.startsWith("image/"),
     );
 
-    // No files in the DOM paste event — try native Tauri clipboard image.
+    // No files in the DOM paste event — try native clipboard image.
+    // Only swallow the event when clipboard types look like an image;
+    // otherwise let default text/html paste proceed (async image is a bonus).
     void (async () => {
-      const fromTauri = await readImagesFromTauriClipboard();
-      if (fromTauri.length) await uploadImages(editor, fromTauri);
+      const fromSystem = await readImagesFromSystemClipboard();
+      if (fromSystem.length) await uploadImages(editor, fromSystem);
     })();
 
     if (looksLikeImage) {
@@ -243,8 +275,30 @@ export function createImagePasteHandler() {
 export async function pasteImagesFromSystemClipboard(
   editor: BlockNoteEditor<any, any, any>,
 ): Promise<boolean> {
-  const files = await readImagesFromTauriClipboard();
+  const files = await readImagesFromSystemClipboard();
   if (!files.length) return false;
   await uploadImages(editor, files);
   return true;
+}
+
+export async function readTextFromSystemClipboard(): Promise<string> {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) return text;
+  } catch {
+    /* fall through */
+  }
+  try {
+    return (await readText()) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Collect image/file blobs from a ClipboardEvent (files + items). */
+export function collectFilesFromClipboardData(
+  data: DataTransfer | null | undefined,
+): File[] {
+  if (!data) return [];
+  return collectImageFiles(data);
 }

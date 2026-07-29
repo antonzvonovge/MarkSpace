@@ -1,5 +1,11 @@
 import type { UIMessage } from "ai";
 import { create } from "zustand";
+import {
+  fileToAttachment,
+  mergeAttachments,
+  prepareUserMessageParts,
+  type ChatAttachment,
+} from "../ai/chatAttachments";
 import { generateChatTitle } from "../ai/generateChatTitle";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
@@ -18,6 +24,7 @@ import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
 export type ChatStatus = "ready" | "streaming" | "error";
+export type { ChatAttachment };
 
 function titleFromMessage(text: string): string {
   const cleaned = text.replace(/\s+/g, " ").trim();
@@ -51,6 +58,7 @@ type ChatStore = {
   status: ChatStatus;
   error: string | null;
   draft: string;
+  draftAttachments: ChatAttachment[];
   vaultBound: string | null;
   abort: AbortController | null;
   streamStartedAt: number | null;
@@ -58,6 +66,9 @@ type ChatStore = {
   streamReasoningText: string | null;
   hydrateForVault: (vaultPath: string | null) => Promise<void>;
   setDraft: (draft: string) => void;
+  addAttachments: (files: File[]) => Promise<string[]>;
+  removeAttachment: (id: string) => void;
+  clearAttachments: () => void;
   setMode: (mode: ChatMode) => void;
   setModelId: (modelId: string) => void;
   newThread: () => Promise<void>;
@@ -98,6 +109,7 @@ function emptySession(vaultBound: string | null = null) {
     streamStartedAt: null as number | null,
     streamReasoningText: null as string | null,
     draft: "",
+    draftAttachments: [] as ChatAttachment[],
     ...defaultsFromSettings(),
   };
 }
@@ -188,6 +200,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   status: "ready",
   error: null,
   draft: "",
+  draftAttachments: [],
   vaultBound: null,
   abort: null,
   streamStartedAt: null,
@@ -229,6 +242,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setDraft: (draft) => set({ draft }),
+
+  addAttachments: async (files) => {
+    if (files.length === 0) return [];
+    const prepared = await Promise.all(files.map((f) => fileToAttachment(f)));
+    const { next, rejected } = mergeAttachments(
+      get().draftAttachments,
+      prepared,
+    );
+    set({ draftAttachments: next });
+    return rejected;
+  },
+
+  removeAttachment: (id) => {
+    set({
+      draftAttachments: get().draftAttachments.filter((a) => a.id !== id),
+    });
+  },
+
+  clearAttachments: () => set({ draftAttachments: [] }),
 
   setMode: (mode) => {
     set({ mode });
@@ -278,6 +310,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       status: "ready",
       error: null,
       draft: "",
+      draftAttachments: [],
       streamStartedAt: null,
     });
   },
@@ -302,7 +335,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         listed.openTabIds,
       ),
     );
-    set({ draft: "" });
+    set({ draft: "", draftAttachments: [] });
   },
 
   closeTab: async (threadId) => {
@@ -334,6 +367,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         status: "ready",
         error: null,
         draft: "",
+        draftAttachments: [],
         streamStartedAt: null,
         ...defaultsFromSettings(),
       });
@@ -349,7 +383,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           listed.openTabIds,
         ),
       );
-      set({ draft: "" });
+      set({ draft: "", draftAttachments: [] });
     } else {
       set({
         threads: listed.threads,
@@ -398,6 +432,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         status: "ready",
         error: null,
         draft: "",
+        draftAttachments: [],
         streamStartedAt: null,
         ...defaultsFromSettings(),
       });
@@ -412,7 +447,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         openTabIds,
       ),
     );
-    set({ draft: "" });
+    set({ draft: "", draftAttachments: [] });
   },
 
   persistActive: async () => {
@@ -451,8 +486,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   send: async (text) => {
-    const content = (text ?? get().draft).trim();
-    if (!content) return;
+    const draftText = text ?? get().draft;
+    const attachments = get().draftAttachments;
+    const content = draftText.trim();
+    if (!content && attachments.length === 0) return;
     const vaultPath =
       get().vaultBound ?? useVaultStore.getState().vaultPath;
     if (!vaultPath) {
@@ -475,10 +512,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     if (!activeThreadId) return;
 
+    const { parts, titleHint } = prepareUserMessageParts(
+      draftText,
+      attachments,
+    );
+    if (parts.length === 0) return;
+
     const userMessage: UIMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      parts: [{ type: "text", text: content }],
+      parts,
     };
     const messages = [...get().messages, userMessage];
     const prevMeta = get().threads.find((t) => t.id === activeThreadId);
@@ -486,13 +529,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const firstUser = messages.find((m) => m.role === "user");
     const title = provisional
       ? firstUser
-        ? titleFromMessage(userText(firstUser))
+        ? titleFromMessage(userText(firstUser) || titleHint)
         : "New chat"
       : (prevMeta?.title ?? "New chat");
 
     set({
       messages,
       draft: "",
+      draftAttachments: [],
       status: "streaming",
       error: null,
       streamStartedAt: Date.now(),

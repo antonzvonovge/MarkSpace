@@ -22,6 +22,15 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --live-font-size: 15px;
   --source-font-size: 14px;
+  --tree-pad-x: 10px;
+  --tree-indent: 14px;
+  --tree-row-height: 28px;
+  --tree-row-gap: 6px;
+  --tree-label-pad-y: 4px;
+  --tree-label-size: 13px;
+  --tree-icon-size: 20px;
+  --tree-chevron-size: 16px;
+  --tree-toolbar-btn: 28px;
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-ui);
@@ -47,33 +56,99 @@
   --danger: #e06a6a;
 }
 
-* {
-  box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+/* Cursor-like thin file-tree rows */
+:root[data-density="compact"] {
+  --tree-pad-x: 6px;
+  --tree-indent: 10px;
+  --tree-row-height: 22px;
+  --tree-row-gap: 4px;
+  --tree-label-pad-y: 0;
+  --tree-label-size: 12px;
+  --tree-icon-size: 16px;
+  --tree-chevron-size: 14px;
+  --tree-toolbar-btn: 22px;
 }
 
-/* Cursor-like: fixed thin scrollbars (no thickness change on hover) */
+:root[data-density="compact"] .sidebar-top {
+  gap: 8px;
+  padding: 10px 0 6px;
+}
+
+:root[data-density="compact"] .brand-block {
+  padding: 2px 10px 4px;
+}
+
+:root[data-density="compact"] .brand {
+  font-size: 1.1rem;
+  gap: 6px;
+}
+
+:root[data-density="compact"] .sidebar-footer {
+  min-height: 36px;
+  padding: 4px 6px;
+}
+
+:root[data-density="compact"] .sidebar-footer-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+:root[data-density="compact"] .tree-rename-input {
+  height: 18px;
+  font-size: var(--tree-label-size);
+  padding: 0 4px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * Fixed thin scrollbars (Cursor-like).
+ * Linux: GTK_OVERLAY_SCROLLING=0 + wry's use_system_appearance_for_scrollbars(false)
+ * so these rules actually paint the bar (no hover thickening, no GTK chrome).
+ * Do not set scrollbar-width on WebKit — it fights ::-webkit-scrollbar.
+ */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted) 14%, transparent) transparent;
+  }
+}
+
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 *::-webkit-scrollbar-track {
   background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+*::-webkit-scrollbar-track-piece {
+  background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 40%, transparent);
-  border: 3px solid transparent;
-  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--muted) 14%, transparent);
   border-radius: 999px;
+  border: none;
+  box-shadow: none;
+  min-height: 24px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted) 65%, transparent);
-  border: 3px solid transparent;
-  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--muted) 50%, transparent);
 }
 
 *::-webkit-scrollbar-corner {
@@ -325,9 +400,20 @@ select {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.03em;
+}
+
+.brand-logo {
+  width: 1.35em;
+  height: 1.35em;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .ghost-btn {
@@ -372,8 +458,8 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--tree-toolbar-btn);
+  height: var(--tree-toolbar-btn);
   border: 0;
   border-radius: 6px;
   padding: 0;
@@ -469,9 +555,10 @@ select {
 .tree-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--tree-row-gap);
   width: 100%;
-  min-height: 28px;
+  min-height: var(--tree-row-height);
+  height: var(--tree-row-height);
   border: 0;
   background: transparent;
   color: inherit;
@@ -545,15 +632,22 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: var(--tree-chevron-size);
+  height: var(--tree-chevron-size);
   padding: 0;
   flex-shrink: 0;
   color: var(--sidebar-muted);
 }
 
+.tree-chevron-btn.is-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .tree-chevron-icon {
   display: block;
+  width: var(--tree-chevron-size);
+  height: var(--tree-chevron-size);
   transform: rotate(0deg);
   transition: transform 0.12s ease;
 }
@@ -570,8 +664,8 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 4px 0;
-  font-size: 13px;
+  padding: var(--tree-label-pad-y) 0;
+  font-size: var(--tree-label-size);
   line-height: 1.2;
 }
 
@@ -581,7 +675,7 @@ select {
 }
 
 .tree-file-spacer {
-  width: 16px;
+  width: var(--tree-chevron-size);
   flex-shrink: 0;
 }
 
@@ -590,15 +684,15 @@ select {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: var(--tree-icon-size);
+  height: var(--tree-icon-size);
   line-height: 0;
 }
 
 .tree-node-icon svg {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: var(--tree-icon-size);
+  height: var(--tree-icon-size);
 }
 
 .tree-drop-line {
@@ -697,7 +791,8 @@ li.dnd-drop-target > .tree-row {
 .tree-context-menu {
   position: fixed;
   z-index: 1100;
-  min-width: 160px;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 16px));
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -707,7 +802,9 @@ li.dnd-drop-target > .tree-row {
 }
 
 .tree-context-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   border: 0;
   border-radius: 6px;
@@ -718,6 +815,11 @@ li.dnd-drop-target > .tree-row {
   font-size: 0.875rem;
   text-align: left;
   cursor: pointer;
+}
+
+.tree-context-item svg {
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .tree-context-item:hover {
@@ -732,6 +834,12 @@ li.dnd-drop-target > .tree-row {
 .tree-context-item.is-danger:hover {
   background: rgba(180, 72, 72, 0.12);
   color: var(--danger);
+}
+
+.tree-context-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
 }
 
 .tree-rename-input {
@@ -2321,7 +2429,9 @@ li.dnd-drop-target > .tree-row {
 
 .chat-msg-user {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .chat-msg-user.is-sticky {
@@ -2683,6 +2793,188 @@ li.dnd-drop-target > .tree-row {
   flex-direction: column;
   gap: 6px;
   overflow-x: hidden;
+  position: relative;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.chat-composer.is-drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.chat-composer-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--editor-surface) 88%, var(--accent));
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.chat-attach-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sidebar-active);
+  min-width: 0;
+}
+
+.chat-attach-chip.has-error {
+  border-color: color-mix(in srgb, #c0392b 55%, var(--line));
+}
+
+.chat-attach-thumb {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.chat-attach-kind {
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.chat-attach-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.chat-attach-name {
+  font-size: 0.75rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.chat-attach-size {
+  font-size: 0.625rem;
+  color: var(--muted);
+}
+
+.chat-attach-remove {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.chat-attach-remove:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.chat-attach-remove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chat-attach-hint {
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.chat-attach-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chat-attach-btn:hover:not(:disabled) {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.chat-attach-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chat-msg-attachments {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: 92%;
+}
+
+.chat-msg-attach {
+  max-width: 100%;
+}
+
+.chat-msg-attach-img {
+  display: block;
+  width: auto;
+  max-width: 120px;
+  max-height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--editor-surface);
+}
+
+.chat-msg-attach-file {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--sidebar-active);
+  color: var(--text);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-composer-input {
