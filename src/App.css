@@ -1336,11 +1336,6 @@ li.dnd-drop-target > .tree-row {
   right: 0;
 }
 
-.editor-tab.is-preview .editor-tab-label {
-  font-style: italic;
-  font-weight: 400;
-}
-
 .editor-tab-label {
   flex: 1;
   min-width: 0;
@@ -1349,9 +1344,20 @@ li.dnd-drop-target > .tree-row {
   white-space: nowrap;
   font-size: 13px;
   font-weight: 400;
+  font-style: normal;
   line-height: 1;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.editor-tab.is-preview .editor-tab-label {
+  /* Inter is bundled without italic faces; skew mimics VS Code preview tabs. */
+  font-style: italic;
+  font-synthesis: style;
+  font-weight: 400;
+  opacity: 0.88;
+  transform: skewX(-10deg);
+  transform-origin: center left;
 }
 
 .editor-tab-close {
@@ -3211,6 +3217,201 @@ li.dnd-drop-target > .tree-row {
   word-break: break-word;
 }
 
+.chat-ask-user {
+  margin: 6px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--editor-surface));
+  color: var(--text);
+}
+
+.chat-ask-user.is-done {
+  opacity: 0.85;
+  border-color: var(--line);
+  background: transparent;
+}
+
+.chat-ask-user.is-error {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+.chat-ask-user-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.chat-ask-user.is-done .chat-ask-user-title {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.chat-ask-user-q {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.chat-ask-user-prompt {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.chat-ask-user-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.chat-ask-user-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.chat-ask-user-option:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 4%, var(--editor-surface));
+}
+
+.chat-ask-user-option.is-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--editor-surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.chat-ask-user-option-mark {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--muted) 55%, transparent);
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.chat-ask-user-option.is-selected .chat-ask-user-option-mark {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2.5px var(--editor-surface);
+}
+
+.chat-ask-user-option.is-multi .chat-ask-user-option-mark {
+  border-radius: 3px;
+}
+
+.chat-ask-user-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.chat-ask-user-custom-label {
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.chat-ask-user-custom-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 30px;
+}
+
+.chat-ask-user-custom-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.chat-ask-user-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.chat-ask-user-submit {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.chat-ask-user-submit:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.chat-ask-user-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-ask-user-summary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-ask-user-summary li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8125rem;
+}
+
+.chat-ask-user-summary-q {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.chat-ask-user-summary-a {
+  color: var(--text);
+}
+
+.chat-ask-user-error {
+  font-size: 0.8125rem;
+  color: var(--danger);
+}
+
 .chat-error {
   flex-shrink: 0;
   margin: 0 12px 8px;
@@ -3469,11 +3670,12 @@ li.dnd-drop-target > .tree-row {
   font: inherit;
   font-size: 0.875rem;
   line-height: 1.4;
-  min-height: 44px;
+  min-height: 28px;
   max-height: 160px;
   /* Height is synced to scrollHeight in ChatComposer; only scroll past max. */
   overflow-y: hidden;
   box-sizing: border-box;
+  padding: 4px 0;
 }
 
 .chat-composer-toolbar {

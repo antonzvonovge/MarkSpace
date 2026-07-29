@@ -1,0 +1,187 @@
+import { tool } from "ai";
+import { z } from "zod";
+
+export type AskUserOption = { id: string; label: string };
+
+export type AskUserQuestion = {
+  id: string;
+  prompt: string;
+  options: AskUserOption[];
+  allow_multiple?: boolean;
+  allow_custom?: boolean;
+};
+
+export type AskUserInput = {
+  title?: string;
+  questions: AskUserQuestion[];
+};
+
+export type AskUserAnswerItem = {
+  questionId: string;
+  selectedOptionIds: string[];
+  customText?: string;
+};
+
+export type AskUserAnswer = {
+  answers: AskUserAnswerItem[];
+};
+
+type Pending = {
+  resolve: (value: AskUserAnswer) => void;
+  reject: (error: Error) => void;
+};
+
+const pending = new Map<string, Pending>();
+
+function abortError(message = "Ask cancelled"): Error {
+  const err = new Error(message);
+  err.name = "AbortError";
+  return err;
+}
+
+/** Wait until the UI resolves this tool call (or abort). */
+export function waitForAskUserAnswer(
+  toolCallId: string,
+  signal?: AbortSignal,
+): Promise<AskUserAnswer> {
+  if (signal?.aborted) {
+    return Promise.reject(abortError());
+  }
+
+  return new Promise<AskUserAnswer>((resolve, reject) => {
+    const cleanup = () => {
+      pending.delete(toolCallId);
+      signal?.removeEventListener("abort", onAbort);
+    };
+
+    const onAbort = () => {
+      cleanup();
+      reject(abortError());
+    };
+
+    pending.set(toolCallId, {
+      resolve: (value) => {
+        cleanup();
+        resolve(value);
+      },
+      reject: (error) => {
+        cleanup();
+        reject(error);
+      },
+    });
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** Resolve a pending ask_user from the chat UI. */
+export function resolveAskUserAnswer(
+  toolCallId: string,
+  answer: AskUserAnswer,
+): boolean {
+  const entry = pending.get(toolCallId);
+  if (!entry) return false;
+  entry.resolve(answer);
+  return true;
+}
+
+export function cancelAskUser(toolCallId: string, reason?: string): boolean {
+  const entry = pending.get(toolCallId);
+  if (!entry) return false;
+  entry.reject(abortError(reason ?? "Ask cancelled"));
+  return true;
+}
+
+export function cancelAllPendingAskUser(reason?: string): void {
+  const ids = [...pending.keys()];
+  for (const id of ids) cancelAskUser(id, reason);
+}
+
+export function hasPendingAskUser(toolCallId?: string): boolean {
+  if (toolCallId) return pending.has(toolCallId);
+  return pending.size > 0;
+}
+
+const optionSchema = z.object({
+  id: z.string().min(1).describe("Stable option id"),
+  label: z.string().min(1).describe("Option label shown to the user"),
+});
+
+const questionSchema = z.object({
+  id: z.string().min(1).describe("Stable question id"),
+  prompt: z.string().min(1).describe("Question text"),
+  options: z
+    .array(optionSchema)
+    .min(2)
+    .max(8)
+    .describe("Answer choices (at least 2)"),
+  allow_multiple: z
+    .boolean()
+    .optional()
+    .describe("If true, user may select several options"),
+  allow_custom: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true (default), user may type a free-text answer instead of/alongside options",
+    ),
+});
+
+export const askUserInputSchema = z.object({
+  title: z
+    .string()
+    .optional()
+    .describe("Optional short title for this question round"),
+  questions: z
+    .array(questionSchema)
+    .min(1)
+    .max(5)
+    .describe("One or more clarifying questions"),
+});
+
+export function buildAskUserTool() {
+  return tool({
+    description:
+      "Ask the user a clarifying multiple-choice question (with optional free-text). Prefer this over listing choices in plain chat text when a decision is needed. Blocks until the user answers.",
+    inputSchema: askUserInputSchema,
+    execute: async (input, { toolCallId, abortSignal }) => {
+      const answer = await waitForAskUserAnswer(toolCallId, abortSignal);
+      return {
+        title: input.title ?? null,
+        answers: answer.answers,
+      };
+    },
+  });
+}
+
+/** Parse tool part input safely (may be partial while streaming). */
+export function parseAskUserInput(input: unknown): AskUserInput | null {
+  const parsed = askUserInputSchema.safeParse(input);
+  if (!parsed.success) return null;
+  return parsed.data;
+}
+
+export function parseAskUserOutput(output: unknown): AskUserAnswer | null {
+  if (!output || typeof output !== "object") return null;
+  const answers = (output as { answers?: unknown }).answers;
+  if (!Array.isArray(answers)) return null;
+  const items: AskUserAnswerItem[] = [];
+  for (const raw of answers) {
+    if (!raw || typeof raw !== "object") continue;
+    const q = raw as Record<string, unknown>;
+    if (typeof q.questionId !== "string") continue;
+    const ids = Array.isArray(q.selectedOptionIds)
+      ? q.selectedOptionIds.filter((id): id is string => typeof id === "string")
+      : [];
+    const custom =
+      typeof q.customText === "string" && q.customText.trim()
+        ? q.customText.trim()
+        : undefined;
+    items.push({
+      questionId: q.questionId,
+      selectedOptionIds: ids,
+      customText: custom,
+    });
+  }
+  return items.length ? { answers: items } : null;
+}

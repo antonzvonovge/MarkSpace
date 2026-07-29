@@ -517,11 +517,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   setContent: (content) => {
-    const { activePath, tabs } = get();
+    const { activePath, tabs, content: prev } = get();
+    if (content === prev) return;
     const patch: Partial<VaultStore> = { content, dirty: true };
     if (activePath) {
       patch.tabs = tabs.map((t) => {
         if (t.path !== activePath) return t;
+        if (t.body === content) return t;
         return {
           ...t,
           body: content,

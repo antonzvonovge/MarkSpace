@@ -17,13 +17,17 @@ import { useChatStore } from "../../store/chatStore";
 import { ChatContextMeter } from "./ChatContextMeter";
 import { ChatModelPicker } from "./ChatModelPicker";
 
+const COMPOSER_INPUT_MIN_HEIGHT_PX = 28;
 const COMPOSER_INPUT_MAX_HEIGHT_PX = 160;
 
 function syncComposerInputHeight(el: HTMLTextAreaElement) {
-  el.style.height = "auto";
+  // Collapse to 0 before measuring — `height: auto` can report an inflated
+  // scrollHeight on first layout in WebKit/Tauri and blow the composer up.
+  el.style.height = "0px";
   el.style.overflowY = "hidden";
-  const contentHeight = el.scrollHeight;
-  el.style.height = `${Math.min(contentHeight, COMPOSER_INPUT_MAX_HEIGHT_PX)}px`;
+  const contentHeight = Math.max(el.scrollHeight, COMPOSER_INPUT_MIN_HEIGHT_PX);
+  const next = Math.min(contentHeight, COMPOSER_INPUT_MAX_HEIGHT_PX);
+  el.style.height = `${next}px`;
   el.style.overflowY =
     contentHeight > COMPOSER_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { usePrefsStore } from "../../store/prefsStore";
 import { buildDrawioEmbedUrl } from "./constants";
 import { exportDrawioXmlToSvg } from "./exportSvg";
+import { applyDrawioIframeTweaks } from "./iframeTweaks";
 import { drawioPreviewCacheKey, putDrawioSvg } from "./previewCache";
 
 type Props = {
@@ -56,17 +57,22 @@ export function DrawioEditor({ path, content, onChange }: Props) {
         readyRef.current = true;
         skipNextAutosaveRef.current = true;
         lastLoadedRef.current = contentRef.current;
+        applyDrawioIframeTweaks(iframeRef.current);
         post({
           action: "load",
           xml: contentRef.current || "",
           autosave: 1,
           title: pathRef.current.split("/").pop() || "diagram.drawio",
         });
+        // mxKeyHandler may be created slightly after init.
+        window.setTimeout(() => applyDrawioIframeTweaks(iframeRef.current), 0);
+        window.setTimeout(() => applyDrawioIframeTweaks(iframeRef.current), 250);
         return;
       }
 
       if (msg.event === "load") {
         skipNextAutosaveRef.current = false;
+        applyDrawioIframeTweaks(iframeRef.current);
         return;
       }
 
@@ -124,6 +130,7 @@ export function DrawioEditor({ path, content, onChange }: Props) {
         title={`Draw.io — ${path}`}
         src={src}
         allow="clipboard-read; clipboard-write"
+        onLoad={() => applyDrawioIframeTweaks(iframeRef.current)}
       />
     </div>
   );

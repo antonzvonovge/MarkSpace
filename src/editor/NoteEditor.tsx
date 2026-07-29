@@ -133,6 +133,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const theme = usePrefsStore((s) => s.prefs.theme);
   const liveFontFamily = usePrefsStore((s) => s.prefs.liveFontFamily);
   const applyingRef = useRef(false);
+  const adoptNextChangeRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
   const lastExternalRef = useRef(content);
   const notePathRef = useRef(path);
@@ -239,7 +240,6 @@ export function NoteEditor({ path, content, onChange }: Props) {
   editorRef.current = editor;
 
   useEditorChange((ed) => {
-    if (applyingRef.current) return;
     let md = applyImagePreviewWidths(
       ed.blocksToMarkdownLossy(),
       collectImageSizeRefs(ed.document),
@@ -251,6 +251,13 @@ export function NoteEditor({ path, content, onChange }: Props) {
       ),
     );
     const wikiMd = markdownToWiki(md);
+    // External loads / round-trips: adopt serialization, do not pin preview.
+    if (applyingRef.current || adoptNextChangeRef.current) {
+      lastExternalRef.current = wikiMd;
+      if (!applyingRef.current) adoptNextChangeRef.current = false;
+      return;
+    }
+    if (wikiMd === lastExternalRef.current) return;
     lastExternalRef.current = wikiMd;
     onChange(wikiMd);
   }, editor);
@@ -274,7 +281,14 @@ export function NoteEditor({ path, content, onChange }: Props) {
     editor.replaceBlocks(editor.document, blocks);
     lastPathRef.current = path;
     lastExternalRef.current = content;
-    applyingRef.current = false;
+    adoptNextChangeRef.current = true;
+    // replaceBlocks may notify listeners after this tick.
+    queueMicrotask(() => {
+      applyingRef.current = false;
+      queueMicrotask(() => {
+        adoptNextChangeRef.current = false;
+      });
+    });
   }, [editor, path, content]);
 
   const handleLinkClick = useCallback(

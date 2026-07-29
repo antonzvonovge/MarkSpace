@@ -14,6 +14,7 @@ import {
   dataUrlToBytes,
   findAttachmentFilePart,
 } from "./chatAttachments";
+import { buildAskUserTool } from "./askUser";
 import { buildDrawioTools } from "./drawio/tools";
 import type { ChatMode } from "./types";
 import { buildWebTools } from "./webTools";
@@ -171,15 +172,17 @@ export function buildVaultTools(
 
   const drawioTools = buildDrawioTools(mode);
   const webTools = buildWebTools();
+  const askUserTool = { ask_user: buildAskUserTool() };
 
   if (mode === "ask") {
-    return { ...readTools, ...drawioTools, ...webTools };
+    return { ...readTools, ...drawioTools, ...webTools, ...askUserTool };
   }
 
   return {
     ...readTools,
     ...drawioTools,
     ...webTools,
+    ...askUserTool,
     edit_note: tool({
       description:
         "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note.",
@@ -402,6 +405,7 @@ export function buildSystemPrompt(opts: {
     `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes via tools)"}.`,
     "Be concise. Prefer tools over guessing vault contents or the web.",
     "For external facts/docs: web_search first, then fetch_url on the best 1–3 links. Do not invent URLs.",
+    "When you need a decision, confirmation, or clarification with clear choices: use ask_user (multiple-choice + optional free-text) instead of listing A/B/C options in plain chat text. Keep questions focused; prefer one round of 1–3 questions.",
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
     "When writing or editing Markdown: put exactly one blank line between paragraphs (and between a paragraph and a list/heading/code block). Do not collapse paragraphs into a single block and do not leave multiple consecutive blank lines.",
     "In chat replies you may include diagrams as fenced code blocks: ```mermaid for Mermaid, or ```plantuml / ```puml for PlantUML. The UI renders them inline. Prefer these for architecture/flow sketches in answers; use Draw.io tools only for .drawio vault files.",

@@ -7,6 +7,7 @@ import {
   type ChatAttachment,
 } from "../ai/chatAttachments";
 import { generateChatTitle } from "../ai/generateChatTitle";
+import { cancelAllPendingAskUser } from "../ai/askUser";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
 import { buildSystemPrompt } from "../ai/vaultTools";
@@ -641,6 +642,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   stop: () => {
     const { abort } = get();
+    cancelAllPendingAskUser("stopped");
     if (abort) abort.abort();
     set({
       abort: null,

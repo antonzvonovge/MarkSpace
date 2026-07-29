@@ -11,6 +11,7 @@ import {
   displayTextFromUserMessage,
 } from "../../ai/chatAttachments";
 import { useChatStore } from "../../store/chatStore";
+import { ChatAskUser } from "./ChatAskUser";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { ChatReasoning } from "./ChatReasoning";
 import { ChatToolCall } from "./ChatToolCall";
@@ -216,6 +217,17 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
           );
         }
         if (isToolUIPart(part)) {
+          const toolName =
+            "toolName" in part && typeof part.toolName === "string"
+              ? part.toolName
+              : part.type.startsWith("tool-")
+                ? part.type.slice("tool-".length)
+                : part.type;
+          if (toolName === "ask_user") {
+            return (
+              <ChatAskUser key={`${message.id}-tool-${i}`} part={part} />
+            );
+          }
           return (
             <ChatToolCall key={`${message.id}-tool-${i}`} part={part} />
           );

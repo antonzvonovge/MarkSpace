@@ -127,7 +127,8 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
           EditorView.domEventHandlers({
             keydown(event, view) {
               if (!(event.ctrlKey || event.metaKey) || event.altKey) return false;
-              if (/^[a-z]$/i.test(event.key)) return false;
+              // Always use physical key so undo works on Russian/other layouts,
+              // even when the browser still reports a latin event.key.
               if (event.code === "KeyZ" && !event.shiftKey) {
                 event.preventDefault();
                 return undo(view);
@@ -146,6 +147,7 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
         EditorView.updateListener.of((update) => {
           if (!update.docChanged || applyingRef.current) return;
           const next = update.state.doc.toString();
+          if (next === lastExternalRef.current) return;
           lastExternalRef.current = next;
           onChange(next);
         }),

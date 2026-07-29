@@ -32,6 +32,24 @@ export function createLayoutAgnosticKeymapExtension(
               const code = event.code;
               const latin = /^[a-z]$/i.test(event.key);
 
+              // Physical-key undo/redo must run before the latin early-return —
+              // TipTap binds Mod-z to event.key ("я" on Russian), so it never fires.
+              if (code === "KeyZ" && !event.shiftKey) {
+                event.preventDefault();
+                editor.undo();
+                return true;
+              }
+              if (code === "KeyZ" && event.shiftKey) {
+                event.preventDefault();
+                editor.redo();
+                return true;
+              }
+              if (code === "KeyY" && !event.shiftKey) {
+                event.preventDefault();
+                editor.redo();
+                return true;
+              }
+
               if (code === "KeyV" && !event.shiftKey) {
                 if (latin) return false;
 
@@ -46,18 +64,6 @@ export function createLayoutAgnosticKeymapExtension(
 
               if (latin) return false;
 
-              if (code === "KeyZ" && !event.shiftKey) {
-                editor.undo();
-                return true;
-              }
-              if (code === "KeyZ" && event.shiftKey) {
-                editor.redo();
-                return true;
-              }
-              if (code === "KeyY" && !event.shiftKey) {
-                editor.redo();
-                return true;
-              }
               if (code === "KeyB" && !event.shiftKey) {
                 editor.toggleStyles({ bold: true });
                 return true;
