@@ -1,6 +1,7 @@
-import { memo } from "react";
+import { Children, isValidElement, memo, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChatDiagram, diagramEngineForLang } from "./ChatDiagram";
 
 type Props = {
   text: string;
@@ -13,6 +14,31 @@ type Props = {
    */
   streaming?: boolean;
 };
+
+function languageFromClassName(className: unknown): string | undefined {
+  if (typeof className !== "string") return undefined;
+  const match = /(?:^|\s)language-([^\s]+)/.exec(className);
+  return match?.[1];
+}
+
+function codeText(children: ReactNode): string {
+  return String(children ?? "").replace(/\n$/, "");
+}
+
+function ChatPre({ children }: { children?: ReactNode }) {
+  const only = Children.toArray(children)[0];
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(only)) {
+    return <pre>{children}</pre>;
+  }
+
+  const lang = languageFromClassName(only.props.className);
+  const engine = diagramEngineForLang(lang);
+  if (engine) {
+    return <ChatDiagram engine={engine} code={codeText(only.props.children)} />;
+  }
+
+  return <pre>{children}</pre>;
+}
 
 function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
   const rootClass = ["chat-md", className].filter(Boolean).join(" ");
@@ -38,6 +64,7 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
           ),
           // Avoid huge nested margins from default browser styles
           p: ({ children }) => <p>{children}</p>,
+          pre: ({ children }) => <ChatPre>{children}</ChatPre>,
         }}
       >
         {text}

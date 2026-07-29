@@ -404,6 +404,7 @@ export function buildSystemPrompt(opts: {
     "For external facts/docs: web_search first, then fetch_url on the best 1–3 links. Do not invent URLs.",
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
     "When writing or editing Markdown: put exactly one blank line between paragraphs (and between a paragraph and a list/heading/code block). Do not collapse paragraphs into a single block and do not leave multiple consecutive blank lines.",
+    "In chat replies you may include diagrams as fenced code blocks: ```mermaid for Mermaid, or ```plantuml / ```puml for PlantUML. The UI renders them inline. Prefer these for architecture/flow sketches in answers; use Draw.io tools only for .drawio vault files.",
   ];
   if (opts.mode === "agent") {
     lines.push(

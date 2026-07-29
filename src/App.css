@@ -155,6 +155,40 @@
   background: transparent;
 }
 
+/* Wider vertical scrollbars in the note editor and chat feed. */
+.editor-main::-webkit-scrollbar,
+.outline-scroll::-webkit-scrollbar,
+.chat-messages::-webkit-scrollbar,
+.source-editor-canvas .cm-scroller::-webkit-scrollbar {
+  width: 12px;
+}
+
+.editor-main::-webkit-scrollbar-thumb,
+.outline-scroll::-webkit-scrollbar-thumb,
+.chat-messages::-webkit-scrollbar-thumb,
+.source-editor-canvas .cm-scroller::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted) 28%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.editor-main::-webkit-scrollbar-thumb:hover,
+.outline-scroll::-webkit-scrollbar-thumb:hover,
+.chat-messages::-webkit-scrollbar-thumb:hover,
+.source-editor-canvas .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .editor-main,
+  .outline-scroll,
+  .chat-messages,
+  .source-editor-canvas .cm-scroller {
+    scrollbar-width: auto;
+    scrollbar-color: color-mix(in srgb, var(--muted) 35%, transparent) transparent;
+  }
+}
+
 html,
 body,
 #root {
@@ -1115,16 +1149,13 @@ li.dnd-drop-target > .tree-row {
 }
 
 .document-body {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--editor-surface);
-}
-
-.document-body:has(.editor-shell) {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
+  background: var(--editor-surface);
 }
 
 .document-instance {
@@ -1133,6 +1164,7 @@ li.dnd-drop-target > .tree-row {
   min-height: 0;
   min-width: 0;
   width: 100%;
+  flex-direction: column;
 }
 
 .document-instance.is-active {
@@ -1143,6 +1175,9 @@ li.dnd-drop-target > .tree-row {
   display: none;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
 }
 
 .document-editor-slot.is-active {
@@ -2790,6 +2825,193 @@ li.dnd-drop-target > .tree-row {
   font-size: 0.78rem;
   line-height: 1.45;
   white-space: pre;
+}
+
+.chat-md-diagram {
+  margin: 0.5em 0;
+  padding: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.chat-md-diagram.is-interactive {
+  cursor: zoom-in;
+}
+
+.chat-md-diagram.is-interactive:hover {
+  border-color: color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.chat-md-diagram.is-interactive:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chat-md-diagram__svg {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  line-height: 0;
+}
+
+/* Intrinsic size — never stretch up to the chat column width. */
+.chat-md-diagram__svg svg {
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
+.chat-md-diagram__empty,
+.chat-md-diagram__pending,
+.chat-md-diagram__error {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.chat-md-diagram__error {
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+
+/* —— Chat diagram lightbox —— */
+
+.chat-diagram-lightbox-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.chat-diagram-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(20, 30, 34, 0.48);
+  cursor: default;
+  animation: app-dialog-fade 0.16s ease;
+}
+
+.chat-diagram-lightbox {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 920px);
+  max-height: min(90vh, 860px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #ffffff;
+  color: #18181b;
+  box-shadow: 0 18px 48px rgba(20, 30, 34, 0.28);
+  animation: app-dialog-pop 0.18s ease;
+  overflow: hidden;
+}
+
+.chat-diagram-lightbox__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e4e4e7;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+
+.chat-diagram-lightbox__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: #3f3f46;
+}
+
+.chat-diagram-lightbox__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.chat-diagram-lightbox__zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #18181b 5%, transparent);
+}
+
+.chat-diagram-lightbox__zoom-btn {
+  min-width: 32px;
+  padding-inline: 8px;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.chat-diagram-lightbox__zoom-label {
+  min-width: 52px;
+  padding-inline: 6px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+}
+
+.chat-diagram-lightbox__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #52525b;
+  cursor: pointer;
+}
+
+.chat-diagram-lightbox__icon-btn:hover:not(:disabled) {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.chat-diagram-lightbox__icon-btn.is-copied {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, #e4e4e7);
+}
+
+.chat-diagram-lightbox__icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chat-diagram-lightbox__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 24px;
+  background: #ffffff;
+}
+
+.chat-diagram-lightbox__svg {
+  width: max-content;
+  min-width: 100%;
+  line-height: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.chat-diagram-lightbox__svg svg {
+  max-width: none !important;
+  height: auto !important;
+  display: block;
 }
 
 .chat-md a {

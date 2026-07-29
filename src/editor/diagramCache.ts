@@ -8,6 +8,9 @@ import {
 
 export type DiagramEngine = "mermaid" | "plantuml";
 
+/** `neutral` = muted gray palette (chat); `default` = engine themes (editor). */
+export type DiagramSkin = "default" | "neutral";
+
 type CacheEntry = {
   svg: string;
 };
@@ -17,12 +20,16 @@ const MAX_ENTRIES = 80;
 const memory = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<string>>();
 
+/** Bump when neutral/chat render settings change so stale SVGs are not reused. */
+const CACHE_REV = 7;
+
 export function diagramCacheKey(
   engine: DiagramEngine,
   code: string,
   dark: boolean,
+  skin: DiagramSkin = "default",
 ): string {
-  return `${engine}:${dark ? "1" : "0"}:${code}`;
+  return `${engine}:${dark ? "1" : "0"}:${skin}:r${CACHE_REV}:${code}`;
 }
 
 export function peekDiagramSvg(key: string): string | undefined {

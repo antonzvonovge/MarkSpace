@@ -2,6 +2,7 @@ import vizUrl from "@plantuml/core/viz-global.js?url";
 import {
   diagramCacheKey,
   getOrRenderDiagramSvg,
+  type DiagramSkin,
 } from "../diagramCache";
 
 type RenderToString = (
@@ -51,20 +52,71 @@ export function normalizePlantUmlSource(code: string): string {
   return `@startuml\n${trimmed}\n@enduml`;
 }
 
+const NEUTRAL_SKINPARAMS_LIGHT = `skinparam shadowing false
+skinparam monochrome true
+skinparam backgroundColor transparent
+<style>
+root {
+  FontSize 9
+  RoundCorner 3
+  LineThickness 1
+  Padding 6
+  Margin 4
+}
+arrow {
+  LineThickness 1
+}
+</style>
+`;
+
+const NEUTRAL_SKINPARAMS_DARK = `skinparam shadowing false
+skinparam monochrome reverse
+skinparam backgroundColor transparent
+<style>
+root {
+  FontSize 9
+  RoundCorner 3
+  LineThickness 1
+  Padding 6
+  Margin 4
+}
+arrow {
+  LineThickness 1
+}
+</style>
+`;
+
+/** Inject compact monochrome skinparams for chat (after @start line). */
+export function applyPlantUmlSkin(
+  code: string,
+  skin: DiagramSkin,
+  dark: boolean,
+): string {
+  const source = normalizePlantUmlSource(code);
+  if (skin !== "neutral") return source;
+  if (/skinparam\s+monochrome/i.test(source)) return source;
+
+  const block = dark ? NEUTRAL_SKINPARAMS_DARK : NEUTRAL_SKINPARAMS_LIGHT;
+  return source.replace(/(@start\w+[^\n]*\n)/i, `$1${block}`);
+}
+
 function renderPlantUmlUncached(
   code: string,
   dark: boolean,
+  skin: DiagramSkin,
 ): Promise<string> {
   const task = async () => {
     const { renderToString } = await getPlantUmlApi();
-    const source = normalizePlantUmlSource(code);
+    const source = applyPlantUmlSkin(code, skin, dark);
     const lines = source.split(/\r\n|\r|\n/);
+    // Neutral chat palette owns colors; skip engine dark mode to avoid neon.
+    const useEngineDark = skin === "default" && dark;
     return new Promise<string>((resolve, reject) => {
       renderToString(
         lines,
         (svg) => resolve(svg),
         (message) => reject(new Error(message || "PlantUML render failed")),
-        dark ? { dark: true } : undefined,
+        useEngineDark ? { dark: true } : undefined,
       );
     });
   };
@@ -81,10 +133,11 @@ function renderPlantUmlUncached(
 export function renderPlantUmlToSvg(
   code: string,
   dark: boolean,
+  skin: DiagramSkin = "default",
 ): Promise<string> {
-  const source = normalizePlantUmlSource(code.trim());
-  const key = diagramCacheKey("plantuml", source, dark);
+  const source = applyPlantUmlSkin(code.trim(), skin, dark);
+  const key = diagramCacheKey("plantuml", source, dark, skin);
   return getOrRenderDiagramSvg(key, () =>
-    renderPlantUmlUncached(source, dark),
+    renderPlantUmlUncached(code.trim(), dark, skin),
   );
 }

@@ -3,8 +3,9 @@ import {
   hydrateDiagramSvg,
   peekDiagramSvg,
   type DiagramEngine,
+  type DiagramSkin,
 } from "./diagramCache";
-import { normalizePlantUmlSource } from "./plantuml/renderPlantUml";
+import { applyPlantUmlSkin } from "./plantuml/renderPlantUml";
 
 const DEBOUNCE_MS = 300;
 
@@ -14,9 +15,16 @@ export type DiagramPreviewState = {
   pending: boolean;
 };
 
-function cacheSource(engine: DiagramEngine, code: string): string {
+function cacheSource(
+  engine: DiagramEngine,
+  code: string,
+  skin: DiagramSkin,
+  dark: boolean,
+): string {
   const trimmed = code.trim();
-  return engine === "plantuml" ? normalizePlantUmlSource(trimmed) : trimmed;
+  return engine === "plantuml"
+    ? applyPlantUmlSkin(trimmed, skin, dark)
+    : trimmed;
 }
 
 /**
@@ -29,16 +37,27 @@ export function scheduleDiagramPreview(options: {
   engine: DiagramEngine;
   code: string;
   dark: boolean;
-  render: (code: string, dark: boolean) => Promise<string>;
+  skin?: DiagramSkin;
+  render: (
+    code: string,
+    dark: boolean,
+    skin: DiagramSkin,
+  ) => Promise<string>;
   onUpdate: (state: DiagramPreviewState) => void;
 }): () => void {
-  const source = cacheSource(options.engine, options.code);
+  const skin = options.skin ?? "default";
+  const source = cacheSource(
+    options.engine,
+    options.code,
+    skin,
+    options.dark,
+  );
   if (!source) {
     options.onUpdate({ svg: null, error: null, pending: false });
     return () => {};
   }
 
-  const key = diagramCacheKey(options.engine, source, options.dark);
+  const key = diagramCacheKey(options.engine, source, options.dark, skin);
   const cached = peekDiagramSvg(key);
   if (cached !== undefined) {
     options.onUpdate({ svg: cached, error: null, pending: false });
@@ -58,7 +77,7 @@ export function scheduleDiagramPreview(options: {
     }
 
     debounceTimer = window.setTimeout(() => {
-      void options.render(source, options.dark).then(
+      void options.render(source, options.dark, skin).then(
         (svg) => {
           if (cancelled) return;
           options.onUpdate({ svg, error: null, pending: false });
