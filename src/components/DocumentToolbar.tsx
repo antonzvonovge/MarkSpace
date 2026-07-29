@@ -5,12 +5,44 @@ const MODES: { mode: ViewMode; label: string }[] = [
   { mode: "source", label: "Source" },
 ];
 
+function OutlineIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3 3.5h10M3 8h7M3 12.5h10"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+      />
+      <circle cx="1.5" cy="3.5" r="0.85" fill="currentColor" />
+      <circle cx="1.5" cy="8" r="0.85" fill="currentColor" />
+      <circle cx="1.5" cy="12.5" r="0.85" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function DocumentToolbar() {
   const viewMode = useVaultStore((s) => s.viewMode);
   const setViewMode = useVaultStore((s) => s.setViewMode);
+  const showOutline = useVaultStore((s) => s.showOutline);
+  const toggleOutline = useVaultStore((s) => s.toggleOutline);
 
   return (
     <div className="document-toolbar">
+      {viewMode === "live" ? (
+        <button
+          type="button"
+          className={
+            showOutline ? "document-toolbar-btn is-active" : "document-toolbar-btn"
+          }
+          title="Outline"
+          aria-label="Toggle outline"
+          aria-pressed={showOutline}
+          onClick={() => toggleOutline()}
+        >
+          <OutlineIcon />
+        </button>
+      ) : null}
       <div
         className="view-mode-switch"
         role="radiogroup"

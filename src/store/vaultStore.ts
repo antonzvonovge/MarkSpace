@@ -6,6 +6,8 @@ import {
   createNote,
   deletePath,
   documentKind,
+  importDocumentBytes,
+  importPaths,
   joinPath,
   listTree,
   moveEntry,
@@ -22,10 +24,20 @@ import {
   saveVaultSession,
 } from "../lib/settingsStore";
 import { arrayMove } from "../lib/arrayMove";
+import {
+  loadDocOutlineUi,
+  saveDocOutlineOpen,
+} from "../lib/outlineUiState";
 
 export type EditorTab = {
   path: string;
   preview: boolean;
+  /**
+   * In-memory copy while the tab is open. Absent until first load.
+   * Keeps tab switches instant (no disk re-read).
+   */
+  body?: string;
+  dirty?: boolean;
 };
 
 export type ViewMode = "live" | "source";
@@ -46,6 +58,8 @@ type VaultStore = {
   expandedPaths: string[];
   content: string;
   viewMode: ViewMode;
+  /** Live-mode document outline (TOC) pane. */
+  showOutline: boolean;
   dirty: boolean;
   saving: boolean;
   loading: boolean;
@@ -60,6 +74,7 @@ type VaultStore = {
   setContent: (content: string) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
+  toggleOutline: () => void;
   saveActive: () => Promise<void>;
   selectFolder: (path: string) => void;
   toggleExpanded: (path: string) => void;
@@ -70,8 +85,15 @@ type VaultStore = {
   moveTreeEntry: (from: string, toParent: string, toIndex: number) => Promise<void>;
   renameTreeEntry: (from: string, nextName: string) => Promise<void>;
   removePath: (path: string) => Promise<void>;
+  /** Import OS paths / file blobs into the selected folder. */
+  importIntoSelection: (
+    sources: string[],
+    files?: File[],
+  ) => Promise<string[]>;
   /** Suppress vault-change handling for `ms` (default 1200). */
   markExternalWrite: (ms?: number) => void;
+  /** Apply disk/tool content to an open tab (and the editor if active). */
+  applyExternalContent: (path: string, content: string) => void;
 };
 
 function remapExpanded(expanded: string[], from: string, to: string): string[] {
@@ -90,6 +112,27 @@ function remapTabs(tabs: EditorTab[], from: string, to: string): EditorTab[] {
     }
     return tab;
   });
+}
+
+function withTabBody(
+  tabs: EditorTab[],
+  path: string,
+  body: string,
+  dirty: boolean,
+): EditorTab[] {
+  return tabs.map((t) => (t.path === path ? { ...t, body, dirty } : t));
+}
+
+/** Write the active editor buffer back into its tab slot. */
+function stashActiveIntoTabs(
+  tabs: EditorTab[],
+  activePath: string | null,
+  content: string,
+  dirty: boolean,
+): EditorTab[] {
+  if (!activePath) return tabs;
+  if (!tabs.some((t) => t.path === activePath)) return tabs;
+  return withTabBody(tabs, activePath, content, dirty);
 }
 
 function tabLabel(path: string): string {
@@ -117,18 +160,22 @@ function persistSession(state: {
 
 function activateLoaded(
   set: (partial: Partial<VaultStore>) => void,
+  vaultPath: string | null,
   path: string,
   content: string,
   tabs: EditorTab[],
+  dirty = false,
 ) {
+  const outline = loadDocOutlineUi(vaultPath, path);
   set({
-    tabs,
+    tabs: withTabBody(tabs, path, content, dirty),
     activePath: path,
     content,
-    dirty: false,
+    dirty,
     loading: false,
     selectedFolderPath: parentPath(path),
     selectedFolderExplicit: false,
+    showOutline: outline.open,
   });
 }
 
@@ -194,8 +241,16 @@ async function pruneMissingTabs(
   const fallback = pickFallbackTab(tabs, nextTabs, activePath!);
   set({ tree, loading: true, tabs: nextTabs, dirty: false });
   try {
-    const content = await readNote(fallback.path);
-    activateLoaded(set, fallback.path, content, nextTabs);
+    const body =
+      fallback.body !== undefined ? fallback.body : await readNote(fallback.path);
+    activateLoaded(
+      set,
+      get().vaultPath,
+      fallback.path,
+      body,
+      nextTabs,
+      Boolean(fallback.dirty && fallback.body !== undefined),
+    );
   } catch {
     set({
       loading: false,
@@ -218,6 +273,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   expandedPaths: [],
   content: "",
   viewMode: "live",
+  showOutline: false,
   dirty: false,
   saving: false,
   loading: false,
@@ -295,12 +351,21 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
   openNote: async (path, options) => {
     const asPreview = options?.preview !== false;
-    const { dirty, activePath, saveActive, tabs } = get();
-
-    if (dirty && activePath) {
-      await saveActive();
+    const stashed = stashActiveIntoTabs(
+      get().tabs,
+      get().activePath,
+      get().content,
+      get().dirty,
+    );
+    if (stashed !== get().tabs) {
+      set({ tabs: stashed });
     }
 
+    if (get().dirty && get().activePath) {
+      await get().saveActive();
+    }
+
+    const { tabs, activePath } = get();
     const existing = tabs.find((t) => t.path === path);
     if (existing) {
       // Already open: activate; if requesting permanent, pin it
@@ -317,10 +382,24 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
         return;
       }
+
+      if (existing.body !== undefined) {
+        activateLoaded(
+          set,
+          get().vaultPath,
+          path,
+          existing.body,
+          nextTabs,
+          Boolean(existing.dirty),
+        );
+        persistSession(get());
+        return;
+      }
+
       set({ loading: true, error: null });
       try {
         const content = await readNote(path);
-        activateLoaded(set, path, content, nextTabs);
+        activateLoaded(set, get().vaultPath, path, content, nextTabs);
         persistSession(get());
       } catch (e) {
         set({
@@ -334,21 +413,21 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const content = await readNote(path);
-      let nextTabs = [...tabs];
+      let nextTabs = [...get().tabs];
 
       if (asPreview) {
         const previewIdx = nextTabs.findIndex((t) => t.preview);
-        const tab: EditorTab = { path, preview: true };
+        const tab: EditorTab = { path, preview: true, body: content, dirty: false };
         if (previewIdx >= 0) {
           nextTabs[previewIdx] = tab;
         } else {
           nextTabs.push(tab);
         }
       } else {
-        nextTabs.push({ path, preview: false });
+        nextTabs.push({ path, preview: false, body: content, dirty: false });
       }
 
-      activateLoaded(set, path, content, nextTabs);
+      activateLoaded(set, get().vaultPath, path, content, nextTabs);
       persistSession(get());
     } catch (e) {
       set({
@@ -376,14 +455,18 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   closeTab: async (path) => {
-    const { tabs, activePath, dirty, saveActive } = get();
+    const { tabs, activePath, dirty, saveActive, content } = get();
     if (dirty && activePath === path) {
       await saveActive();
     }
 
     const index = tabs.findIndex((t) => t.path === path);
     if (index < 0) return;
-    const nextTabs = tabs.filter((t) => t.path !== path);
+    // Drop closed tab; stash active buffer if we're keeping it open.
+    let nextTabs = tabs.filter((t) => t.path !== path);
+    if (activePath && activePath !== path) {
+      nextTabs = stashActiveIntoTabs(nextTabs, activePath, content, dirty);
+    }
 
     if (activePath !== path) {
       set({ tabs: nextTabs });
@@ -403,10 +486,23 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       return;
     }
 
+    if (fallback.body !== undefined) {
+      activateLoaded(
+        set,
+        get().vaultPath,
+        fallback.path,
+        fallback.body,
+        nextTabs,
+        Boolean(fallback.dirty),
+      );
+      persistSession(get());
+      return;
+    }
+
     set({ loading: true, tabs: nextTabs });
     try {
-      const content = await readNote(fallback.path);
-      activateLoaded(set, fallback.path, content, nextTabs);
+      const body = await readNote(fallback.path);
+      activateLoaded(set, get().vaultPath, fallback.path, body, nextTabs);
       persistSession(get());
     } catch (e) {
       set({
@@ -424,12 +520,15 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const { activePath, tabs } = get();
     const patch: Partial<VaultStore> = { content, dirty: true };
     if (activePath) {
-      const tab = tabs.find((t) => t.path === activePath);
-      if (tab?.preview) {
-        patch.tabs = tabs.map((t) =>
-          t.path === activePath ? { ...t, preview: false } : t,
-        );
-      }
+      patch.tabs = tabs.map((t) => {
+        if (t.path !== activePath) return t;
+        return {
+          ...t,
+          body: content,
+          dirty: true,
+          preview: false,
+        };
+      });
     }
     set(patch);
     if (patch.tabs) persistSession(get());
@@ -442,13 +541,24 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({ viewMode: viewMode === "live" ? "source" : "live" });
   },
 
+  toggleOutline: () => {
+    const { showOutline, activePath, vaultPath } = get();
+    const next = !showOutline;
+    set({ showOutline: next });
+    if (activePath) saveDocOutlineOpen(vaultPath, activePath, next);
+  },
+
   saveActive: async () => {
-    const { activePath, content, dirty } = get();
+    const { activePath, content, dirty, tabs } = get();
     if (!activePath || !dirty) return;
     set({ saving: true, suppressWatchUntil: Date.now() + 1200 });
     try {
       await writeNote(activePath, content);
-      set({ dirty: false, saving: false });
+      set({
+        dirty: false,
+        saving: false,
+        tabs: withTabBody(tabs, activePath, content, false),
+      });
     } catch (e) {
       set({
         saving: false,
@@ -564,7 +674,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (openAfter && (activePath === from || (activePath && openAfter !== activePath))) {
         try {
           const content = await readNote(openAfter);
-          set({ content, dirty: false });
+          set({
+            content,
+            dirty: false,
+            tabs: withTabBody(get().tabs, openAfter, content, false),
+          });
         } catch {
           /* keep previous content */
         }
@@ -628,7 +742,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (openAfter && (activePath === from || (activePath && openAfter !== activePath))) {
         try {
           const content = await readNote(openAfter);
-          set({ content, dirty: false });
+          set({
+            content,
+            dirty: false,
+            tabs: withTabBody(get().tabs, openAfter, content, false),
+          });
         } catch {
           /* keep previous content */
         }
@@ -667,18 +785,29 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         });
       } else {
         const fallback = nextTabs[nextTabs.length - 1];
-        set({ loading: true, tabs: nextTabs });
-        try {
-          const content = await readNote(fallback.path);
-          activateLoaded(set, fallback.path, content, nextTabs);
-        } catch {
-          set({
-            loading: false,
-            tabs: nextTabs,
-            activePath: null,
-            content: "",
-            dirty: false,
-          });
+        if (fallback.body !== undefined) {
+          activateLoaded(
+            set,
+            get().vaultPath,
+            fallback.path,
+            fallback.body,
+            nextTabs,
+            Boolean(fallback.dirty),
+          );
+        } else {
+          set({ loading: true, tabs: nextTabs });
+          try {
+            const content = await readNote(fallback.path);
+            activateLoaded(set, get().vaultPath, fallback.path, content, nextTabs);
+          } catch {
+            set({
+              loading: false,
+              tabs: nextTabs,
+              activePath: null,
+              content: "",
+              dirty: false,
+            });
+          }
         }
       }
 
@@ -697,10 +826,50 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
+  importIntoSelection: async (sources, files = []) => {
+    const parent = get().selectedFolderPath;
+    const created: string[] = [];
+    try {
+      set({ suppressWatchUntil: Date.now() + 2000 });
+      if (sources.length) {
+        const paths = await importPaths(parent, sources);
+        created.push(...paths);
+      } else if (files.length) {
+        for (const file of files) {
+          const buf = new Uint8Array(await file.arrayBuffer());
+          const path = await importDocumentBytes(parent, file.name, buf);
+          created.push(path);
+        }
+      }
+      if (created.length) {
+        await get().refreshTree();
+      }
+      return created;
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return created;
+    }
+  },
+
   markExternalWrite: (ms = 1200) =>
     set((s) => ({
       suppressWatchUntil: Math.max(s.suppressWatchUntil, Date.now() + ms),
     })),
+
+  applyExternalContent: (path, content) => {
+    const { activePath, tabs } = get();
+    const hasTab = tabs.some((t) => t.path === path);
+    if (!hasTab && activePath !== path) return;
+    const patch: Partial<VaultStore> = {};
+    if (hasTab) {
+      patch.tabs = withTabBody(tabs, path, content, false);
+    }
+    if (activePath === path) {
+      patch.content = content;
+      patch.dirty = false;
+    }
+    set(patch);
+  },
 }));
 
 export { tabLabel };

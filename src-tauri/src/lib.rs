@@ -133,6 +133,8 @@ pub fn run() {
             vault::create_note,
             vault::create_drawio,
             vault::import_drawio,
+            vault::import_paths,
+            vault::import_document_bytes,
             vault::create_folder,
             vault::rename_path,
             vault::move_entry,

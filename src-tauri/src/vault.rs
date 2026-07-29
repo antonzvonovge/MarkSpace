@@ -1109,6 +1109,167 @@ pub fn import_drawio(
     Ok(created)
 }
 
+/// Copy external files/folders (from OS clipboard / explorer) into a vault folder.
+/// Only `.md` / `.drawio` files are imported; directory structure is preserved.
+#[tauri::command]
+pub fn import_paths(
+    parent: String,
+    sources: Vec<String>,
+    state: State<VaultState>,
+) -> Result<Vec<String>, String> {
+    let root = get_root(&state)?;
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve vault root: {e}"))?;
+    let parent_rel = parent.trim().trim_start_matches('/').to_string();
+    let dest_dir = if parent_rel.is_empty() {
+        root_canon.clone()
+    } else {
+        let full = ensure_inside(&root, Path::new(&parent_rel))?;
+        if !full.is_dir() {
+            return Err("Destination folder not found".into());
+        }
+        full
+    };
+
+    let mut order = read_order(&root);
+    let mut created = Vec::new();
+    for source in sources {
+        let source_path = PathBuf::from(source.trim());
+        if source.trim().is_empty() {
+            continue;
+        }
+        import_path_recursive(
+            &root,
+            &root_canon,
+            &dest_dir,
+            &parent_rel,
+            &source_path,
+            &mut order,
+            &mut created,
+        )?;
+    }
+    write_order(&root, &order)?;
+    Ok(created)
+}
+
+fn import_path_recursive(
+    root: &Path,
+    root_canon: &Path,
+    dest_dir: &Path,
+    dest_parent_rel: &str,
+    source: &Path,
+    order: &mut OrderMap,
+    created: &mut Vec<String>,
+) -> Result<(), String> {
+    if !source.exists() {
+        return Err(format!("Path not found: {}", source.display()));
+    }
+    let source_canon = source
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve {}: {e}", source.display()))?;
+
+    // Skip anything already inside the vault (avoid duplicates / self-copy).
+    if source_canon.starts_with(root_canon) {
+        return Ok(());
+    }
+
+    let name = source_canon
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if name.is_empty() || is_hidden(&name) {
+        return Ok(());
+    }
+
+    if source_canon.is_file() {
+        if !is_vault_document(&name) {
+            return Ok(());
+        }
+        fs::create_dir_all(dest_dir).map_err(|e| format!("Cannot create folders: {e}"))?;
+        let unique = unique_filename(dest_dir, &name);
+        let dest = dest_dir.join(&unique);
+        fs::copy(&source_canon, &dest)
+            .map_err(|e| format!("Cannot copy {}: {e}", source.display()))?;
+        let rel = relative_to_root(root_canon, &dest);
+        order_insert_child(order, dest_parent_rel, &unique, None);
+        created.push(rel);
+        return Ok(());
+    }
+
+    if source_canon.is_dir() {
+        let unique_dir = unique_filename(dest_dir, &name);
+        let next_dir = dest_dir.join(&unique_dir);
+        fs::create_dir_all(&next_dir).map_err(|e| format!("Cannot create folder: {e}"))?;
+        let next_rel = join_parent(dest_parent_rel, &unique_dir);
+        order_insert_child(order, dest_parent_rel, &unique_dir, None);
+        created.push(next_rel.clone());
+
+        let entries = fs::read_dir(&source_canon)
+            .map_err(|e| format!("Cannot read folder {}: {e}", source.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("Cannot read folder entry: {e}"))?;
+            import_path_recursive(
+                root,
+                root_canon,
+                &next_dir,
+                &next_rel,
+                &entry.path(),
+                order,
+                created,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Write a vault document from clipboard/file bytes into a folder.
+#[tauri::command]
+pub fn import_document_bytes(
+    parent: String,
+    file_name: String,
+    data_base64: String,
+    state: State<VaultState>,
+) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    let root = get_root(&state)?;
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve vault root: {e}"))?;
+    let parent_rel = parent.trim().trim_start_matches('/').to_string();
+    let name = sanitize_asset_filename(&file_name);
+    if !is_vault_document(&name) {
+        return Err("Only .md and .drawio files can be imported".into());
+    }
+
+    let data = STANDARD
+        .decode(data_base64.trim())
+        .map_err(|e| format!("Invalid file data: {e}"))?;
+
+    let dest_dir = if parent_rel.is_empty() {
+        root_canon.clone()
+    } else {
+        let full = ensure_inside(&root, Path::new(&parent_rel))?;
+        if !full.is_dir() {
+            return Err("Destination folder not found".into());
+        }
+        full
+    };
+    fs::create_dir_all(&dest_dir).map_err(|e| format!("Cannot create folders: {e}"))?;
+
+    let unique = unique_filename(&dest_dir, &name);
+    let dest = dest_dir.join(&unique);
+    fs::write(&dest, data).map_err(|e| format!("Cannot write file: {e}"))?;
+
+    let created = relative_to_root(&root_canon, &dest);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent_rel, &unique, None);
+    write_order(&root, &order)?;
+    Ok(created)
+}
+
 #[tauri::command]
 pub fn create_folder(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;

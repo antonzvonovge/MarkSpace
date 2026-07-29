@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   formatAttachmentSize,
   type ChatAttachment,
@@ -16,6 +16,17 @@ import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { ChatContextMeter } from "./ChatContextMeter";
 import { ChatModelPicker } from "./ChatModelPicker";
+
+const COMPOSER_INPUT_MAX_HEIGHT_PX = 160;
+
+function syncComposerInputHeight(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.overflowY = "hidden";
+  const contentHeight = el.scrollHeight;
+  el.style.height = `${Math.min(contentHeight, COMPOSER_INPUT_MAX_HEIGHT_PX)}px`;
+  el.style.overflowY =
+    contentHeight > COMPOSER_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
+}
 
 function kindLabel(kind: ChatAttachment["kind"]): string {
   if (kind === "image") return "Image";
@@ -177,6 +188,11 @@ export function ChatComposer() {
     focusInput();
   };
 
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (el) syncComposerInputHeight(el);
+  }, [draft]);
+
   return (
     <div
       className={
@@ -278,11 +294,15 @@ export function ChatComposer() {
       <textarea
         ref={inputRef}
         className="chat-composer-input"
-        rows={2}
+        rows={1}
         placeholder={streaming ? "Streaming…" : "Message…"}
         value={draft}
         disabled={streaming}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          syncComposerInputHeight(e.target);
+        }}
+
         onPaste={(e) => {
           if (streaming) return;
           const data = e.clipboardData;

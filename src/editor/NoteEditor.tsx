@@ -9,7 +9,9 @@ import {
 } from "@blocknote/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DocumentOutline } from "../components/DocumentOutline";
+import { DocumentToolbar } from "../components/DocumentToolbar";
 import {
   applyImagePreviewWidths,
   collectImageSizeRefs,
@@ -54,6 +56,13 @@ import {
   drawioPathFromDrop,
   getActiveDrawioTreeDrag,
 } from "./drawio/treeDrag";
+import {
+  clampOutlineWidth,
+  loadDocOutlineUi,
+  saveDocOutlineWidth,
+  OUTLINE_WIDTH_MIN,
+  OUTLINE_WIDTH_MAX,
+} from "../lib/outlineUiState";
 
 function buildEditorTheme(
   theme: ThemeId,
@@ -119,6 +128,8 @@ type Props = {
 export function NoteEditor({ path, content, onChange }: Props) {
   const openNote = useVaultStore((s) => s.openNote);
   const refreshTree = useVaultStore((s) => s.refreshTree);
+  const vaultPath = useVaultStore((s) => s.vaultPath);
+  const showOutline = useVaultStore((s) => s.showOutline);
   const theme = usePrefsStore((s) => s.prefs.theme);
   const liveFontFamily = usePrefsStore((s) => s.prefs.liveFontFamily);
   const applyingRef = useRef(false);
@@ -127,6 +138,45 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const notePathRef = useRef(path);
   notePathRef.current = path;
   const editorRef = useRef<ReturnType<typeof useCreateBlockNote> | null>(null);
+  const [outlineWidth, setOutlineWidth] = useState(
+    () => loadDocOutlineUi(vaultPath, path).width,
+  );
+
+  const persistOutlineWidth = useCallback(
+    (width: number) => {
+      saveDocOutlineWidth(vaultPath, path, width);
+    },
+    [vaultPath, path],
+  );
+
+  const onOutlineSplitterPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = outlineWidth;
+      const target = event.currentTarget;
+      target.setPointerCapture(event.pointerId);
+      target.classList.add("is-active");
+
+      const onMove = (ev: PointerEvent) => {
+        setOutlineWidth(clampOutlineWidth(startWidth + (ev.clientX - startX)));
+      };
+      const onUp = (ev: PointerEvent) => {
+        target.releasePointerCapture(ev.pointerId);
+        target.classList.remove("is-active");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        setOutlineWidth((w) => {
+          persistOutlineWidth(w);
+          return w;
+        });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [outlineWidth, persistOutlineWidth],
+  );
 
   const editorTheme = useMemo(
     () => buildEditorTheme(theme, editorFontStack(liveFontFamily)),
@@ -319,15 +369,57 @@ export function NoteEditor({ path, content, onChange }: Props) {
   }, [editor]);
 
   return (
-    <div ref={shellRef} className="editor-shell" onClick={handleLinkClick}>
-      <div className="editor-canvas">
-        <BlockNoteView editor={editor} theme={editorTheme} slashMenu={false}>
-          <SuggestionMenuController
-            triggerCharacter="/"
-            getItems={getSlashMenuItems}
-            suggestionMenuComponent={NoteSlashSuggestionMenu}
+    <div
+      ref={shellRef}
+      className={
+        showOutline ? "editor-shell editor-shell--with-outline" : "editor-shell"
+      }
+      onClick={handleLinkClick}
+    >
+      {showOutline ? (
+        <>
+          <DocumentOutline
+            editor={editor}
+            width={outlineWidth}
+            notePath={path}
+            vaultPath={vaultPath}
           />
-        </BlockNoteView>
+          <div
+            className="app-splitter outline-splitter"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize outline"
+            aria-valuenow={outlineWidth}
+            aria-valuemin={OUTLINE_WIDTH_MIN}
+            aria-valuemax={OUTLINE_WIDTH_MAX}
+            tabIndex={0}
+            onPointerDown={onOutlineSplitterPointerDown}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              const delta = e.key === "ArrowRight" ? 16 : -16;
+              setOutlineWidth((w) => {
+                const next = clampOutlineWidth(w + delta);
+                persistOutlineWidth(next);
+                return next;
+              });
+            }}
+          />
+        </>
+      ) : null}
+      <div className="editor-column">
+        <DocumentToolbar />
+        <div className="editor-main">
+          <div className="editor-canvas">
+            <BlockNoteView editor={editor} theme={editorTheme} slashMenu={false}>
+              <SuggestionMenuController
+                triggerCharacter="/"
+                getItems={getSlashMenuItems}
+                suggestionMenuComponent={NoteSlashSuggestionMenu}
+              />
+            </BlockNoteView>
+          </div>
+        </div>
       </div>
     </div>
   );

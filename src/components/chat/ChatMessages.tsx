@@ -6,6 +6,10 @@ import {
   type FileUIPart,
   type UIMessage,
 } from "ai";
+import {
+  attachedDocNamesFromUserMessage,
+  displayTextFromUserMessage,
+} from "../../ai/chatAttachments";
 import { useChatStore } from "../../store/chatStore";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { ChatReasoning } from "./ChatReasoning";
@@ -25,22 +29,6 @@ function textFrom(message: UIMessage): string {
 
 function filePartsFrom(message: UIMessage): FileUIPart[] {
   return (message.parts ?? []).filter(isFileUIPart);
-}
-
-/** Strip injected "Attached file:" blocks from bubble text for cleaner UI. */
-function displayUserText(message: UIMessage): string {
-  const raw = textFrom(message).trim();
-  if (!raw) return "";
-  // Keep user-authored lines; drop large fenced attachment dumps for display.
-  const withoutDocs = raw
-    .replace(
-      /Attached file: [^\n]+\n```[\s\S]*?```/g,
-      "",
-    )
-    .replace(/\(see attached image\)/g, "")
-    .replace(/\[Attachment [^\]]+\]/g, "")
-    .trim();
-  return withoutDocs;
 }
 
 function assistantHasVisibleContent(message: UIMessage | undefined): boolean {
@@ -121,16 +109,8 @@ const UserMessageRow = memo(function UserMessageRow({
   stickyRef,
 }: UserRowProps) {
   const files = filePartsFrom(message);
-  const text = displayUserText(message);
-  const attachedDocNames = (message.parts ?? [])
-    .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .flatMap((p) => {
-      const names: string[] = [];
-      const re = /Attached file: ([^\n]+)/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(p.text))) names.push(m[1]!.trim());
-      return names;
-    });
+  const text = displayTextFromUserMessage(message);
+  const attachedDocNames = attachedDocNamesFromUserMessage(message);
 
   return (
     <div
@@ -150,23 +130,26 @@ const UserMessageRow = memo(function UserMessageRow({
                   alt={file.filename ?? "attachment"}
                 />
               ) : (
-                <span className="chat-msg-attach-file">
-                  {file.filename ?? "file"}
+                <span className="chat-msg-attach-file" title={file.filename ?? "file"}>
+                  <span className="chat-msg-attach-kind">File</span>
+                  <span className="chat-msg-attach-name">
+                    {file.filename ?? "file"}
+                  </span>
                 </span>
               )}
             </div>
           ))}
           {attachedDocNames.map((name) => (
             <div key={`${message.id}-d-${name}`} className="chat-msg-attach">
-              <span className="chat-msg-attach-file">{name}</span>
+              <span className="chat-msg-attach-file" title={name}>
+                <span className="chat-msg-attach-kind">File</span>
+                <span className="chat-msg-attach-name">{name}</span>
+              </span>
             </div>
           ))}
         </div>
       )}
       {text ? <div className="chat-bubble">{text}</div> : null}
-      {!text && files.length === 0 && attachedDocNames.length === 0 ? (
-        <div className="chat-bubble">{textFrom(message)}</div>
-      ) : null}
     </div>
   );
 });

@@ -111,7 +111,7 @@ function syncOpenEditor(path: string, content: string) {
   window.setTimeout(() => {
     const latest = useVaultStore.getState();
     if (latest.activePath !== path) return;
-    useVaultStore.setState({ content, dirty: false });
+    latest.applyExternalContent(path, content);
     latest.markExternalWrite();
   }, 0);
 }

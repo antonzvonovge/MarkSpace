@@ -36,6 +36,7 @@ import "./App.css";
 
 function App() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
+  const tabs = useVaultStore((s) => s.tabs);
   const activePath = useVaultStore((s) => s.activePath);
   const content = useVaultStore((s) => s.content);
   const viewMode = useVaultStore((s) => s.viewMode);
@@ -169,7 +170,7 @@ function App() {
       if (!hit) return;
       try {
         const next = await readNote(current);
-        useVaultStore.setState({ content: next, dirty: false });
+        useVaultStore.getState().applyExternalContent(current, next);
       } catch {
         // file may have been deleted
       }
@@ -189,8 +190,11 @@ function App() {
     };
   }, [refreshTree, refreshSyncStatus]);
 
-  const onEditorChange = (markdown: string) => {
-    setContent(markdown);
+  const onEditorChange = (path: string, nextContent: string) => {
+    // Each tab keeps its own mounted editor instance; accept input only
+    // from the currently active tab to avoid cross-tab writes.
+    if (useVaultStore.getState().activePath !== path) return;
+    setContent(nextContent);
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       void saveActive();
@@ -293,32 +297,70 @@ function App() {
                       )}
                       {activePath && (
                         <div className="document-column">
-                          {documentKind(activePath) === "markdown" ? (
+                          {documentKind(activePath) === "markdown" &&
+                          viewMode === "source" ? (
                             <DocumentToolbar />
                           ) : null}
                           <div className="document-body">
-                            {documentKind(activePath) === "drawio" ? (
-                              <DrawioEditor
-                                key={activePath}
-                                path={activePath}
-                                content={content}
-                                onChange={onEditorChange}
-                              />
-                            ) : viewMode === "live" ? (
-                              <NoteEditor
-                                key={activePath}
-                                path={activePath}
-                                content={content}
-                                onChange={onEditorChange}
-                              />
-                            ) : (
-                              <MarkdownSourceEditor
-                                key={activePath}
-                                path={activePath}
-                                content={content}
-                                onChange={onEditorChange}
-                              />
-                            )}
+                            {tabs.map((tab) => {
+                              const tabPath = tab.path;
+                              const isActiveTab = tabPath === activePath;
+                              const tabContent =
+                                isActiveTab ? content : (tab.body ?? "");
+                              const kind = documentKind(tabPath);
+                              return (
+                                <div
+                                  key={tabPath}
+                                  className={
+                                    isActiveTab
+                                      ? "document-instance is-active"
+                                      : "document-instance"
+                                  }
+                                  aria-hidden={!isActiveTab}
+                                >
+                                  {kind === "drawio" ? (
+                                    <DrawioEditor
+                                      path={tabPath}
+                                      content={tabContent}
+                                      onChange={(xml) => onEditorChange(tabPath, xml)}
+                                    />
+                                  ) : (
+                                    <>
+                                      <div
+                                        className={
+                                          viewMode === "live"
+                                            ? "document-editor-slot is-active"
+                                            : "document-editor-slot"
+                                        }
+                                      >
+                                        <NoteEditor
+                                          path={tabPath}
+                                          content={tabContent}
+                                          onChange={(markdown) =>
+                                            onEditorChange(tabPath, markdown)
+                                          }
+                                        />
+                                      </div>
+                                      <div
+                                        className={
+                                          viewMode === "source"
+                                            ? "document-editor-slot is-active"
+                                            : "document-editor-slot"
+                                        }
+                                      >
+                                        <MarkdownSourceEditor
+                                          path={tabPath}
+                                          content={tabContent}
+                                          onChange={(markdown) =>
+                                            onEditorChange(tabPath, markdown)
+                                          }
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}

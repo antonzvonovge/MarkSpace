@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -9,6 +9,7 @@ import {
   type TreeMethods,
 } from "@minoru/react-dnd-treeview";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { TreeNode } from "../lib/vaultApi";
 import { absolutePath, parentPath } from "../lib/vaultApi";
 import { saveExpandedPaths } from "../lib/settingsStore";
@@ -25,9 +26,32 @@ import {
   endVaultTreeDrag,
   VAULT_TREE_MIME,
 } from "../lib/vaultTreeDrag";
+import {
+  clipboardHasOsFiles,
+  collectVaultDocumentFiles,
+  pathsFromClipboardData,
+} from "../lib/osClipboardFiles";
 
 const TREE_ROOT = "__tree_root__";
 const VAULT_ID = "__vault__";
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+/** Select basename stem (before last extension) for rename, like VS Code. */
+function selectRenameStem(input: HTMLInputElement, name: string) {
+  const lastDot = name.lastIndexOf(".");
+  if (lastDot > 0) {
+    input.setSelectionRange(0, lastDot);
+  } else {
+    input.select();
+  }
+}
 
 /** Keeps module-level drawio drag path in sync with react-dnd isDragging. */
 function DrawioTreeDragBridge({
@@ -181,9 +205,7 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
     nodes.push({
       id,
       parent: parentId,
-      text: node.isDir
-        ? node.name
-        : node.name.replace(/\.md$/i, "").replace(/\.drawio$/i, ""),
+      text: node.name,
       droppable: node.isDir,
       data: {
         path: node.path,
@@ -416,6 +438,49 @@ function RevealIcon() {
   );
 }
 
+function CopyPathIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="5.25"
+        y="5.25"
+        width="7.5"
+        height="7.5"
+        rx="1.25"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M3.5 10.5V3.75A1.25 1.25 0 0 1 4.75 2.5H10.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function TreeNodeLabel({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [title, setTitle] = useState<string | undefined>();
+
+  return (
+    <span
+      ref={ref}
+      className="tree-node-label"
+      title={title}
+      onMouseEnter={() => {
+        const el = ref.current;
+        if (!el) return;
+        setTitle(el.scrollWidth > el.clientWidth + 1 ? text : undefined);
+      }}
+      onMouseLeave={() => setTitle(undefined)}
+    >
+      {text}
+    </span>
+  );
+}
+
 async function revealPathInExplorer(relPath: string) {
   const abs = await absolutePath(relPath);
   await revealItemInDir(abs);
@@ -430,6 +495,7 @@ function TreeContextMenu({
   onRename,
   onDelete,
   onReveal,
+  onCopyPath,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
@@ -439,9 +505,11 @@ function TreeContextMenu({
   onRename: () => void;
   onDelete: () => void;
   onReveal: () => void;
+  onCopyPath: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const showEditActions = !menu.createOnly && menu.path !== "";
+  const showCopyPath = !menu.createOnly && menu.path !== "";
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -462,7 +530,7 @@ function TreeContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 280);
-  const top = Math.min(menu.y, window.innerHeight - 280);
+  const top = Math.min(menu.y, window.innerHeight - 320);
 
   return createPortal(
     <div
@@ -520,6 +588,20 @@ function TreeContextMenu({
         <RevealIcon />
         <span>Reveal in file manager</span>
       </button>
+      {showCopyPath ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={() => {
+            onClose();
+            onCopyPath();
+          }}
+        >
+          <CopyPathIcon />
+          <span>Copy path</span>
+        </button>
+      ) : null}
       {showEditActions ? (
         <>
           <div className="tree-context-sep" role="separator" />
@@ -569,11 +651,13 @@ function InlineRenameInput({
 
   useEffect(() => {
     const id = window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      selectRenameStem(input, initialValue);
     });
     return () => window.cancelAnimationFrame(id);
-  }, []);
+  }, [initialValue]);
 
   const commit = () => {
     if (committed.current) return;
@@ -624,17 +708,24 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
   const renameTreeEntry = useVaultStore((s) => s.renameTreeEntry);
   const removePath = useVaultStore((s) => s.removePath);
+  const importIntoSelection = useVaultStore((s) => s.importIntoSelection);
   const selectFolder = useVaultStore((s) => s.selectFolder);
   const openNote = useVaultStore((s) => s.openNote);
   const refreshTree = useVaultStore((s) => s.refreshTree);
 
   const treeRef = useRef<TreeMethods>(null);
+  const treeFocusRef = useRef<HTMLDivElement | null>(null);
   const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
   const [promptKind, setPromptKind] = useState<PromptKind | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  const setTreeScrollRef = useCallback((node: HTMLDivElement | null) => {
+    treeFocusRef.current = node;
+    setDndRoot(node);
+  }, []);
 
   useImperativeHandle(ref, () => ({
     openCreateMenu: (x, y) => {
@@ -690,6 +781,46 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       dndRoot.removeEventListener("dragend", onDragEnd, true);
     };
   }, [dndRoot]);
+
+  // F2 rename when the tree (or a row inside it) has focus.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "F2") return;
+      if (renamingPath || promptKind || deleteTarget) return;
+      if (isEditableTarget(e.target)) return;
+      const root = treeFocusRef.current;
+      if (!root) return;
+      const t = e.target as Node | null;
+      if (t && !root.contains(t) && t !== root) return;
+
+      const {
+        activePath,
+        selectedFolderPath,
+        selectedFolderExplicit,
+      } = useVaultStore.getState();
+      let target: string | null = null;
+      if (selectedFolderExplicit && selectedFolderPath) {
+        target = selectedFolderPath;
+      } else if (activePath) {
+        target = activePath;
+      }
+      if (!target) return;
+      e.preventDefault();
+      setContextMenu(null);
+      setRenamingPath(target);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [renamingPath, promptKind, deleteTarget]);
+
+  const pasteOsFiles = (data: DataTransfer | null) => {
+    if (!data || !clipboardHasOsFiles(data)) return false;
+    const paths = pathsFromClipboardData(data);
+    const files = paths.length ? [] : collectVaultDocumentFiles(data);
+    if (!paths.length && !files.length) return false;
+    void importIntoSelection(paths, files);
+    return true;
+  };
 
   const flatTree = useMemo(() => (tree ? flattenTree(tree) : []), [tree]);
 
@@ -807,6 +938,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           onReveal={() => {
             void revealPathInExplorer(contextMenu.path);
           }}
+          onCopyPath={() => {
+            void writeText(contextMenu.path);
+          }}
         />
       ) : null}
 
@@ -836,7 +970,17 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       {/* Stable ref callback: an inline closure here re-runs on every render
           (detach with null → setDndRoot(null) → Tree unmounts → remounts with
           initialOpen), silently resetting expand/collapse state. */}
-      <div className="tree-scroll" ref={setDndRoot}>
+      <div
+        className="tree-scroll"
+        ref={setTreeScrollRef}
+        tabIndex={0}
+        onPaste={(e) => {
+          if (pasteOsFiles(e.clipboardData)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+      >
         {backendOptions ? (
           <DndProvider backend={HTML5Backend} options={backendOptions}>
             <Tree
@@ -912,6 +1056,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 // start an HTML5 drag from form controls, which killed row drags
                 // on Windows. Plain spans + a row-level click handler instead.
                 const handleRowClick = () => {
+                  treeFocusRef.current?.focus({ preventScroll: true });
                   if (renaming) return;
                   if (isDir) {
                     selectFolder(path);
@@ -948,6 +1093,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                     onContextMenu={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      treeFocusRef.current?.focus({ preventScroll: true });
                       setContextMenu({
                         x: e.clientX,
                         y: e.clientY,
@@ -1034,7 +1180,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         }}
                       />
                     ) : (
-                      <span className="tree-node-label">{node.text}</span>
+                      <TreeNodeLabel text={node.text} />
                     )}
 
                     {isVault ? (

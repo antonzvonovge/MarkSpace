@@ -51,6 +51,27 @@ export async function importDrawio(
   return invoke("import_drawio", { notePath, source: sourceAbsPath });
 }
 
+/** Copy external absolute paths (files/folders) into a vault folder. */
+export async function importPaths(
+  parent: string,
+  sources: string[],
+): Promise<string[]> {
+  return invoke("import_paths", { parent, sources });
+}
+
+/** Write a .md / .drawio from bytes into a vault folder. */
+export async function importDocumentBytes(
+  parent: string,
+  fileName: string,
+  data: Uint8Array,
+): Promise<string> {
+  return invoke("import_document_bytes", {
+    parent,
+    fileName,
+    dataBase64: uint8ToBase64(data),
+  });
+}
+
 export async function createFolder(path: string): Promise<string> {
   return invoke("create_folder", { path });
 }

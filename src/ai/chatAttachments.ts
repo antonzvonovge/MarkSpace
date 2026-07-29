@@ -264,6 +264,9 @@ export type PreparedUserParts = {
   titleHint: string;
 };
 
+/** Marker prefix used when inlining text/PDF attachments for the model. */
+export const ATTACHED_FILE_HEADER = "Attached file: ";
+
 function fenceLang(name: string): string {
   const ext = extOf(name);
   if (ext === "md" || ext === "markdown") return "markdown";
@@ -310,7 +313,7 @@ export function prepareUserMessageParts(
     }
     if ((att.kind === "text" || att.kind === "pdf") && att.textContent) {
       const lang = att.kind === "pdf" ? "" : fenceLang(att.name);
-      const header = `Attached file: ${att.name}`;
+      const header = `${ATTACHED_FILE_HEADER}${att.name}`;
       docBlocks.push(
         `${header}\n\`\`\`${lang}\n${att.textContent}\n\`\`\``,
       );
@@ -339,6 +342,53 @@ export function prepareUserMessageParts(
     (imageParts[0]?.filename ?? "Attachment");
 
   return { parts, titleHint };
+}
+
+/**
+ * User-authored text only — attachment dumps stay in stored parts for the model
+ * but must not appear in the chat bubble (notes often contain ``` that break
+ * fence-based stripping).
+ */
+export function displayTextFromUserMessage(message: UIMessage): string {
+  const raw = (message.parts ?? [])
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("")
+    .trim();
+  if (!raw) return "";
+
+  // Docs are always appended after the draft; cut from the first header.
+  const headerRe = new RegExp(`(?:^|\\n)${escapeRegExp(ATTACHED_FILE_HEADER)}`);
+  const attIdx = raw.search(headerRe);
+  let user = attIdx >= 0 ? raw.slice(0, attIdx) : raw;
+
+  user = user
+    .replace(/\n?\[Attachment [^\]]+\]/g, "")
+    .replace(/\(see attached image\)/g, "")
+    .trim();
+  return user;
+}
+
+/** Filenames of text/PDF attachments inlined into a user message. */
+export function attachedDocNamesFromUserMessage(message: UIMessage): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const re = new RegExp(`${escapeRegExp(ATTACHED_FILE_HEADER)}([^\\n]+)`, "g");
+  for (const part of message.parts ?? []) {
+    if (part.type !== "text") continue;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(part.text))) {
+      const name = m[1]!.trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function isFilePart(

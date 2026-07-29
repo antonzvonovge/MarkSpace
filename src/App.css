@@ -542,6 +542,7 @@ select {
 }
 
 .tree-scroll {
+  outline: none;
   overflow: auto;
   min-height: 0;
   flex: 1;
@@ -1045,6 +1046,7 @@ li.dnd-drop-target > .tree-row {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   flex-shrink: 0;
   height: 38px;
   padding: 0 10px;
@@ -1053,6 +1055,29 @@ li.dnd-drop-target > .tree-row {
   background: var(--editor-surface);
   user-select: none;
   -webkit-user-select: none;
+}
+
+.document-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.document-toolbar-btn:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.document-toolbar-btn.is-active {
+  color: var(--accent);
+  background: var(--sidebar-active);
 }
 
 .view-mode-switch {
@@ -1092,8 +1117,36 @@ li.dnd-drop-target > .tree-row {
 .document-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   background: var(--editor-surface);
+}
+
+.document-body:has(.editor-shell) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.document-instance {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.document-instance.is-active {
+  display: flex;
+}
+
+.document-editor-slot {
+  display: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.document-editor-slot.is-active {
+  display: flex;
 }
 
 .note-path {
@@ -1345,8 +1398,194 @@ li.dnd-drop-target > .tree-row {
 .editor-shell {
   flex: 1;
   min-height: 0;
-  padding: 4px 0 48px;
+  display: flex;
+  flex-direction: column;
   background: var(--editor-surface);
+}
+
+.editor-shell--with-outline {
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.editor-column {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 48px;
+}
+
+.document-outline {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--editor-surface);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.outline-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.outline-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.outline-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.outline-toolbar-btn:hover:not(:disabled) {
+  background: var(--sidebar-hover);
+  color: var(--accent);
+}
+
+.outline-toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.outline-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 8px 48px;
+}
+
+.outline-splitter {
+  cursor: col-resize;
+  touch-action: none;
+  align-self: stretch;
+}
+
+.outline-empty {
+  margin: 8px 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.outline-tree,
+.outline-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outline-item {
+  margin: 0;
+}
+
+.outline-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  border-radius: 4px;
+}
+
+.outline-row:hover {
+  background: var(--sidebar-hover);
+}
+
+.outline-toggle,
+.outline-toggle-spacer {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 22px;
+}
+
+.outline-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.outline-toggle:hover {
+  color: var(--text);
+}
+
+.outline-chevron {
+  transition: transform 0.12s ease;
+  transform: rotate(0deg);
+}
+
+.outline-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.outline-link {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px 3px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.outline-link:hover {
+  color: var(--accent);
+}
+
+.outline-item.level-1 > .outline-row .outline-link {
+  font-weight: 600;
+}
+
+.outline-item.level-2 > .outline-row .outline-link {
+  font-weight: 500;
+}
+
+.outline-item.level-3 > .outline-row .outline-link {
+  color: var(--muted);
+}
+
+.outline-item.level-3 > .outline-row:hover .outline-link {
+  color: var(--accent);
+}
+
+.outline-children {
+  padding-left: 12px;
 }
 
 .editor-canvas {
@@ -1595,8 +1834,11 @@ li.dnd-drop-target > .tree-row {
 }
 
 .drawio-editor {
+  flex: 1;
+  width: 100%;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--editor-surface);
@@ -2792,7 +3034,9 @@ li.dnd-drop-target > .tree-row {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow-x: hidden;
+  /* clip (not hidden): overflow-x:hidden forces overflow-y to auto and
+     creates a spurious vertical scrollbar on the composer shell. */
+  overflow-x: clip;
   position: relative;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
@@ -2942,9 +3186,9 @@ li.dnd-drop-target > .tree-row {
 
 .chat-msg-attachments {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
   max-width: 92%;
 }
 
@@ -2964,14 +3208,30 @@ li.dnd-drop-target > .tree-row {
 }
 
 .chat-msg-attach-file {
-  display: inline-block;
-  font-size: 0.75rem;
-  padding: 4px 8px;
-  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 4px 8px 4px 6px;
+  border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--sidebar-active);
   color: var(--text);
-  max-width: 200px;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.chat-msg-attach-kind {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.chat-msg-attach-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2989,6 +3249,9 @@ li.dnd-drop-target > .tree-row {
   line-height: 1.4;
   min-height: 44px;
   max-height: 160px;
+  /* Height is synced to scrollHeight in ChatComposer; only scroll past max. */
+  overflow-y: hidden;
+  box-sizing: border-box;
 }
 
 .chat-composer-toolbar {
