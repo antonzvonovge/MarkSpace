@@ -16,8 +16,8 @@
   --muted: #5d6b73;
   --line: rgba(28, 36, 40, 0.1);
   --danger: #b44848;
-  --font-ui: "Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
-  --font-live: "Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-ui: "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Droid Sans", sans-serif;
+  --font-live: "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Droid Sans", sans-serif;
   --font-source: "JetBrains Mono", ui-monospace, monospace;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --live-font-size: 15px;
@@ -469,6 +469,40 @@ select {
   flex-direction: column;
   min-height: 0;
   flex: 1;
+}
+
+.favorites-section {
+  flex-shrink: 0;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="dark"] .favorites-section {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.favorites-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--tree-row-height);
+  padding: 2px var(--tree-pad-x);
+  color: var(--sidebar-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.favorites-header svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.favorites-node {
+  min-width: 0;
 }
 
 .tree-toolbar-actions {
@@ -1209,6 +1243,7 @@ li.dnd-drop-target > .tree-row {
 }
 
 .sidebar-toggle-btn,
+.focus-toggle-btn,
 .chat-toggle-btn {
   flex-shrink: 0;
   display: inline-flex;
@@ -1228,25 +1263,37 @@ li.dnd-drop-target > .tree-row {
   border-right: 1px solid var(--line);
 }
 
+.focus-toggle-btn,
 .chat-toggle-btn {
   border-left: 1px solid var(--line);
 }
 
-.sidebar-toggle-btn:hover,
-.chat-toggle-btn:hover {
+.sidebar-toggle-btn:hover:not(:disabled),
+.focus-toggle-btn:hover,
+.chat-toggle-btn:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.06);
   color: var(--text);
 }
 
-:root[data-theme="dark"] .sidebar-toggle-btn:hover,
-:root[data-theme="dark"] .chat-toggle-btn:hover {
+:root[data-theme="dark"] .sidebar-toggle-btn:hover:not(:disabled),
+:root[data-theme="dark"] .focus-toggle-btn:hover,
+:root[data-theme="dark"] .chat-toggle-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.06);
 }
 
 .sidebar-toggle-btn.is-active,
+.focus-toggle-btn.is-active,
 .chat-toggle-btn.is-active {
   color: var(--accent);
   background: var(--sidebar-active);
+}
+
+.sidebar-toggle-btn:disabled,
+.chat-toggle-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  color: var(--muted);
+  background: transparent;
 }
 
 .editor-tabbar {
@@ -1351,13 +1398,10 @@ li.dnd-drop-target > .tree-row {
 }
 
 .editor-tab.is-preview .editor-tab-label {
-  /* Inter is bundled without italic faces; skew mimics VS Code preview tabs. */
+  /* Cursor/VS Code preview tabs use italic. */
   font-style: italic;
-  font-synthesis: style;
   font-weight: 400;
   opacity: 0.88;
-  transform: skewX(-10deg);
-  transform-origin: center left;
 }
 
 .editor-tab-close {
@@ -1460,6 +1504,9 @@ li.dnd-drop-target > .tree-row {
 .editor-main {
   flex: 1;
   min-height: 0;
+  /* Containing block for BlockNote portals (table handles, side menu) so
+     overflow:auto clips them instead of painting over DocumentToolbar. */
+  position: relative;
   overflow: auto;
   padding: 4px 0 48px;
 }
@@ -3670,6 +3717,7 @@ li.dnd-drop-target > .tree-row {
   font: inherit;
   font-size: 0.875rem;
   line-height: 1.4;
+  height: 28px;
   min-height: 28px;
   max-height: 160px;
   /* Height is synced to scrollHeight in ChatComposer; only scroll past max. */

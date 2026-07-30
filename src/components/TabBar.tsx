@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useVaultStore, tabLabel, type EditorTab } from "../store/vaultStore";
 import { useChatUiStore } from "../store/chatUiStore";
+import { useFocusUiStore } from "../store/focusUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useTabReorder } from "../hooks/useTabReorder";
 
@@ -92,6 +93,8 @@ export function EditorChrome() {
   const toggleSidebar = useSidebarUiStore((s) => s.toggle);
   const chatOpen = useChatUiStore((s) => s.open);
   const toggleChat = useChatUiStore((s) => s.toggle);
+  const focusActive = useFocusUiStore((s) => s.active);
+  const toggleFocus = useFocusUiStore((s) => s.toggle);
 
   const onReorder = useCallback(
     (from: number, to: number) => {
@@ -111,6 +114,7 @@ export function EditorChrome() {
         title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
         aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
         aria-pressed={sidebarOpen}
+        disabled={focusActive}
         onClick={() => toggleSidebar()}
       >
         {/* vscode-codicons: layout-sidebar-left / layout-sidebar-left-off */}
@@ -140,10 +144,36 @@ export function EditorChrome() {
       </div>
       <button
         type="button"
+        className={
+          focusActive ? "focus-toggle-btn is-active" : "focus-toggle-btn"
+        }
+        title={focusActive ? "Restore panels" : "Expand editor"}
+        aria-label={focusActive ? "Restore panels" : "Expand editor"}
+        aria-pressed={focusActive}
+        onClick={() => toggleFocus()}
+      >
+        {/* vscode-codicons: screen-full / screen-normal */}
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          {focusActive ? (
+            <path d="M3.5 4H1V3h2V1h1v2.5l-.5.5zM13 3V1h-1v2.5l.5.5H15V3h-2zm-1 9.5V15h1v-2h2v-1h-2.5l-.5.5zM1 12v1h2v2h1v-2.5l-.5-.5H1zm11-1.5l-.5.5h-7l-.5-.5v-5l.5-.5h7l.5.5v5zM10 7H6v2h4V7z" />
+          ) : (
+            <path d="M3 12h10V4H3v8zm2-6h6v4H5V6zM2 6H1V2.5l.5-.5H5v1H2v3zm13-3.5V6h-1V3h-3V2h3.5l.5.5zM14 10h1v3.5l-.5.5H11v-1h3v-3zM2 13h3v1H1.5l-.5-.5V10h1v3z" />
+          )}
+        </svg>
+      </button>
+      <button
+        type="button"
         className={chatOpen ? "chat-toggle-btn is-active" : "chat-toggle-btn"}
         title={chatOpen ? "Hide chat" : "Show chat"}
         aria-label={chatOpen ? "Hide chat" : "Show chat"}
         aria-pressed={chatOpen}
+        disabled={focusActive}
         onClick={() => toggleChat()}
       >
         {/* vscode-codicons: layout-sidebar-right / layout-sidebar-right-off */}

@@ -85,6 +85,8 @@ type ContextMenuState = {
   isDir: boolean;
   /** Empty sidebar / background — create only, no rename/delete. */
   createOnly?: boolean;
+  /** Already in favorites — show remove instead of add. */
+  isFavorite?: boolean;
 };
 
 export type FileTreeHandle = {
@@ -460,6 +462,30 @@ function CopyPathIcon() {
   );
 }
 
+function StarIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 2.4 9.7 5.9l3.8.4-2.9 2.6.9 3.7L8 10.7l-3.5 2 0.9-3.7-2.9-2.6 3.8-.4L8 2.4Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+        fill={filled ? "currentColor" : "none"}
+      />
+    </svg>
+  );
+}
+
+function findTreeNode(root: TreeNode | null, path: string): TreeNode | null {
+  if (!root) return null;
+  if (root.path === path) return root;
+  for (const child of root.children ?? []) {
+    const hit = findTreeNode(child, path);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function TreeNodeLabel({ text }: { text: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [title, setTitle] = useState<string | undefined>();
@@ -496,6 +522,7 @@ function TreeContextMenu({
   onDelete,
   onReveal,
   onCopyPath,
+  onToggleFavorite,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
@@ -506,10 +533,12 @@ function TreeContextMenu({
   onDelete: () => void;
   onReveal: () => void;
   onCopyPath: () => void;
+  onToggleFavorite: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const showEditActions = !menu.createOnly && menu.path !== "";
   const showCopyPath = !menu.createOnly && menu.path !== "";
+  const showFavorite = !menu.createOnly && menu.path !== "";
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -530,7 +559,7 @@ function TreeContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 280);
-  const top = Math.min(menu.y, window.innerHeight - 320);
+  const top = Math.min(menu.y, window.innerHeight - 360);
 
   return createPortal(
     <div
@@ -539,6 +568,25 @@ function TreeContextMenu({
       role="menu"
       style={{ left, top }}
     >
+      {showFavorite ? (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onToggleFavorite();
+            }}
+          >
+            <StarIcon filled={menu.isFavorite} />
+            <span>
+              {menu.isFavorite ? "Убрать из избранного" : "Добавить в избранное"}
+            </span>
+          </button>
+          <div className="tree-context-sep" role="separator" />
+        </>
+      ) : null}
       <button
         type="button"
         role="menuitem"
@@ -695,10 +743,199 @@ function InlineRenameInput({
   );
 }
 
+function FavoritesTreeRows({
+  nodes,
+  depth,
+  expandedPaths,
+  activePath,
+  selectedFolderPath,
+  selectedFolderExplicit,
+  renamingPath,
+  favoriteSet,
+  onOpenContextMenu,
+  onSelectFolder,
+  onOpenNote,
+  onToggleExpanded,
+  onRenameCommit,
+  onRenameCancel,
+}: {
+  nodes: TreeNode[];
+  depth: number;
+  expandedPaths: string[];
+  activePath: string | null;
+  selectedFolderPath: string;
+  selectedFolderExplicit: boolean;
+  renamingPath: string | null;
+  favoriteSet: Set<string>;
+  onOpenContextMenu: (menu: ContextMenuState) => void;
+  onSelectFolder: (path: string) => void;
+  onOpenNote: (path: string, options?: { preview?: boolean }) => void;
+  onToggleExpanded: (path: string) => void;
+  onRenameCommit: (path: string, nextName: string) => void;
+  onRenameCancel: () => void;
+}) {
+  return (
+    <>
+      {nodes.map((node) => {
+        const path = node.path;
+        const isDir = node.isDir;
+        const children = node.children ?? [];
+        const hasChildren = isDir && children.length > 0;
+        const isOpen = isDir && expandedPaths.includes(path);
+        const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
+        const selected =
+          isDir && selectedFolderExplicit && selectedFolderPath === path;
+        const active =
+          !isDir && !selectedFolderExplicit && activePath === path;
+        const renaming = renamingPath === path;
+
+        return (
+          <div key={`fav:${path}`} className="favorites-node">
+            <div
+              className={[
+                "tree-row",
+                isDir ? "tree-folder-row" : "tree-file",
+                selected || active ? "is-selected" : "",
+                renaming ? "is-renaming" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              style={{
+                paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
+                paddingRight: "var(--tree-pad-x)",
+              }}
+              data-vault-path={isDir ? undefined : path}
+              data-drawio-path={isDrawio ? path : undefined}
+              onClick={() => {
+                if (renaming) return;
+                if (isDir) {
+                  onSelectFolder(path);
+                  if (hasChildren) onToggleExpanded(path);
+                  return;
+                }
+                onOpenNote(path, { preview: true });
+              }}
+              onDoubleClick={() => {
+                if (isDir || renaming) return;
+                onOpenNote(path, { preview: false });
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpenContextMenu({
+                  x: e.clientX,
+                  y: e.clientY,
+                  path,
+                  name: node.name,
+                  isDir,
+                  isFavorite: favoriteSet.has(path),
+                });
+                if (isDir) onSelectFolder(path);
+                else onOpenNote(path, { preview: true });
+              }}
+            >
+              {isDir ? (
+                <span
+                  role={hasChildren ? "button" : undefined}
+                  tabIndex={hasChildren ? 0 : undefined}
+                  className={
+                    hasChildren
+                      ? "tree-chevron-btn"
+                      : "tree-chevron-btn is-empty"
+                  }
+                  aria-hidden={hasChildren ? undefined : true}
+                  aria-label={
+                    hasChildren
+                      ? isOpen
+                        ? "Collapse"
+                        : "Expand"
+                      : undefined
+                  }
+                  aria-expanded={hasChildren ? isOpen : undefined}
+                  onClick={
+                    hasChildren
+                      ? (e) => {
+                          e.stopPropagation();
+                          onToggleExpanded(path);
+                        }
+                      : undefined
+                  }
+                  onKeyDown={
+                    hasChildren
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onToggleExpanded(path);
+                          }
+                        }
+                      : undefined
+                  }
+                >
+                  <ChevronIcon open={isOpen} />
+                </span>
+              ) : (
+                <span className="tree-file-spacer" />
+              )}
+
+              <span className="tree-node-icon" aria-hidden>
+                {isDir ? (
+                  isOpen ? (
+                    <FcOpenedFolder size={20} />
+                  ) : (
+                    <FcFolder size={20} />
+                  )
+                ) : isDrawio ? (
+                  <span className="tree-drawio-icon">
+                    <DiagramIcon />
+                  </span>
+                ) : (
+                  <FcDocument size={20} />
+                )}
+              </span>
+
+              {renaming ? (
+                <InlineRenameInput
+                  key={path}
+                  initialValue={node.name}
+                  onCancel={onRenameCancel}
+                  onCommit={(nextName) => onRenameCommit(path, nextName)}
+                />
+              ) : (
+                <TreeNodeLabel text={node.name} />
+              )}
+            </div>
+
+            {isDir && isOpen && hasChildren ? (
+              <FavoritesTreeRows
+                nodes={children}
+                depth={depth + 1}
+                expandedPaths={expandedPaths}
+                activePath={activePath}
+                selectedFolderPath={selectedFolderPath}
+                selectedFolderExplicit={selectedFolderExplicit}
+                renamingPath={renamingPath}
+                favoriteSet={favoriteSet}
+                onOpenContextMenu={onOpenContextMenu}
+                onSelectFolder={onSelectFolder}
+                onOpenNote={onOpenNote}
+                onToggleExpanded={onToggleExpanded}
+                onRenameCommit={onRenameCommit}
+                onRenameCancel={onRenameCancel}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref) {
   const tree = useVaultStore((s) => s.tree);
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
+  const favoritePaths = useVaultStore((s) => s.favoritePaths);
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
   const selectedFolderExplicit = useVaultStore((s) => s.selectedFolderExplicit);
@@ -712,6 +949,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const selectFolder = useVaultStore((s) => s.selectFolder);
   const openNote = useVaultStore((s) => s.openNote);
   const refreshTree = useVaultStore((s) => s.refreshTree);
+  const toggleExpanded = useVaultStore((s) => s.toggleExpanded);
+  const addToFavorites = useVaultStore((s) => s.addToFavorites);
+  const removeFromFavorites = useVaultStore((s) => s.removeFromFavorites);
 
   const treeRef = useRef<TreeMethods>(null);
   const treeFocusRef = useRef<HTMLDivElement | null>(null);
@@ -823,6 +1063,18 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   };
 
   const flatTree = useMemo(() => (tree ? flattenTree(tree) : []), [tree]);
+
+  const favoriteSet = useMemo(() => new Set(favoritePaths), [favoritePaths]);
+
+  const favoriteNodes = useMemo(() => {
+    if (!tree) return [] as TreeNode[];
+    const nodes: TreeNode[] = [];
+    for (const path of favoritePaths) {
+      const node = findTreeNode(tree, path);
+      if (node) nodes.push(node);
+    }
+    return nodes;
+  }, [tree, favoritePaths]);
 
   const initialOpen = useMemo(
     () => [VAULT_ID, ...expandedPaths.map(toNodeId)],
@@ -941,6 +1193,13 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           onCopyPath={() => {
             void writeText(contextMenu.path);
           }}
+          onToggleFavorite={() => {
+            if (contextMenu.isFavorite) {
+              void removeFromFavorites(contextMenu.path);
+            } else {
+              void addToFavorites(contextMenu.path);
+            }
+          }}
         />
       ) : null}
 
@@ -981,6 +1240,35 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           }
         }}
       >
+        {favoriteNodes.length > 0 ? (
+          <div className="favorites-section">
+            <div className="favorites-header">
+              <StarIcon filled />
+              <span>Избранное</span>
+            </div>
+            <FavoritesTreeRows
+              nodes={favoriteNodes}
+              depth={0}
+              expandedPaths={expandedPaths}
+              activePath={activePath}
+              selectedFolderPath={selectedFolderPath}
+              selectedFolderExplicit={selectedFolderExplicit}
+              renamingPath={renamingPath}
+              favoriteSet={favoriteSet}
+              onOpenContextMenu={setContextMenu}
+              onSelectFolder={selectFolder}
+              onOpenNote={(path, options) => {
+                void openNote(path, options);
+              }}
+              onToggleExpanded={toggleExpanded}
+              onRenameCommit={(path, nextName) => {
+                setRenamingPath(null);
+                void renameTreeEntry(path, nextName);
+              }}
+              onRenameCancel={() => setRenamingPath(null)}
+            />
+          </div>
+        ) : null}
         {backendOptions ? (
           <DndProvider backend={HTML5Backend} options={backendOptions}>
             <Tree
@@ -1100,6 +1388,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         path,
                         name: node.text,
                         isDir,
+                        isFavorite: path !== "" && favoriteSet.has(path),
                       });
                       if (isDir) selectFolder(path);
                       else void openNote(path, { preview: true });

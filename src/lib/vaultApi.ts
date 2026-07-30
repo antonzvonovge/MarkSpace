@@ -126,6 +126,19 @@ export async function searchNotes(query: string): Promise<SearchHit[]> {
   return invoke("search_notes", { query });
 }
 
+/** Vault-relative paths stored as one file each under `.markspace/favorites/`. */
+export async function listFavorites(): Promise<string[]> {
+  return invoke("list_favorites");
+}
+
+export async function addFavorite(path: string): Promise<string[]> {
+  return invoke("add_favorite", { path });
+}
+
+export async function removeFavorite(path: string): Promise<string[]> {
+  return invoke("remove_favorite", { path });
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000;
   let binary = "";

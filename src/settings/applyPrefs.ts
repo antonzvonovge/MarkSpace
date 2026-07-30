@@ -1,7 +1,8 @@
 import type { EditorFontFamilyId, Prefs } from "./types";
 
+/** Bundled Ubuntu (Cursor/VS Code Linux UI), then system fallbacks. */
 const SANS_STACK =
-  '"Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif';
+  '"Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Droid Sans", sans-serif';
 const MONO_STACK = '"JetBrains Mono", ui-monospace, monospace';
 
 export function editorFontStack(family: EditorFontFamilyId): string {

@@ -21,8 +21,15 @@ const COMPOSER_INPUT_MIN_HEIGHT_PX = 28;
 const COMPOSER_INPUT_MAX_HEIGHT_PX = 160;
 
 function syncComposerInputHeight(el: HTMLTextAreaElement) {
-  // Collapse to 0 before measuring — `height: auto` can report an inflated
-  // scrollHeight on first layout in WebKit/Tauri and blow the composer up.
+  // WebKitGTK (Tauri/Linux): while the panel still has no laid-out width,
+  // an empty textarea reports scrollHeight near max-height (~156px). Stay at
+  // the single-line size until width is real; ResizeObserver re-syncs later.
+  if (!el.value || el.clientWidth <= 0) {
+    el.style.height = `${COMPOSER_INPUT_MIN_HEIGHT_PX}px`;
+    el.style.overflowY = "hidden";
+    return;
+  }
+
   el.style.height = "0px";
   el.style.overflowY = "hidden";
   const contentHeight = Math.max(el.scrollHeight, COMPOSER_INPUT_MIN_HEIGHT_PX);
@@ -194,7 +201,13 @@ export function ChatComposer() {
 
   useLayoutEffect(() => {
     const el = inputRef.current;
-    if (el) syncComposerInputHeight(el);
+    if (!el) return;
+    syncComposerInputHeight(el);
+    const ro = new ResizeObserver(() => {
+      syncComposerInputHeight(el);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [draft]);
 
   return (

@@ -27,6 +27,7 @@ import {
 } from "./lib/shellLayout";
 import { useAiSettingsStore } from "./store/aiSettingsStore";
 import { useChatUiStore } from "./store/chatUiStore";
+import { useFocusUiStore } from "./store/focusUiStore";
 import { usePrefsStore } from "./store/prefsStore";
 import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
@@ -129,6 +130,7 @@ function App() {
       }
       if (e.shiftKey && code === "KeyL") {
         e.preventDefault();
+        if (useFocusUiStore.getState().active) return;
         toggleChat();
       }
     };

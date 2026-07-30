@@ -1,4 +1,5 @@
 mod chat_history;
+mod favorites;
 mod git_sync;
 mod http_fetch;
 mod order_merge;
@@ -144,6 +145,9 @@ pub fn run() {
             vault::absolute_path,
             vault::write_asset,
             vault::search_notes,
+            favorites::list_favorites,
+            favorites::add_favorite,
+            favorites::remove_favorite,
             http_fetch::http_fetch,
             chat_history::list_chat_threads,
             chat_history::get_chat_thread,

@@ -1,35 +1,68 @@
 /* App-bundled fonts (full files, no unicode-range subsets — reliable in WebKit/Tauri). */
 
+/* Ubuntu — Cursor/VS Code Linux workbench UI font (Ubuntu Font Licence 1.0). */
 @font-face {
-  font-family: "Inter";
+  font-family: "Ubuntu";
   font-style: normal;
   font-display: swap;
   font-weight: 400;
-  src: url("./inter/Inter-Regular.woff2") format("woff2");
+  src: url("./ubuntu/Ubuntu-Regular.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Inter";
+  font-family: "Ubuntu";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url("./ubuntu/Ubuntu-Italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ubuntu";
   font-style: normal;
   font-display: swap;
   font-weight: 500;
-  src: url("./inter/Inter-Medium.woff2") format("woff2");
+  src: url("./ubuntu/Ubuntu-Medium.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Inter";
+  font-family: "Ubuntu";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 500;
+  src: url("./ubuntu/Ubuntu-MediumItalic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ubuntu";
   font-style: normal;
   font-display: swap;
   font-weight: 600;
-  src: url("./inter/Inter-SemiBold.woff2") format("woff2");
+  src: url("./ubuntu/Ubuntu-Medium.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Inter";
+  font-family: "Ubuntu";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 600;
+  src: url("./ubuntu/Ubuntu-MediumItalic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ubuntu";
   font-style: normal;
   font-display: swap;
   font-weight: 700;
-  src: url("./inter/Inter-Bold.woff2") format("woff2");
+  src: url("./ubuntu/Ubuntu-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("./ubuntu/Ubuntu-BoldItalic.woff2") format("woff2");
 }
 
 @font-face {

@@ -51,7 +51,7 @@ const NEUTRAL_LIGHT = {
   activationBorderColor: "#a1a1aa",
   sequenceNumberColor: "#ffffff",
   fontFamily:
-    "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
+    '"Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Droid Sans", sans-serif',
   fontSize: "10px",
 };
 
@@ -101,12 +101,15 @@ async function renderMermaidUncached(
   renderId: string,
 ): Promise<string> {
   const { default: mermaid } = await loadMermaid();
-  const configKey = `${skin}:${dark ? "1" : "0"}:compact5`;
+  const configKey = `${skin}:${dark ? "1" : "0"}:compact6`;
   if (lastConfigKey !== configKey) {
     if (skin === "neutral") {
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",
+        // Keep parse failures as thrown errors only — never inject Mermaid's
+        // full-viewport "Syntax error in text" SVG into the document body.
+        suppressErrorRendering: true,
         theme: "base",
         themeVariables: dark ? NEUTRAL_DARK : NEUTRAL_LIGHT,
         // useMaxWidth:false — keep intrinsic px size; chat CSS only shrinks if needed.
@@ -141,6 +144,7 @@ async function renderMermaidUncached(
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",
+        suppressErrorRendering: true,
         theme: dark ? "dark" : "default",
       });
     }

@@ -41,7 +41,7 @@ export const CATEGORIES: CategoryDescriptor[] = [
 ];
 
 const FONT_FAMILY_OPTIONS = [
-  { value: "sans", label: "Sans (Inter)" },
+  { value: "sans", label: "Sans (Ubuntu)" },
   { value: "mono", label: "Mono (JetBrains Mono)" },
 ];
 

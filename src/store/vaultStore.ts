@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { TreeNode } from "../lib/vaultApi";
 import {
+  addFavorite,
   createDrawio,
   createFolder,
   createNote,
@@ -9,11 +10,13 @@ import {
   importDocumentBytes,
   importPaths,
   joinPath,
+  listFavorites,
   listTree,
   moveEntry,
   openVault,
   parentPath,
   readNote,
+  removeFavorite,
   renamePath,
   writeNote,
 } from "../lib/vaultApi";
@@ -56,6 +59,8 @@ type VaultStore = {
   /** True only after the user clicks a folder in the tree (not when opening a note). */
   selectedFolderExplicit: boolean;
   expandedPaths: string[];
+  /** Vault-relative favorite paths (pages and folders), sorted. */
+  favoritePaths: string[];
   content: string;
   viewMode: ViewMode;
   /** Live-mode document outline (TOC) pane. */
@@ -79,6 +84,9 @@ type VaultStore = {
   selectFolder: (path: string) => void;
   toggleExpanded: (path: string) => void;
   isExpanded: (path: string) => boolean;
+  isFavorite: (path: string) => boolean;
+  addToFavorites: (path: string) => Promise<void>;
+  removeFromFavorites: (path: string) => Promise<void>;
   createNoteInSelection: (name: string) => Promise<void>;
   createDrawioInSelection: (name: string) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
@@ -95,6 +103,14 @@ type VaultStore = {
   /** Apply disk/tool content to an open tab (and the editor if active). */
   applyExternalContent: (path: string, content: string) => void;
 };
+
+async function loadFavoritePaths(): Promise<string[]> {
+  try {
+    return await listFavorites();
+  } catch {
+    return [];
+  }
+}
 
 function remapExpanded(expanded: string[], from: string, to: string): string[] {
   return expanded.map((p) => {
@@ -271,6 +287,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   selectedFolderPath: "",
   selectedFolderExplicit: false,
   expandedPaths: [],
+  favoritePaths: [],
   content: "",
   viewMode: "live",
   showOutline: false,
@@ -284,8 +301,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const tree = await openVault(path);
-      const expandedPaths = await loadExpandedPaths(path);
-      const session = await loadVaultSession(path);
+      const [expandedPaths, favoritePaths, session] = await Promise.all([
+        loadExpandedPaths(path),
+        loadFavoritePaths(),
+        loadVaultSession(path),
+      ]);
       const existing = new Set(collectFilePaths(tree));
       const restoredTabs = (session?.tabs ?? []).filter((t) =>
         existing.has(t.path),
@@ -301,6 +321,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         selectedFolderPath: "",
         selectedFolderExplicit: false,
         expandedPaths,
+        favoritePaths,
         tabs: restoredTabs,
       });
 
@@ -339,7 +360,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       tail = tail.then(async () => {
         scheduled = false;
         try {
-          const tree = await listTree();
+          const [tree, favoritePaths] = await Promise.all([
+            listTree(),
+            loadFavoritePaths(),
+          ]);
+          set({ favoritePaths });
           await pruneMissingTabs(set, get, tree);
         } catch (e) {
           set({ error: e instanceof Error ? e.message : String(e) });
@@ -585,6 +610,33 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       : [...expandedPaths, path];
     set({ expandedPaths: next });
     if (vaultPath) void saveExpandedPaths(vaultPath, next);
+  },
+
+  isFavorite: (path) => {
+    if (!path) return false;
+    return get().favoritePaths.includes(path);
+  },
+
+  addToFavorites: async (path) => {
+    if (!path) return;
+    try {
+      set({ suppressWatchUntil: Date.now() + 800 });
+      const favoritePaths = await addFavorite(path);
+      set({ favoritePaths });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  removeFromFavorites: async (path) => {
+    if (!path) return;
+    try {
+      set({ suppressWatchUntil: Date.now() + 800 });
+      const favoritePaths = await removeFavorite(path);
+      set({ favoritePaths });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
   },
 
   createNoteInSelection: async (name) => {
