@@ -486,9 +486,17 @@ function findTreeNode(root: TreeNode | null, path: string): TreeNode | null {
   return null;
 }
 
-function TreeNodeLabel({ text }: { text: string }) {
+/** Split basename into stem + extension (same rules as rename selection). */
+function splitFileName(name: string): { stem: string; ext: string } | null {
+  const lastDot = name.lastIndexOf(".");
+  if (lastDot <= 0) return null;
+  return { stem: name.slice(0, lastDot), ext: name.slice(lastDot) };
+}
+
+function TreeNodeLabel({ text, isDir }: { text: string; isDir?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [title, setTitle] = useState<string | undefined>();
+  const parts = !isDir ? splitFileName(text) : null;
 
   return (
     <span
@@ -502,7 +510,14 @@ function TreeNodeLabel({ text }: { text: string }) {
       }}
       onMouseLeave={() => setTitle(undefined)}
     >
-      {text}
+      {parts ? (
+        <>
+          {parts.stem}
+          <span className="tree-node-ext">{parts.ext}</span>
+        </>
+      ) : (
+        text
+      )}
     </span>
   );
 }
@@ -902,7 +917,7 @@ function FavoritesTreeRows({
                   onCommit={(nextName) => onRenameCommit(path, nextName)}
                 />
               ) : (
-                <TreeNodeLabel text={node.name} />
+                <TreeNodeLabel text={node.name} isDir={isDir} />
               )}
             </div>
 
@@ -1469,7 +1484,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         }}
                       />
                     ) : (
-                      <TreeNodeLabel text={node.text} />
+                      <TreeNodeLabel text={node.text} isDir={isDir} />
                     )}
 
                     {isVault ? (

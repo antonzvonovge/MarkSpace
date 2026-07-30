@@ -16,8 +16,8 @@
   --muted: #5d6b73;
   --line: rgba(28, 36, 40, 0.1);
   --danger: #b44848;
-  --font-ui: "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Droid Sans", sans-serif;
-  --font-live: "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Droid Sans", sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
+  --font-live: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
   --font-source: "JetBrains Mono", ui-monospace, monospace;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --live-font-size: 15px;
@@ -741,6 +741,10 @@ select {
 .tree-node-label {
   user-select: none;
   -webkit-user-select: none;
+}
+
+.tree-node-ext {
+  color: color-mix(in srgb, var(--sidebar-muted) 42%, var(--sidebar));
 }
 
 .tree-file-spacer {

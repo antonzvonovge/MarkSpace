@@ -51,7 +51,7 @@ const NEUTRAL_LIGHT = {
   activationBorderColor: "#a1a1aa",
   sequenceNumberColor: "#ffffff",
   fontFamily:
-    '"Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Droid Sans", sans-serif',
+    '-apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif',
   fontSize: "10px",
 };
 
