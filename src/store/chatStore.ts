@@ -21,6 +21,7 @@ import {
   type ChatThreadMeta,
 } from "../lib/chatHistoryApi";
 import { arrayMove } from "../lib/arrayMove";
+import { unwrapVaultPathMarkers } from "../lib/chatComposerDom";
 import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
@@ -487,7 +488,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   send: async (text) => {
-    const draftText = text ?? get().draft;
+    const draftText = unwrapVaultPathMarkers(text ?? get().draft);
     const attachments = get().draftAttachments;
     const content = draftText.trim();
     if (!content && attachments.length === 0) return;

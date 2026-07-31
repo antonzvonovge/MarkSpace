@@ -819,7 +819,8 @@ function FavoritesTreeRows({
                 paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
                 paddingRight: "var(--tree-pad-x)",
               }}
-              data-vault-path={isDir ? undefined : path}
+              data-vault-path={path || undefined}
+              data-vault-isdir={isDir && path ? "1" : undefined}
               data-drawio-path={isDrawio ? path : undefined}
               onClick={() => {
                 if (renaming) return;
@@ -1013,13 +1014,16 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       const target = event.target as HTMLElement | null;
       const el = (target?.closest?.("[data-vault-path]") ??
         target?.querySelector?.("[data-vault-path]")) as HTMLElement | null;
-      const path = el?.dataset.vaultPath;
-      if (!path || !event.dataTransfer) return;
+      const rawPath = el?.dataset.vaultPath;
+      if (!rawPath || !event.dataTransfer) return;
+      const isDir = el?.dataset.vaultIsdir === "1";
+      const path =
+        isDir && !rawPath.endsWith("/") ? `${rawPath}/` : rawPath;
       event.dataTransfer.setData(VAULT_TREE_MIME, path);
       event.dataTransfer.setData("text/plain", path);
       event.dataTransfer.effectAllowed = "copyMove";
       beginVaultTreeDrag(path);
-      if (path.toLowerCase().endsWith(".drawio")) {
+      if (!isDir && path.toLowerCase().endsWith(".drawio")) {
         event.dataTransfer.setData(DRAWIO_TREE_MIME, path);
         beginDrawioTreeDrag(path);
       }
@@ -1386,7 +1390,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
                       paddingRight: "var(--tree-pad-x)",
                     }}
-                    data-vault-path={isDir ? undefined : path}
+                    data-vault-path={path || undefined}
+                    data-vault-isdir={isDir && path ? "1" : undefined}
                     data-drawio-path={isDrawio ? path : undefined}
                     onClick={handleRowClick}
                     onDoubleClick={() => {

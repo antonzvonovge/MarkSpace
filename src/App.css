@@ -2681,7 +2681,7 @@ li.dnd-drop-target > .tree-row {
 
 .chat-history-item {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   border-radius: 6px;
 }
 
@@ -2697,10 +2697,10 @@ li.dnd-drop-target > .tree-row {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -2709,7 +2709,8 @@ li.dnd-drop-target > .tree-row {
 }
 
 .chat-history-title {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2718,8 +2719,10 @@ li.dnd-drop-target > .tree-row {
 }
 
 .chat-history-time {
+  flex-shrink: 0;
   font-size: 0.6875rem;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .chat-history-delete {
@@ -3713,7 +3716,6 @@ li.dnd-drop-target > .tree-row {
 
 .chat-composer-input {
   width: 100%;
-  resize: none;
   border: 0;
   outline: none;
   background: transparent;
@@ -3726,8 +3728,47 @@ li.dnd-drop-target > .tree-row {
   max-height: 160px;
   /* Height is synced to scrollHeight in ChatComposer; only scroll past max. */
   overflow-y: hidden;
+  overflow-x: hidden;
   box-sizing: border-box;
   padding: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-composer-input.is-empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.chat-composer-input:focus {
+  outline: none;
+}
+
+.chat-composer-input[contenteditable="false"] {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.chat-path-chip {
+  display: inline;
+  white-space: nowrap;
+  margin: 0 1px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-strong);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  user-select: all;
+  cursor: default;
+}
+
+.chat-path-chip.is-dir {
+  font-weight: 600;
 }
 
 .chat-composer-toolbar {

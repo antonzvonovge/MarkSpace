@@ -407,6 +407,7 @@ export function buildSystemPrompt(opts: {
     "For external facts/docs: web_search first, then fetch_url on the best 1–3 links. Do not invent URLs.",
     "When you need a decision, confirmation, or clarification with clear choices: use ask_user (multiple-choice + optional free-text) instead of listing A/B/C options in plain chat text. Keep questions focused; prefer one round of 1–3 questions.",
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
+    "When the user mentions vault paths in their message (files or folders ending with /), use read_note and/or list_notes as needed — do not ask them to paste the contents again.",
     "When writing or editing Markdown: put exactly one blank line between paragraphs (and between a paragraph and a list/heading/code block). Do not collapse paragraphs into a single block and do not leave multiple consecutive blank lines.",
     "In chat replies you may include diagrams as fenced code blocks: ```mermaid for Mermaid, or ```plantuml / ```puml for PlantUML. The UI renders them inline. Prefer these for architecture/flow sketches in answers; use Draw.io tools only for .drawio vault files.",
   ];

@@ -6,7 +6,12 @@ import {
 import { estimateContextTokens } from "../../ai/estimateTokens";
 import { contextWindowForModel, type AiModelOption } from "../../ai/types";
 import { readImagesFromSystemClipboard } from "../../editor/pasteImages";
-import { fileFromVaultPath } from "../../lib/vaultFileForChat";
+import {
+  insertPathChip,
+  isComposerVisuallyEmpty,
+  renderComposerFromDraft,
+  serializeComposer,
+} from "../../lib/chatComposerDom";
 import {
   clearVaultTreeDrag,
   isVaultTreeDrag,
@@ -20,11 +25,11 @@ import { ChatModelPicker } from "./ChatModelPicker";
 const COMPOSER_INPUT_MIN_HEIGHT_PX = 28;
 const COMPOSER_INPUT_MAX_HEIGHT_PX = 160;
 
-function syncComposerInputHeight(el: HTMLTextAreaElement) {
+function syncComposerInputHeight(el: HTMLElement) {
   // WebKitGTK (Tauri/Linux): while the panel still has no laid-out width,
-  // an empty textarea reports scrollHeight near max-height (~156px). Stay at
-  // the single-line size until width is real; ResizeObserver re-syncs later.
-  if (!el.value || el.clientWidth <= 0) {
+  // an empty field reports scrollHeight near max-height. Stay at the
+  // single-line size until width is real; ResizeObserver re-syncs later.
+  if (isComposerVisuallyEmpty(el) || el.clientWidth <= 0) {
     el.style.height = `${COMPOSER_INPUT_MIN_HEIGHT_PX}px`;
     el.style.overflowY = "hidden";
     return;
@@ -81,10 +86,12 @@ function isUsefulAttachFile(file: File): boolean {
   );
 }
 
+type DragKind = "vault" | "files";
+
 export function ChatComposer() {
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [dragOver, setDragOver] = useState(false);
+  const [dragOver, setDragOver] = useState<DragKind | null>(null);
   const [attachHint, setAttachHint] = useState<string | null>(null);
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
@@ -151,6 +158,15 @@ export function ChatComposer() {
     queueMicrotask(() => inputRef.current?.focus());
   };
 
+  const syncDraftFromDom = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    const next = serializeComposer(el);
+    setDraft(next);
+    el.classList.toggle("is-empty", next.trim().length === 0);
+    syncComposerInputHeight(el);
+  };
+
   const ingestFiles = async (files: FileList | File[]) => {
     const list = Array.from(files).filter((f) => f.size > 0);
     if (list.length === 0) return;
@@ -163,21 +179,13 @@ export function ChatComposer() {
     }
   };
 
-  const ingestVaultPath = async (path: string) => {
-    try {
-      const file = await fileFromVaultPath(path);
-      await ingestFiles([file]);
-    } catch (e) {
-      setAttachHint(
-        e instanceof Error ? e.message : `Cannot attach ${path}`,
-      );
-      window.setTimeout(() => setAttachHint(null), 4000);
+  const dragKindFrom = (dt: DataTransfer): DragKind | null => {
+    if (isVaultTreeDrag(dt)) return "vault";
+    if (Array.from(dt.types as ArrayLike<string>).includes("Files")) {
+      return "files";
     }
+    return null;
   };
-
-  const isAttachDrag = (dt: DataTransfer) =>
-    Array.from(dt.types as ArrayLike<string>).includes("Files") ||
-    isVaultTreeDrag(dt);
 
   const clipboardImageInFlight = useRef(false);
   const tryAttachClipboardImages = async () => {
@@ -199,9 +207,15 @@ export function ChatComposer() {
     focusInput();
   };
 
+  // Keep DOM in sync when draft is cleared/changed externally (send, new thread).
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
+    const current = serializeComposer(el);
+    if (current !== draft) {
+      renderComposerFromDraft(el, draft);
+    }
+    el.classList.toggle("is-empty", draft.trim().length === 0);
     syncComposerInputHeight(el);
     const ro = new ResizeObserver(() => {
       syncComposerInputHeight(el);
@@ -219,14 +233,16 @@ export function ChatComposer() {
         e.preventDefault();
         e.stopPropagation();
         if (streaming) return;
-        if (isAttachDrag(e.dataTransfer)) setDragOver(true);
+        const kind = dragKindFrom(e.dataTransfer);
+        if (kind) setDragOver(kind);
       }}
       onDragOver={(e) => {
         e.preventDefault();
         e.stopPropagation();
         if (streaming) return;
-        if (isAttachDrag(e.dataTransfer)) {
-          setDragOver(true);
+        const kind = dragKindFrom(e.dataTransfer);
+        if (kind) {
+          setDragOver(kind);
           e.dataTransfer.dropEffect = "copy";
         }
       }}
@@ -235,17 +251,21 @@ export function ChatComposer() {
         e.stopPropagation();
         const related = e.relatedTarget as Node | null;
         if (related && e.currentTarget.contains(related)) return;
-        setDragOver(false);
+        setDragOver(null);
       }}
       onDrop={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        setDragOver(false);
+        setDragOver(null);
         if (streaming) return;
         const vaultPath = vaultPathFromDrop(e.dataTransfer);
         clearVaultTreeDrag();
         if (vaultPath) {
-          void ingestVaultPath(vaultPath);
+          const el = inputRef.current;
+          if (el) {
+            insertPathChip(el, vaultPath, e.clientX, e.clientY);
+            syncDraftFromDom();
+          }
           return;
         }
         if (e.dataTransfer.files?.length) {
@@ -255,7 +275,7 @@ export function ChatComposer() {
     >
       {dragOver && (
         <div className="chat-composer-drop-hint" aria-hidden="true">
-          Drop files to attach
+          {dragOver === "vault" ? "Drop to link path" : "Drop files to attach"}
         </div>
       )}
 
@@ -308,18 +328,18 @@ export function ChatComposer() {
         </div>
       )}
 
-      <textarea
+      <div
         ref={inputRef}
-        className="chat-composer-input"
-        rows={1}
-        placeholder={streaming ? "Streaming…" : "Message…"}
-        value={draft}
-        disabled={streaming}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          syncComposerInputHeight(e.target);
+        className="chat-composer-input is-empty"
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Message"
+        contentEditable={!streaming}
+        suppressContentEditableWarning
+        data-placeholder={streaming ? "Streaming…" : "Message…"}
+        onInput={() => {
+          syncDraftFromDom();
         }}
-
         onPaste={(e) => {
           if (streaming) return;
           const data = e.clipboardData;
@@ -327,7 +347,6 @@ export function ChatComposer() {
           const files = collectPasteFiles(data).filter(isUsefulAttachFile);
           if (files.length > 0) {
             e.preventDefault();
-            // Block the deferred KeyV clipboard read so we don't double-attach.
             clipboardImageInFlight.current = true;
             void ingestFiles(files).finally(() => {
               window.setTimeout(() => {
@@ -342,6 +361,14 @@ export function ChatComposer() {
           ) {
             e.preventDefault();
             void tryAttachClipboardImages();
+            return;
+          }
+          // Plain text only — avoid pasted HTML/chrome from rich sources.
+          e.preventDefault();
+          const text = data.getData("text/plain");
+          if (text) {
+            document.execCommand("insertText", false, text);
+            syncDraftFromDom();
           }
         }}
         onKeyDown={(e) => {
@@ -351,8 +378,6 @@ export function ChatComposer() {
             !e.shiftKey &&
             !e.altKey
           ) {
-            // Defer so onPaste can claim files first; then try system clipboard
-            // (Tauri/Windows often omit image blobs from the paste event).
             window.setTimeout(() => {
               void tryAttachClipboardImages();
             }, 0);
