@@ -25,6 +25,9 @@ pub struct ChatThreadFile {
     pub updated_at: i64,
     pub mode: String,
     pub model_id: String,
+    /// Optional vault project (first-level folder) for this thread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<String>,
     pub messages: Value,
 }
 

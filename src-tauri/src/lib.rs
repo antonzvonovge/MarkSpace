@@ -3,6 +3,7 @@ mod favorites;
 mod git_sync;
 mod http_fetch;
 mod order_merge;
+mod projects;
 mod vault;
 
 use git_sync::SyncRuntime;
@@ -148,6 +149,8 @@ pub fn run() {
             favorites::list_favorites,
             favorites::add_favorite,
             favorites::remove_favorite,
+            projects::get_project_properties,
+            projects::set_project_properties,
             http_fetch::http_fetch,
             chat_history::list_chat_threads,
             chat_history::get_chat_thread,

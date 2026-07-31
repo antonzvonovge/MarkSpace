@@ -11,11 +11,22 @@ import {
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { TreeNode } from "../lib/vaultApi";
-import { absolutePath, parentPath } from "../lib/vaultApi";
+import {
+  absolutePath,
+  getProjectProperties,
+  isVaultProjectFolder,
+  parentPath,
+  setProjectProperties,
+  type ProjectProperties,
+} from "../lib/vaultApi";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { useVaultStore } from "../store/vaultStore";
-import { PromptDialog, ConfirmDialog } from "./AppDialog";
-import { FcDocument, FcFolder, FcOpenedFolder } from "react-icons/fc";
+import {
+  PromptDialog,
+  ConfirmDialog,
+  ProjectPropertiesDialog,
+} from "./AppDialog";
+import { FcBriefcase, FcDocument, FcFolder, FcOpenedFolder } from "react-icons/fc";
 import {
   beginDrawioTreeDrag,
   DRAWIO_TREE_MIME,
@@ -400,6 +411,28 @@ function RenameIcon() {
   );
 }
 
+function PropertiesIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="2.75"
+        y="2.75"
+        width="10.5"
+        height="10.5"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M5 5.75h6M5 8h6M5 10.25h3.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -538,6 +571,7 @@ function TreeContextMenu({
   onReveal,
   onCopyPath,
   onToggleFavorite,
+  onProjectProperties,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
@@ -549,11 +583,14 @@ function TreeContextMenu({
   onReveal: () => void;
   onCopyPath: () => void;
   onToggleFavorite: () => void;
+  onProjectProperties: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const showEditActions = !menu.createOnly && menu.path !== "";
   const showCopyPath = !menu.createOnly && menu.path !== "";
   const showFavorite = !menu.createOnly && menu.path !== "";
+  const showProjectProperties =
+    !menu.createOnly && isVaultProjectFolder(menu.path, menu.isDir);
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -596,8 +633,25 @@ function TreeContextMenu({
           >
             <StarIcon filled={menu.isFavorite} />
             <span>
-              {menu.isFavorite ? "Убрать из избранного" : "Добавить в избранное"}
+              {menu.isFavorite ? "Remove from favorites" : "Add to favorites"}
             </span>
+          </button>
+          <div className="tree-context-sep" role="separator" />
+        </>
+      ) : null}
+      {showProjectProperties ? (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onProjectProperties();
+            }}
+          >
+            <PropertiesIcon />
+            <span>Project properties…</span>
           </button>
           <div className="tree-context-sep" role="separator" />
         </>
@@ -797,6 +851,7 @@ function FavoritesTreeRows({
         const children = node.children ?? [];
         const hasChildren = isDir && children.length > 0;
         const isOpen = isDir && expandedPaths.includes(path);
+        const isProject = isVaultProjectFolder(path, isDir);
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
         const selected =
           isDir && selectedFolderExplicit && selectedFolderPath === path;
@@ -810,6 +865,7 @@ function FavoritesTreeRows({
               className={[
                 "tree-row",
                 isDir ? "tree-folder-row" : "tree-file",
+                isProject ? "is-project" : "",
                 selected || active ? "is-selected" : "",
                 renaming ? "is-renaming" : "",
               ]
@@ -896,7 +952,9 @@ function FavoritesTreeRows({
 
               <span className="tree-node-icon" aria-hidden>
                 {isDir ? (
-                  isOpen ? (
+                  isProject ? (
+                    <FcBriefcase size={20} />
+                  ) : isOpen ? (
                     <FcOpenedFolder size={20} />
                   ) : (
                     <FcFolder size={20} />
@@ -976,7 +1034,40 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [projectPropsTarget, setProjectPropsTarget] =
+    useState<ProjectProperties | null>(null);
+  const [projectPropsLoading, setProjectPropsLoading] = useState(false);
+  const [projectPropsSaving, setProjectPropsSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const openProjectProperties = useCallback(async (path: string) => {
+    setProjectPropsLoading(true);
+    try {
+      const props = await getProjectProperties(path);
+      setProjectPropsTarget(props);
+    } catch (err) {
+      console.error("Failed to load project properties", err);
+      setProjectPropsTarget({ path, about: "" });
+    } finally {
+      setProjectPropsLoading(false);
+    }
+  }, []);
+
+  const saveProjectProperties = useCallback(
+    async (about: string) => {
+      if (!projectPropsTarget) return;
+      setProjectPropsSaving(true);
+      try {
+        await setProjectProperties(projectPropsTarget.path, about);
+        setProjectPropsTarget(null);
+      } catch (err) {
+        console.error("Failed to save project properties", err);
+      } finally {
+        setProjectPropsSaving(false);
+      }
+    },
+    [projectPropsTarget],
+  );
 
   const setTreeScrollRef = useCallback((node: HTMLDivElement | null) => {
     treeFocusRef.current = node;
@@ -1219,8 +1310,25 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               void addToFavorites(contextMenu.path);
             }
           }}
+          onProjectProperties={() => {
+            void openProjectProperties(contextMenu.path);
+          }}
         />
       ) : null}
+
+      <ProjectPropertiesDialog
+        open={projectPropsTarget !== null && !projectPropsLoading}
+        projectName={projectPropsTarget?.path ?? ""}
+        about={projectPropsTarget?.about ?? ""}
+        saving={projectPropsSaving}
+        onCancel={() => {
+          if (projectPropsSaving) return;
+          setProjectPropsTarget(null);
+        }}
+        onSave={(about) => {
+          void saveProjectProperties(about);
+        }}
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}
@@ -1263,7 +1371,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           <div className="favorites-section">
             <div className="favorites-header">
               <StarIcon filled />
-              <span>Избранное</span>
+              <span>Favorites</span>
             </div>
             <FavoritesTreeRows
               nodes={favoriteNodes}
@@ -1333,24 +1441,36 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 void saveExpandedPaths(vaultPath, next);
               }}
               onDrop={handleDrop}
-              dragPreviewRender={(monitor) => (
-                <div className="dnd-preview">
-                  <span className="dnd-preview-icon" aria-hidden>
-                    {monitor.item.droppable ? (
-                      <FcFolder size={16} />
-                    ) : (
-                      <FcDocument size={16} />
-                    )}
-                  </span>
-                  <span className="dnd-preview-label">{monitor.item.text}</span>
-                </div>
-              )}
+              dragPreviewRender={(monitor) => {
+                const dragPath = String(monitor.item.data?.path ?? "");
+                const isProject = isVaultProjectFolder(
+                  dragPath,
+                  Boolean(monitor.item.droppable),
+                );
+                return (
+                  <div className="dnd-preview">
+                    <span className="dnd-preview-icon" aria-hidden>
+                      {monitor.item.droppable ? (
+                        isProject ? (
+                          <FcBriefcase size={16} />
+                        ) : (
+                          <FcFolder size={16} />
+                        )
+                      ) : (
+                        <FcDocument size={16} />
+                      )}
+                    </span>
+                    <span className="dnd-preview-label">{monitor.item.text}</span>
+                  </div>
+                );
+              }}
               placeholderRender={() => <div className="dnd-placeholder-line" />}
               render={(node, { depth, isOpen, onToggle, isDropTarget, isDragging }) => {
                 const path = node.data?.path ?? toStorePath(node.id);
                 const isDir = Boolean(node.droppable);
                 const hasChildren = Boolean(node.data?.hasChildren);
                 const isVault = node.id === VAULT_ID;
+                const isProject = isVaultProjectFolder(path, isDir);
                 const isDrawio =
                   !isDir && path.toLowerCase().endsWith(".drawio");
                 const selected =
@@ -1379,6 +1499,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       "tree-row",
                       isDir ? "tree-folder-row" : "tree-file",
                       isVault ? "is-vault-root" : "",
+                      isProject ? "is-project" : "",
                       selected || active ? "is-selected" : "",
                       isDropTarget ? "is-drop-target" : "",
                       isDragging ? "is-dragging" : "",
@@ -1464,7 +1585,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
 
                     <span className="tree-node-icon" aria-hidden>
                       {isDir ? (
-                        isOpen ? (
+                        isProject ? (
+                          <FcBriefcase size={20} />
+                        ) : isOpen ? (
                           <FcOpenedFolder size={20} />
                         ) : (
                           <FcFolder size={20} />

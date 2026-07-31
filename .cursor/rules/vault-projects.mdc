@@ -1,0 +1,27 @@
+---
+description: MarkSpace vault terminology — first-level folders are projects
+alwaysApply: true
+---
+
+# Vault projects
+
+In MarkSpace, a **project** is a first-level folder directly under the vault root (relative path with no `/`). Nested folders are ordinary folders, not projects.
+
+- Helper: `isVaultProjectFolder(path, isDir)` in `src/lib/vaultApi.ts`.
+- Tree UI uses a briefcase icon (`FcBriefcase`) for projects; nested dirs keep folder icons.
+- Prefer the word "project" in product copy and agent language when referring to those top-level folders.
+
+## Project properties
+
+Editable via tree context menu **Project properties…** → dialog.
+
+- Stored in `.markspace/projects/<sha256(path)>.json` (`path`, `about`).
+- First property: **`about`** — UI label **What is this project about**.
+- APIs: `get_project_properties` / `set_project_properties` (Rust `projects.rs`); TS `getProjectProperties` / `setProjectProperties`.
+- Remapped on rename/move/delete like favorites.
+
+## Chat project context
+
+Composer toolbar has a **project picker** (left of Ask/Agent). Selection is per chat thread (`projectPath` on the thread file).
+
+When a project is selected, `buildSystemPrompt` includes `Active project:` and the project **about** description so the agent knows the project context.

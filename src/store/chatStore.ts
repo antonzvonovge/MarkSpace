@@ -22,6 +22,7 @@ import {
 } from "../lib/chatHistoryApi";
 import { arrayMove } from "../lib/arrayMove";
 import { unwrapVaultPathMarkers } from "../lib/chatComposerDom";
+import { getProjectProperties } from "../lib/vaultApi";
 import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
@@ -57,6 +58,10 @@ type ChatStore = {
   messages: UIMessage[];
   mode: ChatMode;
   modelId: string;
+  /** Selected vault project path, or null for none. */
+  projectPath: string | null;
+  /** Cached "about" text for `projectPath` (for prompt + context meter). */
+  projectAbout: string;
   status: ChatStatus;
   error: string | null;
   draft: string;
@@ -73,6 +78,7 @@ type ChatStore = {
   clearAttachments: () => void;
   setMode: (mode: ChatMode) => void;
   setModelId: (modelId: string) => void;
+  setProjectPath: (projectPath: string | null) => Promise<void>;
   newThread: () => Promise<void>;
   selectThread: (threadId: string) => Promise<void>;
   closeTab: (threadId: string) => Promise<void>;
@@ -112,8 +118,20 @@ function emptySession(vaultBound: string | null = null) {
     streamReasoningText: null as string | null,
     draft: "",
     draftAttachments: [] as ChatAttachment[],
+    projectPath: null as string | null,
+    projectAbout: "",
     ...defaultsFromSettings(),
   };
+}
+
+async function loadProjectAbout(projectPath: string | null): Promise<string> {
+  if (!projectPath) return "";
+  try {
+    const props = await getProjectProperties(projectPath);
+    return props.about ?? "";
+  } catch {
+    return "";
+  }
 }
 
 async function loadThreadIntoState(
@@ -125,6 +143,8 @@ async function loadThreadIntoState(
   const { modelId } = defaultsFromSettings();
   const baseUrl = useAiSettingsStore.getState().settings.baseUrl;
   const thread = await getChatThread(vaultPath, threadId);
+  const projectPath = thread.projectPath?.trim() || null;
+  const projectAbout = await loadProjectAbout(projectPath);
   return {
     vaultBound: vaultPath,
     threads,
@@ -133,6 +153,8 @@ async function loadThreadIntoState(
     messages: Array.isArray(thread.messages) ? thread.messages : [],
     mode: thread.mode === "agent" ? ("agent" as const) : ("ask" as const),
     modelId: resolveModelId(baseUrl, thread.modelId || modelId),
+    projectPath,
+    projectAbout,
     status: "ready" as const,
     error: null,
     abort: null,
@@ -199,6 +221,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   mode: "ask",
   modelId: DEFAULT_MODEL_PLACEHOLDER(),
+  projectPath: null,
+  projectAbout: "",
   status: "ready",
   error: null,
   draft: "",
@@ -276,6 +300,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     void get().persistActive();
   },
 
+  setProjectPath: async (projectPath) => {
+    const next = projectPath?.trim() || null;
+    const projectAbout = await loadProjectAbout(next);
+    set({ projectPath: next, projectAbout });
+    void get().persistActive();
+  },
+
   clearError: () => set({ error: null, status: "ready" }),
 
   newThread: async () => {
@@ -292,6 +323,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       updatedAt: now,
       mode,
       modelId,
+      projectPath: null as string | null,
       messages: [] as UIMessage[],
     };
     const meta = await upsertChatThread(vaultPath, empty);
@@ -309,6 +341,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [],
       mode: meta.mode === "agent" ? "agent" : "ask",
       modelId: meta.modelId || modelId,
+      projectPath: null,
+      projectAbout: "",
       status: "ready",
       error: null,
       draft: "",
@@ -453,8 +487,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   persistActive: async () => {
-    const { vaultBound, activeThreadId, messages, mode, modelId, threads } =
-      get();
+    const {
+      vaultBound,
+      activeThreadId,
+      messages,
+      mode,
+      modelId,
+      projectPath,
+      threads,
+    } = get();
     if (!vaultBound || !activeThreadId) return;
     const meta = threads.find((t) => t.id === activeThreadId);
     const now = Date.now();
@@ -476,6 +517,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       updatedAt: now,
       mode,
       modelId,
+      projectPath,
       messages,
     };
     const updated = await upsertChatThread(vaultBound, file);
@@ -557,6 +599,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ? vault.content.slice(0, 4000)
         : null;
 
+    const projectPath = get().projectPath;
+    const projectAbout = projectPath
+      ? await loadProjectAbout(projectPath)
+      : "";
+    if (projectPath) set({ projectAbout });
+
     try {
       const finalMessages = await runChat({
         messages,
@@ -570,6 +618,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         vaultPath,
         activePath: vault.activePath,
         activeExcerpt: excerpt,
+        projectPath,
+        projectAbout,
         abortSignal: controller.signal,
         onMessages: (next) => {
           if (get().abort !== controller) return;
@@ -660,6 +710,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       vaultPath: vault.vaultPath,
       activePath: vault.activePath,
       activeExcerpt: vault.content ? vault.content.slice(0, 4000) : null,
+      projectPath: get().projectPath,
+      projectAbout: get().projectAbout,
     });
   },
 }));

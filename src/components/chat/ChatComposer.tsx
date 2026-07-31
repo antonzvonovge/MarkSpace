@@ -21,6 +21,7 @@ import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { ChatContextMeter } from "./ChatContextMeter";
 import { ChatModelPicker } from "./ChatModelPicker";
+import { ChatProjectPicker } from "./ChatProjectPicker";
 
 const COMPOSER_INPUT_MIN_HEIGHT_PX = 28;
 const COMPOSER_INPUT_MAX_HEIGHT_PX = 160;
@@ -100,6 +101,9 @@ export function ChatComposer() {
   const removeAttachment = useChatStore((s) => s.removeAttachment);
   const mode = useChatStore((s) => s.mode);
   const setMode = useChatStore((s) => s.setMode);
+  const projectPath = useChatStore((s) => s.projectPath);
+  const projectAbout = useChatStore((s) => s.projectAbout);
+  const setProjectPath = useChatStore((s) => s.setProjectPath);
   const modelId = useChatStore((s) => s.modelId);
   const setModelId = useChatStore((s) => s.setModelId);
   const status = useChatStore((s) => s.status);
@@ -148,6 +152,8 @@ export function ChatComposer() {
     draft,
     draftAttachments,
     mode,
+    projectPath,
+    projectAbout,
     systemPromptPreview,
     streaming,
   ]);
@@ -389,6 +395,14 @@ export function ChatComposer() {
         }}
       />
       <div className="chat-composer-toolbar">
+        <ChatProjectPicker
+          value={projectPath}
+          disabled={streaming}
+          onChange={(path) => {
+            void setProjectPath(path);
+          }}
+        />
+
         <div className="chat-mode-switch" role="group" aria-label="Chat mode">
           <button
             type="button"

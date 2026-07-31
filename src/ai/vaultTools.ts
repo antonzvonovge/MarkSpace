@@ -396,6 +396,10 @@ export function buildSystemPrompt(opts: {
   vaultPath: string | null;
   activePath: string | null;
   activeExcerpt: string | null;
+  /** Selected vault project (first-level folder), if any. */
+  projectPath?: string | null;
+  /** Project "about" description from project properties. */
+  projectAbout?: string | null;
 }): string {
   const lines = [
     "You are MarkSpace, an AI assistant embedded in a local Markdown vault app.",
@@ -424,6 +428,16 @@ export function buildSystemPrompt(opts: {
   }
   if (opts.vaultPath) {
     lines.push(`Open vault: ${opts.vaultPath}`);
+  }
+  if (opts.projectPath) {
+    lines.push(`Active project: ${opts.projectPath}`);
+    const about = opts.projectAbout?.trim();
+    if (about) {
+      lines.push("Project description:");
+      lines.push("```");
+      lines.push(about.slice(0, 4000));
+      lines.push("```");
+    }
   }
   if (opts.activePath) {
     lines.push(`Active note: ${opts.activePath}`);

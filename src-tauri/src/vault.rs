@@ -1328,6 +1328,7 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     }
     write_order(&root, &order)?;
     let _ = crate::favorites::remap_favorites(&root, &from_rel, Some(&to_rel));
+    let _ = crate::projects::remap_project_properties(&root, &from_rel, Some(&to_rel));
 
     Ok(to_rel)
 }
@@ -1398,6 +1399,7 @@ pub fn move_entry(
     write_order(&root, &order)?;
     if !same_parent {
         let _ = crate::favorites::remap_favorites(&root, &from, Some(&new_rel));
+        let _ = crate::projects::remap_project_properties(&root, &from, Some(&new_rel));
     }
 
     Ok(if same_parent { from } else { new_rel })
@@ -1431,6 +1433,7 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     }
     write_order(&root, &order)?;
     let _ = crate::favorites::remap_favorites(&root, &rel, None);
+    let _ = crate::projects::remap_project_properties(&root, &rel, None);
     Ok(())
 }
 

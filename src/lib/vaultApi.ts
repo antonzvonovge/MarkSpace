@@ -139,6 +139,25 @@ export async function removeFavorite(path: string): Promise<string[]> {
   return invoke("remove_favorite", { path });
 }
 
+export type ProjectProperties = {
+  path: string;
+  /** Free-form description ("What is this project about"). */
+  about: string;
+};
+
+export async function getProjectProperties(
+  path: string,
+): Promise<ProjectProperties> {
+  return invoke("get_project_properties", { path });
+}
+
+export async function setProjectProperties(
+  path: string,
+  about: string,
+): Promise<ProjectProperties> {
+  return invoke("set_project_properties", { path, about });
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000;
   let binary = "";
@@ -157,6 +176,23 @@ export function parentPath(path: string): string {
   const cleaned = path.replace(/^\/+|\/+$/g, "");
   const i = cleaned.lastIndexOf("/");
   return i === -1 ? "" : cleaned.slice(0, i);
+}
+
+/**
+ * A MarkSpace "project" is a first-level folder under the vault root
+ * (path has no `/`). Nested folders are ordinary folders, not projects.
+ */
+export function isVaultProjectFolder(path: string, isDir: boolean): boolean {
+  return isDir && path.length > 0 && !path.includes("/");
+}
+
+/** First-level project folders from a vault tree root. */
+export function listVaultProjects(
+  tree: TreeNode | null | undefined,
+): { path: string; name: string }[] {
+  return (tree?.children ?? [])
+    .filter((n) => isVaultProjectFolder(n.path, n.isDir))
+    .map((n) => ({ path: n.path, name: n.name }));
 }
 
 export type DocumentKind = "markdown" | "drawio";

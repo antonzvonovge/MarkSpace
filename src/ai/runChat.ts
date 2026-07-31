@@ -23,6 +23,8 @@ export type RunChatParams = {
   vaultPath: string | null;
   activePath: string | null;
   activeExcerpt: string | null;
+  projectPath?: string | null;
+  projectAbout?: string | null;
   abortSignal?: AbortSignal;
   onMessages: (messages: UIMessage[]) => void;
   /**
@@ -222,6 +224,8 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     vaultPath: params.vaultPath,
     activePath: params.activePath,
     activeExcerpt: params.activeExcerpt,
+    projectPath: params.projectPath,
+    projectAbout: params.projectAbout,
   });
 
   const tools = buildVaultTools(params.mode, {

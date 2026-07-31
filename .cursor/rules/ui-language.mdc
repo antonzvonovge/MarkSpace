@@ -1,0 +1,12 @@
+---
+description: MarkSpace product UI copy is English
+alwaysApply: true
+---
+
+# UI language
+
+MarkSpace **product UI is English** — menus, dialogs, buttons, labels, placeholders, settings, and empty states.
+
+- Write new user-facing strings in English.
+- Do not add Russian (or other) UI copy unless the user explicitly asks to localize.
+- Chat with the developer may be in Russian; that does not change product UI language.

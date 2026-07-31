@@ -204,3 +204,90 @@ export function ConfirmDialog({
     />
   );
 }
+
+type ProjectPropertiesDialogProps = {
+  open: boolean;
+  projectName: string;
+  about: string;
+  saving?: boolean;
+  onCancel: () => void;
+  onSave: (about: string) => void;
+};
+
+export function ProjectPropertiesDialog({
+  open,
+  projectName,
+  about,
+  saving = false,
+  onCancel,
+  onSave,
+}: ProjectPropertiesDialogProps) {
+  const aboutId = useId();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [value, setValue] = useState(about);
+
+  useEffect(() => {
+    if (!open) return;
+    setValue(about);
+    const id = window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open, about]);
+
+  const submit = () => {
+    if (saving) return;
+    onSave(value);
+  };
+
+  return (
+    <DialogShell
+      open={open}
+      title="Project properties"
+      description={projectName}
+      onCancel={onCancel}
+      footer={
+        <>
+          <button
+            type="button"
+            className="app-dialog-btn"
+            disabled={saving}
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="app-dialog-btn is-primary"
+            disabled={saving}
+            onClick={submit}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </>
+      }
+    >
+      <div className="app-dialog-body">
+        <label className="app-dialog-label" htmlFor={aboutId}>
+          What is this project about
+        </label>
+        <textarea
+          ref={textareaRef}
+          id={aboutId}
+          className="app-dialog-input app-dialog-textarea"
+          value={value}
+          rows={5}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Briefly describe what this project is about…"
+          spellCheck
+        />
+      </div>
+    </DialogShell>
+  );
+}
