@@ -77,8 +77,14 @@ type ChatStore = {
   streamStartedAt: number | null;
   /** Live thinking text; updated without rewriting `messages`. */
   streamReasoningText: string | null;
+  /**
+   * Thread ids where the agent finished a turn and the user has not yet
+   * acknowledged (by typing or activating the tab).
+   */
+  attentionThreadIds: string[];
   hydrateForVault: (vaultPath: string | null) => Promise<void>;
   setDraft: (draft: string) => void;
+  clearThreadAttention: (threadId: string) => void;
   addAttachments: (files: File[]) => Promise<string[]>;
   removeAttachment: (id: string) => void;
   clearAttachments: () => void;
@@ -123,6 +129,7 @@ function emptySession(vaultBound: string | null = null) {
     abort: null as AbortController | null,
     streamStartedAt: null as number | null,
     streamReasoningText: null as string | null,
+    attentionThreadIds: [] as string[],
     draft: "",
     draftAttachments: [] as ChatAttachment[],
     projectPath: null as string | null,
@@ -130,6 +137,14 @@ function emptySession(vaultBound: string | null = null) {
     skillsCatalog: [] as SkillMeta[],
     ...defaultsFromSettings(),
   };
+}
+
+function withAttention(ids: string[], threadId: string): string[] {
+  return ids.includes(threadId) ? ids : [...ids, threadId];
+}
+
+function withoutAttention(ids: string[], threadId: string): string[] {
+  return ids.includes(threadId) ? ids.filter((id) => id !== threadId) : ids;
 }
 
 async function loadProjectAbout(projectPath: string | null): Promise<string> {
@@ -240,6 +255,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   abort: null,
   streamStartedAt: null,
   streamReasoningText: null,
+  attentionThreadIds: [],
 
   hydrateForVault: async (vaultPath) => {
     const prev = get().abort;
@@ -288,7 +304,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  setDraft: (draft) => set({ draft }),
+  setDraft: (draft) => {
+    const active = get().activeThreadId;
+    if (active && draft.length > 0) {
+      const attentionThreadIds = withoutAttention(
+        get().attentionThreadIds,
+        active,
+      );
+      set({ draft, attentionThreadIds });
+      return;
+    }
+    set({ draft });
+  },
+
+  clearThreadAttention: (threadId) => {
+    set({
+      attentionThreadIds: withoutAttention(get().attentionThreadIds, threadId),
+    });
+  },
 
   addAttachments: async (files) => {
     if (files.length === 0) return [];
@@ -392,7 +425,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         listed.openTabIds,
       ),
     );
-    set({ draft: "", draftAttachments: [] });
+    set({
+      draft: "",
+      draftAttachments: [],
+      attentionThreadIds: withoutAttention(get().attentionThreadIds, threadId),
+    });
   },
 
   closeTab: async (threadId) => {
@@ -426,6 +463,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         draft: "",
         draftAttachments: [],
         streamStartedAt: null,
+        attentionThreadIds: withoutAttention(
+          get().attentionThreadIds,
+          threadId,
+        ),
         ...defaultsFromSettings(),
       });
       return;
@@ -440,12 +481,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           listed.openTabIds,
         ),
       );
-      set({ draft: "", draftAttachments: [] });
+      set({
+        draft: "",
+        draftAttachments: [],
+        attentionThreadIds: withoutAttention(
+          withoutAttention(get().attentionThreadIds, threadId),
+          nextActive,
+        ),
+      });
     } else {
       set({
         threads: listed.threads,
         openTabIds: listed.openTabIds,
         activeThreadId: listed.activeThreadId,
+        attentionThreadIds: withoutAttention(
+          get().attentionThreadIds,
+          threadId,
+        ),
       });
     }
   },
@@ -491,6 +543,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         draft: "",
         draftAttachments: [],
         streamStartedAt: null,
+        attentionThreadIds: withoutAttention(
+          get().attentionThreadIds,
+          threadId,
+        ),
         ...defaultsFromSettings(),
       });
       return;
@@ -504,7 +560,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         openTabIds,
       ),
     );
-    set({ draft: "", draftAttachments: [] });
+    set({
+      draft: "",
+      draftAttachments: [],
+      attentionThreadIds: withoutAttention(
+        withoutAttention(get().attentionThreadIds, threadId),
+        active,
+      ),
+    });
   },
 
   persistActive: async () => {
@@ -667,6 +730,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamStartedAt: null,
         streamReasoningText: null,
         error: null,
+        attentionThreadIds: withAttention(
+          get().attentionThreadIds,
+          activeThreadId,
+        ),
       });
       await get().persistActive();
       await maybeRefreshTitle(activeThreadId, finalMessages, {
@@ -716,6 +783,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         abort: null,
         streamStartedAt: null,
         streamReasoningText: null,
+        attentionThreadIds: withAttention(
+          get().attentionThreadIds,
+          activeThreadId,
+        ),
       });
       await get().persistActive();
     }

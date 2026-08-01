@@ -71,7 +71,11 @@ export function pathsFromClipboardData(data: DataTransfer): string[] {
 
 export function isVaultDocumentName(name: string): boolean {
   const lower = name.toLowerCase();
-  return lower.endsWith(".md") || lower.endsWith(".drawio");
+  return (
+    lower.endsWith(".md") ||
+    lower.endsWith(".drawio") ||
+    lower.endsWith(".mdlnks")
+  );
 }
 
 /** Files from clipboardData.files + items (when the OS exposes blobs, not paths). */

@@ -5,6 +5,7 @@ import {
   noteBody,
   setNoteTags,
   splitFrontmatter,
+  stampNoteTimestamps,
   withNoteBody,
 } from "./noteFrontmatter";
 
@@ -90,6 +91,39 @@ tags:
     const md = "---\n: bad: [yaml\n---\n\nBody\n";
     expect(setNoteTags(md, ["x"])).toBe(md);
     expect(noteBody(md)).toBe("\nBody\n");
+  });
+
+  it("adds created and updated timestamps to a note", () => {
+    const now = new Date("2026-08-01T10:03:00.000Z");
+    const next = stampNoteTimestamps("# Hi\n", now);
+
+    expect(splitFrontmatter(next).data).toEqual({
+      created: "2026-08-01T10:03:00.000Z",
+      updated: "2026-08-01T10:03:00.000Z",
+    });
+    expect(noteBody(next)).toBe("# Hi\n");
+  });
+
+  it("preserves created and other keys while updating updated", () => {
+    const md =
+      "---\ncreated: 2026-07-01T08:00:00.000Z\naliases:\n  - aka\nupdated: 2026-07-02T08:00:00.000Z\n---\nBody\n";
+    const next = stampNoteTimestamps(
+      md,
+      new Date("2026-08-01T10:03:00.000Z"),
+    );
+    const data = splitFrontmatter(next).data;
+
+    expect(data?.created).toBe("2026-07-01T08:00:00.000Z");
+    expect(data?.updated).toBe("2026-08-01T10:03:00.000Z");
+    expect(data?.aliases).toEqual(["aka"]);
+    expect(noteBody(next)).toBe("Body\n");
+  });
+
+  it("does not stamp unparseable frontmatter", () => {
+    const md = "---\n: bad: [yaml\n---\n\nBody\n";
+    expect(
+      stampNoteTimestamps(md, new Date("2026-08-01T10:03:00.000Z")),
+    ).toBe(md);
   });
 
   it("withNoteBody preserves frontmatter across Live edits", () => {

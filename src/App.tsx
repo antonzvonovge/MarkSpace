@@ -16,8 +16,10 @@ import { EditorChrome } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { PageTags } from "./components/PageTags";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
+import { PlainSourceEditor } from "./editor/PlainSourceEditor";
 import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
+import { LinksEditor } from "./editor/mdlnks/LinksEditor";
 import type { VaultChange } from "./lib/vaultApi";
 import { documentKind, readNote } from "./lib/vaultApi";
 import {
@@ -122,7 +124,9 @@ function App() {
       if (code === "KeyE") {
         e.preventDefault();
         const path = useVaultStore.getState().activePath;
-        if (path && documentKind(path) === "drawio") return;
+        if (!path) return;
+        const kind = documentKind(path);
+        if (kind !== "markdown" && kind !== "mdlnks") return;
         toggleViewMode();
       }
       if (e.key === "," || code === "Comma") {
@@ -310,9 +314,14 @@ function App() {
                       )}
                       {activePath && (
                         <div className="document-column">
-                          {documentKind(activePath) === "markdown" &&
+                          {(documentKind(activePath) === "markdown" ||
+                            documentKind(activePath) === "mdlnks") &&
                           viewMode === "source" ? (
-                            <DocumentToolbar />
+                            <DocumentToolbar
+                              showOutlineToggle={
+                                documentKind(activePath) === "markdown"
+                              }
+                            />
                           ) : null}
                           <div className="document-body">
                             {tabs.map((tab) => {
@@ -337,6 +346,41 @@ function App() {
                                       content={tabContent}
                                       onChange={(xml) => onEditorChange(tabPath, xml)}
                                     />
+                                  ) : kind === "mdlnks" ? (
+                                    <>
+                                      <div
+                                        className={
+                                          viewMode === "live"
+                                            ? "document-editor-slot is-active"
+                                            : "document-editor-slot"
+                                        }
+                                      >
+                                        <LinksEditor
+                                          path={tabPath}
+                                          content={tabContent}
+                                          onChange={(next) =>
+                                            onEditorChange(tabPath, next)
+                                          }
+                                        />
+                                      </div>
+                                      <div
+                                        className={
+                                          viewMode === "source"
+                                            ? "document-editor-slot is-active"
+                                            : "document-editor-slot"
+                                        }
+                                      >
+                                        <div className="source-editor-wrap">
+                                          <PlainSourceEditor
+                                            path={tabPath}
+                                            content={tabContent}
+                                            onChange={(text) =>
+                                              onEditorChange(tabPath, text)
+                                            }
+                                          />
+                                        </div>
+                                      </div>
+                                    </>
                                   ) : (
                                     <>
                                       <div

@@ -21,7 +21,12 @@ function OutlineIcon() {
   );
 }
 
-export function DocumentToolbar() {
+type Props = {
+  /** Show outline toggle in Live mode (markdown only). Default true. */
+  showOutlineToggle?: boolean;
+};
+
+export function DocumentToolbar({ showOutlineToggle = true }: Props) {
   const viewMode = useVaultStore((s) => s.viewMode);
   const setViewMode = useVaultStore((s) => s.setViewMode);
   const showOutline = useVaultStore((s) => s.showOutline);
@@ -29,7 +34,7 @@ export function DocumentToolbar() {
 
   return (
     <div className="document-toolbar">
-      {viewMode === "live" ? (
+      {showOutlineToggle && viewMode === "live" ? (
         <button
           type="button"
           className={

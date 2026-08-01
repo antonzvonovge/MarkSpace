@@ -243,7 +243,7 @@ export function ChatMessages({ messages, streaming }: Props) {
   const stickyRef = useRef<HTMLDivElement>(null);
   const pinnedUserIdRef = useRef<string | null>(null);
   const followBottomRef = useRef(true);
-  const scrollRafRef = useRef(0);
+  const ignoreScrollRef = useRef(false);
 
   const stickyIdx = lastStickyUserIndex(messages);
   const stickyId = stickyIdx >= 0 ? messages[stickyIdx]!.id : null;
@@ -254,6 +254,16 @@ export function ChatMessages({ messages, streaming }: Props) {
       last.role === "user" ||
       (last.role === "assistant" && !assistantHasVisibleContent(last)));
 
+  const scrollToBottom = () => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !followBottomRef.current) return;
+    ignoreScrollRef.current = true;
+    scroller.scrollTop = scroller.scrollHeight;
+    requestAnimationFrame(() => {
+      ignoreScrollRef.current = false;
+    });
+  };
+
   useLayoutEffect(() => {
     if (!stickyId || stickyId === pinnedUserIdRef.current) return;
     pinnedUserIdRef.current = stickyId;
@@ -261,47 +271,51 @@ export function ChatMessages({ messages, streaming }: Props) {
     const scroller = scrollerRef.current;
     const sticky = stickyRef.current;
     if (!scroller || !sticky) return;
+    ignoreScrollRef.current = true;
     const sRect = scroller.getBoundingClientRect();
     const tRect = sticky.getBoundingClientRect();
     scroller.scrollTop += tRect.top - sRect.top;
+    requestAnimationFrame(() => {
+      ignoreScrollRef.current = false;
+    });
   }, [stickyId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!followBottomRef.current) return;
     if (stickyId && stickyId !== pinnedUserIdRef.current) return;
-    if (scrollRafRef.current) return;
-    scrollRafRef.current = requestAnimationFrame(() => {
-      scrollRafRef.current = 0;
-      const scroller = scrollerRef.current;
-      if (!scroller || !followBottomRef.current) return;
-      const sticky = stickyRef.current;
-      if (sticky) {
-        const roomBelow =
-          scroller.scrollHeight -
-          (sticky.offsetTop + sticky.offsetHeight) -
-          scroller.clientHeight;
-        if (roomBelow <= 0) return;
-      }
-      scroller.scrollTop = scroller.scrollHeight;
-    });
-    return () => {
-      if (scrollRafRef.current) {
-        cancelAnimationFrame(scrollRafRef.current);
-        scrollRafRef.current = 0;
-      }
-    };
+    scrollToBottom();
   }, [messages, streaming, showWaiting, stickyId]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
+
     const onScroll = () => {
+      if (ignoreScrollRef.current) return;
       const gap =
         scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
       followBottomRef.current = gap < 80;
     };
     scroller.addEventListener("scroll", onScroll, { passive: true });
-    return () => scroller.removeEventListener("scroll", onScroll);
+
+    // Follow layout growth (streamed text, tools, markdown) even when the
+    // messages reference has not changed yet this frame.
+    const ro = new ResizeObserver(() => {
+      if (followBottomRef.current) scrollToBottom();
+    });
+    const observeChildren = () => {
+      ro.disconnect();
+      for (const child of scroller.children) ro.observe(child);
+    };
+    observeChildren();
+    const mo = new MutationObserver(observeChildren);
+    mo.observe(scroller, { childList: true });
+
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+      mo.disconnect();
+    };
   }, []);
 
   if (!messages.length && !streaming) {

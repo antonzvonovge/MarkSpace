@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useRef } from "react";
 import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
+import { TreeToolbar } from "./TreeToolbar";
 import { loadLastVault, saveLastVault } from "../lib/settingsStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
@@ -67,6 +68,10 @@ export function Sidebar() {
             <img className="brand-logo" src={brandLogo} alt="" />
             MarkSpace
           </div>
+          <TreeToolbar
+            onCreate={(kind) => fileTreeRef.current?.startCreate(kind)}
+            onLocateActive={() => fileTreeRef.current?.revealActive()}
+          />
         </div>
 
         <FileTree ref={fileTreeRef} />

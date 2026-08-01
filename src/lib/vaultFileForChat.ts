@@ -19,7 +19,11 @@ export async function fileFromVaultPath(path: string): Promise<File> {
   const mediaType = guessMediaType(name);
   const kind = classifyAttachment(name, mediaType);
 
-  if (kind === "text" || name.toLowerCase().endsWith(".drawio")) {
+  if (
+    kind === "text" ||
+    name.toLowerCase().endsWith(".drawio") ||
+    name.toLowerCase().endsWith(".mdlnks")
+  ) {
     const content = await readNote(path);
     return new File([content], name, {
       type: mediaType || "text/plain",

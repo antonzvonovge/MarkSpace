@@ -79,9 +79,15 @@ fn is_drawio(name: &str) -> bool {
     name.ends_with(".drawio")
 }
 
-fn is_vault_document(name: &str) -> bool {
-    is_markdown(name) || is_drawio(name)
+fn is_mdlnks(name: &str) -> bool {
+    name.ends_with(".mdlnks")
 }
+
+fn is_vault_document(name: &str) -> bool {
+    is_markdown(name) || is_drawio(name) || is_mdlnks(name)
+}
+
+const EMPTY_MDLNKS: &str = "# MarkSpace links v1\n";
 
 const EMPTY_DRAWIO: &str = r#"<mxfile host="MarkSpace" agent="MarkSpace" version="28.2.5" type="device">
   <diagram id="page-1" name="Page-1">
@@ -590,12 +596,29 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         if !to_rel.ends_with(".drawio") {
             if to_rel.ends_with(".md") {
                 to_rel.truncate(to_rel.len() - 3);
+            } else if to_rel.ends_with(".mdlnks") {
+                to_rel.truncate(to_rel.len() - 7);
             }
             to_rel.push_str(".drawio");
         }
         return to_rel;
     }
-    if is_markdown(&from_name) && !to_rel.ends_with(".md") && !to_rel.ends_with(".drawio") {
+    if is_mdlnks(&from_name) {
+        if !to_rel.ends_with(".mdlnks") {
+            if to_rel.ends_with(".md") {
+                to_rel.truncate(to_rel.len() - 3);
+            } else if to_rel.ends_with(".drawio") {
+                to_rel.truncate(to_rel.len() - 7);
+            }
+            to_rel.push_str(".mdlnks");
+        }
+        return to_rel;
+    }
+    if is_markdown(&from_name)
+        && !to_rel.ends_with(".md")
+        && !to_rel.ends_with(".drawio")
+        && !to_rel.ends_with(".mdlnks")
+    {
         to_rel.push_str(".md");
     }
     to_rel
@@ -1082,6 +1105,37 @@ pub fn create_drawio(path: String, state: State<VaultState>) -> Result<String, S
     Ok(created)
 }
 
+#[tauri::command]
+pub fn create_mdlnks(path: String, state: State<VaultState>) -> Result<String, String> {
+    let root = get_root(&state)?;
+    let mut rel = path.trim().trim_start_matches('/').to_string();
+    if !rel.ends_with(".mdlnks") {
+        if rel.ends_with(".md") {
+            rel.truncate(rel.len() - 3);
+        } else if rel.ends_with(".drawio") {
+            rel.truncate(rel.len() - 7);
+        }
+        rel.push_str(".mdlnks");
+    }
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    if full.exists() {
+        return Err("Links file already exists".into());
+    }
+    if let Some(parent) = full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
+    }
+    fs::write(&full, EMPTY_MDLNKS).map_err(|e| format!("Cannot create links file: {e}"))?;
+
+    let created = relative_to_root(&root, &full);
+    let parent = parent_rel(&created);
+    let name = entry_name(&created);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent, &name, None);
+    write_order(&root, &order)?;
+
+    Ok(created)
+}
+
 /// Resolve a .drawio path for embedding next to a note.
 /// If `source` is already inside the vault, returns its vault-relative path.
 /// Otherwise copies the file into the note's folder and returns the new relative path.
@@ -1339,6 +1393,122 @@ pub fn create_folder(path: String, state: State<VaultState>) -> Result<String, S
     write_order(&root, &order)?;
 
     Ok(created)
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct EnsureFolderResult {
+    pub path: String,
+    pub created: bool,
+}
+
+/// Create a folder (and parents) if missing. `created=false` when it already existed.
+#[tauri::command]
+pub fn ensure_folder(
+    path: String,
+    state: State<VaultState>,
+) -> Result<EnsureFolderResult, String> {
+    let root = get_root(&state)?;
+    let rel = path.trim().trim_start_matches('/').trim_end_matches('/').to_string();
+    if rel.is_empty() {
+        return Err("Folder name required".into());
+    }
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    if full.is_file() {
+        return Err("Path exists as a file".into());
+    }
+    if full.is_dir() {
+        return Ok(EnsureFolderResult {
+            path: relative_to_root(&root, &full),
+            created: false,
+        });
+    }
+
+    fs::create_dir_all(&full).map_err(|e| format!("Cannot create folder: {e}"))?;
+    let created = relative_to_root(&root, &full);
+    let parent = parent_rel(&created);
+    let name = entry_name(&created);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent, &name, None);
+    write_order(&root, &order)?;
+
+    Ok(EnsureFolderResult {
+        path: created,
+        created: true,
+    })
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteFolderIfEmptyResult {
+    pub path: String,
+    pub deleted: bool,
+    /// When not deleted: `not_found` | `not_a_folder` | `not_empty` | `protected`.
+    pub reason: Option<String>,
+}
+
+/// Delete a folder only if it has no entries (including hidden like `.assets`).
+#[tauri::command]
+pub fn delete_folder_if_empty(
+    path: String,
+    state: State<VaultState>,
+) -> Result<DeleteFolderIfEmptyResult, String> {
+    let root = get_root(&state)?;
+    let rel_in = path.trim().trim_start_matches('/').trim_end_matches('/').to_string();
+    if rel_in.is_empty() {
+        return Err("Cannot delete vault root".into());
+    }
+    let full = ensure_inside(&root, Path::new(&rel_in))?;
+    let rel = relative_to_root(&root, &full);
+
+    if is_skills_folder(&rel) {
+        return Ok(DeleteFolderIfEmptyResult {
+            path: rel,
+            deleted: false,
+            reason: Some("protected".into()),
+        });
+    }
+    if !full.exists() {
+        return Ok(DeleteFolderIfEmptyResult {
+            path: rel_in,
+            deleted: false,
+            reason: Some("not_found".into()),
+        });
+    }
+    if !full.is_dir() {
+        return Ok(DeleteFolderIfEmptyResult {
+            path: rel,
+            deleted: false,
+            reason: Some("not_a_folder".into()),
+        });
+    }
+
+    // `remove_dir` fails unless the directory is truly empty.
+    match fs::remove_dir(&full) {
+        Ok(()) => {
+            let parent = parent_rel(&rel);
+            let name = entry_name(&rel);
+            let mut order = read_order(&root);
+            order_remove_child(&mut order, &parent, &name);
+            order_remove_subtree(&mut order, &rel);
+            write_order(&root, &order)?;
+            let _ = crate::favorites::remap_favorites(&root, &rel, None);
+            let _ = crate::projects::remap_project_properties(&root, &rel, None);
+            Ok(DeleteFolderIfEmptyResult {
+                path: rel,
+                deleted: true,
+                reason: None,
+            })
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
+            Ok(DeleteFolderIfEmptyResult {
+                path: rel,
+                deleted: false,
+                reason: Some("not_empty".into()),
+            })
+        }
+        Err(e) => Err(format!("Cannot delete folder: {e}")),
+    }
 }
 
 #[tauri::command]

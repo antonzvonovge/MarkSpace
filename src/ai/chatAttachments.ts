@@ -25,6 +25,7 @@ export type ChatAttachment = {
 const TEXT_EXTS = new Set([
   "md",
   "markdown",
+  "mdlnks",
   "txt",
   "json",
   "csv",

@@ -1,0 +1,11 @@
+---
+description: Keep docs/mdlnks-format.md in sync when .mdlnks format or tools change
+alwaysApply: false
+globs: src/lib/mdlnksFormat.ts,src/ai/mdlnks/**,src/editor/mdlnks/**,docs/mdlnks-format.md
+---
+
+# Links format (`.mdlnks`)
+
+Spec: [`docs/mdlnks-format.md`](docs/mdlnks-format.md). Core rules live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
+
+If you change on-disk syntax, parse/serialize, or agent tools for links files, **update `docs/mdlnks-format.md` in the same change** (including the core-rules block when agent-critical).

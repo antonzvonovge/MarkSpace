@@ -9,6 +9,7 @@ export function ChatTabBar() {
   const threads = useChatStore((s) => s.threads);
   const openTabIds = useChatStore((s) => s.openTabIds);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
+  const attentionThreadIds = useChatStore((s) => s.attentionThreadIds);
   const selectThread = useChatStore((s) => s.selectThread);
   const closeTab = useChatStore((s) => s.closeTab);
   const reorderOpenTabs = useChatStore((s) => s.reorderOpenTabs);
@@ -22,6 +23,11 @@ export function ChatTabBar() {
       .map((id) => byId.get(id))
       .filter((t): t is NonNullable<typeof t> => !!t);
   }, [threads, openTabIds]);
+
+  const attentionSet = useMemo(
+    () => new Set(attentionThreadIds),
+    [attentionThreadIds],
+  );
 
   const onReorder = useCallback(
     (from: number, to: number) => {
@@ -44,12 +50,18 @@ export function ChatTabBar() {
       <div className="editor-tabbar chat-tabbar" role="tablist">
         {tabs.map((tab, index) => {
           const active = tab.id === activeThreadId;
+          const attention = attentionSet.has(tab.id);
           const reorder = bindReorder(index);
           return (
             <div
               key={tab.id}
               ref={active ? activeRef : undefined}
-              className={["editor-tab", active ? "is-active" : "", reorder.className]
+              className={[
+                "editor-tab",
+                active ? "is-active" : "",
+                attention ? "has-attention" : "",
+                reorder.className,
+              ]
                 .filter(Boolean)
                 .join(" ")}
               title={tab.title}
@@ -79,6 +91,13 @@ export function ChatTabBar() {
                 }
               }}
             >
+              {attention ? (
+                <span
+                  className="chat-tab-attention"
+                  title="Agent finished"
+                  aria-label="Agent finished"
+                />
+              ) : null}
               <span className="editor-tab-label">{tab.title}</span>
               <button
                 type="button"

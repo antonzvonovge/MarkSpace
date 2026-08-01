@@ -108,6 +108,8 @@ function mediaTypeFromExt(ext: string): string | null {
       return "application/xml";
     case "drawio":
       return "application/xml";
+    case "mdlnks":
+      return "text/plain";
     default:
       return null;
   }

@@ -151,6 +151,29 @@ export function setNoteTags(markdown: string, tags: string[]): string {
   return mergeFrontmatter(data, split.body);
 }
 
+/**
+ * Add note lifecycle timestamps to frontmatter.
+ * `created` is written once; `updated` changes on every successful save.
+ * Unparseable YAML is left untouched because it cannot be rewritten safely.
+ */
+export function stampNoteTimestamps(
+  markdown: string,
+  now: Date = new Date(),
+): string {
+  const split = splitFrontmatter(markdown);
+  if (split.hasFence && split.data === null) {
+    return markdown;
+  }
+
+  const timestamp = now.toISOString();
+  const data: FrontmatterData = { ...(split.data ?? {}) };
+  if (!Object.prototype.hasOwnProperty.call(data, "created")) {
+    data.created = timestamp;
+  }
+  data.updated = timestamp;
+  return mergeFrontmatter(data, split.body);
+}
+
 /** Body only — for Live BlockNote. Keeps unparseable-fence body when present. */
 export function noteBody(markdown: string): string {
   return splitFrontmatter(markdown).body;

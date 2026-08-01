@@ -5,6 +5,7 @@ import {
   addFavorite,
   createDrawio,
   createFolder,
+  createMdlnks,
   createNote,
   deletePath,
   documentKind,
@@ -102,12 +103,17 @@ type VaultStore = {
   removeFromFavorites: (path: string) => Promise<void>;
   createNoteInSelection: (name: string) => Promise<void>;
   createDrawioInSelection: (name: string) => Promise<void>;
+  createMdlnksInSelection: (name: string) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
   /** Create Skills/<id>.md with skill frontmatter template. */
   createSkill: (id: string) => Promise<void>;
-  moveTreeEntry: (from: string, toParent: string, toIndex: number) => Promise<void>;
+  moveTreeEntry: (
+    from: string,
+    toParent: string,
+    toIndex: number,
+  ) => Promise<string | null>;
   renameTreeEntry: (from: string, nextName: string) => Promise<void>;
-  removePath: (path: string) => Promise<void>;
+  removePath: (path: string) => Promise<boolean>;
   /** Import OS paths / file blobs into the selected folder. */
   importIntoSelection: (
     sources: string[],
@@ -168,7 +174,10 @@ function stashActiveIntoTabs(
 
 function tabLabel(path: string): string {
   const name = path.split("/").pop() ?? path;
-  return name.replace(/\.md$/i, "").replace(/\.drawio$/i, "");
+  return name
+    .replace(/\.md$/i, "")
+    .replace(/\.drawio$/i, "")
+    .replace(/\.mdlnks$/i, "");
 }
 
 function collectFilePaths(node: TreeNode, out: string[] = []): string[] {
@@ -613,15 +622,24 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   saveActive: async () => {
-    const { activePath, content, dirty, tabs } = get();
+    const { activePath, content, dirty } = get();
     if (!activePath || !dirty) return;
     set({ saving: true, suppressWatchUntil: Date.now() + 1200 });
     try {
-      await writeNote(activePath, content);
+      const savedContent = await writeNote(activePath, content);
+      const current = get();
+      if (
+        current.activePath !== activePath ||
+        current.content !== content
+      ) {
+        set({ saving: false });
+        return;
+      }
       set({
+        content: savedContent,
         dirty: false,
         saving: false,
-        tabs: withTabBody(tabs, activePath, content, false),
+        tabs: withTabBody(current.tabs, activePath, savedContent, false),
       });
       void get().refreshVaultTags();
     } catch (e) {
@@ -712,6 +730,24 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
+  createMdlnksInSelection: async (name) => {
+    const { selectedFolderPath } = get();
+    const trimmed = name
+      .trim()
+      .replace(/\.mdlnks$/i, "")
+      .replace(/\.drawio$/i, "")
+      .replace(/\.md$/i, "");
+    if (!trimmed) return;
+    try {
+      const rel = joinPath(selectedFolderPath, trimmed);
+      const created = await createMdlnks(rel);
+      await get().refreshTree();
+      await get().openNote(created, { preview: false });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   createFolderInSelection: async (name) => {
     const { selectedFolderPath, vaultPath, expandedPaths } = get();
     const trimmed = name.trim().replace(/\/+$/g, "");
@@ -763,7 +799,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   moveTreeEntry: async (from, toParent, toIndex) => {
     if (isSkillsFolder(from) && toParent !== "") {
       set({ error: "Cannot move the Skills folder into another folder" });
-      return;
+      return null;
     }
     const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
       get();
@@ -818,8 +854,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
+      return nextPath;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
     }
   },
 
@@ -839,6 +877,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const fromKind = documentKind(from);
     if (fromKind === "drawio") {
       if (to === from || to === from.replace(/\.drawio$/i, "")) return;
+    } else if (fromKind === "mdlnks") {
+      if (to === from || to === from.replace(/\.mdlnks$/i, "")) return;
     } else if (to === from || to === from.replace(/\.md$/i, "")) {
       return;
     }
@@ -903,7 +943,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   removePath: async (path) => {
     if (isSkillsFolder(path)) {
       set({ error: "Cannot delete the Skills folder" });
-      return;
+      return false;
     }
     const { vaultPath, expandedPaths, selectedFolderPath, tabs, activePath, dirty, saveActive } =
       get();
@@ -967,8 +1007,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
+      return true;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
+      return false;
     }
   },
 

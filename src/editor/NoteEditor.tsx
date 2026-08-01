@@ -13,6 +13,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DocumentOutline } from "../components/DocumentOutline";
 import { DocumentToolbar } from "../components/DocumentToolbar";
+import { ImageLightbox } from "../components/ImageLightbox";
 import { PageTags } from "../components/PageTags";
 import {
   editorMarkdownToHashtags,
@@ -165,6 +166,9 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const notePathRef = useRef(path);
   notePathRef.current = path;
   const editorRef = useRef<ReturnType<typeof useCreateBlockNote> | null>(null);
+  const [viewedImage, setViewedImage] = useState<{ src: string; alt: string } | null>(
+    null,
+  );
   const [outlineWidth, setOutlineWidth] = useState(
     () => loadDocOutlineUi(vaultPath, path).width,
   );
@@ -379,6 +383,17 @@ export function NoteEditor({ path, content, onChange }: Props) {
     [openNote, refreshTree],
   );
 
+  const handleImageDoubleClick = useCallback((event: React.MouseEvent) => {
+    const target = event.target;
+    if (!(target instanceof HTMLImageElement)) return;
+    if (!target.matches("img.bn-visual-media")) return;
+    const src = target.currentSrc || target.src;
+    if (!src) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setViewedImage({ src, alt: target.alt });
+  }, []);
+
   // Tree DnD is scoped to the sidebar so HTML5Backend does not kill BlockNote's
   // native block drag. Draw.io embeds from the tree use a path bridge + native drop.
   // Capture+stopPropagation keeps ProseMirror's drop pipeline out (it breaks atom
@@ -443,6 +458,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
         showOutline ? "editor-shell editor-shell--with-outline" : "editor-shell"
       }
       onClick={handleLinkClick}
+      onDoubleClick={handleImageDoubleClick}
     >
       {showOutline ? (
         <>
@@ -505,6 +521,13 @@ export function NoteEditor({ path, content, onChange }: Props) {
           </div>
         </div>
       </div>
+      {viewedImage ? (
+        <ImageLightbox
+          src={viewedImage.src}
+          alt={viewedImage.alt}
+          onClose={() => setViewedImage(null)}
+        />
+      ) : null}
     </div>
   );
 }

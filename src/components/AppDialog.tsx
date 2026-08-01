@@ -1,5 +1,9 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { suggestLinkMeta } from "../ai/suggestLinkMeta";
+import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { useVaultStore } from "../store/vaultStore";
+import { TagChipsInput } from "./TagChipsInput";
 
 type PromptDialogProps = {
   open: boolean;
@@ -29,6 +33,7 @@ function DialogShell({
   onCancel,
   children,
   footer,
+  wide = false,
 }: {
   open: boolean;
   title: string;
@@ -36,6 +41,7 @@ function DialogShell({
   onCancel: () => void;
   children?: ReactNode;
   footer: ReactNode;
+  wide?: boolean;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -64,7 +70,7 @@ function DialogShell({
       />
       <div
         ref={panelRef}
-        className="app-dialog"
+        className={wide ? "app-dialog is-wide" : "app-dialog"}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -213,6 +219,219 @@ type ProjectPropertiesDialogProps = {
   onCancel: () => void;
   onSave: (about: string) => void;
 };
+
+export type LinkItemDialogValue = {
+  url: string;
+  description: string;
+  tags: string[];
+};
+
+type LinkItemDialogProps = {
+  open: boolean;
+  title: string;
+  confirmLabel?: string;
+  initial?: LinkItemDialogValue;
+  /** Suggested tags for the chip picker (e.g. tags already used in the file). */
+  suggestedTags?: string[];
+  onCancel: () => void;
+  onConfirm: (value: LinkItemDialogValue) => void;
+};
+
+export function LinkItemDialog({
+  open,
+  title,
+  confirmLabel = "Save",
+  initial,
+  suggestedTags = [],
+  onCancel,
+  onConfirm,
+}: LinkItemDialogProps) {
+  const urlId = useId();
+  const descId = useId();
+  const urlRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  const suggestAbortRef = useRef<AbortController | null>(null);
+  const [url, setUrl] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const vaultTags = useVaultStore((s) => s.vaultTags);
+  const aiSettings = useAiSettingsStore((s) => s.settings);
+
+  useEffect(() => {
+    if (!open) {
+      suggestAbortRef.current?.abort();
+      suggestAbortRef.current = null;
+      setSuggesting(false);
+      setSuggestError(null);
+      return;
+    }
+    setUrl(initial?.url ?? "");
+    setDescription(initial?.description ?? "");
+    setTags(initial?.tags ?? []);
+    setSuggestError(null);
+    const id = window.requestAnimationFrame(() => {
+      urlRef.current?.focus();
+      urlRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open, initial]);
+
+  // Grow with content until max-height kicks in, then the textarea scrolls.
+  useEffect(() => {
+    const el = descRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [description, open]);
+
+  const submit = () => {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) return;
+    onConfirm({
+      url: trimmedUrl,
+      // On-disk descriptions are single-line.
+      description: description.replace(/\s*\n+\s*/g, " ").trim(),
+      tags,
+    });
+  };
+
+  const onSuggest = async () => {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl || suggesting) return;
+    suggestAbortRef.current?.abort();
+    const ac = new AbortController();
+    suggestAbortRef.current = ac;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const catalog = [...vaultTags, ...suggestedTags, ...tags];
+      const result = await suggestLinkMeta({
+        url: trimmedUrl,
+        tagCatalog: catalog,
+        apiKey: aiSettings.apiKey,
+        baseUrl: aiSettings.baseUrl,
+        fallbackModelId: aiSettings.modelId,
+        abortSignal: ac.signal,
+      });
+      if (ac.signal.aborted) return;
+      if (result.description) setDescription(result.description);
+      if (result.tags.length > 0) {
+        const seen = new Set(tags.map((t) => t.toLowerCase()));
+        const merged = [...tags];
+        for (const t of result.tags) {
+          const key = t.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(t);
+        }
+        setTags(merged);
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setSuggestError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (suggestAbortRef.current === ac) {
+        suggestAbortRef.current = null;
+        setSuggesting(false);
+      }
+    }
+  };
+
+  return (
+    <DialogShell
+      open={open}
+      title={title}
+      onCancel={onCancel}
+      wide
+      footer={
+        <>
+          <button type="button" className="app-dialog-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="app-dialog-btn is-primary"
+            disabled={!url.trim()}
+            onClick={submit}
+          >
+            {confirmLabel}
+          </button>
+        </>
+      }
+    >
+      <div className="app-dialog-body">
+        <label className="app-dialog-label" htmlFor={urlId}>
+          URL
+        </label>
+        <div className="link-dialog-url-row">
+          <input
+            ref={urlRef}
+            id={urlId}
+            className="app-dialog-input"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="https://…"
+            spellCheck={false}
+            autoComplete="off"
+            disabled={suggesting}
+          />
+          <button
+            type="button"
+            className="app-dialog-btn link-dialog-suggest-btn"
+            disabled={!url.trim() || suggesting}
+            title="Fetch the page and suggest a Russian description and tags"
+            onClick={() => void onSuggest()}
+          >
+            {suggesting ? "Suggesting…" : "Suggest"}
+          </button>
+        </div>
+        {suggestError ? (
+          <p className="link-dialog-suggest-error" role="alert">
+            {suggestError}
+          </p>
+        ) : null}
+        <label className="app-dialog-label" htmlFor={descId}>
+          Description
+        </label>
+        <textarea
+          ref={descRef}
+          id={descId}
+          className="app-dialog-input link-dialog-description"
+          value={description}
+          rows={2}
+          onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Short note about this link"
+          spellCheck
+          autoComplete="off"
+          disabled={suggesting}
+        />
+        <span className="app-dialog-label">Tags</span>
+        <TagChipsInput
+          tags={tags}
+          onChange={setTags}
+          extraCatalog={suggestedTags}
+          placeholder="Search or create tag…"
+          ariaLabel="Link tags"
+          disabled={suggesting}
+        />
+      </div>
+    </DialogShell>
+  );
+}
 
 export function ProjectPropertiesDialog({
   open,

@@ -50,6 +50,13 @@ import {
   collectVaultDocumentFiles,
   pathsFromClipboardData,
 } from "../lib/osClipboardFiles";
+import {
+  CollectionPlusIcon,
+  DiagramIcon,
+  LinksIcon,
+  PlusIcon,
+} from "./treeIcons";
+import type { TreeCreateKind } from "./TreeToolbar";
 
 const TREE_ROOT = "__tree_root__";
 const VAULT_ID = "__vault__";
@@ -94,7 +101,7 @@ type NodeData = {
   hasChildren: boolean;
 };
 
-type PromptKind = "note" | "folder" | "drawio" | "skill";
+export type PromptKind = TreeCreateKind | "skill";
 
 function FolderTreeIcon({
   path,
@@ -124,6 +131,8 @@ type ContextMenuState = {
 
 export type FileTreeHandle = {
   openCreateMenu: (x: number, y: number) => void;
+  startCreate: (kind: PromptKind) => void;
+  revealActive: () => void;
 };
 
 type DeleteTarget = {
@@ -141,66 +150,16 @@ function toNodeId(path: string): string {
   return path === "" ? VAULT_ID : path;
 }
 
-function PlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 3.25v9.5M3.25 8h9.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function RefreshIcon({ spinning }: { spinning?: boolean }) {
-  return (
-    <svg
-      className={spinning ? "tree-refresh-icon is-spinning" : "tree-refresh-icon"}
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M3 8a5 5 0 0 1 8.9-2.1M13 4v2.5H10.5"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M13 8a5 5 0 0 1-8.9 2.1M3 12v-2.5H5.5"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CollapseAllIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M3.5 5.25 8 9.75l4.5-4.5"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M3.5 9.25 8 13.75l4.5-4.5"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+/** Ancestor folder paths for a vault-relative file path (excludes the file itself). */
+function ancestorFolderPaths(filePath: string): string[] {
+  const cleaned = filePath.replace(/^\/+|\/+$/g, "");
+  if (!cleaned.includes("/")) return [];
+  const parts = cleaned.split("/");
+  const out: string[] = [];
+  for (let i = 0; i < parts.length - 1; i++) {
+    out.push(parts.slice(0, i + 1).join("/"));
+  }
+  return out;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -219,34 +178,6 @@ function ChevronIcon({ open }: { open: boolean }) {
         strokeWidth="1.35"
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CollectionPlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="2.5"
-        y="4.5"
-        width="8"
-        height="8"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M6.5 2.5h5.5A1.5 1.5 0 0 1 13.5 4v5.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-      <path
-        d="M6.5 7.5v3M5 9h3"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
       />
     </svg>
   );
@@ -278,175 +209,6 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
 
   walk(root, TREE_ROOT);
   return nodes;
-}
-
-function TreeCreateMenu({
-  onNewNote,
-  onNewDiagram,
-  onNewFolder,
-}: {
-  onNewNote: () => void;
-  onNewDiagram: () => void;
-  onNewFolder: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  return (
-    <div className="tree-create" ref={rootRef}>
-      <button
-        type="button"
-        className={open ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
-        title="Create"
-        aria-label="Create"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <PlusIcon />
-      </button>
-
-      {open && (
-        <div className="tree-create-menu" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-create-item"
-            onClick={() => {
-              setOpen(false);
-              onNewNote();
-            }}
-          >
-            <PlusIcon />
-            <span>New note</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-create-item"
-            onClick={() => {
-              setOpen(false);
-              onNewDiagram();
-            }}
-          >
-            <DiagramIcon />
-            <span>New diagram</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-create-item"
-            onClick={() => {
-              setOpen(false);
-              onNewFolder();
-            }}
-          >
-            <CollectionPlusIcon />
-            <span>New folder</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TreeToolbarActions({
-  onRefresh,
-  refreshing,
-  onCollapseAll,
-  canCollapse,
-  onNewNote,
-  onNewDiagram,
-  onNewFolder,
-}: {
-  onRefresh: () => void;
-  refreshing: boolean;
-  onCollapseAll: () => void;
-  canCollapse: boolean;
-  onNewNote: () => void;
-  onNewDiagram: () => void;
-  onNewFolder: () => void;
-}) {
-  return (
-    // Row div has its own click handler — keep toolbar clicks from selecting the vault.
-    <div
-      className="tree-toolbar-actions"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button
-        type="button"
-        className="tree-toolbar-btn"
-        title="Refresh"
-        aria-label="Refresh file tree"
-        disabled={refreshing}
-        onClick={onRefresh}
-      >
-        <RefreshIcon spinning={refreshing} />
-      </button>
-      <button
-        type="button"
-        className="tree-toolbar-btn"
-        title="Collapse all"
-        aria-label="Collapse all folders"
-        disabled={!canCollapse}
-        onClick={onCollapseAll}
-      >
-        <CollapseAllIcon />
-      </button>
-      <TreeCreateMenu
-        onNewNote={onNewNote}
-        onNewDiagram={onNewDiagram}
-        onNewFolder={onNewFolder}
-      />
-    </div>
-  );
-}
-
-function DiagramIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="2.5"
-        y="2.5"
-        width="5"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <rect
-        x="8.5"
-        y="9.5"
-        width="5"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M5 6.5v2.2c0 .7.5 1.3 1.2 1.3H8.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
 }
 
 function RenameIcon() {
@@ -627,6 +389,7 @@ function TreeContextMenu({
   onClose,
   onNewNote,
   onNewDiagram,
+  onNewLinks,
   onNewFolder,
   onNewSkill,
   onRename,
@@ -641,6 +404,7 @@ function TreeContextMenu({
   onClose: () => void;
   onNewNote: () => void;
   onNewDiagram: () => void;
+  onNewLinks: () => void;
   onNewFolder: () => void;
   onNewSkill: () => void;
   onRename: () => void;
@@ -764,6 +528,18 @@ function TreeContextMenu({
           >
             <DiagramIcon />
             <span>New diagram</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onNewLinks();
+            }}
+          >
+            <LinksIcon />
+            <span>New links</span>
           </button>
           <button
             type="button"
@@ -961,6 +737,7 @@ function FavoritesTreeRows({
         const isProject = isVaultProjectFolder(path, isDir);
         const isSkills = isSkillsFolder(path, isDir);
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
+        const isMdlnks = !isDir && path.toLowerCase().endsWith(".mdlnks");
         const selected =
           isDir && selectedFolderExplicit && selectedFolderPath === path;
         const active =
@@ -1066,6 +843,10 @@ function FavoritesTreeRows({
                   <span className="tree-drawio-icon">
                     <DiagramIcon />
                   </span>
+                ) : isMdlnks ? (
+                  <span className="tree-mdlnks-icon">
+                    <LinksIcon />
+                  </span>
                 ) : (
                   <FcDocument size={20} />
                 )}
@@ -1118,6 +899,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const selectedFolderExplicit = useVaultStore((s) => s.selectedFolderExplicit);
   const createNoteInSelection = useVaultStore((s) => s.createNoteInSelection);
   const createDrawioInSelection = useVaultStore((s) => s.createDrawioInSelection);
+  const createMdlnksInSelection = useVaultStore((s) => s.createMdlnksInSelection);
   const createFolderInSelection = useVaultStore((s) => s.createFolderInSelection);
   const createSkill = useVaultStore((s) => s.createSkill);
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
@@ -1126,8 +908,6 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const importIntoSelection = useVaultStore((s) => s.importIntoSelection);
   const selectFolder = useVaultStore((s) => s.selectFolder);
   const openNote = useVaultStore((s) => s.openNote);
-  const refreshTree = useVaultStore((s) => s.refreshTree);
-  const collapseAllFolders = useVaultStore((s) => s.collapseAllFolders);
   const toggleExpanded = useVaultStore((s) => s.toggleExpanded);
   const addToFavorites = useVaultStore((s) => s.addToFavorites);
   const removeFromFavorites = useVaultStore((s) => s.removeFromFavorites);
@@ -1143,7 +923,6 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     useState<ProjectProperties | null>(null);
   const [projectPropsLoading, setProjectPropsLoading] = useState(false);
   const [projectPropsSaving, setProjectPropsSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   const openProjectProperties = useCallback(async (path: string) => {
     setProjectPropsLoading(true);
@@ -1179,6 +958,54 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     setDndRoot(node);
   }, []);
 
+  /** Expand every folder on the way to `path` (plus itself for folders) and scroll to it. */
+  const revealPathInTree = useCallback(
+    (path: string, options?: { isDir?: boolean }) => {
+      if (!path) return;
+      const { vaultPath: vp, expandedPaths } = useVaultStore.getState();
+      const toOpen = ancestorFolderPaths(path);
+      if (options?.isDir) toOpen.push(path);
+
+      const missing = toOpen.filter((a) => !expandedPaths.includes(a));
+      if (missing.length > 0) {
+        const next = [...expandedPaths, ...missing];
+        useVaultStore.setState({ expandedPaths: next });
+        if (vp) void saveExpandedPaths(vp, next);
+      }
+
+      treeRef.current?.open(VAULT_ID);
+      for (const a of toOpen) {
+        treeRef.current?.open(toNodeId(a));
+      }
+
+      let attempts = 0;
+      const scrollToRow = () => {
+        const root = treeFocusRef.current;
+        if (!root) return;
+        const el = root.querySelector(
+          `[data-vault-path="${CSS.escape(path)}"]`,
+        ) as HTMLElement | null;
+        if (el) {
+          el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          return;
+        }
+        if (attempts++ < 12) requestAnimationFrame(scrollToRow);
+      };
+      requestAnimationFrame(scrollToRow);
+    },
+    [],
+  );
+
+  const revealActiveInTree = useCallback(() => {
+    const path = useVaultStore.getState().activePath;
+    if (!path) return;
+    useVaultStore.setState({
+      selectedFolderExplicit: false,
+      selectedFolderPath: parentPath(path),
+    });
+    revealPathInTree(path);
+  }, [revealPathInTree]);
+
   useImperativeHandle(ref, () => ({
     openCreateMenu: (x, y) => {
       if (!useVaultStore.getState().vaultPath) return;
@@ -1191,6 +1018,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         createOnly: true,
       });
     },
+    startCreate: (kind) => setPromptKind(kind),
+    revealActive: revealActiveInTree,
   }));
 
   // Scope HTML5Backend to the sidebar so it does not steal BlockNote block drag.
@@ -1320,31 +1149,26 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     const kind = promptKind;
     setPromptKind(null);
     if (!kind) return;
-    const parent = selectedFolderPath;
     if (kind === "skill") {
-      void createSkill(name).then(() => {
-        treeRef.current?.open(VAULT_ID);
-        treeRef.current?.open(toNodeId("Skills"));
-      });
+      void createSkill(name).then(revealActiveInTree);
       return;
     }
     if (kind === "note") {
-      void createNoteInSelection(name).then(() => {
-        treeRef.current?.open(VAULT_ID);
-        treeRef.current?.open(toNodeId(parent));
-      });
+      void createNoteInSelection(name).then(revealActiveInTree);
       return;
     }
     if (kind === "drawio") {
-      void createDrawioInSelection(name).then(() => {
-        treeRef.current?.open(VAULT_ID);
-        treeRef.current?.open(toNodeId(parent));
-      });
+      void createDrawioInSelection(name).then(revealActiveInTree);
+      return;
+    }
+    if (kind === "mdlnks") {
+      void createMdlnksInSelection(name).then(revealActiveInTree);
       return;
     }
     void createFolderInSelection(name).then(() => {
-      treeRef.current?.open(toNodeId(parent));
-      treeRef.current?.open(VAULT_ID);
+      revealPathInTree(useVaultStore.getState().selectedFolderPath, {
+        isDir: true,
+      });
     });
   };
 
@@ -1357,18 +1181,22 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             ? "New folder"
             : promptKind === "drawio"
               ? "New diagram"
-              : promptKind === "skill"
-                ? "New skill"
-                : "New note"
+              : promptKind === "mdlnks"
+                ? "New links"
+                : promptKind === "skill"
+                  ? "New skill"
+                  : "New note"
         }
         description={
           promptKind === "folder"
             ? "Create a folder in the selected location."
             : promptKind === "drawio"
               ? "Create a Draw.io diagram in the selected location."
-              : promptKind === "skill"
-                ? "Skill id: lowercase letters, digits, and hyphens (e.g. meeting-notes)."
-                : "Create a markdown note in the selected location."
+              : promptKind === "mdlnks"
+                ? "Create a links collection in the selected location."
+                : promptKind === "skill"
+                  ? "Skill id: lowercase letters, digits, and hyphens (e.g. meeting-notes)."
+                  : "Create a markdown note in the selected location."
         }
         label={promptKind === "skill" ? "Skill id" : "Name"}
         defaultValue={
@@ -1376,9 +1204,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             ? "Folder"
             : promptKind === "drawio"
               ? "Diagram"
-              : promptKind === "skill"
-                ? "my-skill"
-                : "Untitled"
+              : promptKind === "mdlnks"
+                ? "Links"
+                : promptKind === "skill"
+                  ? "my-skill"
+                  : "Untitled"
         }
         confirmLabel="Create"
         onCancel={() => setPromptKind(null)}
@@ -1400,6 +1230,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
             );
             setPromptKind("drawio");
+          }}
+          onNewLinks={() => {
+            selectFolder(
+              contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
+            );
+            setPromptKind("mdlnks");
           }}
           onNewFolder={() => {
             selectFolder(
@@ -1462,7 +1298,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             ? "Delete folder"
             : deleteTarget?.path.endsWith(".drawio")
               ? "Delete diagram"
-              : "Delete note"
+              : deleteTarget?.path.endsWith(".mdlnks")
+                ? "Delete links"
+                : "Delete note"
         }
         description={
           deleteTarget?.isDir
@@ -1600,6 +1438,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 const isSkills = isSkillsFolder(path, isDir);
                 const isDrawio =
                   !isDir && path.toLowerCase().endsWith(".drawio");
+                const isMdlnks =
+                  !isDir && path.toLowerCase().endsWith(".mdlnks");
                 const selected =
                   isDir && selectedFolderExplicit && selectedFolderPath === path;
                 const active =
@@ -1722,6 +1562,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         <span className="tree-drawio-icon">
                           <DiagramIcon />
                         </span>
+                      ) : isMdlnks ? (
+                        <span className="tree-mdlnks-icon">
+                          <LinksIcon />
+                        </span>
                       ) : (
                         <FcDocument size={20} />
                       )}
@@ -1740,22 +1584,6 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                     ) : (
                       <TreeNodeLabel text={node.text} isDir={isDir} />
                     )}
-
-                    {isVault ? (
-                      <TreeToolbarActions
-                        refreshing={refreshing}
-                        canCollapse={expandedPaths.length > 0}
-                        onCollapseAll={collapseAllFolders}
-                        onRefresh={() => {
-                          if (refreshing) return;
-                          setRefreshing(true);
-                          void refreshTree().finally(() => setRefreshing(false));
-                        }}
-                        onNewNote={() => setPromptKind("note")}
-                        onNewDiagram={() => setPromptKind("drawio")}
-                        onNewFolder={() => setPromptKind("folder")}
-                      />
-                    ) : null}
                   </div>
                 );
               }}

@@ -12,17 +12,19 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Tables: use GFM pipe tables. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
 - Diagrams in notes: fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml `. Chat replies may use the same fences (rendered inline).
-- Page tags live in YAML front-matter at the very top: `---` / `tags:` with `  - name` items / `---`, then a blank line before the body. Only `tags` is managed by the UI; keep any other front-matter keys intact and never duplicate the block.
+- Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:` with `  - name` items; keep any other keys intact and never duplicate the block.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
 - Do **not** emit unsupported syntax (callouts, math, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
 
-## Front-matter and page tags
+## Front-matter, timestamps, and page tags
 
-Notes may start with a YAML front-matter block. It is the on-disk home for **page tags**, edited from the tag overlay in the top-right corner of the page (Live and Source).
+Notes may start with a YAML front-matter block. It stores lifecycle timestamps and **page tags**, which are edited from the tag overlay in the top-right corner of the page (Live and Source).
 
 ```md
 ---
+created: 2026-08-01T10:03:00.000Z
+updated: 2026-08-01T10:15:42.000Z
 tags:
   - work
   - inbox
@@ -33,6 +35,7 @@ tags:
 ```
 
 - The block must be the very first thing in the file: `---` on line 1, `---` closing line, then the body.
+- `created` is set when MarkSpace creates the note (or on the first MarkSpace save of an existing note) and is then preserved. `updated` is refreshed on every save. Both use UTC ISO 8601 timestamps.
 - The UI always writes tags as a block list; `tags: [work, inbox]` and `tags: work` are also read correctly.
 - Tag names: no leading `#`, trimmed, case preserved, deduplicated case-insensitively. Nesting is just a `/` inside the name (`area/topic`).
 - Other keys (e.g. `aliases`) are preserved when tags change; when the last key is removed the whole block is dropped.

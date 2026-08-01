@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { normalizeMarkdown } from "./normalizeMarkdown";
+import { stampNoteTimestamps } from "./noteFrontmatter";
 
 export type TreeNode = {
   name: string;
@@ -21,26 +22,42 @@ export async function listTree(): Promise<TreeNode> {
   return invoke("list_tree");
 }
 
+function skipMarkdownNormalize(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".drawio") || lower.endsWith(".mdlnks");
+}
+
 export async function readNote(path: string): Promise<string> {
   const raw = await invoke<string>("read_note", { path });
-  // Don't run markdown fence healing on draw.io XML.
-  if (path.toLowerCase().endsWith(".drawio")) return raw;
+  // Don't run markdown fence healing on draw.io / links files.
+  if (skipMarkdownNormalize(path)) return raw;
   return normalizeMarkdown(raw);
 }
 
-export async function writeNote(path: string, content: string): Promise<void> {
-  const payload = path.toLowerCase().endsWith(".drawio")
+export async function writeNote(path: string, content: string): Promise<string> {
+  const normalized = skipMarkdownNormalize(path)
     ? content
     : normalizeMarkdown(content);
-  return invoke("write_note", { path, content: payload });
+  const payload = path.toLowerCase().endsWith(".md")
+    ? stampNoteTimestamps(normalized)
+    : normalized;
+  await invoke("write_note", { path, content: payload });
+  return payload;
 }
 
 export async function createNote(path: string): Promise<string> {
-  return invoke("create_note", { path });
+  const created = await invoke<string>("create_note", { path });
+  const initialContent = await readNote(created);
+  await writeNote(created, initialContent);
+  return created;
 }
 
 export async function createDrawio(path: string): Promise<string> {
   return invoke("create_drawio", { path });
+}
+
+export async function createMdlnks(path: string): Promise<string> {
+  return invoke("create_mdlnks", { path });
 }
 
 /** Embed path for a .drawio: vault-relative if already inside, else copy next to the note. */
@@ -59,7 +76,7 @@ export async function importPaths(
   return invoke("import_paths", { parent, sources });
 }
 
-/** Write a .md / .drawio from bytes into a vault folder. */
+/** Write a .md / .drawio / .mdlnks from bytes into a vault folder. */
 export async function importDocumentBytes(
   parent: string,
   fileName: string,
@@ -76,6 +93,16 @@ export async function createFolder(path: string): Promise<string> {
   return invoke("create_folder", { path });
 }
 
+export type EnsureFolderResult = {
+  path: string;
+  created: boolean;
+};
+
+/** Create folder (and parents) if missing; `created` is false when it already existed. */
+export async function ensureFolder(path: string): Promise<EnsureFolderResult> {
+  return invoke("ensure_folder", { path });
+}
+
 export async function renamePath(from: string, to: string): Promise<string> {
   return invoke("rename_path", { from, to });
 }
@@ -90,6 +117,20 @@ export async function moveEntry(
 
 export async function deletePath(path: string): Promise<void> {
   return invoke("delete_path", { path });
+}
+
+export type DeleteFolderIfEmptyResult = {
+  path: string;
+  deleted: boolean;
+  /** When not deleted: `not_found` | `not_a_folder` | `not_empty` | `protected`. */
+  reason?: string | null;
+};
+
+/** Delete a folder only if it is truly empty (no files, including `.assets`). */
+export async function deleteFolderIfEmpty(
+  path: string,
+): Promise<DeleteFolderIfEmptyResult> {
+  return invoke("delete_folder_if_empty", { path });
 }
 
 export async function resolveWikiTarget(target: string): Promise<string | null> {
@@ -275,12 +316,19 @@ export function listVaultProjects(
     .map((n) => ({ path: n.path, name: n.name }));
 }
 
-export type DocumentKind = "markdown" | "drawio";
+export type DocumentKind = "markdown" | "drawio" | "mdlnks";
 
 export function documentKind(path: string): DocumentKind {
-  return path.toLowerCase().endsWith(".drawio") ? "drawio" : "markdown";
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".drawio")) return "drawio";
+  if (lower.endsWith(".mdlnks")) return "mdlnks";
+  return "markdown";
 }
 
 export function isDrawioPath(path: string): boolean {
   return documentKind(path) === "drawio";
+}
+
+export function isMdlnksPath(path: string): boolean {
+  return documentKind(path) === "mdlnks";
 }
