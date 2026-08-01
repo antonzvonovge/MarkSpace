@@ -2,19 +2,18 @@ import {
   getDefaultReactSlashMenuItems,
   type DefaultReactSuggestionItem,
 } from "@blocknote/react";
-import type { BlockNoteEditor } from "@blocknote/core";
 import {
   insertExistingDrawioItem,
   insertNewDrawioItem,
 } from "./drawio/slashItem";
 import { insertMermaidItem } from "./mermaid/slashItem";
 import { insertPlantUmlItem } from "./plantuml/slashItem";
-import type { NoteEditorSchema } from "./schema";
+import type { NoteEditor } from "./schema";
 
 type SlashItem = DefaultReactSuggestionItem & { key?: string };
 
 export function getNoteSlashMenuItems(
-  editor: BlockNoteEditor<NoteEditorSchema["blockSchema"]>,
+  editor: NoteEditor,
   query: string,
   notePath: string,
 ): DefaultReactSuggestionItem[] {

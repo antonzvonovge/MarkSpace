@@ -1,11 +1,10 @@
-import type { BlockNoteEditor } from "@blocknote/core";
 import { insertOrUpdateBlockForSlashMenu } from "@blocknote/core";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
 import { DEFAULT_PLANTUML_CODE } from "./PlantUMLBlock";
-import type { NoteEditorSchema } from "../schema";
+import type { NoteEditor } from "../schema";
 
 export function insertPlantUmlItem(
-  editor: BlockNoteEditor<NoteEditorSchema["blockSchema"]>,
+  editor: NoteEditor,
 ): DefaultReactSuggestionItem {
   return {
     title: "PlantUML",

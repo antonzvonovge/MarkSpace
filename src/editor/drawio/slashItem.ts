@@ -1,4 +1,3 @@
-import type { BlockNoteEditor } from "@blocknote/core";
 import { getBlockInfoAtNearest, getNodeId } from "@blocknote/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
@@ -11,10 +10,10 @@ import {
   parentPath,
 } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
-import type { NoteEditorSchema } from "../schema";
+import type { NoteEditor } from "../schema";
 import { DEFAULT_DRAWIO_PREVIEW_WIDTH } from "./constants";
 
-type Editor = BlockNoteEditor<NoteEditorSchema["blockSchema"]>;
+type Editor = NoteEditor;
 
 export type DrawioDropPoint = { x: number; y: number };
 

@@ -24,9 +24,17 @@ describe("markdownFormat", () => {
     expect(guide).toContain("mermaid");
     expect(guide).toContain("plantuml");
     expect(guide).toContain("data-background-color");
+    expect(guide).toContain("#multi-agent");
+    expect(guide).toMatch(/##\s+Inline tags/i);
   });
 
   it("has a Not supported section", () => {
     expect(MARKDOWN_FORMAT_GUIDE).toMatch(/##\s+Not supported/i);
+  });
+
+  it("allows inline hashtags in core rules", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/inline tags/i);
+    expect(rules).not.toMatch(/do \*\*not\*\* emit[\s\S]*inline `#tags`/i);
   });
 });

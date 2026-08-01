@@ -1,5 +1,4 @@
 import { useEditorChange } from "@blocknote/react";
-import type { BlockNoteEditor } from "@blocknote/core";
 import { useCallback, useEffect, useState } from "react";
 import {
   buildDocumentOutline,
@@ -7,12 +6,10 @@ import {
   type OutlineNode,
 } from "../lib/documentOutline";
 import { saveDocOutlineCollapsed, loadDocOutlineUi } from "../lib/outlineUiState";
-import type { NoteEditorSchema } from "../editor/schema";
-
-type Editor = BlockNoteEditor<NoteEditorSchema["blockSchema"]>;
+import type { NoteEditor } from "../editor/schema";
 
 type Props = {
-  editor: Editor;
+  editor: NoteEditor;
   width: number;
   notePath: string;
   vaultPath: string | null;

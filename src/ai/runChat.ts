@@ -11,6 +11,7 @@ import {
 } from "ai";
 import { modelSupportsReasoning } from "./models";
 import { resolveModelId } from "./resolveModelId";
+import type { LoadedSkill, SkillMeta } from "./skills";
 import type { ChatMode } from "./types";
 import { buildSystemPrompt, buildVaultTools } from "./vaultTools";
 
@@ -25,6 +26,8 @@ export type RunChatParams = {
   activeExcerpt: string | null;
   projectPath?: string | null;
   projectAbout?: string | null;
+  skills?: SkillMeta[] | null;
+  forcedSkills?: LoadedSkill[] | null;
   abortSignal?: AbortSignal;
   onMessages: (messages: UIMessage[]) => void;
   /**
@@ -226,12 +229,14 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     activeExcerpt: params.activeExcerpt,
     projectPath: params.projectPath,
     projectAbout: params.projectAbout,
+    skills: params.skills,
+    forcedSkills: params.forcedSkills,
   });
 
   const tools = buildVaultTools(params.mode, {
     getMessages: () => inputMessages,
   });
-  const modelMessages = await convertToModelMessages(inputMessages);
+  const modelMessages = await convertToModelMessages(inputMessages, { tools });
 
   const result = streamText({
     model: openrouter(modelId),

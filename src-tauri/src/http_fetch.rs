@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
@@ -5,6 +6,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 const MAX_BODY_BYTES: usize = 2_000_000;
+const MAX_BINARY_BYTES: usize = 10 * 1024 * 1024;
 const DEFAULT_UA: &str = "Mozilla/5.0 (compatible; MarkSpace/1.0; +https://markspace.app)";
 
 #[derive(Debug, Deserialize)]
@@ -28,8 +30,18 @@ pub struct HttpFetchResponse {
     pub body: String,
 }
 
-#[tauri::command]
-pub fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpFetchBytesResponse {
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub data_base64: String,
+    pub byte_length: usize,
+}
+
+fn build_client_request(
+    req: &HttpFetchRequest,
+) -> Result<(reqwest::blocking::RequestBuilder, reqwest::Url), String> {
     let url = req.url.trim();
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
@@ -60,15 +72,20 @@ pub fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
         .map_err(|e| format!("HTTP client error: {e}"))?;
 
     let mut builder = if method == "POST" {
-        client.post(parsed)
+        client.post(parsed.clone())
     } else {
-        client.get(parsed)
+        client.get(parsed.clone())
     };
     builder = builder.headers(headers);
     if let Some(body) = &req.body {
         builder = builder.body(body.clone());
     }
+    Ok((builder, parsed))
+}
 
+#[tauri::command]
+pub fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
+    let (builder, _) = build_client_request(&req)?;
     let res = builder
         .send()
         .map_err(|e| format!("Request failed: {e}"))?;
@@ -84,4 +101,35 @@ pub fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
     }
     let body = String::from_utf8_lossy(&bytes).into_owned();
     Ok(HttpFetchResponse { status, body })
+}
+
+/// Fetch raw bytes (images/binaries) as base64. Larger limit than text `http_fetch`.
+#[tauri::command]
+pub fn http_fetch_bytes(req: HttpFetchRequest) -> Result<HttpFetchBytesResponse, String> {
+    let (builder, _) = build_client_request(&req)?;
+    let res = builder
+        .send()
+        .map_err(|e| format!("Request failed: {e}"))?;
+    let status = res.status().as_u16();
+    let content_type = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(';').next().unwrap_or(s).trim().to_string())
+        .filter(|s| !s.is_empty());
+    let bytes = res
+        .bytes()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+    if bytes.len() > MAX_BINARY_BYTES {
+        return Err(format!(
+            "Response too large ({} bytes, max {MAX_BINARY_BYTES})",
+            bytes.len()
+        ));
+    }
+    Ok(HttpFetchBytesResponse {
+        status,
+        content_type,
+        data_base64: STANDARD.encode(&bytes),
+        byte_length: bytes.len(),
+    })
 }

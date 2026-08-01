@@ -18,10 +18,12 @@ MarkSpace notes use a **dialect** of Markdown (wiki-links, Draw.io embeds, image
 If you change on-disk syntax or round-trip behavior in any of these areas, **update `docs/markdown-format.md` in the same change** (including the core-rules block when the change is agent-critical):
 
 - `src/lib/wikiMarkdown.ts` — wiki-links, `![[*.drawio]]` embeds
+- `src/lib/hashtagMarkdown.ts` — inline `#tags` ↔ Live intermediate HTML
 - `src/lib/imageMarkdown.ts` — `![alt|width](…)` / assets
 - `src/lib/tableMarkdown.ts` — colored table HTML
 - `src/lib/normalizeMarkdown.ts` — CRLF / fence healing
 - `src/editor/schema.ts` and `src/editor/{mermaid,plantuml,drawio}/` — custom blocks
+- `src/editor/tag/` — Live hashtag decorations / `#` suggestions
 - `src/editor/NoteEditor.tsx` — load/save pipeline that affects on-disk markdown
 
 Otherwise the in-app agent will keep writing obsolete or unsupported syntax.

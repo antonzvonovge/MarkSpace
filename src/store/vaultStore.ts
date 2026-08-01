@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { skillTemplate } from "../ai/skills";
 import type { TreeNode } from "../lib/vaultApi";
 import {
   addFavorite,
@@ -9,6 +10,8 @@ import {
   documentKind,
   importDocumentBytes,
   importPaths,
+  isSkillsFolder,
+  isValidSkillId,
   joinPath,
   listFavorites,
   listTree,
@@ -20,6 +23,7 @@ import {
   reindexNoteTags as reindexNoteTagsApi,
   removeFavorite,
   renamePath,
+  skillPathForId,
   writeNote,
 } from "../lib/vaultApi";
 import {
@@ -63,7 +67,7 @@ type VaultStore = {
   expandedPaths: string[];
   /** Vault-relative favorite paths (pages and folders), sorted. */
   favoritePaths: string[];
-  /** Unique tags from note frontmatter across the vault. */
+  /** Unique tags from note frontmatter and inline `#tags` across the vault. */
   vaultTags: string[];
   content: string;
   viewMode: ViewMode;
@@ -90,6 +94,8 @@ type VaultStore = {
   saveActive: () => Promise<void>;
   selectFolder: (path: string) => void;
   toggleExpanded: (path: string) => void;
+  /** Collapse every folder under the vault root (vault itself stays open). */
+  collapseAllFolders: () => void;
   isExpanded: (path: string) => boolean;
   isFavorite: (path: string) => boolean;
   addToFavorites: (path: string) => Promise<void>;
@@ -97,6 +103,8 @@ type VaultStore = {
   createNoteInSelection: (name: string) => Promise<void>;
   createDrawioInSelection: (name: string) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
+  /** Create Skills/<id>.md with skill frontmatter template. */
+  createSkill: (id: string) => Promise<void>;
   moveTreeEntry: (from: string, toParent: string, toIndex: number) => Promise<void>;
   renameTreeEntry: (from: string, nextName: string) => Promise<void>;
   removePath: (path: string) => Promise<void>;
@@ -642,6 +650,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     if (vaultPath) void saveExpandedPaths(vaultPath, next);
   },
 
+  collapseAllFolders: () => {
+    const { vaultPath, expandedPaths } = get();
+    if (expandedPaths.length === 0) return;
+    set({ expandedPaths: [] });
+    if (vaultPath) void saveExpandedPaths(vaultPath, []);
+  },
+
   isFavorite: (path) => {
     if (!path) return false;
     return get().favoritePaths.includes(path);
@@ -717,7 +732,39 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
+  createSkill: async (id) => {
+    const trimmed = id.trim().toLowerCase().replace(/\.md$/i, "");
+    if (!isValidSkillId(trimmed)) {
+      set({
+        error:
+          "Skill id must be lowercase letters, digits, and hyphens (e.g. meeting-notes)",
+      });
+      return;
+    }
+    try {
+      const rel = skillPathForId(trimmed);
+      const created = await createNote(rel);
+      await writeNote(created, skillTemplate(trimmed));
+      const { vaultPath, expandedPaths } = get();
+      let nextExpanded = expandedPaths;
+      if (!expandedPaths.includes("Skills")) {
+        nextExpanded = [...expandedPaths, "Skills"];
+        set({ expandedPaths: nextExpanded });
+        if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+      }
+      set({ selectedFolderPath: "Skills", selectedFolderExplicit: true });
+      await get().refreshTree();
+      await get().openNote(created, { preview: false });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   moveTreeEntry: async (from, toParent, toIndex) => {
+    if (isSkillsFolder(from) && toParent !== "") {
+      set({ error: "Cannot move the Skills folder into another folder" });
+      return;
+    }
     const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
       get();
     try {
@@ -777,10 +824,18 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   renameTreeEntry: async (from, nextName) => {
+    if (isSkillsFolder(from)) {
+      set({ error: "Cannot rename the Skills folder" });
+      return;
+    }
     const trimmed = nextName.trim().replace(/[\\/]/g, "");
     if (!trimmed || !from) return;
 
     const to = joinPath(parentPath(from), trimmed);
+    if (isSkillsFolder(to)) {
+      set({ error: "Cannot rename to the reserved Skills folder" });
+      return;
+    }
     const fromKind = documentKind(from);
     if (fromKind === "drawio") {
       if (to === from || to === from.replace(/\.drawio$/i, "")) return;
@@ -846,6 +901,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   removePath: async (path) => {
+    if (isSkillsFolder(path)) {
+      set({ error: "Cannot delete the Skills folder" });
+      return;
+    }
     const { vaultPath, expandedPaths, selectedFolderPath, tabs, activePath, dirty, saveActive } =
       get();
     try {

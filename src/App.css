@@ -651,6 +651,17 @@ select {
   cursor: pointer;
 }
 
+/* Vault root stays comfortable size even in compact density. */
+:root[data-density="compact"] .tree-folder-row.is-vault-root {
+  --tree-row-height: 28px;
+  --tree-row-gap: 6px;
+  --tree-label-pad-y: 4px;
+  --tree-label-size: 13px;
+  --tree-icon-size: 20px;
+  --tree-chevron-size: 16px;
+  --tree-toolbar-btn: 28px;
+}
+
 .tree-folder-row.is-vault-root .tree-folder-btn {
   flex: 1;
   min-width: 0;
@@ -1972,6 +1983,43 @@ li.dnd-drop-target > .tree-row {
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
   cursor: pointer;
+}
+
+/* Inline body hashtags (`#tag`) — styled via decorations, still editable text. */
+.editor-canvas .note-inline-tag {
+  padding: 0.05em 0.35em;
+  border-radius: 999px;
+  border: 1px solid var(--tag-border);
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  font-weight: 500;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Compact tag autocomplete (default BN items are 52px tall). */
+.editor-canvas .bn-tag-suggestion-menu {
+  min-width: 160px;
+  max-width: 280px;
+  padding: 4px;
+}
+
+.editor-canvas .bn-tag-suggestion-menu .bn-tag-suggestion-item,
+.editor-canvas .bn-tag-suggestion-menu .bn-suggestion-menu-item-small {
+  height: auto !important;
+  min-height: 0;
+  padding: 4px 8px !important;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+}
+
+.editor-canvas .bn-tag-suggestion-menu .bn-mt-suggestion-menu-item-section {
+  display: none;
+}
+
+.editor-canvas .bn-tag-suggestion-menu .bn-mt-suggestion-menu-item-title {
+  font-size: 0.8125rem;
+  margin: 0;
 }
 
 .editor-canvas blockquote {
@@ -3898,6 +3946,11 @@ li.dnd-drop-target > .tree-row {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.chat-attach-btn.is-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .chat-attach-btn:disabled {
   opacity: 0.4;
   cursor: default;
@@ -4011,6 +4064,73 @@ li.dnd-drop-target > .tree-row {
 
 .chat-path-chip.is-dir {
   font-weight: 600;
+}
+
+.chat-skill-chip {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.chat-skill-slash-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 24px));
+  max-height: min(280px, 40vh);
+  overflow: auto;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--editor-surface);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+}
+
+.chat-skill-slash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-skill-slash-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-skill-slash-item:hover,
+.chat-skill-slash-item.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.chat-skill-slash-id {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+
+.chat-skill-slash-desc {
+  font-size: 0.75rem;
+  opacity: 0.75;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.chat-skill-slash-empty {
+  padding: 10px 12px;
+  font-size: 0.8125rem;
+  opacity: 0.7;
 }
 
 .chat-composer-toolbar {

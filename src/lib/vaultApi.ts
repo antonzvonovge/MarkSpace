@@ -116,6 +116,39 @@ export async function writeAsset(
   });
 }
 
+export type FileBytesResult = {
+  path: string;
+  dataBase64: string;
+  byteLength: number;
+};
+
+export async function readFileBytes(path: string): Promise<FileBytesResult> {
+  return invoke("read_file_bytes", { path });
+}
+
+export async function writeFileBytes(
+  path: string,
+  data: Uint8Array,
+): Promise<string> {
+  return invoke("write_file_bytes", {
+    path,
+    dataBase64: uint8ToBase64(data),
+  });
+}
+
+export type HttpFetchBytesResult = {
+  status: number;
+  contentType: string | null;
+  dataBase64: string;
+  byteLength: number;
+};
+
+export async function httpFetchBytes(url: string): Promise<HttpFetchBytesResult> {
+  return invoke("http_fetch_bytes", {
+    req: { url, method: "GET", headers: null, body: null },
+  });
+}
+
 export type SearchHit = {
   path: string;
   line: number;
@@ -126,12 +159,12 @@ export async function searchNotes(query: string): Promise<SearchHit[]> {
   return invoke("search_notes", { query });
 }
 
-/** Unique note tags from the in-memory vault tag index. */
+/** Unique note tags (frontmatter ∪ inline `#tags`) from the in-memory vault index. */
 export async function listVaultTags(): Promise<string[]> {
   return invoke("list_vault_tags");
 }
 
-/** Re-read one note's frontmatter into the tag index; returns full catalog. */
+/** Re-read one note into the tag index; returns full catalog. */
 export async function reindexNoteTags(path: string): Promise<string[]> {
   return invoke("reindex_note_tags", { path });
 }
@@ -188,12 +221,49 @@ export function parentPath(path: string): string {
   return i === -1 ? "" : cleaned.slice(0, i);
 }
 
+/** Reserved vault-root folder for agent skills (one .md file per skill). */
+export const SKILLS_FOLDER = "Skills";
+
+/** True for the protected root-level Skills/ folder. */
+export function isSkillsFolder(path: string, isDir = true): boolean {
+  return isDir && path === SKILLS_FOLDER;
+}
+
+/** Skill id = filename stem under Skills/ (lowercase letters, digits, hyphens). */
+export function isValidSkillId(id: string): boolean {
+  return (
+    id.length > 0 &&
+    id.length <= 64 &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)
+  );
+}
+
+/** `Skills/foo.md` → `foo`; otherwise null. */
+export function skillIdFromPath(path: string): string | null {
+  if (!path.startsWith(`${SKILLS_FOLDER}/`)) return null;
+  const rest = path.slice(SKILLS_FOLDER.length + 1);
+  if (!rest || rest.includes("/") || !rest.toLowerCase().endsWith(".md")) {
+    return null;
+  }
+  return rest.slice(0, -3);
+}
+
+export function skillPathForId(id: string): string {
+  return `${SKILLS_FOLDER}/${id}.md`;
+}
+
 /**
  * A MarkSpace "project" is a first-level folder under the vault root
  * (path has no `/`). Nested folders are ordinary folders, not projects.
+ * The reserved Skills/ folder is not a project.
  */
 export function isVaultProjectFolder(path: string, isDir: boolean): boolean {
-  return isDir && path.length > 0 && !path.includes("/");
+  return (
+    isDir &&
+    path.length > 0 &&
+    !path.includes("/") &&
+    !isSkillsFolder(path, true)
+  );
 }
 
 /** First-level project folders from a vault tree root. */

@@ -8,7 +8,7 @@ alwaysApply: true
 In MarkSpace, a **project** is a first-level folder directly under the vault root (relative path with no `/`). Nested folders are ordinary folders, not projects.
 
 - Helper: `isVaultProjectFolder(path, isDir)` in `src/lib/vaultApi.ts`.
-- Tree UI uses a briefcase icon (`FcBriefcase`) for projects; nested dirs keep folder icons.
+- Tree UI uses a package icon (`FcPackage`) for projects; nested dirs keep folder icons.
 - Prefer the word "project" in product copy and agent language when referring to those top-level folders.
 
 ## Project properties

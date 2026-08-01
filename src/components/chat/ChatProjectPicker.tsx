@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FcBriefcase } from "react-icons/fc";
+import { FcPackage } from "react-icons/fc";
 import { listVaultProjects } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
 
@@ -161,7 +161,7 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
       >
         {value ? (
           <span className="chat-project-trigger-icon" aria-hidden>
-            <FcBriefcase size={14} />
+            <FcPackage size={14} />
           </span>
         ) : null}
         <span className="chat-project-trigger-label">{label}</span>

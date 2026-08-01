@@ -14,6 +14,7 @@ import type { TreeNode } from "../lib/vaultApi";
 import {
   absolutePath,
   getProjectProperties,
+  isSkillsFolder,
   isVaultProjectFolder,
   parentPath,
   setProjectProperties,
@@ -26,7 +27,14 @@ import {
   ConfirmDialog,
   ProjectPropertiesDialog,
 } from "./AppDialog";
-import { FcBriefcase, FcDocument, FcFolder, FcOpenedFolder } from "react-icons/fc";
+import {
+  FcDocument,
+  FcFolder,
+  FcOpenedFolder,
+  FcPackage,
+  FcSafe,
+  FcWorkflow,
+} from "react-icons/fc";
 import {
   beginDrawioTreeDrag,
   DRAWIO_TREE_MIME,
@@ -86,7 +94,21 @@ type NodeData = {
   hasChildren: boolean;
 };
 
-type PromptKind = "note" | "folder" | "drawio";
+type PromptKind = "note" | "folder" | "drawio" | "skill";
+
+function FolderTreeIcon({
+  path,
+  isOpen,
+  size = 20,
+}: {
+  path: string;
+  isOpen: boolean;
+  size?: number;
+}) {
+  if (isSkillsFolder(path)) return <FcWorkflow size={size} />;
+  if (isVaultProjectFolder(path, true)) return <FcPackage size={size} />;
+  return isOpen ? <FcOpenedFolder size={size} /> : <FcFolder size={size} />;
+}
 
 type ContextMenuState = {
   x: number;
@@ -153,6 +175,27 @@ function RefreshIcon({ spinning }: { spinning?: boolean }) {
         d="M13 8a5 5 0 0 1-8.9 2.1M3 12v-2.5H5.5"
         stroke="currentColor"
         strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CollapseAllIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.5 5.25 8 9.75l4.5-4.5"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3.5 9.25 8 13.75l4.5-4.5"
+        stroke="currentColor"
+        strokeWidth="1.35"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -326,12 +369,16 @@ function TreeCreateMenu({
 function TreeToolbarActions({
   onRefresh,
   refreshing,
+  onCollapseAll,
+  canCollapse,
   onNewNote,
   onNewDiagram,
   onNewFolder,
 }: {
   onRefresh: () => void;
   refreshing: boolean;
+  onCollapseAll: () => void;
+  canCollapse: boolean;
   onNewNote: () => void;
   onNewDiagram: () => void;
   onNewFolder: () => void;
@@ -351,6 +398,16 @@ function TreeToolbarActions({
         onClick={onRefresh}
       >
         <RefreshIcon spinning={refreshing} />
+      </button>
+      <button
+        type="button"
+        className="tree-toolbar-btn"
+        title="Collapse all"
+        aria-label="Collapse all folders"
+        disabled={!canCollapse}
+        onClick={onCollapseAll}
+      >
+        <CollapseAllIcon />
       </button>
       <TreeCreateMenu
         onNewNote={onNewNote}
@@ -560,16 +617,23 @@ async function revealPathInExplorer(relPath: string) {
   await revealItemInDir(abs);
 }
 
+async function copyAbsolutePath(relPath: string) {
+  const abs = await absolutePath(relPath);
+  await writeText(abs);
+}
+
 function TreeContextMenu({
   menu,
   onClose,
   onNewNote,
   onNewDiagram,
   onNewFolder,
+  onNewSkill,
   onRename,
   onDelete,
   onReveal,
   onCopyPath,
+  onCopyAbsolutePath,
   onToggleFavorite,
   onProjectProperties,
 }: {
@@ -578,19 +642,24 @@ function TreeContextMenu({
   onNewNote: () => void;
   onNewDiagram: () => void;
   onNewFolder: () => void;
+  onNewSkill: () => void;
   onRename: () => void;
   onDelete: () => void;
   onReveal: () => void;
   onCopyPath: () => void;
+  onCopyAbsolutePath: () => void;
   onToggleFavorite: () => void;
   onProjectProperties: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const showEditActions = !menu.createOnly && menu.path !== "";
+  const isSkills = isSkillsFolder(menu.path, menu.isDir);
+  const showEditActions = !menu.createOnly && menu.path !== "" && !isSkills;
   const showCopyPath = !menu.createOnly && menu.path !== "";
   const showFavorite = !menu.createOnly && menu.path !== "";
   const showProjectProperties =
     !menu.createOnly && isVaultProjectFolder(menu.path, menu.isDir);
+  const showSkillCreate = isSkills || menu.createOnly === true;
+  const showStandardCreate = !isSkills;
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -611,7 +680,7 @@ function TreeContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 280);
-  const top = Math.min(menu.y, window.innerHeight - 360);
+  const top = Math.min(menu.y, window.innerHeight - 400);
 
   return createPortal(
     <div
@@ -656,42 +725,60 @@ function TreeContextMenu({
           <div className="tree-context-sep" role="separator" />
         </>
       ) : null}
-      <button
-        type="button"
-        role="menuitem"
-        className="tree-context-item"
-        onClick={() => {
-          onClose();
-          onNewNote();
-        }}
-      >
-        <PlusIcon />
-        <span>New note</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className="tree-context-item"
-        onClick={() => {
-          onClose();
-          onNewDiagram();
-        }}
-      >
-        <DiagramIcon />
-        <span>New diagram</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className="tree-context-item"
-        onClick={() => {
-          onClose();
-          onNewFolder();
-        }}
-      >
-        <CollectionPlusIcon />
-        <span>New folder</span>
-      </button>
+      {showSkillCreate ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={() => {
+            onClose();
+            onNewSkill();
+          }}
+        >
+          <PlusIcon />
+          <span>New skill…</span>
+        </button>
+      ) : null}
+      {showStandardCreate ? (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onNewNote();
+            }}
+          >
+            <PlusIcon />
+            <span>New note</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onNewDiagram();
+            }}
+          >
+            <DiagramIcon />
+            <span>New diagram</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onNewFolder();
+            }}
+          >
+            <CollectionPlusIcon />
+            <span>New folder</span>
+          </button>
+        </>
+      ) : null}
       <div className="tree-context-sep" role="separator" />
       <button
         type="button"
@@ -706,18 +793,32 @@ function TreeContextMenu({
         <span>Reveal in file manager</span>
       </button>
       {showCopyPath ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="tree-context-item"
-          onClick={() => {
-            onClose();
-            onCopyPath();
-          }}
-        >
-          <CopyPathIcon />
-          <span>Copy path</span>
-        </button>
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onCopyPath();
+            }}
+          >
+            <CopyPathIcon />
+            <span>Copy relative path</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onCopyAbsolutePath();
+            }}
+          >
+            <CopyPathIcon />
+            <span>Copy absolute path</span>
+          </button>
+        </>
       ) : null}
       {showEditActions ? (
         <>
@@ -858,6 +959,7 @@ function FavoritesTreeRows({
         const hasChildren = isDir && children.length > 0;
         const isOpen = isDir && expandedPaths.includes(path);
         const isProject = isVaultProjectFolder(path, isDir);
+        const isSkills = isSkillsFolder(path, isDir);
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
         const selected =
           isDir && selectedFolderExplicit && selectedFolderPath === path;
@@ -872,6 +974,7 @@ function FavoritesTreeRows({
                 "tree-row",
                 isDir ? "tree-folder-row" : "tree-file",
                 isProject ? "is-project" : "",
+                isSkills ? "is-skills" : "",
                 selected || active ? "is-selected" : "",
                 renaming ? "is-renaming" : "",
               ]
@@ -958,13 +1061,7 @@ function FavoritesTreeRows({
 
               <span className="tree-node-icon" aria-hidden>
                 {isDir ? (
-                  isProject ? (
-                    <FcBriefcase size={20} />
-                  ) : isOpen ? (
-                    <FcOpenedFolder size={20} />
-                  ) : (
-                    <FcFolder size={20} />
-                  )
+                  <FolderTreeIcon path={path} isOpen={isOpen} />
                 ) : isDrawio ? (
                   <span className="tree-drawio-icon">
                     <DiagramIcon />
@@ -1022,6 +1119,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const createNoteInSelection = useVaultStore((s) => s.createNoteInSelection);
   const createDrawioInSelection = useVaultStore((s) => s.createDrawioInSelection);
   const createFolderInSelection = useVaultStore((s) => s.createFolderInSelection);
+  const createSkill = useVaultStore((s) => s.createSkill);
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
   const renameTreeEntry = useVaultStore((s) => s.renameTreeEntry);
   const removePath = useVaultStore((s) => s.removePath);
@@ -1029,6 +1127,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const selectFolder = useVaultStore((s) => s.selectFolder);
   const openNote = useVaultStore((s) => s.openNote);
   const refreshTree = useVaultStore((s) => s.refreshTree);
+  const collapseAllFolders = useVaultStore((s) => s.collapseAllFolders);
   const toggleExpanded = useVaultStore((s) => s.toggleExpanded);
   const addToFavorites = useVaultStore((s) => s.addToFavorites);
   const removeFromFavorites = useVaultStore((s) => s.removeFromFavorites);
@@ -1160,7 +1259,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       } else if (activePath) {
         target = activePath;
       }
-      if (!target) return;
+      if (!target || isSkillsFolder(target)) return;
       e.preventDefault();
       setContextMenu(null);
       setRenamingPath(target);
@@ -1222,6 +1321,13 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     setPromptKind(null);
     if (!kind) return;
     const parent = selectedFolderPath;
+    if (kind === "skill") {
+      void createSkill(name).then(() => {
+        treeRef.current?.open(VAULT_ID);
+        treeRef.current?.open(toNodeId("Skills"));
+      });
+      return;
+    }
     if (kind === "note") {
       void createNoteInSelection(name).then(() => {
         treeRef.current?.open(VAULT_ID);
@@ -1251,22 +1357,28 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             ? "New folder"
             : promptKind === "drawio"
               ? "New diagram"
-              : "New note"
+              : promptKind === "skill"
+                ? "New skill"
+                : "New note"
         }
         description={
           promptKind === "folder"
             ? "Create a folder in the selected location."
             : promptKind === "drawio"
               ? "Create a Draw.io diagram in the selected location."
-              : "Create a markdown note in the selected location."
+              : promptKind === "skill"
+                ? "Skill id: lowercase letters, digits, and hyphens (e.g. meeting-notes)."
+                : "Create a markdown note in the selected location."
         }
-        label="Name"
+        label={promptKind === "skill" ? "Skill id" : "Name"}
         defaultValue={
           promptKind === "folder"
             ? "Folder"
             : promptKind === "drawio"
               ? "Diagram"
-              : "Untitled"
+              : promptKind === "skill"
+                ? "my-skill"
+                : "Untitled"
         }
         confirmLabel="Create"
         onCancel={() => setPromptKind(null)}
@@ -1295,6 +1407,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             );
             setPromptKind("folder");
           }}
+          onNewSkill={() => {
+            selectFolder("Skills");
+            setPromptKind("skill");
+          }}
           onRename={() => setRenamingPath(contextMenu.path)}
           onDelete={() =>
             setDeleteTarget({
@@ -1308,6 +1424,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           }}
           onCopyPath={() => {
             void writeText(contextMenu.path);
+          }}
+          onCopyAbsolutePath={() => {
+            void copyAbsolutePath(contextMenu.path);
           }}
           onToggleFavorite={() => {
             if (contextMenu.isFavorite) {
@@ -1419,9 +1538,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 dropTarget: "dnd-drop-target",
                 placeholder: "dnd-placeholder",
               }}
-              canDrag={(node) =>
-                node?.id !== VAULT_ID && node?.data?.path !== renamingPath
-              }
+              canDrag={(node) => {
+                const path = node?.data?.path ?? "";
+                if (node?.id === VAULT_ID) return false;
+                if (path === renamingPath) return false;
+                return true;
+              }}
               canDrop={(_current, { dropTargetId, dragSourceId, dropTarget }) => {
                 if (dragSourceId == null) return false;
                 if (dropTargetId === TREE_ROOT) return false;
@@ -1430,6 +1552,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 const targetPath = toStorePath(dropTargetId);
 
                 if (from === targetPath || targetPath.startsWith(`${from}/`)) {
+                  return false;
+                }
+
+                // Skills stays at vault root: reorder among root siblings only.
+                if (isSkillsFolder(from) && dropTargetId !== VAULT_ID) {
                   return false;
                 }
 
@@ -1449,19 +1576,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               onDrop={handleDrop}
               dragPreviewRender={(monitor) => {
                 const dragPath = String(monitor.item.data?.path ?? "");
-                const isProject = isVaultProjectFolder(
-                  dragPath,
-                  Boolean(monitor.item.droppable),
-                );
+                const isDir = Boolean(monitor.item.droppable);
                 return (
                   <div className="dnd-preview">
                     <span className="dnd-preview-icon" aria-hidden>
-                      {monitor.item.droppable ? (
-                        isProject ? (
-                          <FcBriefcase size={16} />
-                        ) : (
-                          <FcFolder size={16} />
-                        )
+                      {isDir ? (
+                        <FolderTreeIcon path={dragPath} isOpen={false} size={16} />
                       ) : (
                         <FcDocument size={16} />
                       )}
@@ -1477,6 +1597,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 const hasChildren = Boolean(node.data?.hasChildren);
                 const isVault = node.id === VAULT_ID;
                 const isProject = isVaultProjectFolder(path, isDir);
+                const isSkills = isSkillsFolder(path, isDir);
                 const isDrawio =
                   !isDir && path.toLowerCase().endsWith(".drawio");
                 const selected =
@@ -1506,6 +1627,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       isDir ? "tree-folder-row" : "tree-file",
                       isVault ? "is-vault-root" : "",
                       isProject ? "is-project" : "",
+                      isSkills ? "is-skills" : "",
                       selected || active ? "is-selected" : "",
                       isDropTarget ? "is-drop-target" : "",
                       isDragging ? "is-dragging" : "",
@@ -1591,12 +1713,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
 
                     <span className="tree-node-icon" aria-hidden>
                       {isDir ? (
-                        isProject ? (
-                          <FcBriefcase size={20} />
-                        ) : isOpen ? (
-                          <FcOpenedFolder size={20} />
+                        isVault ? (
+                          <FcSafe size={20} />
                         ) : (
-                          <FcFolder size={20} />
+                          <FolderTreeIcon path={path} isOpen={isOpen} />
                         )
                       ) : isDrawio ? (
                         <span className="tree-drawio-icon">
@@ -1624,6 +1744,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                     {isVault ? (
                       <TreeToolbarActions
                         refreshing={refreshing}
+                        canCollapse={expandedPaths.length > 0}
+                        onCollapseAll={collapseAllFolders}
                         onRefresh={() => {
                           if (refreshing) return;
                           setRefreshing(true);

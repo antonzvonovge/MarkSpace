@@ -8,12 +8,13 @@ guide. Call `read_format_guide` for the full text when unsure.
 <!-- core-rules:start -->
 - Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported).
 - Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Do not use `![[OtherNote]]` for notes.
-- Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` first.
+- Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) first.
 - Tables: use GFM pipe tables. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
 - Diagrams in notes: fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml `. Chat replies may use the same fences (rendered inline).
 - Page tags live in YAML front-matter at the very top: `---` / `tags:` with `  - name` items / `---`, then a blank line before the body. Only `tags` is managed by the UI; keep any other front-matter keys intact and never duplicate the block.
-- Do **not** emit unsupported syntax (callouts, math, inline `#tags`, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds). Full list: call `read_format_guide`.
+- Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
+- Do **not** emit unsupported syntax (callouts, math, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
 
 ## Front-matter and page tags
@@ -35,7 +36,24 @@ tags:
 - The UI always writes tags as a block list; `tags: [work, inbox]` and `tags: work` are also read correctly.
 - Tag names: no leading `#`, trimmed, case preserved, deduplicated case-insensitively. Nesting is just a `/` inside the name (`area/topic`).
 - Other keys (e.g. `aliases`) are preserved when tags change; when the last key is removed the whole block is dropped.
-- Tags are not part of the body: the live editor loads only the markdown after the closing `---` and reattaches front-matter on save. Do not restate tags as body text.
+- Front-matter tags are edited from the tag overlay; the live editor loads only the markdown after the closing `---` and reattaches front-matter on save.
+- You may also use **inline tags** in the body (below); they are separate from front-matter and are not copied into `tags:` automatically.
+
+## Inline tags
+
+In the note body, hashtags are styled inline tags (editable text in Live mode):
+
+| On disk | Meaning |
+|---|---|
+| `#multi-agent` | Inline tag `multi-agent` |
+| `#project/markspace` | Nested-style name (`/` inside the tag) |
+
+- Valid name after `#`: Unicode letters/digits, then letters/digits/`_`/`-`/`/`.
+- Must be bounded (start of text or after whitespace/punctuation). `word#tag` is not a tag.
+- Not tags: ATX headings (`# Title`, `## H2`), content inside inline/fenced code, URL fragments (`https://ex.com/a#frag`), wiki targets (`[[Note#heading]]` remains unsupported).
+- Trailing punctuation (`.`, `,`, `!`, `)`) stays outside the tag: `#work.` → tag `work` + `.`.
+- Inline tags remain ordinary markdown text — you can place the caret inside and edit them. Live mode only highlights matching `#tags`.
+- Inline tags and front-matter `tags` share one vault catalog for suggestions; writing `#work` does **not** add `work` to YAML front-matter.
 
 ## Links
 
@@ -63,7 +81,8 @@ Legacy HTML `<div data-drawio-src="…">` may still round-trip to `![[…]]`; pr
 
 ## Images and assets
 
-- Relative images live under a sibling `.assets/` folder next to the note (or as returned by `save_attachment` / `write_asset`).
+- Relative images often live under a sibling `.assets/` folder next to the note (or as returned by `save_attachment` / `write_asset`).
+- You may also save with `read_file` + `save_as` to any vault-relative path the user requests; use the returned `saved_path` in markdown (relative to the note when possible).
 - Plain: `![alt text](.assets/photo.png)`
 - Width (Obsidian-style): `![alt|320](.assets/photo.png)` or `![320](.assets/photo.png)`
 - `![alt|320x200](…)` — only the width is kept; height is ignored
@@ -133,7 +152,6 @@ Do **not** generate any of the following — the editor will treat them as plain
 - TOML front-matter (`+++` blocks) — only YAML `---` front-matter is read, and only `tags` is managed
 - Callouts / admonitions (`> [!note]`, `::: tip`, etc.)
 - Math (`$…$`, `$$…$$`, KaTeX/MathJax)
-- Inline hashtags as metadata (`#tag` in note body — use front-matter `tags` instead)
 - `==highlight==` syntax
 - Comments (`%%…%%`)
 - Footnotes (`[^1]`)

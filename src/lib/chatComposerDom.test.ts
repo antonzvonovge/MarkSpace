@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   chipLabelForPath,
   createPathChipElement,
+  createSkillChipElement,
+  extractSkillIdsFromDraft,
   renderComposerFromDraft,
+  replaceSlashWithSkillChip,
   serializeComposer,
+  unwrapComposerMarkers,
   unwrapVaultPathMarkers,
+  wrapSkillMarker,
   wrapVaultPathMarker,
 } from "./chatComposerDom";
 
@@ -18,6 +23,19 @@ describe("vault path markers", () => {
 
   it("strips close markers from paths when wrapping", () => {
     expect(wrapVaultPathMarker("a⟧b")).toBe("⟦ab⟧");
+  });
+});
+
+describe("skill markers", () => {
+  it("wraps, extracts, and unwraps skill chips", () => {
+    expect(wrapSkillMarker("meeting-notes")).toBe("⦃meeting-notes⦄");
+    expect(extractSkillIdsFromDraft("use ⦃meeting-notes⦄ and ⦃a⦄")).toEqual([
+      "meeting-notes",
+      "a",
+    ]);
+    expect(
+      unwrapComposerMarkers("use ⦃meeting-notes⦄ on ⟦Notes/a.md⟧"),
+    ).toBe("use /meeting-notes on Notes/a.md");
   });
 });
 
@@ -69,5 +87,43 @@ describe("serialize / render composer", () => {
     );
     expect(chip.textContent).toBe("very-long-do….md");
     expect(chip.classList.contains("chat-path-chip")).toBe(true);
+  });
+
+  it("round-trips skill chips", () => {
+    const root = document.createElement("div");
+    renderComposerFromDraft(root, "run ⦃meeting-notes⦄ please");
+    expect(serializeComposer(root)).toBe("run ⦃meeting-notes⦄ please");
+    const chip = root.querySelector(".chat-skill-chip") as HTMLElement;
+    expect(chip?.textContent).toBe("/meeting-notes");
+    expect(chip?.dataset.skillId).toBe("meeting-notes");
+    expect(createSkillChipElement("x").classList.contains("chat-skill-chip")).toBe(
+      true,
+    );
+  });
+});
+
+describe("replaceSlashWithSkillChip", () => {
+  it("replaces a leading slash using a saved range even if caret moved", () => {
+    document.body.replaceChildren();
+    const root = document.createElement("div");
+    root.contentEditable = "true";
+    document.body.appendChild(root);
+    root.appendChild(document.createTextNode("/ hello"));
+
+    const text = root.firstChild as Text;
+    const slashRange = document.createRange();
+    slashRange.setStart(text, 0);
+    slashRange.setEnd(text, 1);
+
+    // Simulate lost selection at end of composer.
+    const end = document.createRange();
+    end.setStart(text, text.length);
+    end.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(end);
+
+    replaceSlashWithSkillChip(root, "meeting-notes", slashRange);
+    expect(serializeComposer(root)).toBe("⦃meeting-notes⦄ hello");
   });
 });

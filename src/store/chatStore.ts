@@ -10,6 +10,7 @@ import { generateChatTitle } from "../ai/generateChatTitle";
 import { cancelAllPendingAskUser } from "../ai/askUser";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
+import { listSkills, loadSkills, type SkillMeta } from "../ai/skills";
 import { buildSystemPrompt } from "../ai/vaultTools";
 import { contextWindowForModel, type ChatMode } from "../ai/types";
 import {
@@ -21,7 +22,10 @@ import {
   type ChatThreadMeta,
 } from "../lib/chatHistoryApi";
 import { arrayMove } from "../lib/arrayMove";
-import { unwrapVaultPathMarkers } from "../lib/chatComposerDom";
+import {
+  extractSkillIdsFromDraft,
+  unwrapComposerMarkers,
+} from "../lib/chatComposerDom";
 import { getProjectProperties } from "../lib/vaultApi";
 import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
@@ -62,6 +66,8 @@ type ChatStore = {
   projectPath: string | null;
   /** Cached "about" text for `projectPath` (for prompt + context meter). */
   projectAbout: string;
+  /** Cached Skills/ catalog for system prompt preview / context meter. */
+  skillsCatalog: SkillMeta[];
   status: ChatStatus;
   error: string | null;
   draft: string;
@@ -79,6 +85,7 @@ type ChatStore = {
   setMode: (mode: ChatMode) => void;
   setModelId: (modelId: string) => void;
   setProjectPath: (projectPath: string | null) => Promise<void>;
+  refreshSkillsCatalog: () => Promise<SkillMeta[]>;
   newThread: () => Promise<void>;
   selectThread: (threadId: string) => Promise<void>;
   closeTab: (threadId: string) => Promise<void>;
@@ -120,6 +127,7 @@ function emptySession(vaultBound: string | null = null) {
     draftAttachments: [] as ChatAttachment[],
     projectPath: null as string | null,
     projectAbout: "",
+    skillsCatalog: [] as SkillMeta[],
     ...defaultsFromSettings(),
   };
 }
@@ -223,6 +231,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   modelId: DEFAULT_MODEL_PLACEHOLDER(),
   projectPath: null,
   projectAbout: "",
+  skillsCatalog: [],
   status: "ready",
   error: null,
   draft: "",
@@ -257,6 +266,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           openTabIds: tabs,
         });
       }
+      void get().refreshSkillsCatalog();
     } catch (e) {
       set({
         vaultBound: vaultPath,
@@ -264,6 +274,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         status: "error",
         streamStartedAt: null,
       });
+    }
+  },
+
+  refreshSkillsCatalog: async () => {
+    try {
+      const skills = await listSkills();
+      set({ skillsCatalog: skills });
+      return skills;
+    } catch {
+      set({ skillsCatalog: [] });
+      return [];
     }
   },
 
@@ -530,7 +551,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   send: async (text) => {
-    const draftText = unwrapVaultPathMarkers(text ?? get().draft);
+    const rawDraft = text ?? get().draft;
+    const skillIds = extractSkillIdsFromDraft(rawDraft);
+    const draftText = unwrapComposerMarkers(rawDraft);
     const attachments = get().draftAttachments;
     const content = draftText.trim();
     if (!content && attachments.length === 0) return;
@@ -605,6 +628,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       : "";
     if (projectPath) set({ projectAbout });
 
+    const skills = await get().refreshSkillsCatalog();
+    const forcedSkills = skillIds.length
+      ? await loadSkills(skillIds)
+      : [];
+
     try {
       const finalMessages = await runChat({
         messages,
@@ -620,6 +648,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activeExcerpt: excerpt,
         projectPath,
         projectAbout,
+        skills,
+        forcedSkills,
         abortSignal: controller.signal,
         onMessages: (next) => {
           if (get().abort !== controller) return;
@@ -712,6 +742,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       activeExcerpt: vault.content ? vault.content.slice(0, 4000) : null,
       projectPath: get().projectPath,
       projectAbout: get().projectAbout,
+      skills: get().skillsCatalog,
     });
   },
 }));

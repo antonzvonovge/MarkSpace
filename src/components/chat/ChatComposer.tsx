@@ -7,9 +7,12 @@ import { estimateContextTokens } from "../../ai/estimateTokens";
 import { contextWindowForModel, type AiModelOption } from "../../ai/types";
 import { readImagesFromSystemClipboard } from "../../editor/pasteImages";
 import {
+  getComposerSlashQuery,
   insertPathChip,
+  insertSkillChip,
   isComposerVisuallyEmpty,
   renderComposerFromDraft,
+  replaceSlashWithSkillChip,
   serializeComposer,
 } from "../../lib/chatComposerDom";
 import {
@@ -22,6 +25,7 @@ import { useChatStore } from "../../store/chatStore";
 import { ChatContextMeter } from "./ChatContextMeter";
 import { ChatModelPicker } from "./ChatModelPicker";
 import { ChatProjectPicker } from "./ChatProjectPicker";
+import { ChatSkillSlashMenu } from "./ChatSkillSlashMenu";
 
 const COMPOSER_INPUT_MIN_HEIGHT_PX = 28;
 const COMPOSER_INPUT_MAX_HEIGHT_PX = 160;
@@ -92,8 +96,17 @@ type DragKind = "vault" | "files";
 export function ChatComposer() {
   const inputRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const plusBtnRef = useRef<HTMLButtonElement>(null);
+  const slashRangeRef = useRef<Range | null>(null);
   const [dragOver, setDragOver] = useState<DragKind | null>(null);
   const [attachHint, setAttachHint] = useState<string | null>(null);
+  const [slashMenu, setSlashMenu] = useState<{
+    query: string;
+    rect: DOMRect;
+  } | null>(null);
+  const [skillPickerRect, setSkillPickerRect] = useState<DOMRect | null>(
+    null,
+  );
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
   const draftAttachments = useChatStore((s) => s.draftAttachments);
@@ -111,6 +124,8 @@ export function ChatComposer() {
   const send = useChatStore((s) => s.send);
   const stop = useChatStore((s) => s.stop);
   const systemPromptPreview = useChatStore((s) => s.systemPromptPreview);
+  const skillsCatalog = useChatStore((s) => s.skillsCatalog);
+  const refreshSkillsCatalog = useChatStore((s) => s.refreshSkillsCatalog);
   const settings = useAiSettingsStore((s) => s.settings);
 
   const streaming = status === "streaming";
@@ -154,14 +169,70 @@ export function ChatComposer() {
     mode,
     projectPath,
     projectAbout,
+    skillsCatalog,
     systemPromptPreview,
     streaming,
   ]);
 
   const limit = contextWindowForModel(settings, modelId || settings.modelId);
 
+  const skillMenuOpen = slashMenu != null || skillPickerRect != null;
+
   const focusInput = () => {
     queueMicrotask(() => inputRef.current?.focus());
+  };
+
+  const closeSkillMenus = () => {
+    slashRangeRef.current = null;
+    setSlashMenu(null);
+    setSkillPickerRect(null);
+  };
+
+  const syncSlashMenu = () => {
+    const el = inputRef.current;
+    if (!el || streaming) {
+      closeSkillMenus();
+      return;
+    }
+    const q = getComposerSlashQuery(el);
+    if (!q) {
+      slashRangeRef.current = null;
+      setSlashMenu(null);
+      return;
+    }
+    slashRangeRef.current = q.range.cloneRange();
+    const rect = q.range.getBoundingClientRect();
+    setSkillPickerRect(null);
+    setSlashMenu({ query: q.query, rect });
+    void refreshSkillsCatalog();
+  };
+
+  const applySkillChipFromSlash = (id: string) => {
+    const el = inputRef.current;
+    if (!el) return;
+    replaceSlashWithSkillChip(el, id, slashRangeRef.current);
+    closeSkillMenus();
+    syncDraftFromDom();
+    focusInput();
+  };
+
+  const applySkillChipInsert = (id: string) => {
+    const el = inputRef.current;
+    if (!el) return;
+    insertSkillChip(el, id);
+    closeSkillMenus();
+    syncDraftFromDom();
+    focusInput();
+  };
+
+  const openSkillPicker = () => {
+    if (streaming) return;
+    const btn = plusBtnRef.current;
+    if (!btn) return;
+    slashRangeRef.current = null;
+    setSlashMenu(null);
+    setSkillPickerRect(btn.getBoundingClientRect());
+    void refreshSkillsCatalog();
   };
 
   const syncDraftFromDom = () => {
@@ -345,6 +416,7 @@ export function ChatComposer() {
         data-placeholder={streaming ? "Streaming…" : "Message…"}
         onInput={() => {
           syncDraftFromDom();
+          syncSlashMenu();
         }}
         onPaste={(e) => {
           if (streaming) return;
@@ -388,12 +460,29 @@ export function ChatComposer() {
               void tryAttachClipboardImages();
             }, 0);
           }
+          if (skillMenuOpen && e.key === "Enter" && !e.shiftKey) {
+            // ChatSkillSlashMenu handles Enter in capture phase.
+            e.preventDefault();
+            return;
+          }
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSend();
           }
         }}
       />
+      {skillMenuOpen ? (
+        <ChatSkillSlashMenu
+          skills={skillsCatalog}
+          query={slashMenu?.query ?? ""}
+          anchorRect={slashMenu?.rect ?? skillPickerRect}
+          excludeCloseRef={plusBtnRef}
+          onClose={closeSkillMenus}
+          onSelect={
+            slashMenu ? applySkillChipFromSlash : applySkillChipInsert
+          }
+        />
+      ) : null}
       <div className="chat-composer-toolbar">
         <ChatProjectPicker
           value={projectPath}
@@ -446,6 +535,35 @@ export function ChatComposer() {
             e.target.value = "";
           }}
         />
+        <button
+          ref={plusBtnRef}
+          type="button"
+          className={
+            skillPickerRect
+              ? "chat-attach-btn is-active"
+              : "chat-attach-btn"
+          }
+          disabled={streaming}
+          onMouseDown={(e) => {
+            // Keep the composer caret so the skill chip inserts in place.
+            e.preventDefault();
+          }}
+          onClick={() => {
+            if (skillPickerRect) closeSkillMenus();
+            else openSkillPicker();
+          }}
+          title="Add skill"
+          aria-label="Add skill"
+          aria-expanded={skillPickerRect != null}
+          aria-haspopup="listbox"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M8 2.5a.75.75 0 0 1 .75.75v4h4a.75.75 0 0 1 0 1.5h-4v4a.75.75 0 0 1-1.5 0v-4h-4a.75.75 0 0 1 0-1.5h4v-4A.75.75 0 0 1 8 2.5z"
+            />
+          </svg>
+        </button>
         <button
           type="button"
           className="chat-attach-btn"

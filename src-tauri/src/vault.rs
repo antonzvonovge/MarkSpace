@@ -2,8 +2,7 @@ use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::Read;
+use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -27,11 +26,8 @@ pub struct VaultChange {
 }
 
 type OrderMap = HashMap<String, Vec<String>>;
-/// Vault-relative `.md` path → tags from that note's frontmatter.
+/// Vault-relative `.md` path → tags (frontmatter ∪ inline body hashtags).
 type TagIndex = HashMap<String, Vec<String>>;
-
-/// Bytes to read from the start of a note when indexing tags (frontmatter only).
-const TAG_HEAD_BYTES: usize = 4096;
 
 pub struct VaultState {
     pub root: Mutex<Option<PathBuf>>,
@@ -52,6 +48,27 @@ impl Default for VaultState {
 
 fn is_hidden(name: &str) -> bool {
     name.starts_with('.')
+}
+
+/// Reserved vault-root folder for agent skills (visible, protected).
+const SKILLS_FOLDER: &str = "Skills";
+
+fn is_skills_folder(rel: &str) -> bool {
+    rel == SKILLS_FOLDER
+}
+
+fn ensure_skills_folder(root: &Path) -> Result<(), String> {
+    let skills = root.join(SKILLS_FOLDER);
+    if skills.is_file() {
+        return Err("Skills exists as a file; rename it to use agent skills".into());
+    }
+    if !skills.exists() {
+        fs::create_dir_all(&skills).map_err(|e| format!("Cannot create Skills folder: {e}"))?;
+        let mut order = read_order(root);
+        order_insert_child(&mut order, "", SKILLS_FOLDER, None);
+        write_order(root, &order)?;
+    }
+    Ok(())
 }
 
 fn is_markdown(name: &str) -> bool {
@@ -915,6 +932,8 @@ pub fn open_vault(
         write_order(&root, &order)?;
     }
 
+    ensure_skills_folder(&root)?;
+
     {
         let mut guard = state.root.lock().map_err(|_| "Vault state lock poisoned")?;
         *guard = Some(root.clone());
@@ -1169,8 +1188,8 @@ pub fn import_paths(
     for rel in &created {
         if is_markdown(rel) {
             let full = root.join(rel);
-            if let Ok(head) = read_file_head(&full, TAG_HEAD_BYTES) {
-                set_tag_index_path(&state, rel, tags_from_note_content(&head));
+            if let Ok(text) = fs::read_to_string(&full) {
+                set_tag_index_path(&state, rel, tags_from_note_content(&text));
             }
         }
     }
@@ -1292,8 +1311,8 @@ pub fn import_document_bytes(
     order_insert_child(&mut order, &parent_rel, &unique, None);
     write_order(&root, &order)?;
     if is_markdown(&created) {
-        if let Ok(head) = read_file_head(&dest, TAG_HEAD_BYTES) {
-            set_tag_index_path(&state, &created, tags_from_note_content(&head));
+        if let Ok(text) = fs::read_to_string(&dest) {
+            set_tag_index_path(&state, &created, tags_from_note_content(&text));
         }
     }
     Ok(created)
@@ -1326,7 +1345,14 @@ pub fn create_folder(path: String, state: State<VaultState>) -> Result<String, S
 pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let from_full = ensure_inside(&root, Path::new(&from))?;
+    let from_rel_check = relative_to_root(&root, &from_full);
+    if is_skills_folder(&from_rel_check) {
+        return Err("Cannot rename the Skills folder".into());
+    }
     let to_rel = ensure_document_extension(&from_full, &to);
+    if is_skills_folder(&to_rel) {
+        return Err("Cannot rename to the reserved Skills folder".into());
+    }
     let to_full = ensure_inside(&root, Path::new(&to_rel))?;
     if to_full.exists() {
         return Err("Target already exists".into());
@@ -1403,9 +1429,17 @@ pub fn move_entry(
 
     let name = entry_name(&from);
     let from_parent = parent_rel(&from);
+    // Skills may be reordered among vault-root siblings, but not nested elsewhere.
+    if is_skills_folder(&from) && from_parent != to_parent {
+        return Err("Cannot move the Skills folder into another folder".into());
+    }
     let was_dir = from_full.is_dir();
     let was_drawio = !was_dir && is_drawio(&name);
     let new_rel = join_parent(&to_parent, &name);
+    // Block promoting some other entry into the reserved Skills path.
+    if is_skills_folder(&new_rel) && from != SKILLS_FOLDER {
+        return Err("Cannot move into the reserved Skills folder name".into());
+    }
     let same_parent = from_parent == to_parent;
 
     if !same_parent {
@@ -1456,6 +1490,9 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     let root = get_root(&state)?;
     let full = ensure_inside(&root, Path::new(&path))?;
     let rel = relative_to_root(&root, &full);
+    if is_skills_folder(&rel) {
+        return Err("Cannot delete the Skills folder".into());
+    }
     let parent = parent_rel(&rel);
     let name = entry_name(&rel);
     let was_dir = full.is_dir();
@@ -1732,27 +1769,175 @@ fn tags_from_frontmatter_yaml(yaml: &str) -> Vec<String> {
     tags
 }
 
-fn tags_from_note_content(content: &str) -> Vec<String> {
-    let Some(yaml) = frontmatter_yaml(content) else {
-        return Vec::new();
+fn body_after_frontmatter(content: &str) -> &str {
+    let text = content.strip_prefix('\u{feff}').unwrap_or(content);
+    let after_open = if text.starts_with("---\r\n") {
+        5
+    } else if text.starts_with("---\n") {
+        4
+    } else {
+        return text;
     };
-    // Dedupe within a note (case-insensitive).
+    let rest = &text[after_open..];
+    if rest.starts_with("---") {
+        let after = if rest.starts_with("---\r\n") {
+            5
+        } else if rest.starts_with("---\n") {
+            4
+        } else if rest == "---" {
+            3
+        } else {
+            return text;
+        };
+        return &rest[after..];
+    }
+    if let Some(idx) = rest.find("\n---") {
+        let after_close = idx + 1 + 3; // \n + ---
+        let tail = &rest[after_close..];
+        if let Some(stripped) = tail.strip_prefix("\r\n") {
+            return stripped;
+        }
+        if let Some(stripped) = tail.strip_prefix('\n') {
+            return stripped;
+        }
+        if tail.is_empty() || tail.starts_with('\r') || tail.starts_with(' ') || tail.starts_with('\t')
+        {
+            // `---\n` or `---\r` or trailing spaces before EOL already handled; tolerate EOF.
+            return tail.trim_start_matches(['\r', '\n', ' ', '\t']);
+        }
+    }
+    text
+}
+
+fn is_tag_name_start(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+fn is_tag_name_cont(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-' || c == '/'
+}
+
+fn is_hashtag_boundary(prev: Option<char>) -> bool {
+    match prev {
+        None => true,
+        Some(c) => !(c.is_alphanumeric() || c == '_' || c == '-' || c == '/'),
+    }
+}
+
+/// Collect inline `#tags` from note body, skipping fenced/inline code.
+fn tags_from_body_hashtags(body: &str) -> Vec<String> {
+    let mut tags: Vec<String> = Vec::new();
+    let chars: Vec<char> = body.chars().collect();
+    let n = chars.len();
+    let mut i = 0usize;
+    let mut prev: Option<char> = None;
+    let mut in_fence: Option<char> = None; // '`' or '~'
+    let mut fence_len = 0usize;
+
+    while i < n {
+        let c = chars[i];
+
+        // Fenced code open/close at line start.
+        if (c == '`' || c == '~') && (prev.is_none() || prev == Some('\n')) {
+            let mut run = 1usize;
+            while i + run < n && chars[i + run] == c {
+                run += 1;
+            }
+            if run >= 3 {
+                if let Some(fc) = in_fence {
+                    if fc == c && run >= fence_len {
+                        in_fence = None;
+                        fence_len = 0;
+                    }
+                } else {
+                    in_fence = Some(c);
+                    fence_len = run;
+                }
+                // Skip fence marker + rest of line
+                i += run;
+                while i < n && chars[i] != '\n' {
+                    i += 1;
+                }
+                prev = chars.get(i).copied();
+                if i < n {
+                    i += 1; // consume newline
+                    prev = Some('\n');
+                }
+                continue;
+            }
+        }
+
+        if in_fence.is_some() {
+            prev = Some(c);
+            i += 1;
+            continue;
+        }
+
+        // Inline code `...`
+        if c == '`' {
+            let mut run = 1usize;
+            while i + run < n && chars[i + run] == '`' {
+                run += 1;
+            }
+            i += run;
+            let mut j = i;
+            let mut matched = false;
+            while j + run <= n {
+                if chars[j..j + run].iter().all(|ch| *ch == '`') {
+                    i = j + run;
+                    prev = Some('`');
+                    matched = true;
+                    break;
+                }
+                j += 1;
+            }
+            if matched {
+                continue;
+            }
+            prev = Some('`');
+            continue;
+        }
+
+        // Hashtag
+        if c == '#' && is_hashtag_boundary(prev) {
+            let start = i + 1;
+            if start < n && is_tag_name_start(chars[start]) {
+                let mut end = start + 1;
+                while end < n && is_tag_name_cont(chars[end]) {
+                    end += 1;
+                }
+                let name: String = chars[start..end].iter().collect();
+                if let Some(normalized) = normalize_tag_name(&name) {
+                    tags.push(normalized);
+                }
+                i = end;
+                prev = chars.get(end.wrapping_sub(1)).copied();
+                continue;
+            }
+        }
+
+        prev = Some(c);
+        i += 1;
+    }
+
+    tags
+}
+
+fn tags_from_note_content(content: &str) -> Vec<String> {
+    // Dedupe within a note (case-insensitive): frontmatter ∪ body hashtags.
     let mut seen: HashMap<String, String> = HashMap::new();
-    for tag in tags_from_frontmatter_yaml(yaml) {
+    if let Some(yaml) = frontmatter_yaml(content) {
+        for tag in tags_from_frontmatter_yaml(yaml) {
+            let key = tag.to_lowercase();
+            seen.entry(key).or_insert(tag);
+        }
+    }
+    let body = body_after_frontmatter(content);
+    for tag in tags_from_body_hashtags(body) {
         let key = tag.to_lowercase();
         seen.entry(key).or_insert(tag);
     }
     seen.into_values().collect()
-}
-
-fn read_file_head(path: &Path, max_bytes: usize) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|e| format!("Cannot open note: {e}"))?;
-    let mut buf = vec![0u8; max_bytes];
-    let n = file
-        .read(&mut buf)
-        .map_err(|e| format!("Cannot read note: {e}"))?;
-    buf.truncate(n);
-    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 fn unique_sorted_tags(index: &TagIndex) -> Vec<String> {
@@ -1790,10 +1975,10 @@ fn rebuild_tag_index(root: &Path) -> TagIndex {
         if !is_markdown(&name) {
             continue;
         }
-        let Ok(head) = read_file_head(entry.path(), TAG_HEAD_BYTES) else {
+        let Ok(text) = fs::read_to_string(entry.path()) else {
             continue;
         };
-        let tags = tags_from_note_content(&head);
+        let tags = tags_from_note_content(&text);
         if tags.is_empty() {
             continue;
         }
@@ -1877,8 +2062,8 @@ pub fn reindex_note_tags(path: String, state: State<VaultState>) -> Result<Vec<S
     if !full.is_file() {
         remove_tag_index_path(&state, &rel);
     } else {
-        let head = read_file_head(&full, TAG_HEAD_BYTES)?;
-        let tags = tags_from_note_content(&head);
+        let text = fs::read_to_string(&full).map_err(|e| format!("Cannot read note: {e}"))?;
+        let tags = tags_from_note_content(&text);
         set_tag_index_path(&state, &rel, tags);
     }
     let guard = state
@@ -1923,4 +2108,96 @@ pub fn write_asset(
     let dest = assets.join(&unique);
     fs::write(&dest, data).map_err(|e| format!("Cannot write asset: {e}"))?;
     Ok(format!(".assets/{unique}"))
+}
+
+const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileBytesResponse {
+    pub path: String,
+    pub data_base64: String,
+    pub byte_length: usize,
+}
+
+/// Read any vault file as base64 (images, pdfs, etc.).
+#[tauri::command]
+pub fn read_file_bytes(path: String, state: State<VaultState>) -> Result<FileBytesResponse, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    let root = get_root(&state)?;
+    let rel = path.trim().trim_start_matches('/').to_string();
+    if rel.is_empty() {
+        return Err("Path required".into());
+    }
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    if !full.is_file() {
+        return Err("File not found".into());
+    }
+    let data = fs::read(&full).map_err(|e| format!("Cannot read file: {e}"))?;
+    if data.len() > MAX_FILE_BYTES {
+        return Err(format!(
+            "File too large ({} bytes, max {MAX_FILE_BYTES})",
+            data.len()
+        ));
+    }
+    let path_out = relative_to_root(&root, &full);
+    Ok(FileBytesResponse {
+        path: path_out,
+        byte_length: data.len(),
+        data_base64: STANDARD.encode(&data),
+    })
+}
+
+/// Write raw bytes to a vault-relative path (creates parent folders).
+/// If the file already exists, picks a unique sibling name.
+#[tauri::command]
+pub fn write_file_bytes(
+    path: String,
+    data_base64: String,
+    state: State<VaultState>,
+) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    let root = get_root(&state)?;
+    let rel = path.trim().trim_start_matches('/').to_string();
+    if rel.is_empty() {
+        return Err("Path required".into());
+    }
+    if rel.ends_with('/') {
+        return Err("Path must include a filename".into());
+    }
+    let data = STANDARD
+        .decode(data_base64.trim())
+        .map_err(|e| format!("Invalid file data: {e}"))?;
+    if data.is_empty() {
+        return Err("Empty file data".into());
+    }
+    if data.len() > MAX_FILE_BYTES {
+        return Err(format!(
+            "File too large ({} bytes, max {MAX_FILE_BYTES})",
+            data.len()
+        ));
+    }
+
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    let parent = full
+        .parent()
+        .ok_or_else(|| "Invalid destination path".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
+
+    let desired = full
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file.bin".into());
+    let unique = unique_filename(parent, &desired);
+    let dest = parent.join(&unique);
+    fs::write(&dest, &data).map_err(|e| format!("Cannot write file: {e}"))?;
+
+    let created = relative_to_root(&root, &dest);
+    let parent_rel_s = parent_rel(&created);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent_rel_s, &unique, None);
+    write_order(&root, &order)?;
+    Ok(created)
 }

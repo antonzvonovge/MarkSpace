@@ -2,16 +2,53 @@
 export const VAULT_PATH_OPEN = "⟦";
 export const VAULT_PATH_CLOSE = "⟧";
 
-const MARKER_RE = /⟦([^⟧]*)⟧/g;
+/** Markers for skill chips (slash-selected skills). */
+export const SKILL_OPEN = "⦃";
+export const SKILL_CLOSE = "⦄";
+
+const PATH_MARKER_RE = /⟦([^⟧]*)⟧/g;
+const SKILL_MARKER_RE = /⦃([^⦄]*)⦄/g;
+/** Path or skill markers in document order. */
+const ANY_MARKER_RE = /⟦([^⟧]*)⟧|⦃([^⦄]*)⦄/g;
 
 export function wrapVaultPathMarker(path: string): string {
   const safe = path.replace(/⟧/g, "");
   return `${VAULT_PATH_OPEN}${safe}${VAULT_PATH_CLOSE}`;
 }
 
+export function wrapSkillMarker(id: string): string {
+  const safe = id.replace(/[⦃⦄]/g, "");
+  return `${SKILL_OPEN}${safe}${SKILL_CLOSE}`;
+}
+
 /** Expand chip markers to plain vault-relative paths for the model. */
 export function unwrapVaultPathMarkers(text: string): string {
-  return text.replace(MARKER_RE, "$1");
+  return text.replace(PATH_MARKER_RE, "$1");
+}
+
+/** Replace skill chips with `/skill-id` in the user-visible message text. */
+export function unwrapSkillMarkers(text: string): string {
+  return text.replace(SKILL_MARKER_RE, (_m, id: string) => `/${id}`);
+}
+
+/** Path + skill markers → plain text for the model. */
+export function unwrapComposerMarkers(text: string): string {
+  return unwrapSkillMarkers(unwrapVaultPathMarkers(text));
+}
+
+/** Skill ids embedded as chips in the draft (order preserved, deduped). */
+export function extractSkillIdsFromDraft(text: string): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  SKILL_MARKER_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SKILL_MARKER_RE.exec(text))) {
+    const id = (match[1] ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
 }
 
 const CHIP_LABEL_MAX = 16;
@@ -52,6 +89,15 @@ export function createPathChipElement(path: string): HTMLSpanElement {
   return span;
 }
 
+export function createSkillChipElement(id: string): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = "chat-path-chip chat-skill-chip";
+  span.contentEditable = "false";
+  span.dataset.skillId = id;
+  span.textContent = `/${id}`;
+  return span;
+}
+
 function isPathChip(el: HTMLElement): boolean {
   return (
     el.classList.contains("chat-path-chip") &&
@@ -59,7 +105,18 @@ function isPathChip(el: HTMLElement): boolean {
   );
 }
 
-/** Serialize contentEditable DOM → draft string with ⟦path⟧ markers. */
+function isSkillChip(el: HTMLElement): boolean {
+  return (
+    el.classList.contains("chat-skill-chip") &&
+    typeof el.dataset.skillId === "string"
+  );
+}
+
+function isComposerChip(el: HTMLElement): boolean {
+  return isPathChip(el) || isSkillChip(el);
+}
+
+/** Serialize contentEditable DOM → draft string with markers. */
 export function serializeComposer(root: HTMLElement): string {
   const parts: string[] = [];
 
@@ -71,6 +128,10 @@ export function serializeComposer(root: HTMLElement): string {
       }
       if (child.nodeType !== Node.ELEMENT_NODE) continue;
       const childEl = child as HTMLElement;
+      if (isSkillChip(childEl)) {
+        parts.push(wrapSkillMarker(childEl.dataset.skillId!));
+        continue;
+      }
       if (isPathChip(childEl)) {
         parts.push(wrapVaultPathMarker(childEl.dataset.vaultPath!));
         continue;
@@ -108,14 +169,18 @@ export function renderComposerFromDraft(root: HTMLElement, draft: string) {
   if (!draft) return;
 
   const frag = document.createDocumentFragment();
-  MARKER_RE.lastIndex = 0;
+  ANY_MARKER_RE.lastIndex = 0;
   let last = 0;
   let match: RegExpExecArray | null;
-  while ((match = MARKER_RE.exec(draft))) {
+  while ((match = ANY_MARKER_RE.exec(draft))) {
     if (match.index > last) {
       appendPlainText(frag, draft.slice(last, match.index));
     }
-    frag.appendChild(createPathChipElement(match[1]!));
+    if (match[1] != null) {
+      frag.appendChild(createPathChipElement(match[1]));
+    } else if (match[2] != null) {
+      frag.appendChild(createSkillChipElement(match[2]));
+    }
     last = match.index + match[0].length;
   }
   if (last < draft.length) appendPlainText(frag, draft.slice(last));
@@ -137,7 +202,7 @@ function charBeforeRange(range: Range): string {
       if (t.length) return t[t.length - 1] ?? "";
     } else if (
       node.nodeType === Node.ELEMENT_NODE &&
-      isPathChip(node as HTMLElement)
+      isComposerChip(node as HTMLElement)
     ) {
       return "x"; // non-space → add a gap before the new chip
     }
@@ -162,7 +227,7 @@ function charAfterRange(range: Range): string {
       if (t.length) return t[0] ?? "";
     } else if (
       node.nodeType === Node.ELEMENT_NODE &&
-      isPathChip(node as HTMLElement)
+      isComposerChip(node as HTMLElement)
     ) {
       return "x";
     }
@@ -205,10 +270,9 @@ function rangeAtPoint(
   return end;
 }
 
-/** Insert a vault path chip at the caret (or drop point). */
-export function insertPathChip(
+function insertChipNodes(
   root: HTMLElement,
-  path: string,
+  chip: HTMLElement,
   clientX?: number,
   clientY?: number,
 ): void {
@@ -223,7 +287,6 @@ export function insertPathChip(
 
   const nodes: Node[] = [];
   if (spaceBefore) nodes.push(document.createTextNode(" "));
-  const chip = createPathChipElement(path);
   nodes.push(chip);
   let afterNode: Node = chip;
   if (spaceAfter) {
@@ -234,6 +297,106 @@ export function insertPathChip(
 
   const frag = document.createDocumentFragment();
   for (const n of nodes) frag.appendChild(n);
+  range.insertNode(frag);
+  placeCaretAfter(afterNode);
+}
+
+/** Insert a vault path chip at the caret (or drop point). */
+export function insertPathChip(
+  root: HTMLElement,
+  path: string,
+  clientX?: number,
+  clientY?: number,
+): void {
+  insertChipNodes(root, createPathChipElement(path), clientX, clientY);
+}
+
+/** Insert a skill chip at the caret. */
+export function insertSkillChip(
+  root: HTMLElement,
+  skillId: string,
+  clientX?: number,
+  clientY?: number,
+): void {
+  insertChipNodes(root, createSkillChipElement(skillId), clientX, clientY);
+}
+
+export type ComposerSlashQuery = {
+  query: string;
+  range: Range;
+};
+
+/**
+ * If the caret is in a `/skill-query` token, return the query and a range
+ * covering from `/` through the caret.
+ */
+export function getComposerSlashQuery(
+  root: HTMLElement,
+): ComposerSlashQuery | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return null;
+  if (range.startContainer.nodeType !== Node.TEXT_NODE) return null;
+
+  const text = range.startContainer.textContent ?? "";
+  const caret = range.startOffset;
+  const before = text.slice(0, caret);
+  const slashIdx = before.lastIndexOf("/");
+  if (slashIdx < 0) return null;
+  if (slashIdx > 0 && !/\s/.test(before[slashIdx - 1]!)) return null;
+
+  const query = before.slice(slashIdx + 1);
+  if (!/^[a-z0-9-]*$/i.test(query)) return null;
+
+  const out = document.createRange();
+  out.setStart(range.startContainer, slashIdx);
+  out.setEnd(range.startContainer, caret);
+  return { query, range: out };
+}
+
+function isLiveRangeInRoot(range: Range, root: HTMLElement): boolean {
+  try {
+    return (
+      root.contains(range.startContainer) &&
+      root.contains(range.endContainer)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Replace the active `/query` token with a skill chip (or insert at caret).
+ * Pass `slashRange` from when the menu opened so a lost selection still
+ * inserts at the slash instead of falling back to the end of the composer.
+ */
+export function replaceSlashWithSkillChip(
+  root: HTMLElement,
+  skillId: string,
+  slashRange?: Range | null,
+): void {
+  root.focus();
+  const range =
+    slashRange && isLiveRangeInRoot(slashRange, root)
+      ? slashRange
+      : getComposerSlashQuery(root)?.range ?? null;
+  if (!range) {
+    insertSkillChip(root, skillId);
+    return;
+  }
+  range.deleteContents();
+  const chip = createSkillChipElement(skillId);
+  const after = charAfterRange(range);
+  const spaceAfter = after.length > 0 && !/\s/.test(after);
+  const frag = document.createDocumentFragment();
+  frag.appendChild(chip);
+  let afterNode: Node = chip;
+  if (spaceAfter) {
+    const sp = document.createTextNode(" ");
+    frag.appendChild(sp);
+    afterNode = sp;
+  }
   range.insertNode(frag);
   placeCaretAfter(afterNode);
 }

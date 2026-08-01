@@ -1,5 +1,6 @@
 import "@blocknote/mantine/style.css";
 
+import { VALID_LINK_PROTOCOLS } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
 import type { Theme } from "@blocknote/mantine";
 import {
@@ -13,6 +14,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DocumentOutline } from "../components/DocumentOutline";
 import { DocumentToolbar } from "../components/DocumentToolbar";
 import { PageTags } from "../components/PageTags";
+import {
+  editorMarkdownToHashtags,
+} from "../lib/hashtagMarkdown";
 import {
   applyImagePreviewWidths,
   collectImageSizeRefs,
@@ -58,6 +62,9 @@ import {
   drawioPathFromDrop,
   getActiveDrawioTreeDrag,
 } from "./drawio/treeDrag";
+import { createHashtagDecorationExtension } from "./tag/tagDecorations";
+import { getTagMenuItems, shouldOpenTagMenu } from "./tag/tagSuggestion";
+import { TagSuggestionMenu } from "./tag/TagSuggestionMenu";
 import {
   clampOutlineWidth,
   loadDocOutlineUi,
@@ -119,6 +126,18 @@ function buildEditorTheme(
 
 function isRemoteOrDataUrl(url: string): boolean {
   return /^(https?:|data:|blob:|asset:|tauri:)/i.test(url);
+}
+
+/** BlockNote's default allowlist plus MarkSpace `wiki:` links. */
+function isEditorLink(href: string): boolean {
+  if (href.startsWith("wiki:")) return true;
+  try {
+    const parsed = new URL(href);
+    return VALID_LINK_PROTOCOLS.includes(parsed.protocol.replace(/:$/, ""));
+  } catch {
+    // Relative paths / bare fragments — keep BlockNote default behavior loose.
+    return !/^[a-z][a-z0-9+.-]*:/i.test(href);
+  }
 }
 
 type Props = {
@@ -227,6 +246,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
     () => createSelectAtomBlockAfterDropExtension(),
     [],
   );
+  const hashtagDecorations = useMemo(
+    () => createHashtagDecorationExtension(),
+    [],
+  );
 
   const editor = useCreateBlockNote(
     {
@@ -235,11 +258,14 @@ export function NoteEditor({ path, content, onChange }: Props) {
         cellBackgroundColor: true,
         cellTextColor: true,
       },
+      links: {
+        isValidLink: isEditorLink,
+      },
       uploadFile: (file, blockId) => uploadFileRef.current(file, blockId),
       resolveFileUrl: (url) => resolveFileUrlRef.current(url),
       pasteHandler: (ctx) => pasteHandlerRef.current(ctx),
       _tiptapOptions: {
-        extensions: [layoutKeymap, selectAtomAfterDrop],
+        extensions: [layoutKeymap, selectAtomAfterDrop, hashtagDecorations],
       },
     },
     [path],
@@ -257,7 +283,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
         ed.blocksToHTMLLossy(blocks as typeof ed.document),
       ),
     );
-    const wikiMd = markdownToWiki(md);
+    const wikiMd = markdownToWiki(editorMarkdownToHashtags(md));
     const full = withNoteBody(frontmatterBaseRef.current, wikiMd);
     // External loads / round-trips: adopt serialization, do not pin preview.
     if (applyingRef.current || adoptNextChangeRef.current) {
@@ -282,6 +308,11 @@ export function NoteEditor({ path, content, onChange }: Props) {
     [editor, path],
   );
 
+  const getHashTagMenuItems = useCallback(
+    async (query: string) => getTagMenuItems(editor, query),
+    [editor],
+  );
+
   useEffect(() => {
     const pathChanged = lastPathRef.current !== path;
     const externalChange = content !== lastExternalRef.current;
@@ -296,8 +327,11 @@ export function NoteEditor({ path, content, onChange }: Props) {
     if (!bodyChanged) return;
 
     applyingRef.current = true;
+    // Strip any leftover Live HTML tag spans from older builds; keep `#tag` as text.
     const blocks = restoreImagePreviewWidthsFromAlt(
-      editor.tryParseMarkdownToBlocks(wikiToMarkdown(body)),
+      editor.tryParseMarkdownToBlocks(
+        editorMarkdownToHashtags(wikiToMarkdown(body)),
+      ),
     );
     editor.replaceBlocks(editor.document, blocks);
     lastBodyRef.current = body;
@@ -456,6 +490,15 @@ export function NoteEditor({ path, content, onChange }: Props) {
                   triggerCharacter="/"
                   getItems={getSlashMenuItems}
                   suggestionMenuComponent={NoteSlashSuggestionMenu}
+                />
+                <SuggestionMenuController
+                  triggerCharacter="#"
+                  getItems={getHashTagMenuItems}
+                  shouldOpen={shouldOpenTagMenu}
+                  suggestionMenuComponent={TagSuggestionMenu}
+                  onItemClick={(item) => {
+                    item.onItemClick?.();
+                  }}
                 />
               </BlockNoteView>
             </div>

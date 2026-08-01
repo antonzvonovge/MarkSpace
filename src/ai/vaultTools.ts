@@ -1,6 +1,7 @@
 import { tool, type UIMessage } from "ai";
 import { z } from "zod";
 import {
+  createFolder,
   createNote,
   listTree,
   readNote,
@@ -16,10 +17,18 @@ import {
 } from "./chatAttachments";
 import { buildAskUserTool } from "./askUser";
 import { buildDrawioTools } from "./drawio/tools";
+import { buildFileTools } from "./fileTools";
 import {
   MARKDOWN_FORMAT_GUIDE,
   markdownCoreRules,
 } from "./markdownFormat";
+import {
+  formatForcedSkillsLines,
+  formatSkillsCatalogLines,
+  loadSkill,
+  type LoadedSkill,
+  type SkillMeta,
+} from "./skills";
 import type { ChatMode } from "./types";
 import { buildWebTools } from "./webTools";
 
@@ -43,6 +52,10 @@ function flattenPaths(node: TreeNode, out: string[] = []): string[] {
   if (!node.isDir && node.path) out.push(node.path);
   for (const child of node.children ?? []) flattenPaths(child, out);
   return out;
+}
+
+function normalizeToolPath(path: string): string {
+  return path.trim().replace(/^\/+/, "");
 }
 
 export function buildVaultTools(
@@ -173,6 +186,51 @@ export function buildVaultTools(
       },
     }),
 
+    open_note: tool({
+      description:
+        "Open a vault file in the editor as a tab, or activate it if already open. Use when the user asks to open/show/switch to a note or diagram, or when they should see the file you are discussing. Does not replace read_note for reading contents.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .describe("Vault-relative path, e.g. Folder/Note.md or diagram.drawio"),
+        preview: z
+          .boolean()
+          .optional()
+          .describe(
+            "If true (default), open as a preview tab (replaced by the next preview). If false, open as a pinned tab.",
+          ),
+      }),
+      execute: async ({ path, preview }) => {
+        const rel = normalizeToolPath(path);
+        if (!rel) {
+          return { ok: false as const, error: "Path required" };
+        }
+        const store = useVaultStore.getState();
+        const wasOpen = store.tabs.some((t) => t.path === rel);
+        const wasActive = store.activePath === rel;
+        const asPreview = preview !== false;
+
+        await store.openNote(rel, { preview: asPreview });
+        await yieldToUi();
+
+        const after = useVaultStore.getState();
+        if (after.activePath !== rel) {
+          return {
+            ok: false as const,
+            error: after.error ?? `Could not open ${rel}`,
+          };
+        }
+        const tab = after.tabs.find((t) => t.path === rel);
+        return {
+          ok: true as const,
+          path: rel,
+          already_open: wasOpen,
+          already_active: wasActive,
+          preview: Boolean(tab?.preview),
+        };
+      },
+    }),
+
     read_format_guide: tool({
       description:
         "Return the full MarkSpace Markdown dialect specification (wiki-links, Draw.io embeds, image widths, tables, diagrams, unsupported syntax). Call when unsure how to write or edit note markdown, or before non-trivial markdown edits.",
@@ -181,20 +239,56 @@ export function buildVaultTools(
         guide: MARKDOWN_FORMAT_GUIDE,
       }),
     }),
+
+    read_skill: tool({
+      description:
+        "Load a vault skill by id (filename stem under Skills/). Call when a listed skill matches the user's task, before following its instructions.",
+      inputSchema: z.object({
+        name: z
+          .string()
+          .min(1)
+          .describe("Skill id, e.g. meeting-notes"),
+      }),
+      execute: async ({ name }) => {
+        const loaded = await loadSkill(name.trim());
+        await yieldToUi();
+        if (!loaded) {
+          return {
+            ok: false as const,
+            error: `Skill not found: ${name}`,
+          };
+        }
+        return {
+          ok: true as const,
+          name: loaded.meta.id,
+          path: loaded.meta.path,
+          description: loaded.meta.description,
+          instructions: loaded.body.slice(0, 20_000),
+        };
+      },
+    }),
   };
 
   const drawioTools = buildDrawioTools(mode);
   const webTools = buildWebTools();
+  const fileTools = buildFileTools(mode);
   const askUserTool = { ask_user: buildAskUserTool() };
 
   if (mode === "ask") {
-    return { ...readTools, ...drawioTools, ...webTools, ...askUserTool };
+    return {
+      ...readTools,
+      ...drawioTools,
+      ...webTools,
+      ...fileTools,
+      ...askUserTool,
+    };
   }
 
   return {
     ...readTools,
     ...drawioTools,
     ...webTools,
+    ...fileTools,
     ...askUserTool,
     edit_note: tool({
       description:
@@ -266,12 +360,27 @@ export function buildVaultTools(
     }),
     create_note: tool({
       description:
-        "Create a new markdown note at a vault-relative path (adds .md if missing).",
+        "Create a new markdown note at a vault-relative path (adds .md if missing). Parent folders are created automatically.",
       inputSchema: z.object({
         path: z.string().describe("Desired path, e.g. Ideas/New.md"),
       }),
       execute: async ({ path }) => {
         const created = await createNote(path);
+        await useVaultStore.getState().refreshTree();
+        await yieldToUi();
+        return { ok: true, path: created };
+      },
+    }),
+    create_folder: tool({
+      description:
+        "Create an empty folder at a vault-relative path (creates parents as needed). Use when the user wants a folder without a note; for a note inside a new path prefer create_note.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .describe("Desired folder path, e.g. Ideas/Archive or Project/docs"),
+      }),
+      execute: async ({ path }) => {
+        const created = await createFolder(normalizeToolPath(path));
         await useVaultStore.getState().refreshTree();
         await yieldToUi();
         return { ok: true, path: created };
@@ -413,18 +522,24 @@ export function buildSystemPrompt(opts: {
   projectPath?: string | null;
   /** Project "about" description from project properties. */
   projectAbout?: string | null;
+  /** Skill catalog (name + description) for model auto-discovery. */
+  skills?: SkillMeta[] | null;
+  /** Full skill bodies forced by the user via slash in the composer. */
+  forcedSkills?: LoadedSkill[] | null;
 }): string {
   const lines = [
     "You are MarkSpace, an AI assistant embedded in a local Markdown vault app.",
     "You mostly read and edit Markdown (.md) notes — plain text with Markdown formatting.",
     "You can also inspect and edit Draw.io diagrams (.drawio) via diagram tools. Prefer mutate_diagram for any multi-element change (add/update/color/align/connect/page settings/layout in one call). Also: read_diagram, create_diagram, and single-element helpers.",
     "You can search the public web (web_search) and fetch pages as markdown (fetch_url) when vault notes are not enough.",
-    `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes via tools)"}.`,
+    "You can read vault files or download http(s) URLs with read_file (images are returned for vision analysis). In Agent mode, pass save_as to store a copy at a vault-relative path of your choice.",
+    `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes and folders via tools)"}.`,
     "Be concise. Prefer tools over guessing vault contents or the web.",
-    "For external facts/docs: web_search first, then fetch_url on the best 1–3 links. Do not invent URLs.",
+    "For external facts/docs: web_search first, then fetch_url on the best 1–3 links. Do not invent URLs. To download an image/file into the vault, use read_file with save_as.",
     "When you need a decision, confirmation, or clarification with clear choices: use ask_user (multiple-choice + optional free-text) instead of listing A/B/C options in plain chat text. Keep questions focused; prefer one round of 1–3 questions.",
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
     "When the user mentions vault paths in their message (files or folders ending with /), use read_note and/or list_notes as needed — do not ask them to paste the contents again.",
+    "When the user asks to open, show, or switch to a note/diagram in the editor, call open_note (preview tab by default). Prefer open_note to show work; still use read_note/get_active_note to read contents.",
     "MarkSpace Markdown is a dialect of standard Markdown. Follow these rules exactly; call read_format_guide when unsure or before writing non-trivial markdown:",
     ...markdownCoreRules(),
     "In chat replies you may include diagrams as fenced code blocks: ```mermaid for Mermaid, or ```plantuml / ```puml for PlantUML. The UI renders them inline. Prefer these for architecture/flow sketches in answers; use Draw.io tools only for .drawio vault files.",
@@ -432,16 +547,25 @@ export function buildSystemPrompt(opts: {
   if (opts.mode === "agent") {
     lines.push(
       "When editing notes: prefer edit_note (partial replace) over write_note (full overwrite) to save tokens.",
+      "Create empty folders with create_folder. To add a note in a new path, use create_note (parents are created automatically).",
       "When reading long notes: use read_note/get_active_note with start_line and end_line instead of loading the whole file.",
       "Preserve existing Markdown structure; keep one empty line between paragraphs in any text you insert or rewrite.",
       "For .drawio files: use mutate_diagram for batch edits (never many parallel single updates — they race). Use temp_id on new nodes and reference them from add_edges / child parent in the same call. Never raw edit_note on XML.",
       "Draw.io layout: for multi-shape diagrams OMIT x/y — mutate_diagram auto-layouts top-down (ArchiMate: Motivation→Strategy→Business→Application→Technology→Implementation). Do not invent sideways coordinates. Use layout:{type:'none'} only when intentionally keeping positions; layout:{type:'archimate'|'hierarchical'|'grid', direction:'top_down'|'left_right'} to override.",
       "Draw.io capabilities: text align/vertical_align/font_*; sketch; page_settings; shapes include group/swimlane and ArchiMate 3.2 (archimate.*); edges relation=serving|realization|assignment|…; parent=temp_id nesting; waypoints + exit_*/entry_*; add_pages/rename_pages.",
-      "Images in notes: save with save_attachment (chat images) or write_asset (raw base64), then edit_note to insert the markdown using the returned url. Never invent .assets paths.",
+      "Images in notes: save with save_attachment (chat images), write_asset (raw base64 into note .assets/), or read_file with save_as (URL/vault file → any vault path). Then edit_note to insert markdown using the returned path/url. Never invent .assets paths.",
     );
   }
   if (opts.vaultPath) {
     lines.push(`Open vault: ${opts.vaultPath}`);
+  }
+  const catalogLines = formatSkillsCatalogLines(opts.skills ?? []);
+  if (catalogLines.length > 0) {
+    lines.push(...catalogLines);
+  }
+  const forcedLines = formatForcedSkillsLines(opts.forcedSkills ?? []);
+  if (forcedLines.length > 0) {
+    lines.push(...forcedLines);
   }
   if (opts.projectPath) {
     lines.push(`Active project: ${opts.projectPath}`);
