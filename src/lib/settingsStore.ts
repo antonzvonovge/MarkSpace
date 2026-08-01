@@ -106,9 +106,79 @@ export async function saveExpandedPaths(
   await store.save();
 }
 
+export type GraphUiSettings = {
+  tagsOnly: boolean;
+  showUntagged: boolean;
+  labelThreshold: number;
+  gravity: number;
+  /** First-level vault project path; null means the entire vault. */
+  projectPath: string | null;
+};
+
+export const DEFAULT_GRAPH_UI_SETTINGS: GraphUiSettings = {
+  tagsOnly: false,
+  showUntagged: false,
+  labelThreshold: 7,
+  gravity: 1,
+  projectPath: null,
+};
+
+const GRAPH_UI_BY_VAULT_KEY = "graphUiByVault";
+
+function normalizeGraphUiSettings(raw: unknown): GraphUiSettings {
+  const value =
+    raw && typeof raw === "object"
+      ? (raw as Partial<GraphUiSettings>)
+      : DEFAULT_GRAPH_UI_SETTINGS;
+  const labelThreshold =
+    typeof value.labelThreshold === "number" &&
+    Number.isFinite(value.labelThreshold)
+      ? Math.min(10, Math.max(0, value.labelThreshold))
+      : DEFAULT_GRAPH_UI_SETTINGS.labelThreshold;
+  const gravity =
+    typeof value.gravity === "number" && Number.isFinite(value.gravity)
+      ? Math.min(4, Math.max(0.2, value.gravity))
+      : DEFAULT_GRAPH_UI_SETTINGS.gravity;
+  return {
+    tagsOnly: Boolean(value.tagsOnly),
+    showUntagged: Boolean(value.showUntagged),
+    labelThreshold,
+    gravity,
+    projectPath:
+      typeof value.projectPath === "string" && value.projectPath.trim()
+        ? value.projectPath
+        : null,
+  };
+}
+
+export async function loadGraphUiSettings(
+  vaultPath: string,
+): Promise<GraphUiSettings> {
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, unknown>>(GRAPH_UI_BY_VAULT_KEY)) ?? {};
+  return normalizeGraphUiSettings(map[vaultPath]);
+}
+
+export async function saveGraphUiSettings(
+  vaultPath: string,
+  settings: GraphUiSettings,
+): Promise<void> {
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, GraphUiSettings>>(GRAPH_UI_BY_VAULT_KEY)) ??
+    {};
+  map[vaultPath] = normalizeGraphUiSettings(settings);
+  await store.set(GRAPH_UI_BY_VAULT_KEY, map);
+  await store.save();
+}
+
+export type SavedTabKind = "file" | "graph";
+
 export type SavedEditorTab = {
   path: string;
   preview: boolean;
+  kind?: SavedTabKind;
 };
 
 export type VaultSession = {
@@ -117,6 +187,11 @@ export type VaultSession = {
 };
 
 const VAULT_SESSIONS_KEY = "vaultSessions";
+
+function normalizeSavedTabKind(kind: unknown, path: string): SavedTabKind {
+  if (kind === "graph" || path === "markspace:graph") return "graph";
+  return "file";
+}
 
 export async function loadVaultSession(
   vaultPath: string,
@@ -137,8 +212,11 @@ export async function loadVaultSession(
     .map((t) => ({
       path: t.path,
       preview: Boolean(t.preview),
+      kind: normalizeSavedTabKind(t.kind, t.path),
     }));
-  if (!tabs.length) return null;
+  // A saved session with no tabs means the user closed everything: keep it
+  // distinct from "no session at all" so the caller skips the welcome note.
+  if (!tabs.length) return { tabs: [], activePath: null };
   const activePath =
     typeof raw.activePath === "string" &&
     tabs.some((t) => t.path === raw.activePath)
@@ -158,6 +236,7 @@ export async function saveVaultSession(
     tabs: session.tabs.map((t) => ({
       path: t.path,
       preview: Boolean(t.preview),
+      kind: normalizeSavedTabKind(t.kind, t.path),
     })),
     activePath: session.activePath,
   };

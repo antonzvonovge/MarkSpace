@@ -1868,6 +1868,24 @@ fn normalize_tag_name(raw: &str) -> Option<String> {
     Some(t.to_string())
 }
 
+/// Some writers emit tag items as YAML maps (`- name: work`, `- {tag: work}`)
+/// instead of scalars. Take the mapped value so the catalog keeps clean names.
+fn unwrap_tag_mapping(raw: &str) -> &str {
+    let mut value = raw.trim();
+    if let Some(inner) = value.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+        value = inner.trim();
+    }
+    for key in ["name:", "tag:", "title:"] {
+        if let Some(rest) = value.strip_prefix(key) {
+            let rest = rest.trim();
+            if !rest.is_empty() && !rest.contains(':') {
+                return rest;
+            }
+        }
+    }
+    value
+}
+
 /// Pull tag strings from a frontmatter YAML snippet (common Obsidian forms).
 fn tags_from_frontmatter_yaml(yaml: &str) -> Vec<String> {
     let mut tags: Vec<String> = Vec::new();
@@ -1895,7 +1913,7 @@ fn tags_from_frontmatter_yaml(yaml: &str) -> Vec<String> {
                 .and_then(|s| s.strip_suffix(']'))
             {
                 for part in inner.split(',') {
-                    let part = part.trim().trim_matches('"').trim_matches('\'');
+                    let part = unwrap_tag_mapping(part).trim_matches('"').trim_matches('\'');
                     if let Some(name) = normalize_tag_name(part) {
                         tags.push(name);
                     }
@@ -1924,15 +1942,15 @@ fn tags_from_frontmatter_yaml(yaml: &str) -> Vec<String> {
             if !is_indent {
                 in_tags_list = false;
             } else if let Some(item) = trimmed.strip_prefix("- ") {
-                let part = item.trim().trim_matches('"').trim_matches('\'');
+                let part = unwrap_tag_mapping(item)
+                    .trim_matches('"')
+                    .trim_matches('\'');
                 if let Some(name) = normalize_tag_name(part) {
                     tags.push(name);
                 }
-            } else if trimmed == "-" {
-                continue;
-            } else {
-                in_tags_list = false;
             }
+            // Anything else indented under `tags:` is a continuation (further
+            // keys of a mapping item, or a bare `-`): skip without ending the list.
         }
     }
 
@@ -2214,6 +2232,32 @@ pub fn list_vault_tags(state: State<VaultState>) -> Result<Vec<String>, String> 
         .lock()
         .map_err(|_| "Tag index lock poisoned")?;
     Ok(unique_sorted_tags(&guard))
+}
+
+/// One note's path and its tags (frontmatter ∪ inline `#tags`) from the in-memory index.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteTags {
+    pub path: String,
+    pub tags: Vec<String>,
+}
+
+/// Full path → tags map for the tag graph view (only notes that have at least one tag).
+#[tauri::command]
+pub fn list_note_tags(state: State<VaultState>) -> Result<Vec<NoteTags>, String> {
+    let guard = state
+        .tag_index
+        .lock()
+        .map_err(|_| "Tag index lock poisoned")?;
+    let mut out: Vec<NoteTags> = guard
+        .iter()
+        .map(|(path, tags)| NoteTags {
+            path: path.clone(),
+            tags: tags.clone(),
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    Ok(out)
 }
 
 /// Re-read one note's head into the tag index (external edits / watcher).

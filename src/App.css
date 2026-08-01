@@ -950,6 +950,12 @@ li.dnd-drop-target > .tree-row {
   color: var(--accent-strong);
 }
 
+.tree-context-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
 .tree-context-item.is-danger {
   color: var(--danger);
 }
@@ -4411,6 +4417,51 @@ li.dnd-drop-target > .tree-row {
 
 .chat-skill-chip {
   background: var(--tag-bg-hover);
+}
+
+.chat-selection-chip {
+  display: inline;
+  white-space: nowrap;
+  margin: 0 2px;
+  padding: 1px 5px 1px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--tag-border);
+  border-left: 2px solid var(--accent);
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  user-select: all;
+  cursor: default;
+}
+
+.chat-selection-chip::before {
+  content: "“";
+  margin-right: 2px;
+  opacity: 0.6;
+}
+
+.selection-to-chat-btn {
+  position: fixed;
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--editor-surface);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+}
+
+.selection-to-chat-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .chat-skill-slash-menu {

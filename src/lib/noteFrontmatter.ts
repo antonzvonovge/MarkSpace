@@ -68,6 +68,12 @@ export function normalizeTags(value: unknown): string[] {
   const seen = new Set<string>();
 
   const push = (raw: unknown) => {
+    // Tolerate mapping items (`- name: work`) written by other tools.
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const record = raw as Record<string, unknown>;
+      push(record.name ?? record.tag ?? record.title);
+      return;
+    }
     if (typeof raw !== "string" && typeof raw !== "number") return;
     const name = normalizeTagName(String(raw));
     if (!name) return;

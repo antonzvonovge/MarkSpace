@@ -703,6 +703,7 @@ function FavoritesTreeRows({
   activePath,
   selectedFolderPath,
   selectedFolderExplicit,
+  treeSelectionVisible,
   renamingPath,
   favoriteSet,
   onOpenContextMenu,
@@ -718,6 +719,7 @@ function FavoritesTreeRows({
   activePath: string | null;
   selectedFolderPath: string;
   selectedFolderExplicit: boolean;
+  treeSelectionVisible: boolean;
   renamingPath: string | null;
   favoriteSet: Set<string>;
   onOpenContextMenu: (menu: ContextMenuState) => void;
@@ -740,9 +742,15 @@ function FavoritesTreeRows({
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
         const isMdlnks = !isDir && path.toLowerCase().endsWith(".mdlnks");
         const selected =
-          isDir && selectedFolderExplicit && selectedFolderPath === path;
+          treeSelectionVisible &&
+          isDir &&
+          selectedFolderExplicit &&
+          selectedFolderPath === path;
         const active =
-          !isDir && !selectedFolderExplicit && activePath === path;
+          treeSelectionVisible &&
+          !isDir &&
+          !selectedFolderExplicit &&
+          activePath === path;
         const renaming = renamingPath === path;
 
         return (
@@ -873,6 +881,7 @@ function FavoritesTreeRows({
                 activePath={activePath}
                 selectedFolderPath={selectedFolderPath}
                 selectedFolderExplicit={selectedFolderExplicit}
+                treeSelectionVisible={treeSelectionVisible}
                 renamingPath={renamingPath}
                 favoriteSet={favoriteSet}
                 onOpenContextMenu={onOpenContextMenu}
@@ -899,6 +908,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
   const selectedFolderExplicit = useVaultStore((s) => s.selectedFolderExplicit);
+  const treeSelectionVisible = useVaultStore((s) => s.treeSelectionVisible);
   const createNoteInSelection = useVaultStore((s) => s.createNoteInSelection);
   const createDrawioInSelection = useVaultStore((s) => s.createDrawioInSelection);
   const createMdlnksInSelection = useVaultStore((s) => s.createMdlnksInSelection);
@@ -1004,6 +1014,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     useVaultStore.setState({
       selectedFolderExplicit: false,
       selectedFolderPath: parentPath(path),
+      treeSelectionVisible: true,
     });
     revealPathInTree(path);
   }, [revealPathInTree]);
@@ -1013,6 +1024,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     useVaultStore.setState({
       selectedFolderExplicit: false,
       selectedFolderPath: parentPath(treeRevealRequest.path),
+      treeSelectionVisible: true,
     });
     revealPathInTree(treeRevealRequest.path);
   }, [revealPathInTree, treeRevealRequest]);
@@ -1354,6 +1366,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               activePath={activePath}
               selectedFolderPath={selectedFolderPath}
               selectedFolderExplicit={selectedFolderExplicit}
+              treeSelectionVisible={treeSelectionVisible}
               renamingPath={renamingPath}
               favoriteSet={favoriteSet}
               onOpenContextMenu={setContextMenu}
@@ -1452,9 +1465,15 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 const isMdlnks =
                   !isDir && path.toLowerCase().endsWith(".mdlnks");
                 const selected =
-                  isDir && selectedFolderExplicit && selectedFolderPath === path;
+                  treeSelectionVisible &&
+                  isDir &&
+                  selectedFolderExplicit &&
+                  selectedFolderPath === path;
                 const active =
-                  !isDir && !selectedFolderExplicit && activePath === path;
+                  treeSelectionVisible &&
+                  !isDir &&
+                  !selectedFolderExplicit &&
+                  activePath === path;
                 const renaming = renamingPath === path;
 
                 // No <button>/<a> inside the row: Chromium (WebView2) refuses to

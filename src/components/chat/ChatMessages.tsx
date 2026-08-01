@@ -14,6 +14,10 @@ import {
   credentialsFromSettings,
   planModelRoute,
 } from "../../ai/languageModel";
+import {
+  parseUserTextSegments,
+  selectionChipLabel,
+} from "../../lib/chatSelectionChips";
 import { findModel, OPENROUTER_MODELS } from "../../ai/models";
 import { resolveModelId } from "../../ai/resolveModelId";
 import type { AiSettings } from "../../ai/types";
@@ -129,6 +133,32 @@ function WaitingIndicator() {
   );
 }
 
+/** Sent user text with selection quotes folded back into chips. */
+function UserText({ text }: { text: string }) {
+  const segments = parseUserTextSegments(text);
+  return (
+    <>
+      {segments.map((segment, i) =>
+        segment.kind === "text" ? (
+          <span key={i}>{segment.text}</span>
+        ) : (
+          <span
+            key={i}
+            className="chat-selection-chip"
+            title={
+              segment.sourcePath
+                ? `${segment.sourcePath}\n\n${segment.text}`
+                : segment.text
+            }
+          >
+            {selectionChipLabel(segment.text)}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
 type UserRowProps = {
   message: UIMessage;
   sticky: boolean;
@@ -211,7 +241,7 @@ const UserMessageRow = memo(function UserMessageRow({
             className={expanded ? "chat-bubble" : "chat-bubble is-clamped"}
             onClick={onBubbleClick}
           >
-            {text}
+            <UserText text={text} />
           </div>
           {clampable ? (
             <button

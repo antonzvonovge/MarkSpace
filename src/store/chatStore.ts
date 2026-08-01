@@ -31,6 +31,14 @@ import {
   extractSkillIdsFromDraft,
   unwrapComposerMarkers,
 } from "../lib/chatComposerDom";
+import {
+  expandSelectionMarkers,
+  extractSelectionIds,
+  parseUserTextSegments,
+  truncateSelection,
+  wrapSelectionMarker,
+  type ChatSelectionRef,
+} from "../lib/chatSelectionChips";
 import { getProjectProperties } from "../lib/vaultApi";
 import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
@@ -39,7 +47,14 @@ export type ChatStatus = "ready" | "streaming" | "error";
 export type { ChatAttachment };
 
 function titleFromMessage(text: string): string {
-  const cleaned = text.replace(/\s+/g, " ").trim();
+  // Prefer what the user typed; fall back to the quoted selection itself.
+  const segments = parseUserTextSegments(text);
+  const typed = segments
+    .filter((s) => s.kind === "text")
+    .map((s) => s.text)
+    .join(" ");
+  const source = typed || segments.map((s) => s.text).join(" ") || text;
+  const cleaned = source.replace(/\s+/g, " ").trim();
   if (!cleaned) return "New chat";
   return cleaned.length > 48 ? `${cleaned.slice(0, 48)}…` : cleaned;
 }
@@ -77,6 +92,8 @@ type ChatStore = {
   error: string | null;
   draft: string;
   draftAttachments: ChatAttachment[];
+  /** Text behind selection chips in the draft, keyed by chip id. */
+  draftSelections: Record<string, ChatSelectionRef>;
   vaultBound: string | null;
   abort: AbortController | null;
   streamStartedAt: number | null;
@@ -89,6 +106,8 @@ type ChatStore = {
   attentionThreadIds: string[];
   hydrateForVault: (vaultPath: string | null) => Promise<void>;
   setDraft: (draft: string) => void;
+  /** Append a selection chip to the draft; returns its chip id. */
+  addSelectionToDraft: (text: string, sourcePath: string | null) => string;
   clearThreadAttention: (threadId: string) => void;
   addAttachments: (files: File[]) => Promise<string[]>;
   removeAttachment: (id: string) => void;
@@ -100,6 +119,8 @@ type ChatStore = {
   newThread: () => Promise<void>;
   selectThread: (threadId: string) => Promise<void>;
   closeTab: (threadId: string) => Promise<void>;
+  closeOtherTabs: (threadId: string) => Promise<void>;
+  closeTabsToTheRight: (threadId: string) => Promise<void>;
   reorderOpenTabs: (fromIndex: number, toIndex: number) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
   send: (text?: string) => Promise<void>;
@@ -137,11 +158,30 @@ function emptySession(vaultBound: string | null = null) {
     attentionThreadIds: [] as string[],
     draft: "",
     draftAttachments: [] as ChatAttachment[],
+    draftSelections: {} as Record<string, ChatSelectionRef>,
     projectPath: null as string | null,
     projectAbout: "",
     skillsCatalog: [] as SkillMeta[],
     ...defaultsFromSettings(),
   };
+}
+
+/** Drop selection texts whose chip was deleted from the draft. */
+function pruneSelections(
+  selections: Record<string, ChatSelectionRef>,
+  draft: string,
+): Record<string, ChatSelectionRef> {
+  const ids = extractSelectionIds(draft);
+  const keys = Object.keys(selections);
+  if (keys.length === ids.length && keys.every((id) => ids.includes(id))) {
+    return selections;
+  }
+  const next: Record<string, ChatSelectionRef> = {};
+  for (const id of ids) {
+    const ref = selections[id];
+    if (ref) next[id] = ref;
+  }
+  return next;
 }
 
 function withAttention(ids: string[], threadId: string): string[] {
@@ -189,6 +229,86 @@ async function loadThreadIntoState(
     streamStartedAt: null,
     streamReasoningText: null,
   };
+}
+
+/** Close every open chat tab whose id is not in `keepIds`. */
+async function closeChatTabsKeeping(
+  get: () => ChatStore,
+  set: (
+    partial:
+      | Partial<ChatStore>
+      | ((state: ChatStore) => Partial<ChatStore>),
+  ) => void,
+  keepIds: Set<string>,
+): Promise<void> {
+  const vaultPath = get().vaultBound;
+  if (!vaultPath) return;
+
+  const prevTabs = get().openTabIds;
+  const openTabIds = prevTabs.filter((id) => keepIds.has(id));
+  if (openTabIds.length === prevTabs.length) return;
+
+  const currentActive = get().activeThreadId;
+  const closingActive =
+    currentActive != null && !keepIds.has(currentActive);
+
+  if (closingActive && get().status === "streaming") {
+    get().stop();
+  }
+
+  const nextActive = closingActive
+    ? (openTabIds[openTabIds.length - 1] ?? null)
+    : currentActive && openTabIds.includes(currentActive)
+      ? currentActive
+      : openTabIds[0] ?? null;
+
+  const closedIds = prevTabs.filter((id) => !keepIds.has(id));
+  const listed = await setOpenChatTabs(vaultPath, openTabIds, nextActive);
+
+  let attention = get().attentionThreadIds;
+  for (const id of closedIds) {
+    attention = withoutAttention(attention, id);
+  }
+
+  if (!nextActive) {
+    set({
+      threads: listed.threads,
+      openTabIds: listed.openTabIds,
+      activeThreadId: null,
+      messages: [],
+      status: "ready",
+      error: null,
+      draft: "",
+      draftAttachments: [],
+      streamStartedAt: null,
+      attentionThreadIds: attention,
+      ...defaultsFromSettings(),
+    });
+    return;
+  }
+
+  if (closingActive) {
+    set(
+      await loadThreadIntoState(
+        vaultPath,
+        nextActive,
+        listed.threads,
+        listed.openTabIds,
+      ),
+    );
+    set({
+      draft: "",
+      draftAttachments: [],
+      attentionThreadIds: withoutAttention(attention, nextActive),
+    });
+  } else {
+    set({
+      threads: listed.threads,
+      openTabIds: listed.openTabIds,
+      activeThreadId: listed.activeThreadId,
+      attentionThreadIds: attention,
+    });
+  }
 }
 
 /** Replace provisional title with a short LLM-generated name (best-effort). */
@@ -258,6 +378,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   error: null,
   draft: "",
   draftAttachments: [],
+  draftSelections: {},
   vaultBound: null,
   abort: null,
   streamStartedAt: null,
@@ -312,16 +433,33 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setDraft: (draft) => {
+    const draftSelections = pruneSelections(get().draftSelections, draft);
     const active = get().activeThreadId;
     if (active && draft.length > 0) {
       const attentionThreadIds = withoutAttention(
         get().attentionThreadIds,
         active,
       );
-      set({ draft, attentionThreadIds });
+      set({ draft, draftSelections, attentionThreadIds });
       return;
     }
-    set({ draft });
+    set({ draft, draftSelections });
+  },
+
+  addSelectionToDraft: (text, sourcePath) => {
+    const clean = text.trim();
+    if (!clean) return "";
+    const id = crypto.randomUUID().slice(0, 8);
+    const draft = get().draft;
+    const gap = draft.length > 0 && !/\s$/.test(draft) ? " " : "";
+    set({
+      draft: `${draft}${gap}${wrapSelectionMarker(id)} `,
+      draftSelections: {
+        ...get().draftSelections,
+        [id]: { id, text: truncateSelection(clean), sourcePath },
+      },
+    });
+    return id;
   },
 
   clearThreadAttention: (threadId) => {
@@ -509,6 +647,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
+  closeOtherTabs: async (threadId) => {
+    await closeChatTabsKeeping(get, set, new Set([threadId]));
+  },
+
+  closeTabsToTheRight: async (threadId) => {
+    const prev = get().openTabIds;
+    const idx = prev.indexOf(threadId);
+    if (idx < 0) return;
+    await closeChatTabsKeeping(get, set, new Set(prev.slice(0, idx + 1)));
+  },
+
   reorderOpenTabs: async (fromIndex, toIndex) => {
     const vaultPath = get().vaultBound;
     if (!vaultPath) return;
@@ -623,7 +772,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   send: async (text) => {
     const rawDraft = text ?? get().draft;
     const skillIds = extractSkillIdsFromDraft(rawDraft);
-    const draftText = unwrapComposerMarkers(rawDraft);
+    const draftText = unwrapComposerMarkers(
+      expandSelectionMarkers(rawDraft, get().draftSelections),
+    );
     const attachments = get().draftAttachments;
     const content = draftText.trim();
     if (!content && attachments.length === 0) return;
@@ -682,6 +833,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages,
       draft: "",
       draftAttachments: [],
+      draftSelections: {},
       status: "streaming",
       error: null,
       streamStartedAt: Date.now(),

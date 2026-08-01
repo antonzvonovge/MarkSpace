@@ -41,6 +41,22 @@ tags:
     expect(getNoteTags("---\ntags: one, two\n---\n")).toEqual(["one", "two"]);
   });
 
+  it("reads mapping-form tag items written by other tools", () => {
+    const md = `---
+tags:
+  - name: thoughts
+  - inbox
+---
+
+Body
+`;
+    expect(getNoteTags(md)).toEqual(["thoughts", "inbox"]);
+    expect(getNoteTags(setNoteTags(md, getNoteTags(md)))).toEqual([
+      "thoughts",
+      "inbox",
+    ]);
+  });
+
   it("strips leading # and dedupes case-insensitively", () => {
     expect(
       getNoteTags('---\ntags: ["#Work", work, WORK]\n---\n'),

@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatStore } from "../../store/chatStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { useTabReorder } from "../../hooks/useTabReorder";
+import {
+  TabContextMenu,
+  type TabContextMenuState,
+} from "../TabContextMenu";
 import { ChatHistoryMenu } from "./ChatHistoryMenu";
 
 export function ChatTabBar() {
@@ -12,9 +16,14 @@ export function ChatTabBar() {
   const attentionThreadIds = useChatStore((s) => s.attentionThreadIds);
   const selectThread = useChatStore((s) => s.selectThread);
   const closeTab = useChatStore((s) => s.closeTab);
+  const closeOtherTabs = useChatStore((s) => s.closeOtherTabs);
+  const closeTabsToTheRight = useChatStore((s) => s.closeTabsToTheRight);
   const reorderOpenTabs = useChatStore((s) => s.reorderOpenTabs);
   const newThread = useChatStore((s) => s.newThread);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<TabContextMenuState | null>(
+    null,
+  );
   const activeRef = useRef<HTMLDivElement>(null);
 
   const tabs = useMemo(() => {
@@ -89,6 +98,17 @@ export function ChatTabBar() {
                   e.preventDefault();
                   void closeTab(tab.id);
                 }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setContextMenu({
+                  x: e.clientX,
+                  y: e.clientY,
+                  targetId: tab.id,
+                  index,
+                  tabCount: tabs.length,
+                });
               }}
             >
               {attention ? (
@@ -166,6 +186,17 @@ export function ChatTabBar() {
           </svg>
         </button>
       </div>
+      {contextMenu ? (
+        <TabContextMenu
+          menu={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onCloseTab={() => void closeTab(contextMenu.targetId)}
+          onCloseOthers={() => void closeOtherTabs(contextMenu.targetId)}
+          onCloseToTheRight={() =>
+            void closeTabsToTheRight(contextMenu.targetId)
+          }
+        />
+      ) : null}
     </div>
   );
 }

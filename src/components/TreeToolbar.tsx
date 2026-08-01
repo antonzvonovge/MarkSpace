@@ -4,11 +4,13 @@ import {
   CollapseAllIcon,
   CollectionPlusIcon,
   DiagramIcon,
+  GraphIcon,
   LinksIcon,
   LocateIcon,
   PlusIcon,
   RefreshIcon,
 } from "./treeIcons";
+import { GRAPH_TAB_PATH } from "../store/vaultStore";
 
 export type TreeCreateKind = "note" | "drawio" | "mdlnks" | "folder";
 
@@ -111,7 +113,11 @@ export function TreeToolbar({
   const activePath = useVaultStore((s) => s.activePath);
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const collapseAllFolders = useVaultStore((s) => s.collapseAllFolders);
+  const openGraphTab = useVaultStore((s) => s.openGraphTab);
   const [refreshing, setRefreshing] = useState(false);
+  const graphOpen = activePath === GRAPH_TAB_PATH;
+  const canLocate =
+    Boolean(activePath) && activePath !== GRAPH_TAB_PATH;
 
   if (!vaultPath) return null;
 
@@ -146,10 +152,22 @@ export function TreeToolbar({
         className="tree-toolbar-btn"
         title="Reveal active file"
         aria-label="Reveal active file in tree"
-        disabled={!activePath}
+        disabled={!canLocate}
         onClick={onLocateActive}
       >
         <LocateIcon />
+      </button>
+      <button
+        type="button"
+        className={
+          graphOpen ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"
+        }
+        title="Tag graph"
+        aria-label="Open tag graph"
+        aria-pressed={graphOpen}
+        onClick={() => void openGraphTab()}
+      >
+        <GraphIcon />
       </button>
       <TreeCreateMenu onCreate={onCreate} />
     </div>

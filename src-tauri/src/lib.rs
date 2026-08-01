@@ -152,6 +152,7 @@ pub fn run() {
             vault::write_file_bytes,
             vault::search_notes,
             vault::list_vault_tags,
+            vault::list_note_tags,
             vault::reindex_note_tags,
             favorites::list_favorites,
             favorites::add_favorite,

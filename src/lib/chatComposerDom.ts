@@ -1,3 +1,5 @@
+import { selectionChipLabel, wrapSelectionMarker } from "./chatSelectionChips";
+
 /** Markers for vault path chips in the chat composer draft string. */
 export const VAULT_PATH_OPEN = "⟦";
 export const VAULT_PATH_CLOSE = "⟧";
@@ -8,8 +10,11 @@ export const SKILL_CLOSE = "⦄";
 
 const PATH_MARKER_RE = /⟦([^⟧]*)⟧/g;
 const SKILL_MARKER_RE = /⦃([^⦄]*)⦄/g;
-/** Path or skill markers in document order. */
-const ANY_MARKER_RE = /⟦([^⟧]*)⟧|⦃([^⦄]*)⦄/g;
+/** Path, skill or selection markers in document order. */
+const ANY_MARKER_RE = /⟦([^⟧]*)⟧|⦃([^⦄]*)⦄|⟬([^⟭]*)⟭/g;
+
+/** Resolves a selection chip id to the text it stands for. */
+export type SelectionTextResolver = (id: string) => string | undefined;
 
 export function wrapVaultPathMarker(path: string): string {
   const safe = path.replace(/⟧/g, "");
@@ -98,6 +103,19 @@ export function createSkillChipElement(id: string): HTMLSpanElement {
   return span;
 }
 
+export function createSelectionChipElement(
+  id: string,
+  text: string,
+): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = "chat-path-chip chat-selection-chip";
+  span.contentEditable = "false";
+  span.dataset.selectionId = id;
+  span.textContent = selectionChipLabel(text);
+  span.title = text;
+  return span;
+}
+
 function isPathChip(el: HTMLElement): boolean {
   return (
     el.classList.contains("chat-path-chip") &&
@@ -112,8 +130,15 @@ function isSkillChip(el: HTMLElement): boolean {
   );
 }
 
+function isSelectionChip(el: HTMLElement): boolean {
+  return (
+    el.classList.contains("chat-selection-chip") &&
+    typeof el.dataset.selectionId === "string"
+  );
+}
+
 function isComposerChip(el: HTMLElement): boolean {
-  return isPathChip(el) || isSkillChip(el);
+  return isPathChip(el) || isSkillChip(el) || isSelectionChip(el);
 }
 
 /** Serialize contentEditable DOM → draft string with markers. */
@@ -130,6 +155,10 @@ export function serializeComposer(root: HTMLElement): string {
       const childEl = child as HTMLElement;
       if (isSkillChip(childEl)) {
         parts.push(wrapSkillMarker(childEl.dataset.skillId!));
+        continue;
+      }
+      if (isSelectionChip(childEl)) {
+        parts.push(wrapSelectionMarker(childEl.dataset.selectionId!));
         continue;
       }
       if (isPathChip(childEl)) {
@@ -164,7 +193,11 @@ function appendPlainText(frag: DocumentFragment, text: string) {
 }
 
 /** Render draft (with markers) into a contentEditable root. */
-export function renderComposerFromDraft(root: HTMLElement, draft: string) {
+export function renderComposerFromDraft(
+  root: HTMLElement,
+  draft: string,
+  resolveSelectionText?: SelectionTextResolver,
+) {
   root.replaceChildren();
   if (!draft) return;
 
@@ -180,6 +213,11 @@ export function renderComposerFromDraft(root: HTMLElement, draft: string) {
       frag.appendChild(createPathChipElement(match[1]));
     } else if (match[2] != null) {
       frag.appendChild(createSkillChipElement(match[2]));
+    } else if (match[3] != null) {
+      const text = resolveSelectionText?.(match[3]);
+      if (text != null) {
+        frag.appendChild(createSelectionChipElement(match[3], text));
+      }
     }
     last = match.index + match[0].length;
   }
@@ -402,6 +440,18 @@ export function replaceSlashWithSkillChip(
   }
   range.insertNode(frag);
   placeCaretAfter(afterNode);
+}
+
+/** Focus the composer with the caret after its last node. */
+export function focusComposerEnd(root: HTMLElement): void {
+  root.focus();
+  const sel = window.getSelection();
+  if (!sel) return;
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  range.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 export function isComposerVisuallyEmpty(root: HTMLElement): boolean {

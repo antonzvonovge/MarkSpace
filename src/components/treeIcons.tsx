@@ -153,3 +153,19 @@ export function LinksIcon() {
     </svg>
   );
 }
+
+export function GraphIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="4" cy="4" r="1.7" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="12" cy="5" r="1.7" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="8" cy="12" r="1.7" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d="M5.4 4.6 10.6 5.2M4.8 5.5 7.3 10.7M11.3 6.3 8.9 10.6"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}

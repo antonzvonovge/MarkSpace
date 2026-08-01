@@ -8,6 +8,7 @@ import {
 } from "react-resizable-panels";
 import { Sidebar, loadLastVault } from "./components/Sidebar";
 import { ChatSidebar } from "./components/chat/ChatSidebar";
+import { SelectionToChatButton } from "./components/chat/SelectionToChatButton";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { StatusBar } from "./components/StatusBar";
@@ -15,6 +16,7 @@ import { SyncConflictBanner } from "./components/SyncConflictBanner";
 import { EditorChrome } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { PageTags } from "./components/PageTags";
+import { TagGraphView } from "./components/graph/TagGraphView";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { PlainSourceEditor } from "./editor/PlainSourceEditor";
 import { NoteEditor } from "./editor/NoteEditor";
@@ -34,7 +36,7 @@ import { useFocusUiStore } from "./store/focusUiStore";
 import { usePrefsStore } from "./store/prefsStore";
 import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
-import { useVaultStore } from "./store/vaultStore";
+import { isFileTab, useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import "./App.css";
 
@@ -123,8 +125,11 @@ function App() {
       }
       if (code === "KeyE") {
         e.preventDefault();
-        const path = useVaultStore.getState().activePath;
+        const st = useVaultStore.getState();
+        const path = st.activePath;
         if (!path) return;
+        const tab = st.tabs.find((t) => t.path === path);
+        if (tab && !isFileTab(tab)) return;
         const kind = documentKind(path);
         if (kind !== "markdown" && kind !== "mdlnks") return;
         toggleViewMode();
@@ -314,21 +319,45 @@ function App() {
                       )}
                       {activePath && (
                         <div className="document-column">
-                          {(documentKind(activePath) === "markdown" ||
-                            documentKind(activePath) === "mdlnks") &&
-                          viewMode === "source" ? (
-                            <DocumentToolbar
-                              showOutlineToggle={
-                                documentKind(activePath) === "markdown"
-                              }
-                            />
-                          ) : null}
+                          {(() => {
+                            const activeTab = tabs.find(
+                              (t) => t.path === activePath,
+                            );
+                            if (activeTab && !isFileTab(activeTab)) return null;
+                            return (
+                              (documentKind(activePath) === "markdown" ||
+                                documentKind(activePath) === "mdlnks") &&
+                              viewMode === "source" ? (
+                                <DocumentToolbar
+                                  showOutlineToggle={
+                                    documentKind(activePath) === "markdown"
+                                  }
+                                />
+                              ) : null
+                            );
+                          })()}
                           <div className="document-body">
                             {tabs.map((tab) => {
                               const tabPath = tab.path;
                               const isActiveTab = tabPath === activePath;
                               const tabContent =
                                 isActiveTab ? content : (tab.body ?? "");
+                              if (!isFileTab(tab)) {
+                                return (
+                                  <div
+                                    key={tabPath}
+                                    className={
+                                      isActiveTab
+                                        ? "document-instance is-active"
+                                        : "document-instance"
+                                    }
+                                    aria-hidden={!isActiveTab}
+                                  >
+                                    {/* Mount only when active — WebGL breaks in display:none. */}
+                                    {isActiveTab ? <TagGraphView /> : null}
+                                  </div>
+                                );
+                              }
                               const kind = documentKind(tabPath);
                               return (
                                 <div
@@ -456,6 +485,7 @@ function App() {
           <ChatSidebar />
         </Panel>
       </Group>
+      <SelectionToChatButton />
     </div>
   );
 }

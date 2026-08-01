@@ -205,6 +205,17 @@ export async function listVaultTags(): Promise<string[]> {
   return invoke("list_vault_tags");
 }
 
+/** One note's path and its tags from the in-memory vault index. */
+export type NoteTags = {
+  path: string;
+  tags: string[];
+};
+
+/** Full path → tags map for the tag graph (only notes that have at least one tag). */
+export async function listNoteTags(): Promise<NoteTags[]> {
+  return invoke("list_note_tags");
+}
+
 /** Re-read one note into the tag index; returns full catalog. */
 export async function reindexNoteTags(path: string): Promise<string[]> {
   return invoke("reindex_note_tags", { path });

@@ -39,8 +39,14 @@ import {
   saveDocOutlineOpen,
 } from "../lib/outlineUiState";
 
+export type TabKind = "file" | "graph";
+
+/** Singleton virtual path for the tag graph tab (never a vault-relative file). */
+export const GRAPH_TAB_PATH = "markspace:graph";
+
 export type EditorTab = {
   path: string;
+  kind: TabKind;
   preview: boolean;
   /**
    * In-memory copy while the tab is open. Absent until first load.
@@ -55,6 +61,11 @@ export type ViewMode = "live" | "source";
 type OpenNoteOptions = {
   /** VS Code preview mode — default true */
   preview?: boolean;
+  /**
+   * When false, keep the file tree without a selected/active row
+   * (used when restoring a vault session on app open).
+   */
+  syncTreeSelection?: boolean;
 };
 
 type VaultStore = {
@@ -65,6 +76,11 @@ type VaultStore = {
   selectedFolderPath: string;
   /** True only after the user clicks a folder in the tree (not when opening a note). */
   selectedFolderExplicit: boolean;
+  /**
+   * When false, the tree shows no selected/active highlight
+   * (e.g. right after session restore).
+   */
+  treeSelectionVisible: boolean;
   expandedPaths: string[];
   /** Vault-relative favorite paths (pages and folders), sorted. */
   favoritePaths: string[];
@@ -85,9 +101,13 @@ type VaultStore = {
   /** Patch in-memory tag index for one note after an external edit. */
   reindexVaultNoteTags: (path: string) => Promise<void>;
   openNote: (path: string, options?: OpenNoteOptions) => Promise<void>;
+  /** Open (or focus) the singleton tag graph tab. */
+  openGraphTab: (options?: { syncTreeSelection?: boolean }) => Promise<void>;
   pinTab: (path: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   closeTab: (path: string) => Promise<void>;
+  closeOtherTabs: (path: string) => Promise<void>;
+  closeTabsToTheRight: (path: string) => Promise<void>;
   setContent: (content: string) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
@@ -125,6 +145,14 @@ type VaultStore = {
   applyExternalContent: (path: string, content: string) => void;
 };
 
+export function isGraphTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
+  return tab.kind === "graph" || tab.path === GRAPH_TAB_PATH;
+}
+
+export function isFileTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
+  return !isGraphTab(tab);
+}
+
 async function loadFavoritePaths(): Promise<string[]> {
   try {
     return await listFavorites();
@@ -143,6 +171,7 @@ function remapExpanded(expanded: string[], from: string, to: string): string[] {
 
 function remapTabs(tabs: EditorTab[], from: string, to: string): EditorTab[] {
   return tabs.map((tab) => {
+    if (isGraphTab(tab)) return tab;
     if (tab.path === from) return { ...tab, path: to };
     if (tab.path.startsWith(`${from}/`)) {
       return { ...tab, path: `${to}${tab.path.slice(from.length)}` };
@@ -168,11 +197,13 @@ function stashActiveIntoTabs(
   dirty: boolean,
 ): EditorTab[] {
   if (!activePath) return tabs;
-  if (!tabs.some((t) => t.path === activePath)) return tabs;
+  const active = tabs.find((t) => t.path === activePath);
+  if (!active || isGraphTab(active)) return tabs;
   return withTabBody(tabs, activePath, content, dirty);
 }
 
-function tabLabel(path: string): string {
+function tabLabel(path: string, kind?: TabKind): string {
+  if (kind === "graph" || path === GRAPH_TAB_PATH) return "Graph";
   const name = path.split("/").pop() ?? path;
   return name
     .replace(/\.md$/i, "")
@@ -193,7 +224,11 @@ function persistSession(state: {
 }) {
   if (!state.vaultPath) return;
   void saveVaultSession(state.vaultPath, {
-    tabs: state.tabs.map((t) => ({ path: t.path, preview: t.preview })),
+    tabs: state.tabs.map((t) => ({
+      path: t.path,
+      preview: t.preview,
+      kind: t.kind,
+    })),
     activePath: state.activePath,
   });
 }
@@ -205,6 +240,7 @@ function activateLoaded(
   content: string,
   tabs: EditorTab[],
   dirty = false,
+  syncTreeSelection = true,
 ) {
   const outline = loadDocOutlineUi(vaultPath, path);
   set({
@@ -213,10 +249,70 @@ function activateLoaded(
     content,
     dirty,
     loading: false,
-    selectedFolderPath: parentPath(path),
-    selectedFolderExplicit: false,
+    ...(syncTreeSelection
+      ? {
+          selectedFolderPath: parentPath(path),
+          selectedFolderExplicit: false,
+          treeSelectionVisible: true,
+        }
+      : { treeSelectionVisible: false }),
     showOutline: outline.open,
   });
+}
+
+/** Activate a non-file tab (graph) without reading disk or touching the editor buffer. */
+function activateVirtualTab(
+  set: (partial: Partial<VaultStore>) => void,
+  path: string,
+  tabs: EditorTab[],
+  syncTreeSelection = true,
+) {
+  set({
+    tabs,
+    activePath: path,
+    content: "",
+    dirty: false,
+    loading: false,
+    selectedFolderExplicit: false,
+    ...(syncTreeSelection ? { treeSelectionVisible: true } : { treeSelectionVisible: false }),
+    showOutline: false,
+  });
+}
+
+async function activateTab(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  tab: EditorTab,
+  tabs: EditorTab[],
+): Promise<void> {
+  if (isGraphTab(tab)) {
+    activateVirtualTab(set, tab.path, tabs);
+    return;
+  }
+  if (tab.body !== undefined) {
+    activateLoaded(
+      set,
+      get().vaultPath,
+      tab.path,
+      tab.body,
+      tabs,
+      Boolean(tab.dirty),
+    );
+    return;
+  }
+  set({ loading: true, tabs, dirty: false });
+  try {
+    const body = await readNote(tab.path);
+    activateLoaded(set, get().vaultPath, tab.path, body, tabs);
+  } catch {
+    set({
+      loading: false,
+      tabs,
+      activePath: null,
+      content: "",
+      dirty: false,
+    });
+  }
 }
 
 /** Prefer the next surviving tab after `activePath`, else the previous one. */
@@ -241,7 +337,7 @@ function pickFallbackTab(
 
 /**
  * Drop editor tabs whose files no longer exist in `tree` (e.g. removed by sync).
- * If the active note vanished, activate a neighbour or clear the editor.
+ * Virtual tabs (graph) are kept. If the active note vanished, activate a neighbour.
  */
 async function pruneMissingTabs(
   set: (partial: Partial<VaultStore>) => void,
@@ -250,8 +346,10 @@ async function pruneMissingTabs(
 ): Promise<void> {
   const existing = new Set(collectFilePaths(tree));
   const { tabs, activePath } = get();
-  const nextTabs = tabs.filter((t) => existing.has(t.path));
-  const lostActive = activePath != null && !existing.has(activePath);
+  const nextTabs = tabs.filter((t) => isGraphTab(t) || existing.has(t.path));
+  const activeStillOpen =
+    activePath != null && nextTabs.some((t) => t.path === activePath);
+  const lostActive = activePath != null && !activeStillOpen;
 
   if (nextTabs.length === tabs.length && !lostActive) {
     set({ tree });
@@ -279,27 +377,54 @@ async function pruneMissingTabs(
   }
 
   const fallback = pickFallbackTab(tabs, nextTabs, activePath!);
-  set({ tree, loading: true, tabs: nextTabs, dirty: false });
-  try {
-    const body =
-      fallback.body !== undefined ? fallback.body : await readNote(fallback.path);
-    activateLoaded(
-      set,
-      get().vaultPath,
-      fallback.path,
-      body,
-      nextTabs,
-      Boolean(fallback.dirty && fallback.body !== undefined),
-    );
-  } catch {
+  set({ tree });
+  await activateTab(set, get, fallback, nextTabs);
+  persistSession(get());
+}
+
+/** Close every tab whose path is not in `keepPaths` (save dirty active if closing it). */
+async function closeTabsKeeping(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  keepPaths: Set<string>,
+): Promise<void> {
+  let { tabs, activePath, dirty, content } = get();
+  if (tabs.every((t) => keepPaths.has(t.path))) return;
+
+  const closingActive =
+    activePath != null && !keepPaths.has(activePath);
+
+  if (closingActive && dirty) {
+    const active = tabs.find((t) => t.path === activePath);
+    if (active && isFileTab(active)) {
+      await get().saveActive();
+      ({ tabs, activePath, dirty, content } = get());
+    }
+  } else if (activePath && keepPaths.has(activePath)) {
+    tabs = stashActiveIntoTabs(tabs, activePath, content, dirty);
+  }
+
+  const nextTabs = tabs.filter((t) => keepPaths.has(t.path));
+
+  if (!closingActive) {
+    set({ tabs: nextTabs });
+    persistSession(get());
+    return;
+  }
+
+  if (!nextTabs.length) {
     set({
-      loading: false,
-      tabs: nextTabs,
+      tabs: [],
       activePath: null,
       content: "",
       dirty: false,
     });
+    persistSession(get());
+    return;
   }
+
+  const fallback = pickFallbackTab(tabs, nextTabs, activePath!);
+  await activateTab(set, get, fallback, nextTabs);
   persistSession(get());
 }
 
@@ -310,6 +435,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   activePath: null,
   selectedFolderPath: "",
   selectedFolderExplicit: false,
+  treeSelectionVisible: false,
   expandedPaths: [],
   favoritePaths: [],
   vaultTags: [],
@@ -351,9 +477,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         loadVaultSession(path),
       ]);
       const existing = new Set(collectFilePaths(tree));
-      const restoredTabs = (session?.tabs ?? []).filter((t) =>
-        existing.has(t.path),
-      );
+      const restoredTabs: EditorTab[] = (session?.tabs ?? [])
+        .filter((t) => t.kind === "graph" || existing.has(t.path))
+        .map((t) => ({
+          path: t.path,
+          preview: Boolean(t.preview),
+          kind: t.kind === "graph" || t.path === GRAPH_TAB_PATH ? "graph" : "file",
+        }));
 
       set({
         vaultPath: path,
@@ -364,6 +494,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         dirty: false,
         selectedFolderPath: "",
         selectedFolderExplicit: false,
+        treeSelectionVisible: false,
         expandedPaths,
         favoritePaths,
         vaultTags: [],
@@ -377,17 +508,25 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           restoredTabs.some((t) => t.path === session.activePath)
             ? session.activePath
             : restoredTabs[0].path;
-        const preview =
-          restoredTabs.find((t) => t.path === active)?.preview ?? false;
-        await get().openNote(active, { preview });
+        const activeTab = restoredTabs.find((t) => t.path === active);
+        if (activeTab && isGraphTab(activeTab)) {
+          await get().openGraphTab({ syncTreeSelection: false });
+          return;
+        }
+        const preview = activeTab?.preview ?? false;
+        await get().openNote(active, { preview, syncTreeSelection: false });
         return;
       }
+
+      // Only greet on a first visit; an empty saved session means the user
+      // closed every tab and expects the vault to open blank.
+      if (session) return;
 
       const welcome =
         tree.children?.find((c) => c.path === "Welcome.md") ??
         tree.children?.find((c) => !c.isDir && c.path.toLowerCase().endsWith(".md"));
       if (welcome) {
-        await get().openNote(welcome.path, { preview: true });
+        await get().openNote(welcome.path, { preview: true, syncTreeSelection: false });
       }
     } catch (e) {
       set({
@@ -421,7 +560,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   })(),
 
   openNote: async (path, options) => {
+    if (path === GRAPH_TAB_PATH) {
+      await get().openGraphTab({ syncTreeSelection: options?.syncTreeSelection });
+      return;
+    }
     const asPreview = options?.preview !== false;
+    const syncTreeSelection = options?.syncTreeSelection !== false;
     const stashed = stashActiveIntoTabs(
       get().tabs,
       get().activePath,
@@ -432,12 +576,15 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ tabs: stashed });
     }
 
-    if (get().dirty && get().activePath) {
-      await get().saveActive();
+    {
+      const active = get().tabs.find((t) => t.path === get().activePath);
+      if (get().dirty && active && isFileTab(active)) {
+        await get().saveActive();
+      }
     }
 
     const { tabs, activePath } = get();
-    const existing = tabs.find((t) => t.path === path);
+    const existing = tabs.find((t) => t.path === path && isFileTab(t));
     if (existing) {
       // Already open: activate; if requesting permanent, pin it
       const nextTabs =
@@ -446,10 +593,19 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           : tabs;
       if (activePath === path) {
         if (nextTabs !== tabs) {
-          set({ tabs: nextTabs, selectedFolderExplicit: false });
+          set({
+            tabs: nextTabs,
+            ...(syncTreeSelection
+              ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+              : { treeSelectionVisible: false }),
+          });
           persistSession(get());
         } else {
-          set({ selectedFolderExplicit: false });
+          set(
+            syncTreeSelection
+              ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+              : { treeSelectionVisible: false },
+          );
         }
         return;
       }
@@ -462,6 +618,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           existing.body,
           nextTabs,
           Boolean(existing.dirty),
+          syncTreeSelection,
         );
         persistSession(get());
         return;
@@ -470,7 +627,15 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ loading: true, error: null });
       try {
         const content = await readNote(path);
-        activateLoaded(set, get().vaultPath, path, content, nextTabs);
+        activateLoaded(
+          set,
+          get().vaultPath,
+          path,
+          content,
+          nextTabs,
+          false,
+          syncTreeSelection,
+        );
         persistSession(get());
       } catch (e) {
         set({
@@ -487,18 +652,38 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       let nextTabs = [...get().tabs];
 
       if (asPreview) {
-        const previewIdx = nextTabs.findIndex((t) => t.preview);
-        const tab: EditorTab = { path, preview: true, body: content, dirty: false };
+        const previewIdx = nextTabs.findIndex((t) => t.preview && isFileTab(t));
+        const tab: EditorTab = {
+          path,
+          kind: "file",
+          preview: true,
+          body: content,
+          dirty: false,
+        };
         if (previewIdx >= 0) {
           nextTabs[previewIdx] = tab;
         } else {
           nextTabs.push(tab);
         }
       } else {
-        nextTabs.push({ path, preview: false, body: content, dirty: false });
+        nextTabs.push({
+          path,
+          kind: "file",
+          preview: false,
+          body: content,
+          dirty: false,
+        });
       }
 
-      activateLoaded(set, get().vaultPath, path, content, nextTabs);
+      activateLoaded(
+        set,
+        get().vaultPath,
+        path,
+        content,
+        nextTabs,
+        false,
+        syncTreeSelection,
+      );
       persistSession(get());
     } catch (e) {
       set({
@@ -506,6 +691,47 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         error: e instanceof Error ? e.message : String(e),
       });
     }
+  },
+
+  openGraphTab: async (options) => {
+    const syncTreeSelection = options?.syncTreeSelection !== false;
+    const stashed = stashActiveIntoTabs(
+      get().tabs,
+      get().activePath,
+      get().content,
+      get().dirty,
+    );
+    if (stashed !== get().tabs) {
+      set({ tabs: stashed });
+    }
+
+    const active = get().tabs.find((t) => t.path === get().activePath);
+    if (get().dirty && active && isFileTab(active)) {
+      await get().saveActive();
+    }
+
+    const { tabs, activePath } = get();
+    const existing = tabs.find((t) => isGraphTab(t));
+    if (existing) {
+      if (activePath === existing.path) {
+        set(
+          syncTreeSelection
+            ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+            : { treeSelectionVisible: false },
+        );
+        return;
+      }
+      activateVirtualTab(set, existing.path, tabs, syncTreeSelection);
+      persistSession(get());
+      return;
+    }
+
+    const nextTabs: EditorTab[] = [
+      ...tabs,
+      { path: GRAPH_TAB_PATH, kind: "graph", preview: false },
+    ];
+    activateVirtualTab(set, GRAPH_TAB_PATH, nextTabs, syncTreeSelection);
+    persistSession(get());
   },
 
   pinTab: (path) => {
@@ -527,7 +753,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
   closeTab: async (path) => {
     const { tabs, activePath, dirty, saveActive, content } = get();
-    if (dirty && activePath === path) {
+    const closing = tabs.find((t) => t.path === path);
+    if (dirty && activePath === path && closing && isFileTab(closing)) {
       await saveActive();
     }
 
@@ -557,34 +784,23 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       return;
     }
 
-    if (fallback.body !== undefined) {
-      activateLoaded(
-        set,
-        get().vaultPath,
-        fallback.path,
-        fallback.body,
-        nextTabs,
-        Boolean(fallback.dirty),
-      );
-      persistSession(get());
-      return;
-    }
+    await activateTab(set, get, fallback, nextTabs);
+    persistSession(get());
+  },
 
-    set({ loading: true, tabs: nextTabs });
-    try {
-      const body = await readNote(fallback.path);
-      activateLoaded(set, get().vaultPath, fallback.path, body, nextTabs);
-      persistSession(get());
-    } catch (e) {
-      set({
-        loading: false,
-        activePath: null,
-        content: "",
-        dirty: false,
-        error: e instanceof Error ? e.message : String(e),
-      });
-      persistSession(get());
-    }
+  closeOtherTabs: async (path) => {
+    await closeTabsKeeping(set, get, new Set([path]));
+  },
+
+  closeTabsToTheRight: async (path) => {
+    const { tabs } = get();
+    const index = tabs.findIndex((t) => t.path === path);
+    if (index < 0) return;
+    await closeTabsKeeping(
+      set,
+      get,
+      new Set(tabs.slice(0, index + 1).map((t) => t.path)),
+    );
   },
 
   setContent: (content) => {
@@ -622,8 +838,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   saveActive: async () => {
-    const { activePath, content, dirty } = get();
+    const { activePath, content, dirty, tabs } = get();
     if (!activePath || !dirty) return;
+    const active = tabs.find((t) => t.path === activePath);
+    if (active && isGraphTab(active)) return;
     set({ saving: true, suppressWatchUntil: Date.now() + 1200 });
     try {
       const savedContent = await writeNote(activePath, content);
@@ -651,7 +869,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   selectFolder: (path) =>
-    set({ selectedFolderPath: path, selectedFolderExplicit: true }),
+    set({
+      selectedFolderPath: path,
+      selectedFolderExplicit: true,
+      treeSelectionVisible: true,
+    }),
 
   isExpanded: (path) => {
     if (path === "") return true;
@@ -761,7 +983,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         set({ expandedPaths: nextExpanded });
         if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       }
-      set({ selectedFolderPath: created, selectedFolderExplicit: true });
+      set({ selectedFolderPath: created, selectedFolderExplicit: true, treeSelectionVisible: true });
       await get().refreshTree();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -788,7 +1010,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         set({ expandedPaths: nextExpanded });
         if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       }
-      set({ selectedFolderPath: "Skills", selectedFolderExplicit: true });
+      set({ selectedFolderPath: "Skills", selectedFolderExplicit: true, treeSelectionVisible: true });
       await get().refreshTree();
       await get().openNote(created, { preview: false });
     } catch (e) {
@@ -954,10 +1176,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       await deletePath(path);
 
       const nextTabs = tabs.filter(
-        (t) => t.path !== path && !t.path.startsWith(`${path}/`),
+        (t) =>
+          isGraphTab(t) ||
+          (t.path !== path && !t.path.startsWith(`${path}/`)),
       );
       const lostActive =
-        activePath === path || Boolean(activePath?.startsWith(`${path}/`));
+        activePath != null && !nextTabs.some((t) => t.path === activePath);
 
       if (!lostActive) {
         set({ tabs: nextTabs });
@@ -969,31 +1193,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           dirty: false,
         });
       } else {
-        const fallback = nextTabs[nextTabs.length - 1];
-        if (fallback.body !== undefined) {
-          activateLoaded(
-            set,
-            get().vaultPath,
-            fallback.path,
-            fallback.body,
-            nextTabs,
-            Boolean(fallback.dirty),
-          );
-        } else {
-          set({ loading: true, tabs: nextTabs });
-          try {
-            const content = await readNote(fallback.path);
-            activateLoaded(set, get().vaultPath, fallback.path, content, nextTabs);
-          } catch {
-            set({
-              loading: false,
-              tabs: nextTabs,
-              activePath: null,
-              content: "",
-              dirty: false,
-            });
-          }
-        }
+        const fallback = nextTabs[nextTabs.length - 1]!;
+        await activateTab(set, get, fallback, nextTabs);
       }
 
       if (selectedFolderPath === path || selectedFolderPath.startsWith(`${path}/`)) {

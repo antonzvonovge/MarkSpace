@@ -100,6 +100,24 @@ describe("serialize / render composer", () => {
       true,
     );
   });
+
+  it("renders selection chips from resolved text", () => {
+    const root = document.createElement("div");
+    renderComposerFromDraft(root, "explain ⟬s1⟭ now", (id) =>
+      id === "s1" ? "  первая строка\nвторая  " : undefined,
+    );
+    expect(serializeComposer(root)).toBe("explain ⟬s1⟭ now");
+    const chip = root.querySelector(".chat-selection-chip") as HTMLElement;
+    expect(chip?.textContent).toBe("первая строка вторая");
+    expect(chip?.dataset.selectionId).toBe("s1");
+    expect(chip?.title).toBe("  первая строка\nвторая  ");
+  });
+
+  it("drops selection chips whose text is gone", () => {
+    const root = document.createElement("div");
+    renderComposerFromDraft(root, "explain ⟬s1⟭ now", () => undefined);
+    expect(serializeComposer(root)).toBe("explain  now");
+  });
 });
 
 describe("replaceSlashWithSkillChip", () => {

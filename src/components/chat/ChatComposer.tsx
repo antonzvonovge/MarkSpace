@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   formatAttachmentSize,
   type ChatAttachment,
@@ -7,6 +7,7 @@ import { estimateContextTokens } from "../../ai/estimateTokens";
 import { contextWindowForModel, type AiModelOption } from "../../ai/types";
 import { readImagesFromSystemClipboard } from "../../editor/pasteImages";
 import {
+  focusComposerEnd,
   getComposerSlashQuery,
   insertPathChip,
   insertSkillChip,
@@ -15,6 +16,7 @@ import {
   replaceSlashWithSkillChip,
   serializeComposer,
 } from "../../lib/chatComposerDom";
+import { expandSelectionMarkers } from "../../lib/chatSelectionChips";
 import {
   clearVaultTreeDrag,
   isVaultTreeDrag,
@@ -110,6 +112,7 @@ export function ChatComposer() {
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
   const draftAttachments = useChatStore((s) => s.draftAttachments);
+  const draftSelections = useChatStore((s) => s.draftSelections);
   const addAttachments = useChatStore((s) => s.addAttachments);
   const removeAttachment = useChatStore((s) => s.removeAttachment);
   const mode = useChatStore((s) => s.mode);
@@ -156,7 +159,7 @@ export function ChatComposer() {
     const next = estimateContextTokens({
       system: systemPromptPreview(),
       messages,
-      draft: streaming ? "" : draft,
+      draft: streaming ? "" : expandSelectionMarkers(draft, draftSelections),
       draftAttachments: streaming ? [] : draftAttachments,
       toolOverhead: mode === "agent" ? 1200 : 900,
     });
@@ -166,6 +169,7 @@ export function ChatComposer() {
     messages,
     draft,
     draftAttachments,
+    draftSelections,
     mode,
     projectPath,
     projectAbout,
@@ -284,13 +288,14 @@ export function ChatComposer() {
     focusInput();
   };
 
-  // Keep DOM in sync when draft is cleared/changed externally (send, new thread).
+  // Keep DOM in sync when draft is cleared/changed externally (send, new
+  // thread, selection chip added from the editor).
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
     const current = serializeComposer(el);
     if (current !== draft) {
-      renderComposerFromDraft(el, draft);
+      renderComposerFromDraft(el, draft, (id) => draftSelections[id]?.text);
     }
     el.classList.toggle("is-empty", draft.trim().length === 0);
     syncComposerInputHeight(el);
@@ -299,7 +304,19 @@ export function ChatComposer() {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [draft]);
+  }, [draft, draftSelections]);
+
+  // A selection chip arrives from the editor: take the caret so the user can
+  // start typing the question right away.
+  const selectionCount = Object.keys(draftSelections).length;
+  const prevSelectionCount = useRef(selectionCount);
+  useEffect(() => {
+    const grew = selectionCount > prevSelectionCount.current;
+    prevSelectionCount.current = selectionCount;
+    const el = inputRef.current;
+    if (!grew || streaming || !el) return;
+    focusComposerEnd(el);
+  }, [selectionCount, streaming]);
 
   return (
     <div

@@ -1,26 +1,41 @@
-import { useCallback } from "react";
-import { useVaultStore, tabLabel, type EditorTab } from "../store/vaultStore";
+import { useCallback, useState } from "react";
+import {
+  useVaultStore,
+  tabLabel,
+  isGraphTab,
+  type EditorTab,
+} from "../store/vaultStore";
 import { useChatUiStore } from "../store/chatUiStore";
 import { useFocusUiStore } from "../store/focusUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useTabReorder } from "../hooks/useTabReorder";
+import {
+  TabContextMenu,
+  type TabContextMenuState,
+} from "./TabContextMenu";
 
 function TabItem({
   tab,
   index,
+  tabCount,
   bindReorder,
+  onOpenContextMenu,
 }: {
   tab: EditorTab;
   index: number;
+  tabCount: number;
   bindReorder: ReturnType<typeof useTabReorder>;
+  onOpenContextMenu: (menu: TabContextMenuState) => void;
 }) {
   const activePath = useVaultStore((s) => s.activePath);
   const openNote = useVaultStore((s) => s.openNote);
+  const openGraphTab = useVaultStore((s) => s.openGraphTab);
   const pinTab = useVaultStore((s) => s.pinTab);
   const closeTab = useVaultStore((s) => s.closeTab);
   const reorder = bindReorder(index);
 
   const active = activePath === tab.path;
+  const graph = isGraphTab(tab);
 
   return (
     <div
@@ -32,7 +47,7 @@ function TabItem({
       ]
         .filter(Boolean)
         .join(" ")}
-      title={tab.path}
+      title={graph ? "Tag graph" : tab.path}
       draggable={reorder.draggable}
       onDragStart={reorder.onDragStart}
       onDragEnd={reorder.onDragEnd}
@@ -44,7 +59,11 @@ function TabItem({
         if ((e.target as HTMLElement).closest(".editor-tab-close")) return;
         // Activate on press (VS Code-style) so HTML5 DnD does not eat the click.
         if (e.detail > 1) e.preventDefault();
-        void openNote(tab.path, { preview: tab.preview });
+        if (graph) {
+          void openGraphTab();
+        } else {
+          void openNote(tab.path, { preview: tab.preview });
+        }
       }}
       onClick={() => {
         // Swallow only the spurious post-drop click; activation is on mousedown.
@@ -52,7 +71,7 @@ function TabItem({
       }}
       onDoubleClick={(e) => {
         e.preventDefault();
-        pinTab(tab.path);
+        if (!graph) pinTab(tab.path);
       }}
       onAuxClick={(e) => {
         if (e.button === 1) {
@@ -60,15 +79,28 @@ function TabItem({
           void closeTab(tab.path);
         }
       }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onOpenContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          targetId: tab.path,
+          index,
+          tabCount,
+        });
+      }}
       role="tab"
       aria-selected={active}
     >
-      <span className="editor-tab-label">{tabLabel(tab.path)}</span>
+      <span className="editor-tab-label">
+        {tabLabel(tab.path, tab.kind)}
+      </span>
       <button
         type="button"
         className="editor-tab-close"
         title="Close"
-        aria-label={`Close ${tabLabel(tab.path)}`}
+        aria-label={`Close ${tabLabel(tab.path, tab.kind)}`}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -89,12 +121,18 @@ function TabItem({
 export function EditorChrome() {
   const tabs = useVaultStore((s) => s.tabs);
   const reorderTabs = useVaultStore((s) => s.reorderTabs);
+  const closeTab = useVaultStore((s) => s.closeTab);
+  const closeOtherTabs = useVaultStore((s) => s.closeOtherTabs);
+  const closeTabsToTheRight = useVaultStore((s) => s.closeTabsToTheRight);
   const sidebarOpen = useSidebarUiStore((s) => s.open);
   const toggleSidebar = useSidebarUiStore((s) => s.toggle);
   const chatOpen = useChatUiStore((s) => s.open);
   const toggleChat = useChatUiStore((s) => s.toggle);
   const focusActive = useFocusUiStore((s) => s.active);
   const toggleFocus = useFocusUiStore((s) => s.toggle);
+  const [contextMenu, setContextMenu] = useState<TabContextMenuState | null>(
+    null,
+  );
 
   const onReorder = useCallback(
     (from: number, to: number) => {
@@ -138,7 +176,9 @@ export function EditorChrome() {
             key={tab.path}
             tab={tab}
             index={index}
+            tabCount={tabs.length}
             bindReorder={bindReorder}
+            onOpenContextMenu={setContextMenu}
           />
         ))}
       </div>
@@ -191,6 +231,17 @@ export function EditorChrome() {
           )}
         </svg>
       </button>
+      {contextMenu ? (
+        <TabContextMenu
+          menu={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onCloseTab={() => void closeTab(contextMenu.targetId)}
+          onCloseOthers={() => void closeOtherTabs(contextMenu.targetId)}
+          onCloseToTheRight={() =>
+            void closeTabsToTheRight(contextMenu.targetId)
+          }
+        />
+      ) : null}
     </div>
   );
 }
