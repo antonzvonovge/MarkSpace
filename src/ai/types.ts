@@ -18,7 +18,14 @@ export type AiModelOption = {
 export type AiSettings = {
   /** Always OpenRouter; kept for persistence / SDK baseURL. */
   baseUrl: string;
+  /** OpenRouter API key (fallback when no direct provider key). */
   apiKey: string;
+  /** Direct OpenAI API key — bypasses OpenRouter when set. */
+  openaiApiKey: string;
+  /** Direct Anthropic API key — bypasses OpenRouter when set. */
+  anthropicApiKey: string;
+  /** Direct Google AI API key — bypasses OpenRouter when set. */
+  googleApiKey: string;
   /**
    * Optional Tavily API key. When set, web_search + fetch_url use Tavily;
    * otherwise free DuckDuckGo search + Jina Reader fetch.
@@ -34,6 +41,9 @@ export type AiSettings = {
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   baseUrl: OPENROUTER_BASE_URL,
   apiKey: "",
+  openaiApiKey: "",
+  anthropicApiKey: "",
+  googleApiKey: "",
   tavilyApiKey: "",
   modelId: "anthropic/claude-sonnet-4.6",
   defaultMode: "ask",

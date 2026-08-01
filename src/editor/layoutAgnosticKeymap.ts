@@ -1,7 +1,12 @@
 import { Extension } from "@tiptap/core";
 import { Plugin } from "prosemirror-state";
 import type { BlockNoteEditor } from "@blocknote/core";
-import { pasteImagesFromSystemClipboard, readTextFromSystemClipboard } from "./pasteImages";
+import {
+  markPasteGestureHandled,
+  pasteImagesFromSystemClipboard,
+  readTextFromSystemClipboard,
+  warnClipboardImageMissing,
+} from "./pasteImages";
 
 /**
  * ProseMirror/TipTap bind Mod-z to event.key, which becomes "я" on a Russian
@@ -54,10 +59,18 @@ export function createLayoutAgnosticKeymapExtension(
                 if (latin) return false;
 
                 event.preventDefault();
+                markPasteGestureHandled();
                 void (async () => {
                   if (await pasteImagesFromSystemClipboard(editor)) return;
                   const text = await readTextFromSystemClipboard();
-                  if (text) editor.pasteText(text);
+                  if (text) {
+                    editor.pasteText(text);
+                    return;
+                  }
+                  // Neither image nor text: the clipboard owner served the
+                  // image lazily, so give the read a couple more tries.
+                  if (await pasteImagesFromSystemClipboard(editor, 2)) return;
+                  warnClipboardImageMissing("Ctrl+V");
                 })();
                 return true;
               }

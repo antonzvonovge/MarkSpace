@@ -1,6 +1,9 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText, type UIMessage } from "ai";
-import { resolveModelId } from "./resolveModelId";
+import {
+  hasCredentialsForModel,
+  resolveLanguageModel,
+  type AiProviderCredentials,
+} from "./languageModel";
 
 /** Cheap, fast model for naming — falls back to chat model if needed. */
 const TITLE_MODEL = "openai/gpt-4.1-mini";
@@ -49,8 +52,7 @@ function conversationSnippet(messages: UIMessage[], maxChars = 1200): string {
 
 export type GenerateChatTitleParams = {
   messages: UIMessage[];
-  apiKey: string;
-  baseUrl: string;
+  keys: AiProviderCredentials;
   /** Prefer chat model if title model is unavailable. */
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
@@ -62,19 +64,14 @@ export async function generateChatTitle(
   const snippet = conversationSnippet(params.messages);
   if (!snippet.trim()) return null;
 
-  const openrouter = createOpenRouter({
-    apiKey: params.apiKey,
-    compatibility: "strict",
-    headers: {
-      "HTTP-Referer": "https://markspace.app",
-      "X-Title": "MarkSpace",
-    },
-  });
-
   const tryModel = async (modelId: string) => {
-    const id = resolveModelId(params.baseUrl, modelId);
+    const resolved = resolveLanguageModel({
+      modelId,
+      keys: params.keys,
+      enableReasoning: false,
+    });
     const { text } = await generateText({
-      model: openrouter(id),
+      model: resolved.model,
       system: TITLE_SYSTEM,
       prompt: `Name this chat:\n\n${snippet}`,
       maxOutputTokens: 40,
@@ -84,11 +81,13 @@ export async function generateChatTitle(
     return sanitizeTitle(text);
   };
 
-  try {
-    const titled = await tryModel(TITLE_MODEL);
-    if (titled) return titled;
-  } catch {
-    /* try fallback */
+  if (hasCredentialsForModel(TITLE_MODEL, params.keys)) {
+    try {
+      const titled = await tryModel(TITLE_MODEL);
+      if (titled) return titled;
+    } catch {
+      /* try fallback */
+    }
   }
 
   const fallback = params.fallbackModelId?.trim();

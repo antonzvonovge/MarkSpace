@@ -1,0 +1,106 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useVaultStore } from "../../store/vaultStore";
+import { ChatMarkdown } from "./ChatMarkdown";
+
+vi.mock("../../lib/vaultApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/vaultApi")>();
+  return {
+    ...actual,
+    resolveWikiTarget: vi.fn(),
+  };
+});
+
+import { resolveWikiTarget } from "../../lib/vaultApi";
+
+const originalOpenNote = useVaultStore.getState().openNote;
+const resolveWikiTargetMock = vi.mocked(resolveWikiTarget);
+
+afterEach(() => {
+  cleanup();
+  useVaultStore.setState({ openNote: originalOpenNote });
+  resolveWikiTargetMock.mockReset();
+});
+
+describe("ChatMarkdown note references", () => {
+  it("renders a vault note reference with an icon and opens the note", async () => {
+    const openNote = vi.fn().mockResolvedValue(undefined);
+    useVaultStore.setState({ openNote });
+    const path = "Клуб Синдикат ИИ/Источники/twitter/2083150944280207562.md";
+    resolveWikiTargetMock.mockResolvedValue(path);
+
+    render(<ChatMarkdown text={`Источник: ![[${path}]]`} />);
+
+    const link = screen.getByRole("link", { name: path });
+    expect(link.querySelector("svg")).not.toBeNull();
+    expect(link.getAttribute("title")).toBe(path);
+
+    fireEvent.click(link);
+
+    await waitFor(() => {
+      expect(openNote).toHaveBeenCalledOnce();
+      expect(openNote).toHaveBeenCalledWith(path);
+    });
+  });
+
+  it("links plain [[wiki]] references written without a bang", async () => {
+    const openNote = vi.fn().mockResolvedValue(undefined);
+    useVaultStore.setState({ openNote });
+    const path =
+      "Клуб Синдикат ИИ/Источники/architect/Архитектура GenAI приложений LLM бургерный стек.md";
+    resolveWikiTargetMock.mockResolvedValue(path);
+
+    render(<ChatMarkdown text={`Заметка создана: [[${path}]].`} />);
+
+    const link = screen.getByRole("link", { name: path });
+    expect(link.querySelector("svg")).not.toBeNull();
+    fireEvent.click(link);
+
+    await waitFor(() => {
+      expect(openNote).toHaveBeenCalledWith(path);
+    });
+    expect(screen.getByText(/Заметка создана:/)).toBeTruthy();
+  });
+
+  it("resolves extension-less wiki targets", async () => {
+    const openNote = vi.fn().mockResolvedValue(undefined);
+    useVaultStore.setState({ openNote });
+    resolveWikiTargetMock.mockResolvedValue("Notes/Welcome.md");
+
+    render(<ChatMarkdown text="См. [[Welcome]]" />);
+
+    fireEvent.click(screen.getByRole("link", { name: "Welcome" }));
+
+    await waitFor(() => {
+      expect(openNote).toHaveBeenCalledWith("Notes/Welcome.md");
+    });
+    expect(resolveWikiTargetMock).toHaveBeenCalledWith("Welcome");
+  });
+
+  it("uses the optional display label and falls back when resolve misses", async () => {
+    const openNote = vi.fn().mockResolvedValue(undefined);
+    useVaultStore.setState({ openNote });
+    resolveWikiTargetMock.mockResolvedValue(null);
+
+    render(
+      <ChatMarkdown text="См. ![[Sources/example.md|Original source]]" />,
+    );
+
+    const link = screen.getByRole("link", { name: "Original source" });
+    fireEvent.click(link);
+
+    await waitFor(() => {
+      expect(openNote).toHaveBeenCalledWith("Sources/example.md");
+    });
+  });
+
+  it("leaves note-reference examples inside code untouched", () => {
+    render(
+      <ChatMarkdown text={"```\n![[Sources/example.md]]\n```\n\n`[[Inline]]`"} />,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("![[Sources/example.md]]")).toBeTruthy();
+    expect(screen.getByText("[[Inline]]")).toBeTruthy();
+  });
+});

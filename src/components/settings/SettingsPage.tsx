@@ -43,6 +43,8 @@ function queryMatchesAi(query: string): boolean {
     q.includes("gemini") ||
     q.includes("api key") ||
     q.includes("apikey") ||
+    q.includes("byok") ||
+    q.includes("tavily") ||
     q.includes("llm") ||
     q.includes("chat") ||
     q.includes("agent") ||

@@ -21,6 +21,7 @@ import {
   type ProjectProperties,
 } from "../lib/vaultApi";
 import { saveExpandedPaths } from "../lib/settingsStore";
+import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 import {
   PromptDialog,
@@ -893,6 +894,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const tree = useVaultStore((s) => s.tree);
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
+  const treeRevealRequest = useSidebarUiStore((s) => s.treeRevealRequest);
   const favoritePaths = useVaultStore((s) => s.favoritePaths);
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
@@ -1005,6 +1007,15 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     });
     revealPathInTree(path);
   }, [revealPathInTree]);
+
+  useEffect(() => {
+    if (!treeRevealRequest) return;
+    useVaultStore.setState({
+      selectedFolderExplicit: false,
+      selectedFolderPath: parentPath(treeRevealRequest.path),
+    });
+    revealPathInTree(treeRevealRequest.path);
+  }, [revealPathInTree, treeRevealRequest]);
 
   useImperativeHandle(ref, () => ({
     openCreateMenu: (x, y) => {

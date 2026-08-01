@@ -7,14 +7,15 @@ guide. Call `read_format_guide` for the full text when unsure.
 
 <!-- core-rules:start -->
 - Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported).
-- Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Do not use `![[OtherNote]]` for notes.
+- In **chat replies**, reference vault notes with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — all render as a clickable file link that opens the note. Mention a note this way whenever you create, open, or cite one.
+- Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) first.
 - Tables: use GFM pipe tables. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
 - Diagrams in notes: fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml `. Chat replies may use the same fences (rendered inline).
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:` with `  - name` items; keep any other keys intact and never duplicate the block.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
-- Do **not** emit unsupported syntax (callouts, math, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds). Full list: call `read_format_guide`.
+- Do **not** emit unsupported syntax (callouts, math, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
 
 ## Front-matter, timestamps, and page tags
@@ -70,6 +71,21 @@ In the note body, hashtags are styled inline tags (editable text in Live mode):
 Wiki targets must not contain `#` or `|` inside the target segment. Heading anchors like `[[Note#Section]]` are **not** supported.
 
 Internally the editor may temporarily rewrite wiki-links to `[text](wiki:…)` and back; on disk always prefer `[[…]]`.
+
+### Note references in chat replies
+
+Chat replies render wiki-links as clickable note references — a file icon plus
+link text. Clicking opens the note or activates its existing editor tab.
+
+| In a chat reply | Result |
+|---|---|
+| `[[vault/path/Note.md]]` | Link labelled with the path |
+| `[[vault/path/Note]]` | Same; the target is resolved without the extension |
+| `[[vault/path/Note\|Display label]]` | Link labelled `Display label` |
+| `![[vault/path/Note.md]]` | Same as the plain `[[…]]` form (not an embed) |
+
+Use this whenever you create, open, or cite a note, so the user can jump to it.
+Targets are vault-relative and must not contain `#` or `|` in the path segment.
 
 ## Embeds (Draw.io only)
 
@@ -160,5 +176,5 @@ Do **not** generate any of the following — the editor will treat them as plain
 - Footnotes (`[^1]`)
 - Block IDs (`^block-id`)
 - Wiki heading anchors (`[[Note#heading]]`)
-- Note embeds (`![[OtherNote]]` — only `.drawio` embeds work)
+- Note embeds in note bodies (`![[OtherNote]]` — only `.drawio` embeds work). Chat replies may use `![[path/Note.md]]` as a clickable note reference (see above); that is not an embed.
 - MDX / custom directives

@@ -9,6 +9,8 @@ type Props = {
   models: AiModelOption[];
   value: string;
   disabled?: boolean;
+  /** "compact" is the composer toolbar button, "field" is a settings-width input. */
+  variant?: "compact" | "field";
   onChange: (modelId: string) => void;
 };
 
@@ -21,9 +23,25 @@ function ModelKindBadge({ kind }: { kind: AiModelOption["kind"] }) {
   return <span className="chat-model-kind is-chat">{KIND_LABEL[kind]}</span>;
 }
 
-type MenuPos = { left: number; bottom: number; width: number };
+type MenuPos = {
+  left: number;
+  top: number | null;
+  bottom: number | null;
+  width: number;
+  maxHeight: number;
+};
 
-export function ChatModelPicker({ models, value, disabled, onChange }: Props) {
+const MENU_GAP = 6;
+const MENU_MAX_HEIGHT = 340;
+const MENU_MIN_HEIGHT = 160;
+
+export function ChatModelPicker({
+  models,
+  value,
+  disabled,
+  variant = "compact",
+  onChange,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<MenuPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -39,10 +57,19 @@ export function ChatModelPicker({ models, value, disabled, onChange }: Props) {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
+    const spaceAbove = r.top - MENU_GAP;
+    const spaceBelow = window.innerHeight - r.bottom - MENU_GAP;
+    const up = spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
+    const width = Math.max(r.width, 220);
     setPos({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - 240)),
-      bottom: window.innerHeight - r.top + 6,
-      width: Math.max(r.width, 220),
+      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+      top: up ? null : r.bottom + MENU_GAP,
+      bottom: up ? window.innerHeight - r.top + MENU_GAP : null,
+      width,
+      maxHeight: Math.max(
+        MENU_MIN_HEIGHT,
+        Math.min(MENU_MAX_HEIGHT, (up ? spaceAbove : spaceBelow) - 8),
+      ),
     });
   };
 
@@ -87,14 +114,20 @@ export function ChatModelPicker({ models, value, disabled, onChange }: Props) {
       ? createPortal(
           <div
             ref={menuRef}
-            className="chat-model-menu"
+            className={
+              variant === "field"
+                ? "chat-model-menu is-field"
+                : "chat-model-menu"
+            }
             role="listbox"
             aria-label="Models"
             style={{
               position: "fixed",
               left: pos.left,
-              bottom: pos.bottom,
+              top: pos.top ?? undefined,
+              bottom: pos.bottom ?? undefined,
               width: pos.width,
+              maxHeight: pos.maxHeight,
               zIndex: 10000,
             }}
           >
@@ -134,12 +167,17 @@ export function ChatModelPicker({ models, value, disabled, onChange }: Props) {
         )
       : null;
 
+  const isField = variant === "field";
+
   return (
-    <div className="chat-model-picker" ref={rootRef}>
+    <div
+      className={isField ? "chat-model-picker is-field" : "chat-model-picker"}
+      ref={rootRef}
+    >
       <button
         ref={triggerRef}
         type="button"
-        className="chat-model-trigger"
+        className={isField ? "chat-model-trigger is-field" : "chat-model-trigger"}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -159,6 +197,11 @@ export function ChatModelPicker({ models, value, disabled, onChange }: Props) {
             </span>
             <ModelKindBadge kind={selected.kind} />
           </>
+        ) : null}
+        {isField ? (
+          <span className="chat-model-trigger-caret" aria-hidden="true">
+            ▾
+          </span>
         ) : null}
       </button>
       {menu}

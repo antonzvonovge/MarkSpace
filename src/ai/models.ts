@@ -1,6 +1,9 @@
 import type { AiModelOption } from "./types";
 
-/** Curated OpenRouter catalog: OpenAI, Anthropic, Google. */
+/**
+ * Curated model catalog (`vendor/model` ids).
+ * Routed via direct provider BYOK when that key is set, otherwise OpenRouter.
+ */
 export const OPENROUTER_MODELS: AiModelOption[] = [
   // OpenAI — chat
   {
@@ -119,10 +122,6 @@ export const KIND_LABEL: Record<AiModelOption["kind"], string> = {
   reasoning: "Reasoning",
 };
 
-export function formatModelOptionLabel(m: AiModelOption): string {
-  return `${m.label} · ${KIND_LABEL[m.kind]}`;
-}
-
 export function findModel(
   models: AiModelOption[],
   modelId: string,
@@ -130,7 +129,7 @@ export function findModel(
   return models.find((m) => m.id === modelId);
 }
 
-/** Whether this OpenRouter model should request / display thinking tokens. */
+/** Whether this model should request / display thinking tokens. */
 export function modelSupportsReasoning(
   modelId: string,
   models: AiModelOption[] = OPENROUTER_MODELS,

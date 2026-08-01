@@ -1,4 +1,3 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { APICallError } from "@ai-sdk/provider";
 import {
   convertToModelMessages,
@@ -9,8 +8,10 @@ import {
   streamText,
   type UIMessage,
 } from "ai";
-import { modelSupportsReasoning } from "./models";
-import { resolveModelId } from "./resolveModelId";
+import {
+  resolveLanguageModel,
+  type AiProviderCredentials,
+} from "./languageModel";
 import type { LoadedSkill, SkillMeta } from "./skills";
 import type { ChatMode } from "./types";
 import { buildSystemPrompt, buildVaultTools } from "./vaultTools";
@@ -19,8 +20,7 @@ export type RunChatParams = {
   messages: UIMessage[];
   mode: ChatMode;
   modelId: string;
-  apiKey: string;
-  baseUrl: string;
+  keys: AiProviderCredentials;
   vaultPath: string | null;
   activePath: string | null;
   activeExcerpt: string | null;
@@ -210,16 +210,9 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
 
   emit(true);
 
-  const modelId = resolveModelId(params.baseUrl, params.modelId);
-  const wantsReasoning = modelSupportsReasoning(modelId);
-
-  const openrouter = createOpenRouter({
-    apiKey: params.apiKey,
-    compatibility: "strict",
-    headers: {
-      "HTTP-Referer": "https://markspace.app",
-      "X-Title": "MarkSpace",
-    },
+  const resolved = resolveLanguageModel({
+    modelId: params.modelId,
+    keys: params.keys,
   });
 
   const system = buildSystemPrompt({
@@ -239,23 +232,14 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
   const modelMessages = await convertToModelMessages(inputMessages, { tools });
 
   const result = streamText({
-    model: openrouter(modelId),
+    model: resolved.model,
     system,
     messages: modelMessages,
     tools,
     stopWhen: stepCountIs(12),
     abortSignal: params.abortSignal,
-    ...(wantsReasoning
-      ? {
-          providerOptions: {
-            openrouter: {
-              reasoning: {
-                effort: "medium" as const,
-                exclude: false,
-              },
-            },
-          },
-        }
+    ...(resolved.providerOptions
+      ? { providerOptions: resolved.providerOptions }
       : {}),
   });
 

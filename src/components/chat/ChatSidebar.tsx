@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { hasAnyLlmCredentials } from "../../ai/languageModel";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { usePrefsStore } from "../../store/prefsStore";
@@ -16,8 +17,9 @@ export function ChatSidebar() {
   const status = useChatStore((s) => s.status);
   const error = useChatStore((s) => s.error);
   const newThread = useChatStore((s) => s.newThread);
-  const apiKey = useAiSettingsStore((s) => s.settings.apiKey);
+  const settings = useAiSettingsStore((s) => s.settings);
   const openSettings = usePrefsStore((s) => s.openSettings);
+  const hasCredentials = hasAnyLlmCredentials(settings);
 
   useEffect(() => {
     void hydrateForVault(vaultPath);
@@ -33,9 +35,9 @@ export function ChatSidebar() {
         <div className="chat-empty-state">
           <p>Open a vault to start chatting.</p>
         </div>
-      ) : !apiKey.trim() ? (
+      ) : !hasCredentials ? (
         <div className="chat-empty-state">
-          <p>Add an API key to use AI chat.</p>
+          <p>Add a provider or OpenRouter API key to use AI chat.</p>
           <button
             type="button"
             className="chat-settings-link"

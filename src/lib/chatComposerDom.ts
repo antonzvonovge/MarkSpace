@@ -275,6 +275,7 @@ function insertChipNodes(
   chip: HTMLElement,
   clientX?: number,
   clientY?: number,
+  alwaysSpaceAfter = false,
 ): void {
   root.focus();
   const range = rangeAtPoint(root, clientX, clientY);
@@ -283,7 +284,9 @@ function insertChipNodes(
   const before = charBeforeRange(range);
   const after = charAfterRange(range);
   const spaceBefore = before.length > 0 && !/\s/.test(before);
-  const spaceAfter = after.length > 0 && !/\s/.test(after);
+  const spaceAfter = alwaysSpaceAfter
+    ? !/\s/.test(after)
+    : after.length > 0 && !/\s/.test(after);
 
   const nodes: Node[] = [];
   if (spaceBefore) nodes.push(document.createTextNode(" "));
@@ -311,14 +314,14 @@ export function insertPathChip(
   insertChipNodes(root, createPathChipElement(path), clientX, clientY);
 }
 
-/** Insert a skill chip at the caret. */
+/** Insert a skill chip at the caret, always followed by a space to type after. */
 export function insertSkillChip(
   root: HTMLElement,
   skillId: string,
   clientX?: number,
   clientY?: number,
 ): void {
-  insertChipNodes(root, createSkillChipElement(skillId), clientX, clientY);
+  insertChipNodes(root, createSkillChipElement(skillId), clientX, clientY, true);
 }
 
 export type ComposerSlashQuery = {
@@ -388,7 +391,7 @@ export function replaceSlashWithSkillChip(
   range.deleteContents();
   const chip = createSkillChipElement(skillId);
   const after = charAfterRange(range);
-  const spaceAfter = after.length > 0 && !/\s/.test(after);
+  const spaceAfter = !/\s/.test(after);
   const frag = document.createDocumentFragment();
   frag.appendChild(chip);
   let afterNode: Node = chip;

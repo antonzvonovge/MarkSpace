@@ -14,6 +14,7 @@ import {
   writeNote,
   type TreeNode,
 } from "../lib/vaultApi";
+import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 import {
   dataUrlToBytes,
@@ -294,7 +295,7 @@ export function buildVaultTools(
 
     open_note: tool({
       description:
-        "Open a vault file in the editor as a tab, or activate it if already open. Use when the user asks to open/show/switch to a note or diagram, or when they should see the file you are discussing. Does not replace read_note for reading contents.",
+        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note or diagram, or when they should see the file you are discussing. Does not replace read_note for reading contents.",
       inputSchema: z.object({
         path: z
           .string()
@@ -326,6 +327,7 @@ export function buildVaultTools(
             error: after.error ?? `Could not open ${rel}`,
           };
         }
+        useSidebarUiStore.getState().revealPathInTree(rel);
         const tab = after.tabs.find((t) => t.path === rel);
         return {
           ok: true as const,

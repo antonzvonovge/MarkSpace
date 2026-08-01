@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { credentialsFromSettings } from "../ai/languageModel";
 import { suggestLinkMeta } from "../ai/suggestLinkMeta";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { useVaultStore } from "../store/vaultStore";
@@ -310,8 +311,7 @@ export function LinkItemDialog({
       const result = await suggestLinkMeta({
         url: trimmedUrl,
         tagCatalog: catalog,
-        apiKey: aiSettings.apiKey,
-        baseUrl: aiSettings.baseUrl,
+        keys: credentialsFromSettings(aiSettings),
         fallbackModelId: aiSettings.modelId,
         abortSignal: ac.signal,
       });

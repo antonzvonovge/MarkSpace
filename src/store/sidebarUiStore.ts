@@ -25,15 +25,18 @@ function writeOpen(open: boolean) {
 type SidebarUiStore = {
   open: boolean;
   lastSizePercent: number;
+  treeRevealRequest: { path: string; id: number } | null;
   setOpen: (open: boolean) => void;
   toggle: () => void;
   rememberSizePercent: (percent: number) => void;
+  revealPathInTree: (path: string) => void;
 };
 
 export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
   open: typeof window !== "undefined" ? readOpen() : true,
   lastSizePercent:
     typeof window !== "undefined" ? loadShellLayout().sidebar : 22,
+  treeRevealRequest: null,
   setOpen: (open) => {
     writeOpen(open);
     set({ open });
@@ -48,5 +51,16 @@ export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
   rememberSizePercent: (percent) => {
     if (!Number.isFinite(percent) || percent < 10 || percent > 70) return;
     set({ lastSizePercent: percent });
+  },
+  revealPathInTree: (path) => {
+    if (!path) return;
+    writeOpen(true);
+    set((state) => ({
+      open: true,
+      treeRevealRequest: {
+        path,
+        id: (state.treeRevealRequest?.id ?? 0) + 1,
+      },
+    }));
   },
 }));

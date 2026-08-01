@@ -83,14 +83,14 @@ function normalizeModels(models: AiModelOption[]): AiModelOption[] {
   return out.length ? out : [...OPENROUTER_MODELS];
 }
 
-/** Prefer curated catalog; keep unknown custom ids only if still OpenRouter-shaped. */
+/** Prefer curated catalog; keep unknown custom ids only if still vendor/model-shaped. */
 function mergeModels(rawModels: AiModelOption[] | null): AiModelOption[] {
   // Always ship the curated list as the primary catalog.
   const catalog = [...OPENROUTER_MODELS];
   if (!rawModels?.length) return catalog;
 
   const catalogIds = new Set(catalog.map((m) => m.id));
-  // Preserve a previously selected custom OpenRouter id if user had one.
+  // Preserve a previously selected custom id if user had one.
   for (const m of rawModels) {
     if (catalogIds.has(m.id)) continue;
     if (!m.id.includes("/")) continue;
@@ -99,7 +99,18 @@ function mergeModels(rawModels: AiModelOption[] | null): AiModelOption[] {
   return catalog;
 }
 
-function mergeAi(raw: Partial<AiSettings> | null | undefined): AiSettings {
+function stringField(
+  raw: Partial<AiSettings> | null | undefined,
+  key: keyof AiSettings,
+): string {
+  const value = raw?.[key];
+  return typeof value === "string" ? value : "";
+}
+
+/** Normalize persisted / partial AI settings (exported for tests). */
+export function normalizeAiSettings(
+  raw: Partial<AiSettings> | null | undefined,
+): AiSettings {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_AI_SETTINGS };
 
   const rawList = Array.isArray(raw.models) ? (raw.models as unknown[]) : null;
@@ -144,9 +155,11 @@ function mergeAi(raw: Partial<AiSettings> | null | undefined): AiSettings {
 
   return {
     baseUrl: OPENROUTER_BASE_URL,
-    apiKey: typeof raw.apiKey === "string" ? raw.apiKey : "",
-    tavilyApiKey:
-      typeof raw.tavilyApiKey === "string" ? raw.tavilyApiKey : "",
+    apiKey: stringField(raw, "apiKey"),
+    openaiApiKey: stringField(raw, "openaiApiKey"),
+    anthropicApiKey: stringField(raw, "anthropicApiKey"),
+    googleApiKey: stringField(raw, "googleApiKey"),
+    tavilyApiKey: stringField(raw, "tavilyApiKey"),
     modelId: known,
     defaultMode: mode,
     contextWindow:
@@ -160,11 +173,14 @@ function mergeAi(raw: Partial<AiSettings> | null | undefined): AiSettings {
 export async function loadAiSettings(): Promise<AiSettings> {
   const store = await Store.load(STORE_FILE);
   const raw = await store.get<Partial<AiSettings>>(AI_KEY);
-  const merged = mergeAi(raw);
+  const merged = normalizeAiSettings(raw);
   const changed =
     !raw ||
     raw.baseUrl !== merged.baseUrl ||
     raw.modelId !== merged.modelId ||
+    raw.openaiApiKey !== merged.openaiApiKey ||
+    raw.anthropicApiKey !== merged.anthropicApiKey ||
+    raw.googleApiKey !== merged.googleApiKey ||
     JSON.stringify(raw.models ?? null) !== JSON.stringify(merged.models);
   if (changed) {
     await store.set(AI_KEY, merged);
@@ -176,8 +192,17 @@ export async function loadAiSettings(): Promise<AiSettings> {
 export async function saveAiSettings(settings: AiSettings): Promise<void> {
   const store = await Store.load(STORE_FILE);
   const normalized: AiSettings = {
-    ...settings,
-    baseUrl: OPENROUTER_BASE_URL,
+    ...normalizeAiSettings(settings),
+    // Preserve keys/mode from the in-memory object after normalize defaults.
+    apiKey: settings.apiKey ?? "",
+    openaiApiKey: settings.openaiApiKey ?? "",
+    anthropicApiKey: settings.anthropicApiKey ?? "",
+    googleApiKey: settings.googleApiKey ?? "",
+    tavilyApiKey: settings.tavilyApiKey ?? "",
+    defaultMode:
+      settings.defaultMode === "agent" || settings.defaultMode === "ask"
+        ? settings.defaultMode
+        : DEFAULT_AI_SETTINGS.defaultMode,
     modelId: resolveModelId(OPENROUTER_BASE_URL, settings.modelId),
     models: normalizeModels(
       settings.models?.length ? settings.models : OPENROUTER_MODELS,

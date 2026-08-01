@@ -1,7 +1,11 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
 import { sanitizeTagName } from "../lib/tagName";
-import { resolveModelId } from "./resolveModelId";
+import {
+  hasCredentialsForModel,
+  missingCredentialsMessage,
+  resolveLanguageModel,
+  type AiProviderCredentials,
+} from "./languageModel";
 import { fetchUrlAsMarkdown } from "./webTools";
 
 /** Cheap model for link metadata — same class as chat titles. */
@@ -16,8 +20,7 @@ export type SuggestLinkMetaParams = {
   url: string;
   /** Existing vault + file tags — prefer these exact names. */
   tagCatalog: string[];
-  apiKey: string;
-  baseUrl: string;
+  keys: AiProviderCredentials;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 };
@@ -83,23 +86,24 @@ export async function suggestLinkMeta(
 ): Promise<SuggestLinkMetaResult> {
   const url = params.url.trim();
   if (!url) throw new Error("URL is required");
-  if (!params.apiKey.trim()) {
-    throw new Error("Set an OpenRouter API key in Settings → AI");
+
+  const canSuggest =
+    hasCredentialsForModel(SUGGEST_MODEL, params.keys) ||
+    (!!params.fallbackModelId?.trim() &&
+      hasCredentialsForModel(params.fallbackModelId, params.keys));
+  if (!canSuggest) {
+    throw new Error(
+      missingCredentialsMessage(
+        params.fallbackModelId?.trim() || SUGGEST_MODEL,
+        params.keys,
+      ),
+    );
   }
 
   const page = await fetchUrlAsMarkdown(url, 12_000);
   if (params.abortSignal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
-
-  const openrouter = createOpenRouter({
-    apiKey: params.apiKey,
-    compatibility: "strict",
-    headers: {
-      "HTTP-Referer": "https://markspace.app",
-      "X-Title": "MarkSpace",
-    },
-  });
 
   const catalog = params.tagCatalog
     .map((t) => t.trim())
@@ -109,9 +113,13 @@ export async function suggestLinkMeta(
   const prompt = `URL: ${page.url}\n\nPage content (markdown):\n${page.content}`;
 
   const tryModel = async (modelId: string) => {
-    const id = resolveModelId(params.baseUrl, modelId);
+    const resolved = resolveLanguageModel({
+      modelId,
+      keys: params.keys,
+      enableReasoning: false,
+    });
     const { text } = await generateText({
-      model: openrouter(id),
+      model: resolved.model,
       system: buildSystem(catalog),
       prompt,
       maxOutputTokens: 280,
@@ -128,14 +136,22 @@ export async function suggestLinkMeta(
     };
   };
 
-  try {
-    return await tryModel(SUGGEST_MODEL);
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") throw e;
-    const fallback = params.fallbackModelId?.trim();
-    if (fallback && fallback !== SUGGEST_MODEL) {
-      return await tryModel(fallback);
+  if (hasCredentialsForModel(SUGGEST_MODEL, params.keys)) {
+    try {
+      return await tryModel(SUGGEST_MODEL);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      const fallback = params.fallbackModelId?.trim();
+      if (fallback && fallback !== SUGGEST_MODEL) {
+        return await tryModel(fallback);
+      }
+      throw e;
     }
-    throw e;
   }
+
+  const fallback = params.fallbackModelId?.trim();
+  if (!fallback) {
+    throw new Error(missingCredentialsMessage(SUGGEST_MODEL, params.keys));
+  }
+  return await tryModel(fallback);
 }

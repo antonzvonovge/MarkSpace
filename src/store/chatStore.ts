@@ -8,6 +8,11 @@ import {
 } from "../ai/chatAttachments";
 import { generateChatTitle } from "../ai/generateChatTitle";
 import { cancelAllPendingAskUser } from "../ai/askUser";
+import {
+  credentialsFromSettings,
+  hasCredentialsForModel,
+  missingCredentialsMessage,
+} from "../ai/languageModel";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
 import { listSkills, loadSkills, type SkillMeta } from "../ai/skills";
@@ -190,7 +195,10 @@ async function loadThreadIntoState(
 async function maybeRefreshTitle(
   threadId: string,
   messages: UIMessage[],
-  api: { apiKey: string; baseUrl: string; modelId: string },
+  api: {
+    keys: ReturnType<typeof credentialsFromSettings>;
+    modelId: string;
+  },
 ) {
   const state = useChatStore.getState();
   const meta = state.threads.find((t) => t.id === threadId);
@@ -198,8 +206,7 @@ async function maybeRefreshTitle(
 
   const title = await generateChatTitle({
     messages,
-    apiKey: api.apiKey,
-    baseUrl: api.baseUrl,
+    keys: api.keys,
     fallbackModelId: api.modelId,
   });
   if (!title) return;
@@ -628,8 +635,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     const settings = useAiSettingsStore.getState().settings;
-    if (!settings.apiKey.trim()) {
-      set({ error: "Add an API key in Settings → AI", status: "error" });
+    const keys = credentialsFromSettings(settings);
+    const modelId = resolveModelId(
+      settings.baseUrl,
+      get().modelId || settings.modelId,
+    );
+    if (!hasCredentialsForModel(modelId, keys)) {
+      set({
+        error: missingCredentialsMessage(modelId, keys),
+        status: "error",
+      });
       return;
     }
 
@@ -700,12 +715,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const finalMessages = await runChat({
         messages,
         mode: get().mode,
-        modelId: resolveModelId(
-          settings.baseUrl,
-          get().modelId || settings.modelId,
-        ),
-        apiKey: settings.apiKey,
-        baseUrl: settings.baseUrl || "https://openrouter.ai/api/v1",
+        modelId,
+        keys,
         vaultPath,
         activePath: vault.activePath,
         activeExcerpt: excerpt,
@@ -737,12 +748,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       });
       await get().persistActive();
       await maybeRefreshTitle(activeThreadId, finalMessages, {
-        apiKey: settings.apiKey,
-        baseUrl: settings.baseUrl || "https://openrouter.ai/api/v1",
-        modelId: resolveModelId(
-          settings.baseUrl,
-          get().modelId || settings.modelId,
-        ),
+        keys,
+        modelId,
       });
     } catch (e) {
       const aborted =

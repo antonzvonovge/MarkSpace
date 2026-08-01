@@ -269,7 +269,7 @@ export function ChatComposer() {
     if (streaming || clipboardImageInFlight.current) return;
     clipboardImageInFlight.current = true;
     try {
-      const images = await readImagesFromSystemClipboard();
+      const images = await readImagesFromSystemClipboard(2);
       if (images.length) await ingestFiles(images);
     } finally {
       window.setTimeout(() => {

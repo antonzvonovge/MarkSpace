@@ -1,11 +1,6 @@
-import {
-  formatModelOptionLabel,
-  VENDOR_LABEL,
-} from "../../ai/models";
-import type { AiModelVendor, ChatMode } from "../../ai/types";
+import type { ChatMode } from "../../ai/types";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
-
-const VENDOR_ORDER: AiModelVendor[] = ["anthropic", "openai", "google"];
+import { ChatModelPicker } from "../chat/ChatModelPicker";
 
 export function AiSettingsPanel() {
   const settings = useAiSettingsStore((s) => s.settings);
@@ -14,21 +9,23 @@ export function AiSettingsPanel() {
   return (
     <div className="sync-panel">
       <p className="sync-panel-lead">
-        Chat uses{" "}
+        Add provider API keys to call models directly. When a provider key is
+        set, chat uses that API and skips{" "}
         <a
           href="https://openrouter.ai/"
           target="_blank"
           rel="noreferrer"
         >
           OpenRouter
-        </a>{" "}
-        only — one key for Anthropic, Google, and OpenAI models. The key stays
-        on this machine and is never written into the vault.
+        </a>
+        . Otherwise OpenRouter is used as a fallback. Keys stay on this machine
+        and are never written into the vault.
       </p>
 
       <section className="sync-block">
         <h3 className="sync-block-title">OpenRouter API key</h3>
         <p className="sync-block-desc">
+          Fallback for any model when the matching provider key is empty.
           Create a key at openrouter.ai → Keys.
         </p>
         <input
@@ -37,6 +34,51 @@ export function AiSettingsPanel() {
           value={settings.apiKey}
           onChange={(e) => setSettings({ apiKey: e.target.value })}
           placeholder="sk-or-…"
+          autoComplete="off"
+        />
+      </section>
+
+      <section className="sync-block">
+        <h3 className="sync-block-title">OpenAI API key</h3>
+        <p className="sync-block-desc">
+          Direct access for GPT and o-series models (bypasses OpenRouter).
+        </p>
+        <input
+          type="password"
+          className="sync-input"
+          value={settings.openaiApiKey}
+          onChange={(e) => setSettings({ openaiApiKey: e.target.value })}
+          placeholder="sk-…"
+          autoComplete="off"
+        />
+      </section>
+
+      <section className="sync-block">
+        <h3 className="sync-block-title">Anthropic API key</h3>
+        <p className="sync-block-desc">
+          Direct access for Claude models (bypasses OpenRouter).
+        </p>
+        <input
+          type="password"
+          className="sync-input"
+          value={settings.anthropicApiKey}
+          onChange={(e) => setSettings({ anthropicApiKey: e.target.value })}
+          placeholder="sk-ant-…"
+          autoComplete="off"
+        />
+      </section>
+
+      <section className="sync-block">
+        <h3 className="sync-block-title">Google AI API key</h3>
+        <p className="sync-block-desc">
+          Direct access for Gemini models (bypasses OpenRouter).
+        </p>
+        <input
+          type="password"
+          className="sync-input"
+          value={settings.googleApiKey}
+          onChange={(e) => setSettings({ googleApiKey: e.target.value })}
+          placeholder="AIza…"
           autoComplete="off"
         />
       </section>
@@ -67,25 +109,12 @@ export function AiSettingsPanel() {
           Used for new chats. Reasoning models think before answering (slower,
           usually smarter).
         </p>
-        <select
-          className="sync-input sync-select"
+        <ChatModelPicker
+          models={settings.models}
           value={settings.modelId}
-          onChange={(e) => setSettings({ modelId: e.target.value })}
-        >
-          {VENDOR_ORDER.map((vendor) => {
-            const group = settings.models.filter((m) => m.vendor === vendor);
-            if (!group.length) return null;
-            return (
-              <optgroup key={vendor} label={VENDOR_LABEL[vendor]}>
-                {group.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {formatModelOptionLabel(m)}
-                  </option>
-                ))}
-              </optgroup>
-            );
-          })}
-        </select>
+          variant="field"
+          onChange={(modelId) => setSettings({ modelId })}
+        />
       </section>
 
       <section className="sync-block">

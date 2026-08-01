@@ -10,6 +10,14 @@ import {
   attachedDocNamesFromUserMessage,
   displayTextFromUserMessage,
 } from "../../ai/chatAttachments";
+import {
+  credentialsFromSettings,
+  planModelRoute,
+} from "../../ai/languageModel";
+import { findModel, OPENROUTER_MODELS } from "../../ai/models";
+import { resolveModelId } from "../../ai/resolveModelId";
+import type { AiSettings } from "../../ai/types";
+import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { ChatAskUser } from "./ChatAskUser";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -78,8 +86,27 @@ function formatElapsed(ms: number): string {
   return `${s}s`;
 }
 
+function streamTargetLabel(
+  modelId: string,
+  settings: AiSettings,
+): { model: string; via: string } | null {
+  try {
+    const id = resolveModelId(settings.baseUrl, modelId || settings.modelId);
+    const plan = planModelRoute(id, credentialsFromSettings(settings));
+    const model =
+      findModel(OPENROUTER_MODELS, plan.catalogModelId)?.label ??
+      plan.catalogModelId;
+    const via = plan.transport === "openrouter" ? "OpenRouter" : "Direct";
+    return { model, via };
+  } catch {
+    return null;
+  }
+}
+
 function WaitingIndicator() {
   const startedAt = useChatStore((s) => s.streamStartedAt);
+  const modelId = useChatStore((s) => s.modelId);
+  const settings = useAiSettingsStore((s) => s.settings);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -88,11 +115,15 @@ function WaitingIndicator() {
   }, []);
 
   const elapsed = startedAt ? Math.max(0, now - startedAt) : 0;
+  const target = streamTargetLabel(modelId, settings);
+  const label = target
+    ? `Requesting ${target.model} (${target.via})…`
+    : "Requesting…";
 
   return (
-    <div className="chat-waiting" aria-live="polite">
-      <span className="chat-waiting-pulse" aria-hidden="true" />
-      <span className="chat-waiting-label">Waiting for response…</span>
+    <div className="chat-waiting" aria-live="polite" aria-busy="true">
+      <span className="chat-waiting-spinner" aria-hidden="true" />
+      <span className="chat-waiting-label">{label}</span>
       <span className="chat-waiting-timer">{formatElapsed(elapsed)}</span>
     </div>
   );
@@ -112,6 +143,29 @@ const UserMessageRow = memo(function UserMessageRow({
   const files = filePartsFrom(message);
   const text = displayTextFromUserMessage(message);
   const attachedDocNames = attachedDocNamesFromUserMessage(message);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const [clampable, setClampable] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = bubbleRef.current;
+    if (!el || expanded) return;
+    const measure = () => setClampable(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [text, expanded]);
+
+  const toggleExpanded = () => setExpanded((v) => !v);
+
+  // Click toggles, unless the user is selecting text inside the bubble.
+  const onBubbleClick = () => {
+    if (!clampable) return;
+    const selection = window.getSelection();
+    if (selection && selection.toString().trim().length > 0) return;
+    toggleExpanded();
+  };
 
   return (
     <div
@@ -150,7 +204,26 @@ const UserMessageRow = memo(function UserMessageRow({
           ))}
         </div>
       )}
-      {text ? <div className="chat-bubble">{text}</div> : null}
+      {text ? (
+        <div className="chat-bubble-wrap">
+          <div
+            ref={bubbleRef}
+            className={expanded ? "chat-bubble" : "chat-bubble is-clamped"}
+            onClick={onBubbleClick}
+          >
+            {text}
+          </div>
+          {clampable ? (
+            <button
+              type="button"
+              className="chat-bubble-toggle"
+              onClick={toggleExpanded}
+            >
+              {expanded ? "Show less" : "Show more"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 });

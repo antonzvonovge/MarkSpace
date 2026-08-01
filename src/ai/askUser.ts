@@ -103,12 +103,20 @@ export function hasPendingAskUser(toolCallId?: string): boolean {
 }
 
 const optionSchema = z.object({
-  id: z.string().min(1).describe("Stable option id"),
+  id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Optional stable option id (derived from the label when omitted)"),
   label: z.string().min(1).describe("Option label shown to the user"),
 });
 
 const questionSchema = z.object({
-  id: z.string().min(1).describe("Stable question id"),
+  id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Optional stable question id (auto-generated when omitted)"),
   prompt: z.string().min(1).describe("Question text"),
   options: z
     .array(optionSchema)
@@ -139,16 +147,68 @@ export const askUserInputSchema = z.object({
     .describe("One or more clarifying questions"),
 });
 
+export type AskUserInputRaw = z.infer<typeof askUserInputSchema>;
+
+function slugify(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+function uniqueId(candidate: string, fallback: string, used: Set<string>): string {
+  const base = candidate.trim() || fallback;
+  let id = base;
+  let n = 2;
+  while (used.has(id)) id = `${base}-${n++}`;
+  used.add(id);
+  return id;
+}
+
+/**
+ * Models routinely omit the `id` fields, so derive stable ones from position
+ * and labels instead of failing the whole tool call.
+ */
+export function normalizeAskUserInput(raw: AskUserInputRaw): AskUserInput {
+  const usedQuestions = new Set<string>();
+  return {
+    title: raw.title,
+    questions: raw.questions.map((q, qi) => {
+      const usedOptions = new Set<string>();
+      return {
+        ...q,
+        id: uniqueId(q.id ?? "", `q${qi + 1}`, usedQuestions),
+        options: q.options.map((o, oi) => ({
+          ...o,
+          id: uniqueId(o.id ?? slugify(o.label), `o${oi + 1}`, usedOptions),
+        })),
+      };
+    }),
+  };
+}
+
 export function buildAskUserTool() {
   return tool({
     description:
       "Ask the user a clarifying multiple-choice question (with optional free-text). Prefer this over listing choices in plain chat text when a decision is needed. Blocks until the user answers.",
     inputSchema: askUserInputSchema,
     execute: async (input, { toolCallId, abortSignal }) => {
+      const { questions } = normalizeAskUserInput(input);
       const answer = await waitForAskUserAnswer(toolCallId, abortSignal);
       return {
         title: input.title ?? null,
-        answers: answer.answers,
+        answers: answer.answers.map((item) => {
+          const question = questions.find((q) => q.id === item.questionId);
+          if (!question) return item;
+          return {
+            ...item,
+            prompt: question.prompt,
+            selectedLabels: item.selectedOptionIds.map(
+              (id) => question.options.find((o) => o.id === id)?.label ?? id,
+            ),
+          };
+        }),
       };
     },
   });
@@ -158,7 +218,7 @@ export function buildAskUserTool() {
 export function parseAskUserInput(input: unknown): AskUserInput | null {
   const parsed = askUserInputSchema.safeParse(input);
   if (!parsed.success) return null;
-  return parsed.data;
+  return normalizeAskUserInput(parsed.data);
 }
 
 export function parseAskUserOutput(output: unknown): AskUserAnswer | null {

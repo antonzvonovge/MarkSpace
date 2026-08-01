@@ -65,6 +65,29 @@ describe("parseAskUserInput", () => {
     expect(input?.title).toBe("Pick a style");
   });
 
+  it("fills in missing ids", () => {
+    const input = parseAskUserInput({
+      title: "Tags",
+      questions: [
+        {
+          prompt: "Suggested tags:",
+          options: [
+            { label: "architect" },
+            { id: "llmops", label: "llmops" },
+            { label: "architect" },
+          ],
+          allow_custom: true,
+        },
+      ],
+    });
+    expect(input?.questions[0]?.id).toBe("q1");
+    expect(input?.questions[0]?.options.map((o) => o.id)).toEqual([
+      "architect",
+      "llmops",
+      "architect-2",
+    ]);
+  });
+
   it("rejects fewer than two options", () => {
     expect(
       parseAskUserInput({
