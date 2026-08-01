@@ -12,6 +12,7 @@ import {
   DEFAULT_GRAPH_UI_SETTINGS,
   loadGraphUiSettings,
   saveGraphUiSettings,
+  type GraphCameraState,
   type GraphUiSettings,
 } from "../../lib/settingsStore";
 import type { TagGraphData, TagGraphNode } from "../../lib/tagGraph";
@@ -40,6 +41,8 @@ type NodeAttrs = Attributes & {
   community?: number;
   untagged?: boolean;
   highlighted?: boolean;
+  /** Pinned while dragged: ForceAtlas2 leaves such nodes where they are. */
+  fixed?: boolean;
 };
 
 type EdgeAttrs = Attributes & {
@@ -47,15 +50,19 @@ type EdgeAttrs = Attributes & {
   size: number;
 };
 
-const LAYOUT_ANIMATION_MS = 450;
 /** First paint unfolds the seeded cluster into the settled layout. */
 const INTRO_ANIMATION_MS = 900;
 /** Focus/filter changes morph the surviving nodes into their new places. */
 const FOCUS_ANIMATION_MS = 620;
 /** Nodes leaving the view shrink away before the layout re-settles. */
 const EXIT_ANIMATION_MS = 180;
+/** Re-solve after the spacing slider settles. */
+const SPREAD_ANIMATION_MS = 520;
+const SPREAD_DEBOUNCE_MS = 140;
+/** How long the graph keeps relaxing after a node is dropped. */
+const DRAG_SETTLE_MS = 900;
 /** Camera glide onto the focused subgraph after a structure change. */
-const CAMERA_FOCUS_MS = 820;
+const CAMERA_FOCUS_MS = 500;
 const HOVER_FADE_IN_MS = 170;
 const HOVER_FADE_OUT_MS = 140;
 /** How much of their opacity unrelated items lose at full hover. */
@@ -70,15 +77,36 @@ type HoverState = {
 
 type Positions = Record<string, { x: number; y: number }>;
 
-function fa2Settings(graph: Graph<NodeAttrs, EdgeAttrs>, gravity: number) {
-  const inferred = forceAtlas2.inferSettings(graph);
+/** Keeps the graph from drifting away; spacing is handled by repulsion. */
+const LAYOUT_GRAVITY = 0.85;
+
+/**
+ * Slider position (0 … 1) → ForceAtlas2 repulsion. This is the real link
+ * length knob: node sizes stay put while the gap between neighbours grows.
+ */
+function repulsionForSpread(spread: number): number {
+  const s = Math.min(1, Math.max(0, spread));
+  return 90 * Math.pow(44.4, s);
+}
+
+/**
+ * ForceAtlas2 settles at a size proportional to √repulsion (and √order).
+ * Measured constant for our node sizes; used to warm-start the solver so the
+ * iteration budget is spent on the shape rather than on travelling there.
+ */
+function predictedSpan(order: number, spread: number): number {
+  return 3.4 * Math.sqrt(Math.max(1, order) * repulsionForSpread(spread));
+}
+
+function fa2Settings(graph: Graph<NodeAttrs, EdgeAttrs>, spread: number) {
   return {
-    ...inferred,
-    // The whole layout runs in one synchronous pass, so keep it O(n log n)
-    // well before graphology's own Barnes-Hut threshold.
-    barnesHutOptimize: inferred.barnesHutOptimize || graph.order > 300,
-    gravity,
-    slowDown: 2,
+    ...forceAtlas2.inferSettings(graph),
+    // Exact repulsion collapses everything into one hairball; Barnes-Hut keeps
+    // communities readable and is cheaper.
+    barnesHutOptimize: true,
+    gravity: LAYOUT_GRAVITY,
+    scalingRatio: repulsionForSpread(spread),
+    slowDown: 1,
     adjustSizes: true,
   };
 }
@@ -216,12 +244,83 @@ function rememberPositions(
 }
 
 /**
- * Freeze the current graph extent so dropping/adding nodes cannot instantly
- * re-normalize the viewport (that snap is what feels like a hard camera cut).
+ * The layout lives in a fixed coordinate frame instead of sigma's default
+ * "normalize to the current node extent". Without this the renderer rescales
+ * every layout back into the viewport, so longer edges would be cancelled out
+ * on screen and every node add/remove would jump.
  */
-function freezeViewport(sigma: Sigma<NodeAttrs, EdgeAttrs>): void {
-  if (sigma.getCustomBBox()) return;
-  sigma.setCustomBBox(sigma.getBBox());
+const LAYOUT_FRAME = 1000;
+const LAYOUT_BBOX = {
+  x: [-LAYOUT_FRAME / 2, LAYOUT_FRAME / 2] as [number, number],
+  y: [-LAYOUT_FRAME / 2, LAYOUT_FRAME / 2] as [number, number],
+};
+
+/** Re-center a layout on the frame origin, keeping its own scale. */
+function centerPositions(positions: Positions): Positions {
+  const values = Object.values(positions);
+  if (!values.length) return positions;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of values) {
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+  }
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const out: Positions = {};
+  for (const [id, p] of Object.entries(positions)) {
+    out[id] = { x: p.x - cx, y: p.y - cy };
+  }
+  return out;
+}
+
+/**
+ * Solve the layout from a seed already scaled to the expected result, then put
+ * the graph back where it was so the caller can animate into the new shape.
+ */
+function solveLayout(
+  graph: Graph<NodeAttrs, EdgeAttrs>,
+  spread: number,
+): Positions {
+  const before: Positions = {};
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  graph.forEachNode((id, attrs) => {
+    before[id] = { x: attrs.x, y: attrs.y };
+    minX = Math.min(minX, attrs.x);
+    maxX = Math.max(maxX, attrs.x);
+    minY = Math.min(minY, attrs.y);
+    maxY = Math.max(maxY, attrs.y);
+  });
+
+  const span = Math.max(maxX - minX, maxY - minY);
+  const k = span > 1e-6 ? predictedSpan(graph.order, spread) / span : 1;
+  if (Number.isFinite(k) && Math.abs(k - 1) > 0.05) {
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    graph.forEachNode((id, attrs) => {
+      graph.mergeNodeAttributes(id, {
+        x: cx + (attrs.x - cx) * k,
+        y: cy + (attrs.y - cy) * k,
+      });
+    });
+  }
+
+  const solved = forceAtlas2(graph, {
+    iterations: layoutIterations(graph.order),
+    settings: fa2Settings(graph, spread),
+  }) as Positions;
+
+  for (const [id, pos] of Object.entries(before)) {
+    graph.mergeNodeAttributes(id, pos);
+  }
+  return centerPositions(solved);
 }
 
 /** Camera state that frames every visible node inside the current bbox. */
@@ -254,26 +353,27 @@ function cameraStateToFit(
   };
 }
 
-/**
- * Glide the camera onto the current content, then release the frozen bbox so
- * later interaction uses a normal full-graph framing without a visible jump.
- */
+/** Glide the camera onto the current content. */
 function frameCameraToContent(
   sigma: Sigma<NodeAttrs, EdgeAttrs>,
   durationMs: number,
 ): void {
   sigma.refresh();
-  const target = cameraStateToFit(sigma);
-  void sigma
-    .getCamera()
-    .animate(target, { duration: durationMs, easing: "quadraticInOut" })
-    .then(() => {
-      if (sigma.getCustomBBox()) {
-        sigma.setCustomBBox(null);
-        sigma.getCamera().setState({ x: 0.5, y: 0.5, ratio: 1, angle: 0 });
-        sigma.refresh();
-      }
-    });
+  void sigma.getCamera().animate(cameraStateToFit(sigma), {
+    duration: durationMs,
+    easing: "quadraticInOut",
+  });
+}
+
+function snapshotCamera(
+  state: { x: number; y: number; ratio: number; angle: number },
+): GraphCameraState {
+  return {
+    x: state.x,
+    y: state.y,
+    ratio: state.ratio,
+    angle: state.angle,
+  };
 }
 
 export function TagGraphView() {
@@ -291,7 +391,15 @@ export function TagGraphView() {
     progress: 0,
   });
   const hoverRafRef = useRef<number | null>(null);
-  const dragRef = useRef<{ node: string; moved: boolean } | null>(null);
+  const dragRef = useRef<{
+    node: string;
+    moved: boolean;
+    ended?: boolean;
+  } | null>(null);
+  const dragSimRef = useRef<{ raf: number | null; until: number | null }>({
+    raf: null,
+    until: null,
+  });
   const animationRef = useRef<(() => void) | null>(null);
   const themeRef = useRef<GraphTheme>(readGraphTheme());
   const latestSettingsRef = useRef<{
@@ -299,11 +407,16 @@ export function TagGraphView() {
     ready: boolean;
     settings: GraphUiSettings;
   } | null>(null);
-  const gravityRef = useRef(1);
+  const spreadRef = useRef(DEFAULT_GRAPH_UI_SETTINGS.spread);
+  const cameraRef = useRef<GraphCameraState | null>(
+    DEFAULT_GRAPH_UI_SETTINGS.camera,
+  );
+  const cameraSaveTimerRef = useRef<number | null>(null);
   const signatureRef = useRef("");
   const seededRef = useRef(false);
 
   const [glOk] = useState(() => webglAvailable());
+  const [canvasFresh, setCanvasFresh] = useState(true);
   const [query, setQuery] = useState("");
   const [running, setRunning] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
@@ -314,9 +427,12 @@ export function TagGraphView() {
   const [labelThreshold, setLabelThreshold] = useState(
     DEFAULT_GRAPH_UI_SETTINGS.labelThreshold,
   );
-  const [gravity, setGravity] = useState(DEFAULT_GRAPH_UI_SETTINGS.gravity);
+  const [spread, setSpread] = useState(DEFAULT_GRAPH_UI_SETTINGS.spread);
   const [projectPath, setProjectPath] = useState<string | null>(
     DEFAULT_GRAPH_UI_SETTINGS.projectPath,
+  );
+  const [camera, setCamera] = useState<GraphCameraState | null>(
+    DEFAULT_GRAPH_UI_SETTINGS.camera,
   );
   const [focusRoot, setFocusRoot] = useState<string | null>(null);
   const [themeTick, setThemeTick] = useState(0);
@@ -327,23 +443,43 @@ export function TagGraphView() {
       tagsOnly,
       showUntagged,
       labelThreshold,
-      gravity,
+      spread,
       projectPath,
+      camera,
     }),
-    [tagsOnly, showUntagged, labelThreshold, gravity, projectPath],
+    [tagsOnly, showUntagged, labelThreshold, spread, projectPath, camera],
   );
   latestSettingsRef.current = {
     vaultPath,
     ready: settingsReady,
     settings: graphSettings,
   };
+  cameraRef.current = camera;
 
-  const { data, loading, error } = useTagGraph({
+  const { data, loading, error, isActive } = useTagGraph({
     showUntagged,
     tagsOnly,
     projectPath,
     focusRoot,
   });
+
+  // Returning from another tab: resize/repaint without rebuilding the graph.
+  useEffect(() => {
+    if (!isActive) return;
+    const sigma = sigmaRef.current;
+    if (!sigma) return;
+    sigma.resize();
+    sigma.refresh();
+  }, [isActive]);
+
+  useEffect(() => {
+    if (!canvasFresh) return;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (!reduce) return;
+    setCanvasFresh(false);
+  }, [canvasFresh]);
 
   const theme = useMemo(() => readGraphTheme(), [themeTick]);
 
@@ -352,6 +488,9 @@ export function TagGraphView() {
     let cancelled = false;
     setSettingsReady(false);
     setFocusRoot(null);
+    seededRef.current = false;
+    signatureRef.current = "";
+    positionsRef.current.clear();
     if (!vaultPath) return;
     void loadGraphUiSettings(vaultPath)
       .catch(() => DEFAULT_GRAPH_UI_SETTINGS)
@@ -360,9 +499,11 @@ export function TagGraphView() {
         setTagsOnly(saved.tagsOnly);
         setShowUntagged(saved.showUntagged);
         setLabelThreshold(saved.labelThreshold);
-        setGravity(saved.gravity);
+        setSpread(saved.spread);
         setProjectPath(saved.projectPath);
-        gravityRef.current = saved.gravity;
+        setCamera(saved.camera);
+        cameraRef.current = saved.camera;
+        spreadRef.current = saved.spread;
         setSettingsReady(true);
       });
     return () => {
@@ -382,9 +523,16 @@ export function TagGraphView() {
   // Flush the latest value if the Graph tab closes during the debounce window.
   useEffect(
     () => () => {
+      if (cameraSaveTimerRef.current != null) {
+        window.clearTimeout(cameraSaveTimerRef.current);
+        cameraSaveTimerRef.current = null;
+      }
       const latest = latestSettingsRef.current;
       if (latest?.ready && latest.vaultPath) {
-        void saveGraphUiSettings(latest.vaultPath, latest.settings);
+        void saveGraphUiSettings(latest.vaultPath, {
+          ...latest.settings,
+          camera: cameraRef.current,
+        });
       }
     },
     [],
@@ -467,6 +615,42 @@ export function TagGraphView() {
     }
   }, []);
 
+  /**
+   * After a node is dropped, pin it and let the neighbourhood relax around the
+   * new spot. Nothing runs while dragging — that fight made nodes feel stuck.
+   */
+  const settleAfterDrag = useCallback((node: string, settleMs: number) => {
+    const graph = graphRef.current;
+    if (!graph || !graph.hasNode(node)) return;
+    if (dragSimRef.current.raf != null) {
+      cancelAnimationFrame(dragSimRef.current.raf);
+      dragSimRef.current = { raf: null, until: null };
+    }
+    graph.setNodeAttribute(node, "fixed", true);
+    const until = performance.now() + settleMs;
+    const step = () => {
+      const g = graphRef.current;
+      const sigma = sigmaRef.current;
+      if (!g || !sigma || g.order === 0) {
+        dragSimRef.current = { raf: null, until: null };
+        return;
+      }
+      forceAtlas2.assign(g, {
+        iterations: 1,
+        settings: fa2Settings(g, spreadRef.current),
+      });
+      sigma.refresh();
+      if (performance.now() >= until) {
+        if (g.hasNode(node)) g.removeNodeAttribute(node, "fixed");
+        dragSimRef.current = { raf: null, until: null };
+        rememberPositions(g, positionsRef.current);
+        return;
+      }
+      dragSimRef.current.raf = requestAnimationFrame(step);
+    };
+    dragSimRef.current = { raf: requestAnimationFrame(step), until };
+  }, []);
+
   const startLayout = useCallback(() => {
     const layout = layoutRef.current;
     if (!layout) return;
@@ -482,7 +666,7 @@ export function TagGraphView() {
     const wasRunning = layoutRef.current?.isRunning() ?? false;
     layoutRef.current?.kill();
     layoutRef.current = new FA2Layout(graph, {
-      settings: fa2Settings(graph, gravityRef.current),
+      settings: fa2Settings(graph, spreadRef.current),
     });
     return wasRunning;
   }, []);
@@ -499,55 +683,15 @@ export function TagGraphView() {
       if (!graph || !sigma || graph.order === 0) return;
 
       cancelAnimation();
-      const positions = forceAtlas2(graph, {
-        iterations: layoutIterations(graph.order),
-        settings: fa2Settings(graph, gravityRef.current),
-      }) as Positions;
-
-      // Peek at the settled frame so the camera can glide in parallel with the
-      // node morph instead of waiting for it to finish.
-      let cameraTarget: { x: number; y: number; ratio: number } | null = null;
-      if (opts?.frameCamera) {
-        const previous = new Map<string, { x: number; y: number }>();
-        graph.forEachNode((id, attrs) => {
-          previous.set(id, { x: attrs.x, y: attrs.y });
-        });
-        for (const [id, pos] of Object.entries(positions)) {
-          graph.mergeNodeAttributes(id, pos);
-        }
-        sigma.refresh();
-        cameraTarget = cameraStateToFit(sigma);
-        for (const [id, pos] of previous) {
-          graph.mergeNodeAttributes(id, pos);
-        }
-        sigma.refresh();
-      }
+      const positions = solveLayout(graph, spreadRef.current);
 
       const afterSettle = () => {
         rememberPositions(graph, positionsRef.current);
       };
 
       const runCamera = () => {
-        if (!cameraTarget) return;
-        void sigma
-          .getCamera()
-          .animate(cameraTarget, {
-            duration: Math.max(durationMs, CAMERA_FOCUS_MS),
-            easing: "quadraticInOut",
-          })
-          .then(() => {
-            if (sigmaRef.current !== sigma) return;
-            if (sigma.getCustomBBox()) {
-              sigma.setCustomBBox(null);
-              sigma.getCamera().setState({
-                x: 0.5,
-                y: 0.5,
-                ratio: 1,
-                angle: 0,
-              });
-              sigma.refresh();
-            }
-          });
+        if (!opts?.frameCamera) return;
+        frameCameraToContent(sigma, Math.max(durationMs, CAMERA_FOCUS_MS));
       };
 
       if (durationMs <= 0) {
@@ -604,9 +748,32 @@ export function TagGraphView() {
       zIndex: true,
     });
     sigmaRef.current = sigma;
+    // Pin the coordinate frame: without it sigma re-normalizes to the current
+    // node extent, hiding both spacing changes and focus transitions.
+    sigma.setCustomBBox(LAYOUT_BBOX);
+
+    // Persist pan/zoom so reopening the graph restores the same view.
+    const onCameraUpdated = (state: {
+      x: number;
+      y: number;
+      ratio: number;
+      angle: number;
+    }) => {
+      if (graph.order === 0) return;
+      const next = snapshotCamera(state);
+      cameraRef.current = next;
+      if (cameraSaveTimerRef.current != null) {
+        window.clearTimeout(cameraSaveTimerRef.current);
+      }
+      cameraSaveTimerRef.current = window.setTimeout(() => {
+        cameraSaveTimerRef.current = null;
+        setCamera(next);
+      }, 200);
+    };
+    sigma.getCamera().on("updated", onCameraUpdated);
 
     const layout = new FA2Layout(graph, {
-      settings: fa2Settings(graph, gravityRef.current),
+      settings: fa2Settings(graph, spreadRef.current),
     });
     layoutRef.current = layout;
 
@@ -671,46 +838,71 @@ export function TagGraphView() {
       dragRef.current = { node, moved: false };
       animationRef.current?.();
       animationRef.current = null;
+      // Stop any live layout / post-drag settle so the pointer owns the node.
+      if (dragSimRef.current.raf != null) {
+        cancelAnimationFrame(dragSimRef.current.raf);
+        dragSimRef.current = { raf: null, until: null };
+      }
       if (layoutRef.current?.isRunning()) {
         layoutRef.current.stop();
         setRunning(false);
       }
+      if (graph.hasNode(node) && graph.getNodeAttribute(node, "fixed")) {
+        graph.removeNodeAttribute(node, "fixed");
+      }
     });
 
-    const onMove = (e: MouseEvent) => {
+    // Sigma's own move event: `preventSigmaDefault` is what stops the camera
+    // from panning along with the pointer, which otherwise cancels the drag.
+    sigma.on("moveBody", ({ event }) => {
       const drag = dragRef.current;
       if (!drag) return;
+      if (!graph.hasNode(drag.node)) return;
       drag.moved = true;
-      const rect = el.getBoundingClientRect();
-      const pos = sigma.viewportToGraph({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
+      const pos = sigma.viewportToGraph(event);
       graph.setNodeAttribute(drag.node, "x", pos.x);
       graph.setNodeAttribute(drag.node, "y", pos.y);
-      sigma.refresh();
-    };
-    const onUp = () => {
-      if (!dragRef.current) return;
-      rememberPositions(graph, positionsRef.current);
+      event.preventSigmaDefault();
+      event.original.preventDefault();
+      event.original.stopPropagation();
+    });
+
+    const endDrag = () => {
+      const drag = dragRef.current;
+      if (!drag || drag.ended) return;
+      drag.ended = true;
+      if (drag.moved) {
+        settleAfterDrag(drag.node, DRAG_SETTLE_MS);
+      } else {
+        rememberPositions(graph, positionsRef.current);
+      }
       // Keep dragRef briefly so clickNode can see `.moved`, then clear.
       window.setTimeout(() => {
         dragRef.current = null;
       }, 0);
     };
-    el.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    sigma.on("upNode", endDrag);
+    sigma.on("upStage", endDrag);
+    window.addEventListener("mouseup", endDrag);
 
     const onResize = () => sigma.refresh();
     const ro = new ResizeObserver(onResize);
     ro.observe(el);
 
     return () => {
-      el.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mouseup", endDrag);
       ro.disconnect();
+      if (cameraSaveTimerRef.current != null) {
+        window.clearTimeout(cameraSaveTimerRef.current);
+        cameraSaveTimerRef.current = null;
+      }
+      sigma.getCamera().off("updated", onCameraUpdated);
       animationRef.current?.();
       animationRef.current = null;
+      if (dragSimRef.current.raf != null) {
+        cancelAnimationFrame(dragSimRef.current.raf);
+        dragSimRef.current = { raf: null, until: null };
+      }
       if (hoverRafRef.current != null) {
         cancelAnimationFrame(hoverRafRef.current);
         hoverRafRef.current = null;
@@ -726,7 +918,7 @@ export function TagGraphView() {
     };
     // Mount once; theme/label updates happen via setters below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [glOk, openNote, setHoveredNode]);
+  }, [glOk, openNote, setHoveredNode, settleAfterDrag]);
 
   // Sync data → graphology.
   useEffect(() => {
@@ -737,7 +929,6 @@ export function TagGraphView() {
       rememberPositions(graph, positionsRef.current);
       graph.clear();
       seededRef.current = false;
-      sigma.setCustomBBox(null);
       sigma.getCamera().setState({ x: 0.5, y: 0.5, ratio: 1, angle: 0 });
       sigma.refresh();
       return;
@@ -745,16 +936,6 @@ export function TagGraphView() {
 
     const first = !seededRef.current;
     const nextIds = new Set(data.nodes.map((n) => n.id));
-    const structureWillChange =
-      !first &&
-      (graph.order !== data.nodes.length ||
-        graph.size !== data.edges.length ||
-        graph.someNode((id) => !nextIds.has(id)) ||
-        data.nodes.some((node) => !graph.hasNode(node.id)));
-
-    // Keep the old extent while the membership changes so sigma cannot snap
-    // the remaining (or returning) nodes into a new frame in a single tick.
-    if (structureWillChange) freezeViewport(sigma);
 
     const apply = () => {
       syncGraphology(graph, data, theme, positionsRef.current);
@@ -775,14 +956,16 @@ export function TagGraphView() {
         }
         seededRef.current = true;
         rebuildWorker();
-        settleLayout(INTRO_ANIMATION_MS);
+        // Restore the last pose when we have one; otherwise frame the content.
+        const savedCam = cameraRef.current;
+        settleLayout(INTRO_ANIMATION_MS, { frameCamera: !savedCam });
+        if (savedCam) {
+          sigma.getCamera().setState(savedCam);
+        }
       } else if (structureChanged && !layoutRef.current?.isRunning()) {
         settleLayout(FOCUS_ANIMATION_MS, { frameCamera: true });
       } else {
         rememberPositions(graph, positionsRef.current);
-        if (structureWillChange) {
-          frameCameraToContent(sigma, CAMERA_FOCUS_MS);
-        }
       }
 
       sigma.setSetting("labelColor", {
@@ -815,7 +998,7 @@ export function TagGraphView() {
     }
 
     apply();
-    // labelThreshold / gravity have dedicated effects; keep this tied to data/theme.
+    // labelThreshold / spread have dedicated effects; keep this tied to data/theme.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, theme, glOk, settingsReady, rebuildWorker, settleLayout]);
 
@@ -825,14 +1008,18 @@ export function TagGraphView() {
     sigmaRef.current?.refresh();
   }, [labelThreshold]);
 
+  // Spacing changes the solver's repulsion, so the graph genuinely re-arranges
+  // (longer links, looser clusters) instead of being zoomed.
   useEffect(() => {
-    if (gravityRef.current === gravity) return;
-    gravityRef.current = gravity;
-    if (!graphRef.current) return;
-    const wasRunning = rebuildWorker();
-    if (wasRunning) startLayout();
-    else if (seededRef.current) settleLayout(LAYOUT_ANIMATION_MS);
-  }, [gravity, rebuildWorker, settleLayout, startLayout]);
+    if (spreadRef.current === spread) return;
+    const timer = window.setTimeout(() => {
+      spreadRef.current = spread;
+      const wasRunning = rebuildWorker();
+      if (wasRunning) startLayout();
+      else if (seededRef.current) settleLayout(SPREAD_ANIMATION_MS);
+    }, SPREAD_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [spread, rebuildWorker, settleLayout, startLayout]);
 
   useEffect(() => {
     themeRef.current = theme;
@@ -864,10 +1051,7 @@ export function TagGraphView() {
   const onFit = () => {
     const sigma = sigmaRef.current;
     if (!sigma) return;
-    sigma.getCamera().animatedReset({
-      duration: CAMERA_FOCUS_MS,
-      easing: "quadraticInOut",
-    });
+    frameCameraToContent(sigma, CAMERA_FOCUS_MS);
   };
 
   const onSearchSubmit = () => {
@@ -889,10 +1073,12 @@ export function TagGraphView() {
     if (!hit) return;
     const display = sigma.getNodeDisplayData(hit);
     if (!display) return;
-    void sigma.getCamera().animate(
-      { x: display.x, y: display.y, ratio: 0.35 },
-      { duration: CAMERA_FOCUS_MS, easing: "quadraticInOut" },
-    );
+    void sigma
+      .getCamera()
+      .animate(
+        { x: display.x, y: display.y, ratio: 0.35 },
+        { duration: CAMERA_FOCUS_MS, easing: "quadraticInOut" },
+      );
     setHoveredNode(hit);
   };
 
@@ -907,8 +1093,11 @@ export function TagGraphView() {
       {glOk && (
         <div
           ref={containerRef}
-          className="tag-graph-canvas"
+          className={
+            canvasFresh ? "tag-graph-canvas is-fresh" : "tag-graph-canvas"
+          }
           aria-label="Tag graph"
+          onAnimationEnd={() => setCanvasFresh(false)}
         />
       )}
 
@@ -967,8 +1156,8 @@ export function TagGraphView() {
             onShowUntaggedChange={(v) => setShowUntagged(v)}
             labelThreshold={labelThreshold}
             onLabelThresholdChange={setLabelThreshold}
-            gravity={gravity}
-            onGravityChange={setGravity}
+            spread={spread}
+            onSpreadChange={setSpread}
             focusRoot={focusRoot}
             onClearFocus={onClearFocus}
             nodeCount={data.nodes.length}

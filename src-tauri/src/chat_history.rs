@@ -127,7 +127,7 @@ pub struct ChatThreadsResponse {
     pub open_tab_ids: Vec<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_chat_threads(
     vault_path: String,
     app: AppHandle,
@@ -141,7 +141,7 @@ pub fn list_chat_threads(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_chat_thread(
     vault_path: String,
     thread_id: String,
@@ -156,7 +156,7 @@ pub fn get_chat_thread(
     serde_json::from_str(&raw).map_err(|e| format!("Invalid chat thread: {e}"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn upsert_chat_thread(
     vault_path: String,
     thread: ChatThreadFile,
@@ -193,7 +193,7 @@ pub fn upsert_chat_thread(
     Ok(meta)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_chat_thread(
     vault_path: String,
     thread_id: String,
@@ -214,7 +214,7 @@ pub fn delete_chat_thread(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_active_chat_thread(
     vault_path: String,
     thread_id: Option<String>,
@@ -235,7 +235,7 @@ pub fn set_active_chat_thread(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_open_chat_tabs(
     vault_path: String,
     open_tab_ids: Vec<String>,

@@ -1,5 +1,6 @@
 import type { PrefKey, Prefs } from "../../settings/types";
 import type { SettingDescriptor } from "../../settings/registry";
+import { Select } from "../ui/Select";
 
 type Props = {
   setting: SettingDescriptor;
@@ -18,18 +19,13 @@ export function SettingRow({ setting, value, onChange }: Props) {
       </div>
       <div className="setting-row-control">
         {control.type === "enum" ? (
-          <select
-            className="setting-select"
+          <Select
+            variant="setting"
             value={String(value)}
             aria-label={setting.label}
-            onChange={(e) => onChange(e.target.value as Prefs[PrefKey])}
-          >
-            {control.options.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            options={control.options}
+            onChange={(next) => onChange(next as Prefs[PrefKey])}
+          />
         ) : (
           <input
             className="setting-number"

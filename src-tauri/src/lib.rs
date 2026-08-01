@@ -1,4 +1,5 @@
 mod chat_history;
+mod embeddings;
 mod favorites;
 mod git_sync;
 mod http_fetch;
@@ -116,6 +117,7 @@ pub fn run() {
                     });
                 }
             }
+            embeddings::start_embeddings_runtime();
             Ok(())
         })
         .plugin(tauri_plugin_process::init())
@@ -154,6 +156,10 @@ pub fn run() {
             vault::list_vault_tags,
             vault::list_note_tags,
             vault::reindex_note_tags,
+            embeddings::worker::semantic_search_notes,
+            embeddings::worker::get_embeddings_index_status,
+            embeddings::download::get_embedding_model_status,
+            embeddings::download::download_embedding_model,
             favorites::list_favorites,
             favorites::add_favorite,
             favorites::remove_favorite,
@@ -176,6 +182,11 @@ pub fn run() {
             git_sync::sync_device_flow_start,
             git_sync::sync_device_flow_poll,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app, event| {
+            if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+                embeddings::flush_index();
+            }
+        });
 }

@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  useBackgroundJobsStore,
+  type BackgroundJob,
+} from "../store/backgroundJobsStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { useSyncStore } from "../store/syncStore";
 import { useVaultStore } from "../store/vaultStore";
@@ -30,6 +34,39 @@ function SyncIcon({ spinning }: { spinning?: boolean }) {
       />
     </svg>
   );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg
+      className="status-sync-icon is-spinning"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <circle
+        cx="8"
+        cy="8"
+        r="5.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeDasharray="22 10"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function jobTitle(job: BackgroundJob): string {
+  const parts = [job.label];
+  if (job.status === "running" || job.status === "done") {
+    parts.push(`${job.progress}%`);
+  }
+  if (job.status === "error") parts.push("error");
+  return parts.join(" · ");
 }
 
 function relativeSyncAge(iso: string | null, nowMs: number): string | null {
@@ -99,6 +136,11 @@ export function StatusBar() {
   const hydrated = useSyncStore((s) => s.hydrated);
   const refreshStatus = useSyncStore((s) => s.refreshStatus);
   const runSync = useSyncStore((s) => s.runSync);
+  const jobsMap = useBackgroundJobsStore((s) => s.jobs);
+  const bgJobs = Object.values(jobsMap).filter(
+    (j) =>
+      j.status === "running" || j.status === "error" || j.status === "done",
+  );
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -193,7 +235,24 @@ export function StatusBar() {
 
   return (
     <footer className="status-bar">
-      <div className="status-bar-left" />
+      <div className="status-bar-left">
+        {bgJobs.map((job) => (
+          <span
+            key={job.id}
+            className={
+              job.status === "error"
+                ? "status-bar-item is-conflict"
+                : job.status === "running"
+                  ? "status-bar-item is-busy"
+                  : "status-bar-item"
+            }
+            title={job.detail ? `${jobTitle(job)} · ${job.detail}` : jobTitle(job)}
+          >
+            {job.status === "running" ? <SpinnerIcon /> : null}
+            <span>{jobTitle(job)}</span>
+          </span>
+        ))}
+      </div>
       <div className="status-bar-right" ref={rootRef}>
         <button
           type="button"

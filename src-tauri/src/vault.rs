@@ -906,7 +906,7 @@ fn is_descendant_or_same(ancestor: &str, maybe_child: &str) -> bool {
     maybe_child == ancestor || maybe_child.starts_with(&format!("{ancestor}/"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_vault(
     path: String,
     state: State<VaultState>,
@@ -963,7 +963,8 @@ pub fn open_vault(
     }
 
     replace_tag_index(&state, rebuild_tag_index(&root));
-    start_watcher(app, &state, &root)?;
+    start_watcher(app.clone(), &state, &root)?;
+    crate::embeddings::notify_vault_opened(&app, &root);
     let order = read_order(&root);
     make_root_node(&root, &order)
 }
@@ -981,6 +982,19 @@ fn start_watcher(app: AppHandle, state: &VaultState, root: &Path) -> Result<(), 
                         continue;
                     }
                     let rel = relative_to_root(&root_for_cb, &path);
+                    if rel.ends_with(".md")
+                        || path.is_dir()
+                        || matches!(
+                            event.kind,
+                            notify::EventKind::Remove(_) | notify::EventKind::Modify(_)
+                        )
+                    {
+                        if rel.ends_with(".md") {
+                            crate::embeddings::notify_file_changed(&rel);
+                        } else if matches!(event.kind, notify::EventKind::Remove(_)) {
+                            crate::embeddings::notify_file_removed(&rel);
+                        }
+                    }
                     let kind = format!("{:?}", event.kind);
                     let _ = app.emit(
                         "vault-change",
@@ -1005,7 +1019,7 @@ fn start_watcher(app: AppHandle, state: &VaultState, root: &Path) -> Result<(), 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_tree(state: State<VaultState>) -> Result<TreeNode, String> {
     let root = get_root(&state)?;
     let order = read_order(&root);
@@ -1017,7 +1031,7 @@ fn normalize_newlines(content: &str) -> String {
     content.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_note(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let full = ensure_inside(&root, Path::new(&path))?;
@@ -1028,7 +1042,7 @@ pub fn read_note(path: String, state: State<VaultState>) -> Result<String, Strin
     Ok(normalize_newlines(&raw))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_note(path: String, content: String, state: State<VaultState>) -> Result<(), String> {
     let root = get_root(&state)?;
     let full = ensure_inside(&root, Path::new(&path))?;
@@ -1040,11 +1054,12 @@ pub fn write_note(path: String, content: String, state: State<VaultState>) -> Re
     let rel = relative_to_root(&root, &full);
     if is_markdown(&rel) {
         set_tag_index_path(&state, &rel, tags_from_note_content(&content));
+        crate::embeddings::notify_file_changed(&rel);
     }
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_note(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let mut rel = path.trim().trim_start_matches('/').to_string();
@@ -1067,6 +1082,7 @@ pub fn create_note(path: String, state: State<VaultState>) -> Result<String, Str
 
     let created = relative_to_root(&root, &full);
     set_tag_index_path(&state, &created, Vec::new());
+    crate::embeddings::notify_file_changed(&created);
     let parent = parent_rel(&created);
     let name = entry_name(&created);
     let mut order = read_order(&root);
@@ -1076,7 +1092,7 @@ pub fn create_note(path: String, state: State<VaultState>) -> Result<String, Str
     Ok(created)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_drawio(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let mut rel = path.trim().trim_start_matches('/').to_string();
@@ -1105,7 +1121,7 @@ pub fn create_drawio(path: String, state: State<VaultState>) -> Result<String, S
     Ok(created)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_mdlnks(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let mut rel = path.trim().trim_start_matches('/').to_string();
@@ -1139,7 +1155,7 @@ pub fn create_mdlnks(path: String, state: State<VaultState>) -> Result<String, S
 /// Resolve a .drawio path for embedding next to a note.
 /// If `source` is already inside the vault, returns its vault-relative path.
 /// Otherwise copies the file into the note's folder and returns the new relative path.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_drawio(
     note_path: String,
     source: String,
@@ -1200,7 +1216,7 @@ pub fn import_drawio(
 
 /// Copy external files/folders (from OS clipboard / explorer) into a vault folder.
 /// Only `.md` / `.drawio` files are imported; directory structure is preserved.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_paths(
     parent: String,
     sources: Vec<String>,
@@ -1322,7 +1338,7 @@ fn import_path_recursive(
 }
 
 /// Write a vault document from clipboard/file bytes into a folder.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_document_bytes(
     parent: String,
     file_name: String,
@@ -1372,7 +1388,7 @@ pub fn import_document_bytes(
     Ok(created)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_folder(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let rel = path.trim().trim_start_matches('/').to_string();
@@ -1403,7 +1419,7 @@ pub struct EnsureFolderResult {
 }
 
 /// Create a folder (and parents) if missing. `created=false` when it already existed.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ensure_folder(
     path: String,
     state: State<VaultState>,
@@ -1448,7 +1464,7 @@ pub struct DeleteFolderIfEmptyResult {
 }
 
 /// Delete a folder only if it has no entries (including hidden like `.assets`).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_folder_if_empty(
     path: String,
     state: State<VaultState>,
@@ -1511,7 +1527,7 @@ pub fn delete_folder_if_empty(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let from_full = ensure_inside(&root, Path::new(&from))?;
@@ -1570,11 +1586,12 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     let _ = crate::favorites::remap_favorites(&root, &from_rel, Some(&to_rel));
     let _ = crate::projects::remap_project_properties(&root, &from_rel, Some(&to_rel));
     remap_tag_index_path(&state, &from_rel, Some(&to_rel));
+    crate::embeddings::notify_file_renamed(&from_rel, &to_rel);
 
     Ok(to_rel)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_entry(
     from: String,
     to_parent: String,
@@ -1650,12 +1667,13 @@ pub fn move_entry(
         let _ = crate::favorites::remap_favorites(&root, &from, Some(&new_rel));
         let _ = crate::projects::remap_project_properties(&root, &from, Some(&new_rel));
         remap_tag_index_path(&state, &from, Some(&new_rel));
+        crate::embeddings::notify_file_renamed(&from, &new_rel);
     }
 
     Ok(if same_parent { from } else { new_rel })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String> {
     let root = get_root(&state)?;
     let full = ensure_inside(&root, Path::new(&path))?;
@@ -1688,10 +1706,11 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     let _ = crate::favorites::remap_favorites(&root, &rel, None);
     let _ = crate::projects::remap_project_properties(&root, &rel, None);
     remove_tag_index_path(&state, &rel);
+    crate::embeddings::notify_file_removed(&rel);
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn resolve_wiki_target(
     target: String,
     state: State<VaultState>,
@@ -1741,13 +1760,13 @@ pub fn resolve_wiki_target(
     Ok(None)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_vault_path(state: State<VaultState>) -> Result<Option<String>, String> {
     let guard = state.root.lock().map_err(|_| "Vault state lock poisoned")?;
     Ok(guard.as_ref().map(|p| p.to_string_lossy().to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn absolute_path(path: String, state: State<VaultState>) -> Result<String, String> {
     let root = get_root(&state)?;
     let full = ensure_inside(&root, Path::new(&path))?;
@@ -1762,7 +1781,7 @@ pub struct SearchHit {
     pub snippet: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn search_notes(
     query: String,
     state: State<VaultState>,
@@ -2225,7 +2244,7 @@ fn replace_tag_index(state: &VaultState, index: TagIndex) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_vault_tags(state: State<VaultState>) -> Result<Vec<String>, String> {
     let guard = state
         .tag_index
@@ -2243,7 +2262,7 @@ pub struct NoteTags {
 }
 
 /// Full path → tags map for the tag graph view (only notes that have at least one tag).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_note_tags(state: State<VaultState>) -> Result<Vec<NoteTags>, String> {
     let guard = state
         .tag_index
@@ -2261,7 +2280,7 @@ pub fn list_note_tags(state: State<VaultState>) -> Result<Vec<NoteTags>, String>
 }
 
 /// Re-read one note's head into the tag index (external edits / watcher).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reindex_note_tags(path: String, state: State<VaultState>) -> Result<Vec<String>, String> {
     let root = get_root(&state)?;
     let rel = path.trim().trim_start_matches('/').to_string();
@@ -2287,7 +2306,7 @@ pub fn reindex_note_tags(path: String, state: State<VaultState>) -> Result<Vec<S
     Ok(unique_sorted_tags(&guard))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_asset(
     note_path: String,
     file_name: String,
@@ -2335,7 +2354,7 @@ pub struct FileBytesResponse {
 }
 
 /// Read any vault file as base64 (images, pdfs, etc.).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_file_bytes(path: String, state: State<VaultState>) -> Result<FileBytesResponse, String> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
@@ -2365,7 +2384,7 @@ pub fn read_file_bytes(path: String, state: State<VaultState>) -> Result<FileByt
 
 /// Write raw bytes to a vault-relative path (creates parent folders).
 /// If the file already exists, picks a unique sibling name.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_file_bytes(
     path: String,
     data_base64: String,

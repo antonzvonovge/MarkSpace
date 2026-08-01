@@ -4,7 +4,7 @@ import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TreeToolbar } from "./TreeToolbar";
 import { loadLastVault, saveLastVault } from "../lib/settingsStore";
-import { usePrefsStore } from "../store/prefsStore";
+import { usePrefsStore, useSettingsTabActive } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
 
 export { loadLastVault, saveLastVault };
@@ -32,9 +32,8 @@ function SettingsGearIcon() {
 
 export function Sidebar() {
   const openVaultAt = useVaultStore((s) => s.openVaultAt);
-  const settingsOpen = usePrefsStore((s) => s.settingsOpen);
-  const openSettings = usePrefsStore((s) => s.openSettings);
-  const closeSettings = usePrefsStore((s) => s.closeSettings);
+  const settingsActive = useSettingsTabActive();
+  const toggleSettings = usePrefsStore((s) => s.toggleSettings);
   const fileTreeRef = useRef<FileTreeHandle>(null);
 
   const pickVault = async () => {
@@ -81,16 +80,13 @@ export function Sidebar() {
         <button
           type="button"
           className={
-            settingsOpen
+            settingsActive
               ? "sidebar-footer-btn is-active"
               : "sidebar-footer-btn"
           }
-          aria-label={settingsOpen ? "Close settings" : "Open settings"}
+          aria-label={settingsActive ? "Close settings" : "Open settings"}
           title="Settings (Ctrl+,)"
-          onClick={() => {
-            if (settingsOpen) closeSettings();
-            else openSettings();
-          }}
+          onClick={() => toggleSettings()}
         >
           <SettingsGearIcon />
         </button>

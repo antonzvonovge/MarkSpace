@@ -3,6 +3,8 @@ import {
   useVaultStore,
   tabLabel,
   isGraphTab,
+  isSettingsTab,
+  isVirtualTab,
   type EditorTab,
 } from "../store/vaultStore";
 import { useChatUiStore } from "../store/chatUiStore";
@@ -29,13 +31,17 @@ function TabItem({
 }) {
   const activePath = useVaultStore((s) => s.activePath);
   const openNote = useVaultStore((s) => s.openNote);
-  const openGraphTab = useVaultStore((s) => s.openGraphTab);
   const pinTab = useVaultStore((s) => s.pinTab);
   const closeTab = useVaultStore((s) => s.closeTab);
   const reorder = bindReorder(index);
 
   const active = activePath === tab.path;
-  const graph = isGraphTab(tab);
+  const virtual = isVirtualTab(tab);
+  const tabTitle = isGraphTab(tab)
+    ? "Tag graph"
+    : isSettingsTab(tab)
+      ? "Settings"
+      : tab.path;
 
   return (
     <div
@@ -47,7 +53,7 @@ function TabItem({
       ]
         .filter(Boolean)
         .join(" ")}
-      title={graph ? "Tag graph" : tab.path}
+      title={tabTitle}
       draggable={reorder.draggable}
       onDragStart={reorder.onDragStart}
       onDragEnd={reorder.onDragEnd}
@@ -59,11 +65,7 @@ function TabItem({
         if ((e.target as HTMLElement).closest(".editor-tab-close")) return;
         // Activate on press (VS Code-style) so HTML5 DnD does not eat the click.
         if (e.detail > 1) e.preventDefault();
-        if (graph) {
-          void openGraphTab();
-        } else {
-          void openNote(tab.path, { preview: tab.preview });
-        }
+        void openNote(tab.path, { preview: tab.preview });
       }}
       onClick={() => {
         // Swallow only the spurious post-drop click; activation is on mousedown.
@@ -71,7 +73,7 @@ function TabItem({
       }}
       onDoubleClick={(e) => {
         e.preventDefault();
-        if (!graph) pinTab(tab.path);
+        if (!virtual) pinTab(tab.path);
       }}
       onAuxClick={(e) => {
         if (e.button === 1) {

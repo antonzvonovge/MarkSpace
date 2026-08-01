@@ -5,11 +5,14 @@ import {
   createNote,
   deleteFolderIfEmpty,
   ensureFolder,
+  getEmbeddingModelStatus,
+  listNoteTags,
   listTree,
   listVaultTags,
   parentPath,
   readNote,
   searchNotes,
+  semanticSearchNotes,
   writeAsset,
   writeNote,
   type TreeNode,
@@ -65,6 +68,13 @@ function normalizeToolPath(path: string): string {
   return path.trim().replace(/^\/+/, "");
 }
 
+/** True when path is inside the active project (or always true if no project). */
+function makeInProject(projectPath: string | null): (path: string) => boolean {
+  if (!projectPath) return () => true;
+  const prefix = `${projectPath}/`;
+  return (p: string) => p === projectPath || p.startsWith(prefix);
+}
+
 type FolderEntry = {
   path: string;
   name: string;
@@ -110,27 +120,34 @@ function collectFolderEntries(
 export const _test = {
   findFolderNode,
   collectFolderEntries,
+  makeInProject,
   MAX_FOLDER_LIST,
 };
 
 export function buildVaultTools(
   mode: ChatMode,
-  opts?: { getMessages?: () => UIMessage[] },
+  opts?: {
+    getMessages?: () => UIMessage[];
+    projectPath?: string | null;
+  },
 ) {
   const getMessages = opts?.getMessages ?? (() => [] as UIMessage[]);
+  const projectPath = opts?.projectPath?.trim() || null;
+  const inProject = makeInProject(projectPath);
 
   const readTools = {
     list_notes: tool({
       description:
-        "List vault-relative paths of markdown notes (and other files) in the open vault tree.",
+        "List vault-relative paths of markdown notes (and other files) in the open vault tree. When a project is selected in chat, only paths inside that project are returned.",
       inputSchema: z.object({}),
       execute: async () => {
         const tree = await listTree();
         const paths = flattenPaths(tree).filter(
           (p) =>
-            p.endsWith(".md") ||
-            p.endsWith(".drawio") ||
-            p.endsWith(".mdlnks"),
+            (p.endsWith(".md") ||
+              p.endsWith(".drawio") ||
+              p.endsWith(".mdlnks")) &&
+            inProject(p),
         );
         await yieldToUi();
         return { count: paths.length, paths: paths.slice(0, 500) };
@@ -139,13 +156,13 @@ export function buildVaultTools(
 
     list_folder: tool({
       description:
-        "List the contents of a vault folder. Returns entries with kind folder or file. Use recursive=true to walk nested folders; default is immediate children only. Empty path lists the vault root. Prefer this over list_notes when you need to see folders (including empty ones).",
+        "List the contents of a vault folder. Returns entries with kind folder or file. Use recursive=true to walk nested folders; default is immediate children only. Empty path lists the vault root, or the active project folder when a project is selected. Prefer this over list_notes when you need to see folders (including empty ones).",
       inputSchema: z.object({
         path: z
           .string()
           .optional()
           .describe(
-            "Vault-relative folder path, e.g. Ideas/Archive. Omit or pass empty string for the vault root.",
+            "Vault-relative folder path, e.g. Ideas/Archive. Omit or pass empty string for the vault root (or the active project when selected).",
           ),
         recursive: z
           .boolean()
@@ -153,7 +170,11 @@ export function buildVaultTools(
           .describe("If true, include nested folders and files (default false)"),
       }),
       execute: async ({ path, recursive }) => {
-        const folderPath = normalizeToolPath(path ?? "").replace(/\/+$/, "");
+        const folderPath = (
+          normalizeToolPath(path ?? "") ||
+          projectPath ||
+          ""
+        ).replace(/\/+$/, "");
         const tree = await listTree();
         const folder = findFolderNode(tree, folderPath);
         await yieldToUi();
@@ -177,22 +198,88 @@ export function buildVaultTools(
 
     search_notes: tool({
       description:
-        "Search markdown note contents in the vault (case-insensitive substring). Returns path, line, snippet.",
+        "Exact/substring search over markdown note contents (case-insensitive). Use for precise strings, symbols, filenames, or quoted phrases. For conceptual / meaning-based questions prefer semantic_search. When a project is selected, results are limited to that project.",
       inputSchema: z.object({
         query: z.string().min(1).describe("Search query"),
       }),
       execute: async ({ query }) => {
-        const hits = await searchNotes(query);
+        const hits = (await searchNotes(query)).filter((h) =>
+          inProject(h.path),
+        );
         return { count: hits.length, hits };
+      },
+    }),
+
+    semantic_search: tool({
+      description:
+        "Semantic search over vault notes using a separately downloaded local embedding model (meaning / paraphrases, RU and EN). Prefer this for conceptual questions like “what did I write about onboarding”. Returns path, score, snippet, optional heading. Follow up with read_note on the best hits. For exact substrings use search_notes instead. When a project is selected, results are limited to that project.",
+      inputSchema: z.object({
+        query: z.string().min(1).describe("Natural-language search query"),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe("Max hits to return (default 10)"),
+      }),
+      execute: async ({ query, limit }) => {
+        const desired = limit ?? 10;
+        const fetchLimit = projectPath
+          ? Math.min(desired * 4, 50)
+          : limit;
+        const model = await getEmbeddingModelStatus();
+        if (!model.installed) {
+          return {
+            available: false as const,
+            count: 0,
+            hits: [],
+            error:
+              "Local semantic search model is not installed. It can be downloaded in Settings → AI.",
+          };
+        }
+        try {
+          const raw = await semanticSearchNotes(query, fetchLimit);
+          const hits = raw.filter((h) => inProject(h.path)).slice(0, desired);
+          await yieldToUi();
+          return { available: true as const, count: hits.length, hits };
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          // Fallback so the agent can still answer while the index warms up.
+          const hits = (await searchNotes(query))
+            .filter((h) => inProject(h.path))
+            .slice(0, desired);
+          await yieldToUi();
+          return {
+            available: false as const,
+            count: hits.length,
+            hits,
+            fallback: "substring" as const,
+            warning: message,
+          };
+        }
       },
     }),
 
     list_tags: tool({
       description:
-        "List the current unique note tags in the vault, collected from YAML frontmatter and inline #tags. Use this before choosing or changing tags.",
+        "List the current unique note tags in the vault, collected from YAML frontmatter and inline #tags. Use this before choosing or changing tags. When a project is selected, only tags from notes in that project are returned.",
       inputSchema: z.object({}),
       execute: async () => {
-        const tags = await listVaultTags();
+        if (!projectPath) {
+          const tags = await listVaultTags();
+          await yieldToUi();
+          return { count: tags.length, tags };
+        }
+        const notes = await listNoteTags();
+        const tagSet = new Set<string>();
+        for (const note of notes) {
+          if (!inProject(note.path)) continue;
+          for (const tag of note.tags) tagSet.add(tag);
+        }
+        const tags = [...tagSet].sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: "base" }),
+        );
         await yieldToUi();
         return { count: tags.length, tags };
       },
@@ -800,6 +887,7 @@ export function buildSystemPrompt(opts: {
     `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes and folders via tools)"}.`,
     "Be concise. Prefer tools over guessing vault contents or the web.",
     "When several independent tool calls are needed (e.g. read different notes, list_folder + search_notes, web_search + read_note), issue them in the same step in parallel. Do not serialize independent reads. Never parallelize writes that touch the same path; for .drawio use one mutate_diagram, not many parallel updates.",
+    "Vault search: prefer semantic_search for meaning/conceptual questions (paraphrases, topics); use search_notes for exact substrings, symbols, or filenames.",
     "Use list_tags to inspect the current vault tag catalog before choosing or changing note tags.",
     "For external facts/docs: web_search first, then fetch_url on the best 1–3 links. Do not invent URLs. To download an image/file into the vault, use read_file with save_as.",
     "When you need a decision, confirmation, or clarification with clear choices: use ask_user (multiple-choice + optional free-text) instead of listing A/B/C options in plain chat text. Keep questions focused; prefer one round of 1–3 questions.",
@@ -846,6 +934,9 @@ export function buildSystemPrompt(opts: {
       lines.push(about.slice(0, 4000));
       lines.push("```");
     }
+    lines.push(
+      "Project scope: list_notes, list_folder (empty path = project root), search_notes, semantic_search, and list_tags are limited to this project. You may still read or edit files outside the project by explicit vault-relative path when needed (e.g. cross-project links or moves).",
+    );
   }
   if (opts.activePath) {
     lines.push(`Active note: ${opts.activePath}`);

@@ -39,10 +39,13 @@ import {
   saveDocOutlineOpen,
 } from "../lib/outlineUiState";
 
-export type TabKind = "file" | "graph";
+export type TabKind = "file" | "graph" | "settings";
 
 /** Singleton virtual path for the tag graph tab (never a vault-relative file). */
 export const GRAPH_TAB_PATH = "markspace:graph";
+
+/** Singleton virtual path for the settings tab. */
+export const SETTINGS_TAB_PATH = "markspace:settings";
 
 export type EditorTab = {
   path: string;
@@ -103,6 +106,8 @@ type VaultStore = {
   openNote: (path: string, options?: OpenNoteOptions) => Promise<void>;
   /** Open (or focus) the singleton tag graph tab. */
   openGraphTab: (options?: { syncTreeSelection?: boolean }) => Promise<void>;
+  /** Open (or focus) the singleton settings tab. */
+  openSettingsTab: (options?: { syncTreeSelection?: boolean }) => Promise<void>;
   pinTab: (path: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   closeTab: (path: string) => Promise<void>;
@@ -149,8 +154,17 @@ export function isGraphTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
   return tab.kind === "graph" || tab.path === GRAPH_TAB_PATH;
 }
 
+export function isSettingsTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
+  return tab.kind === "settings" || tab.path === SETTINGS_TAB_PATH;
+}
+
+/** Tabs backed by app UI instead of a vault file (graph, settings). */
+export function isVirtualTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
+  return isGraphTab(tab) || isSettingsTab(tab);
+}
+
 export function isFileTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
-  return !isGraphTab(tab);
+  return !isVirtualTab(tab);
 }
 
 async function loadFavoritePaths(): Promise<string[]> {
@@ -171,7 +185,7 @@ function remapExpanded(expanded: string[], from: string, to: string): string[] {
 
 function remapTabs(tabs: EditorTab[], from: string, to: string): EditorTab[] {
   return tabs.map((tab) => {
-    if (isGraphTab(tab)) return tab;
+    if (isVirtualTab(tab)) return tab;
     if (tab.path === from) return { ...tab, path: to };
     if (tab.path.startsWith(`${from}/`)) {
       return { ...tab, path: `${to}${tab.path.slice(from.length)}` };
@@ -198,12 +212,13 @@ function stashActiveIntoTabs(
 ): EditorTab[] {
   if (!activePath) return tabs;
   const active = tabs.find((t) => t.path === activePath);
-  if (!active || isGraphTab(active)) return tabs;
+  if (!active || isVirtualTab(active)) return tabs;
   return withTabBody(tabs, activePath, content, dirty);
 }
 
 function tabLabel(path: string, kind?: TabKind): string {
   if (kind === "graph" || path === GRAPH_TAB_PATH) return "Graph";
+  if (kind === "settings" || path === SETTINGS_TAB_PATH) return "Settings";
   const name = path.split("/").pop() ?? path;
   return name
     .replace(/\.md$/i, "")
@@ -260,7 +275,7 @@ function activateLoaded(
   });
 }
 
-/** Activate a non-file tab (graph) without reading disk or touching the editor buffer. */
+/** Activate a non-file tab (graph, settings) without reading disk or touching the editor buffer. */
 function activateVirtualTab(
   set: (partial: Partial<VaultStore>) => void,
   path: string,
@@ -285,7 +300,7 @@ async function activateTab(
   tab: EditorTab,
   tabs: EditorTab[],
 ): Promise<void> {
-  if (isGraphTab(tab)) {
+  if (isVirtualTab(tab)) {
     activateVirtualTab(set, tab.path, tabs);
     return;
   }
@@ -337,7 +352,7 @@ function pickFallbackTab(
 
 /**
  * Drop editor tabs whose files no longer exist in `tree` (e.g. removed by sync).
- * Virtual tabs (graph) are kept. If the active note vanished, activate a neighbour.
+ * Virtual tabs (graph, settings) are kept. If the active note vanished, activate a neighbour.
  */
 async function pruneMissingTabs(
   set: (partial: Partial<VaultStore>) => void,
@@ -346,7 +361,7 @@ async function pruneMissingTabs(
 ): Promise<void> {
   const existing = new Set(collectFilePaths(tree));
   const { tabs, activePath } = get();
-  const nextTabs = tabs.filter((t) => isGraphTab(t) || existing.has(t.path));
+  const nextTabs = tabs.filter((t) => isVirtualTab(t) || existing.has(t.path));
   const activeStillOpen =
     activePath != null && nextTabs.some((t) => t.path === activePath);
   const lostActive = activePath != null && !activeStillOpen;
@@ -379,6 +394,50 @@ async function pruneMissingTabs(
   const fallback = pickFallbackTab(tabs, nextTabs, activePath!);
   set({ tree });
   await activateTab(set, get, fallback, nextTabs);
+  persistSession(get());
+}
+
+/** Open or focus a singleton virtual tab (graph, settings). */
+async function openSingletonTab(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  path: string,
+  kind: TabKind,
+  syncTreeSelection: boolean,
+): Promise<void> {
+  const stashed = stashActiveIntoTabs(
+    get().tabs,
+    get().activePath,
+    get().content,
+    get().dirty,
+  );
+  if (stashed !== get().tabs) {
+    set({ tabs: stashed });
+  }
+
+  const active = get().tabs.find((t) => t.path === get().activePath);
+  if (get().dirty && active && isFileTab(active)) {
+    await get().saveActive();
+  }
+
+  const { tabs, activePath } = get();
+  const existing = tabs.find((t) => t.path === path);
+  if (existing) {
+    if (activePath === existing.path) {
+      set(
+        syncTreeSelection
+          ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+          : { treeSelectionVisible: false },
+      );
+      return;
+    }
+    activateVirtualTab(set, existing.path, tabs, syncTreeSelection);
+    persistSession(get());
+    return;
+  }
+
+  const nextTabs: EditorTab[] = [...tabs, { path, kind, preview: false }];
+  activateVirtualTab(set, path, nextTabs, syncTreeSelection);
   persistSession(get());
 }
 
@@ -478,11 +537,19 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       ]);
       const existing = new Set(collectFilePaths(tree));
       const restoredTabs: EditorTab[] = (session?.tabs ?? [])
-        .filter((t) => t.kind === "graph" || existing.has(t.path))
+        .filter(
+          (t) =>
+            isVirtualTab({ kind: t.kind ?? "file", path: t.path }) ||
+            existing.has(t.path),
+        )
         .map((t) => ({
           path: t.path,
           preview: Boolean(t.preview),
-          kind: t.kind === "graph" || t.path === GRAPH_TAB_PATH ? "graph" : "file",
+          kind: isGraphTab({ kind: t.kind ?? "file", path: t.path })
+            ? "graph"
+            : isSettingsTab({ kind: t.kind ?? "file", path: t.path })
+              ? "settings"
+              : "file",
         }));
 
       set({
@@ -509,8 +576,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
             ? session.activePath
             : restoredTabs[0].path;
         const activeTab = restoredTabs.find((t) => t.path === active);
-        if (activeTab && isGraphTab(activeTab)) {
-          await get().openGraphTab({ syncTreeSelection: false });
+        if (activeTab && isVirtualTab(activeTab)) {
+          await get().openNote(activeTab.path, { syncTreeSelection: false });
           return;
         }
         const preview = activeTab?.preview ?? false;
@@ -562,6 +629,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   openNote: async (path, options) => {
     if (path === GRAPH_TAB_PATH) {
       await get().openGraphTab({ syncTreeSelection: options?.syncTreeSelection });
+      return;
+    }
+    if (path === SETTINGS_TAB_PATH) {
+      await get().openSettingsTab({
+        syncTreeSelection: options?.syncTreeSelection,
+      });
       return;
     }
     const asPreview = options?.preview !== false;
@@ -694,44 +767,23 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   openGraphTab: async (options) => {
-    const syncTreeSelection = options?.syncTreeSelection !== false;
-    const stashed = stashActiveIntoTabs(
-      get().tabs,
-      get().activePath,
-      get().content,
-      get().dirty,
+    await openSingletonTab(
+      set,
+      get,
+      GRAPH_TAB_PATH,
+      "graph",
+      options?.syncTreeSelection !== false,
     );
-    if (stashed !== get().tabs) {
-      set({ tabs: stashed });
-    }
+  },
 
-    const active = get().tabs.find((t) => t.path === get().activePath);
-    if (get().dirty && active && isFileTab(active)) {
-      await get().saveActive();
-    }
-
-    const { tabs, activePath } = get();
-    const existing = tabs.find((t) => isGraphTab(t));
-    if (existing) {
-      if (activePath === existing.path) {
-        set(
-          syncTreeSelection
-            ? { selectedFolderExplicit: false, treeSelectionVisible: true }
-            : { treeSelectionVisible: false },
-        );
-        return;
-      }
-      activateVirtualTab(set, existing.path, tabs, syncTreeSelection);
-      persistSession(get());
-      return;
-    }
-
-    const nextTabs: EditorTab[] = [
-      ...tabs,
-      { path: GRAPH_TAB_PATH, kind: "graph", preview: false },
-    ];
-    activateVirtualTab(set, GRAPH_TAB_PATH, nextTabs, syncTreeSelection);
-    persistSession(get());
+  openSettingsTab: async (options) => {
+    await openSingletonTab(
+      set,
+      get,
+      SETTINGS_TAB_PATH,
+      "settings",
+      options?.syncTreeSelection !== false,
+    );
   },
 
   pinTab: (path) => {
@@ -841,7 +893,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const { activePath, content, dirty, tabs } = get();
     if (!activePath || !dirty) return;
     const active = tabs.find((t) => t.path === activePath);
-    if (active && isGraphTab(active)) return;
+    if (active && isVirtualTab(active)) return;
     set({ saving: true, suppressWatchUntil: Date.now() + 1200 });
     try {
       const savedContent = await writeNote(activePath, content);
@@ -1177,7 +1229,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
       const nextTabs = tabs.filter(
         (t) =>
-          isGraphTab(t) ||
+          isVirtualTab(t) ||
           (t.path !== path && !t.path.startsWith(`${path}/`)),
       );
       const lostActive =

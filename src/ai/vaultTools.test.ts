@@ -55,6 +55,34 @@ describe("vault agent tools", () => {
     expect(agentPrompt).toContain("delete_folder_if_empty");
   });
 
+  it("documents project-scoped discovery tools in the system prompt", () => {
+    const prompt = buildSystemPrompt({
+      mode: "ask",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      projectPath: "MyProject",
+    });
+    expect(prompt).toContain("Active project: MyProject");
+    expect(prompt).toContain("Project scope:");
+    expect(prompt).toContain("list_notes");
+    expect(prompt).toContain("semantic_search");
+    expect(prompt).toContain("list_tags");
+  });
+
+  it("matches paths inside the active project only", () => {
+    const none = _test.makeInProject(null);
+    expect(none("Anywhere/Note.md")).toBe(true);
+
+    const inProject = _test.makeInProject("MyProject");
+    expect(inProject("MyProject")).toBe(true);
+    expect(inProject("MyProject/Note.md")).toBe(true);
+    expect(inProject("MyProject/docs/A.md")).toBe(true);
+    expect(inProject("Other/Note.md")).toBe(false);
+    expect(inProject("MyProjectExtra/Note.md")).toBe(false);
+    expect(inProject("Welcome.md")).toBe(false);
+  });
+
   it("lists folder contents with folder/file kinds and optional recursion", () => {
     const tree = folder("", "", [
       folder("Ideas", "Ideas", [

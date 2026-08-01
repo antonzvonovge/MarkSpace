@@ -200,6 +200,55 @@ export async function searchNotes(query: string): Promise<SearchHit[]> {
   return invoke("search_notes", { query });
 }
 
+export type SemanticSearchHit = {
+  path: string;
+  score: number;
+  snippet: string;
+  heading?: string;
+  startLine: number;
+};
+
+export type EmbeddingsIndexStatus = {
+  modelAvailable: boolean;
+  ready: boolean;
+  modelId: string;
+  indexedFiles: number;
+  pendingFiles: number;
+  indexing: boolean;
+  progress: number;
+  error?: string;
+};
+
+/** Local semantic (embedding) search over vault notes. */
+export async function semanticSearchNotes(
+  query: string,
+  limit?: number,
+): Promise<SemanticSearchHit[]> {
+  return invoke("semantic_search_notes", { query, limit });
+}
+
+export async function getEmbeddingsIndexStatus(): Promise<EmbeddingsIndexStatus> {
+  return invoke("get_embeddings_index_status");
+}
+
+export type EmbeddingModelStatus = {
+  installed: boolean;
+  downloading: boolean;
+  progress: number;
+  downloadedBytes: number;
+  totalBytes?: number;
+  modelId: string;
+  error?: string;
+};
+
+export async function getEmbeddingModelStatus(): Promise<EmbeddingModelStatus> {
+  return invoke("get_embedding_model_status");
+}
+
+export async function downloadEmbeddingModel(): Promise<EmbeddingModelStatus> {
+  return invoke("download_embedding_model");
+}
+
 /** Unique note tags (frontmatter ∪ inline `#tags`) from the in-memory vault index. */
 export async function listVaultTags(): Promise<string[]> {
   return invoke("list_vault_tags");

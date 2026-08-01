@@ -143,7 +143,7 @@ fn get_root(state: &VaultState) -> Result<PathBuf, String> {
 }
 
 /// Load properties for a project folder. Missing file → empty `about`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_project_properties(
     path: String,
     state: State<VaultState>,
@@ -180,7 +180,7 @@ pub fn get_project_properties(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_project_properties(
     path: String,
     about: String,

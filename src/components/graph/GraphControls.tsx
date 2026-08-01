@@ -1,3 +1,5 @@
+import { Select } from "../ui/Select";
+
 export type GraphControlsProps = {
   query: string;
   onQueryChange: (q: string) => void;
@@ -16,8 +18,8 @@ export type GraphControlsProps = {
   onShowUntaggedChange: (v: boolean) => void;
   labelThreshold: number;
   onLabelThresholdChange: (v: number) => void;
-  gravity: number;
-  onGravityChange: (v: number) => void;
+  spread: number;
+  onSpreadChange: (v: number) => void;
   focusRoot: string | null;
   onClearFocus: () => void;
   nodeCount: number;
@@ -42,8 +44,8 @@ export function GraphControls({
   onShowUntaggedChange,
   labelThreshold,
   onLabelThresholdChange,
-  gravity,
-  onGravityChange,
+  spread,
+  onSpreadChange,
   focusRoot,
   onClearFocus,
   nodeCount,
@@ -69,18 +71,19 @@ export function GraphControls({
 
       <label className="tag-graph-project">
         <span>Project</span>
-        <select
+        <Select
+          variant="field"
           value={projectPath ?? ""}
-          onChange={(e) => onProjectPathChange(e.target.value || null)}
           aria-label="Filter graph by project"
-        >
-          <option value="">Entire vault</option>
-          {projects.map((project) => (
-            <option key={project.path} value={project.path}>
-              {project.name}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "Entire vault" },
+            ...projects.map((project) => ({
+              value: project.path,
+              label: project.name,
+            })),
+          ]}
+          onChange={(next) => onProjectPathChange(next || null)}
+        />
       </label>
 
       <div className="tag-graph-btn-row">
@@ -151,14 +154,14 @@ export function GraphControls({
       </label>
 
       <label className="tag-graph-slider">
-        <span>Gravity</span>
+        <span>Spread</span>
         <input
           type="range"
-          min={0.2}
-          max={4}
-          step={0.1}
-          value={gravity}
-          onChange={(e) => onGravityChange(Number(e.target.value))}
+          min={0}
+          max={1}
+          step={0.05}
+          value={spread}
+          onChange={(e) => onSpreadChange(Number(e.target.value))}
         />
       </label>
 

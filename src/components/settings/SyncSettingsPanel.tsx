@@ -6,6 +6,7 @@ import {
 } from "../../lib/settingsStore";
 import { useSyncStore } from "../../store/syncStore";
 import { useVaultStore } from "../../store/vaultStore";
+import { Select } from "../ui/Select";
 
 function formatSyncTime(iso: string | null): string {
   if (!iso) return "Never";
@@ -182,22 +183,20 @@ export function SyncSettingsPanel() {
               Also syncs when you return to the window. Skips if there are
               unresolved conflicts.
             </p>
-            <select
-              className="sync-input sync-select"
+            <Select
+              variant="field"
               aria-label="Auto-sync interval"
-              value={autoSyncMinutes}
+              value={String(autoSyncMinutes)}
               disabled={busy || !connected}
-              onChange={(e) => {
-                const value = Number(e.target.value) as AutoSyncMinutes;
+              options={AUTO_SYNC_OPTIONS.map((opt) => ({
+                value: String(opt.value),
+                label: opt.label,
+              }))}
+              onChange={(next) => {
+                const value = Number(next) as AutoSyncMinutes;
                 void setAutoSyncMinutes(vaultPath, value);
               }}
-            >
-              {AUTO_SYNC_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            />
           </section>
 
           <section className="sync-block">

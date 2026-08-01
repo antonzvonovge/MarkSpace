@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CATEGORIES,
   SETTINGS_REGISTRY,
@@ -6,7 +6,7 @@ import {
   settingsForCategory,
 } from "../../settings/registry";
 import type { PrefKey } from "../../settings/types";
-import { usePrefsStore } from "../../store/prefsStore";
+import { usePrefsStore, useSettingsTabActive } from "../../store/prefsStore";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import { SettingRow } from "./SettingRow";
 import { SyncSettingsPanel } from "./SyncSettingsPanel";
@@ -58,7 +58,17 @@ export function SettingsPage({ onClose }: Props) {
   const setPref = usePrefsStore((s) => s.setPref);
   const category = usePrefsStore((s) => s.settingsCategory);
   const setCategory = usePrefsStore((s) => s.setSettingsCategory);
+  const settingsActive = useSettingsTabActive();
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!settingsActive) return;
+    const id = requestAnimationFrame(() => {
+      searchRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [settingsActive]);
 
   const searching = query.trim().length > 0;
   const showSyncInSearch = searching && queryMatchesSync(query);
@@ -104,12 +114,12 @@ export function SettingsPage({ onClose }: Props) {
 
       <div className="settings-search-wrap">
         <input
+          ref={searchRef}
           className="settings-search"
           type="search"
           placeholder="Search settings"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          autoFocus
         />
       </div>
 

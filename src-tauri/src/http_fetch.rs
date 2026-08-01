@@ -83,7 +83,7 @@ fn build_client_request(
     Ok((builder, parsed))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
     let (builder, _) = build_client_request(&req)?;
     let res = builder
@@ -104,7 +104,7 @@ pub fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
 }
 
 /// Fetch raw bytes (images/binaries) as base64. Larger limit than text `http_fetch`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn http_fetch_bytes(req: HttpFetchRequest) -> Result<HttpFetchBytesResponse, String> {
     let (builder, _) = build_client_request(&req)?;
     let res = builder

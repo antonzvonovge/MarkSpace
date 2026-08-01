@@ -1,4 +1,4 @@
-import { usePrefsStore } from "../store/prefsStore";
+import { usePrefsStore, useSettingsTabActive } from "../store/prefsStore";
 import { useSyncStore } from "../store/syncStore";
 import { useVaultStore } from "../store/vaultStore";
 
@@ -10,9 +10,9 @@ export function SyncConflictBanner() {
   );
   const openSettings = usePrefsStore((s) => s.openSettings);
   const openNote = useVaultStore((s) => s.openNote);
-  const settingsOpen = usePrefsStore((s) => s.settingsOpen);
+  const settingsActive = useSettingsTabActive();
 
-  if (conflicted.length === 0 || settingsOpen) return null;
+  if (conflicted.length === 0 || settingsActive) return null;
 
   return (
     <div className="sync-conflict-banner" role="alert">

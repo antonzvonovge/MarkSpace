@@ -1015,6 +1015,7 @@ li.dnd-drop-target > .tree-row {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .status-bar {
@@ -1039,6 +1040,10 @@ li.dnd-drop-target > .tree-row {
   display: flex;
   align-items: stretch;
   min-width: 0;
+}
+
+.status-bar-left .status-bar-item {
+  cursor: default;
 }
 
 .status-bar-right {
@@ -1243,6 +1248,7 @@ li.dnd-drop-target > .tree-row {
 }
 
 .document-body {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1263,6 +1269,22 @@ li.dnd-drop-target > .tree-row {
 
 .document-instance.is-active {
   display: flex;
+}
+
+/* Graph keeps its WebGL surface alive while other tabs are shown. */
+.document-instance-graph {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.document-instance-graph.is-active {
+  visibility: visible;
+  pointer-events: auto;
+  z-index: 1;
 }
 
 .document-editor-slot {
@@ -2526,26 +2548,127 @@ li.dnd-drop-target > .tree-row {
   padding-top: 2px;
 }
 
-.setting-select,
 .setting-number {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 6px 10px;
   background: var(--editor-surface);
   color: var(--text);
-  min-width: 140px;
+  width: 88px;
+  min-width: 0;
   outline: none;
 }
 
-.setting-number {
-  width: 88px;
-  min-width: 0;
-}
-
-.setting-select:focus,
 .setting-number:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(203, 17, 171, 0.2);
+}
+
+/* —— Shared Select —— */
+
+.ms-select {
+  position: relative;
+  min-width: 0;
+}
+
+.ms-select.is-setting {
+  min-width: 140px;
+}
+
+.ms-select.is-field {
+  width: 100%;
+}
+
+.ms-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+.ms-select.is-field .ms-select-trigger {
+  padding: 8px 10px;
+}
+
+.ms-select-trigger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.ms-select-trigger[aria-expanded="true"],
+.ms-select-trigger:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(203, 17, 171, 0.2);
+}
+
+.ms-select-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ms-select-trigger-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-select-trigger-caret {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.ms-select-menu {
+  z-index: 10000;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--editor-surface);
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.16);
+  animation: tree-create-in 0.14s ease;
+}
+
+.ms-select-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.ms-select-option:hover {
+  background: var(--sidebar-hover);
+}
+
+.ms-select-option.is-active {
+  background: var(--sidebar-active);
+}
+
+.ms-select-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* —— Sync settings —— */
@@ -2598,6 +2721,43 @@ li.dnd-drop-target > .tree-row {
   line-height: 1.4;
 }
 
+.embedding-download-progress {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.embedding-download-track {
+  width: min(420px, 100%);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.embedding-download-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 160ms ease;
+}
+
+.embedding-model-ready,
+.embedding-model-error {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.embedding-model-ready {
+  color: var(--accent-strong);
+}
+
+.embedding-model-error {
+  margin-bottom: 10px;
+  color: #b42318;
+}
+
 .sync-status-line {
   margin: 0;
   font-size: 0.95rem;
@@ -2624,11 +2784,6 @@ li.dnd-drop-target > .tree-row {
 .sync-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(203, 17, 171, 0.2);
-}
-
-.sync-select {
-  cursor: pointer;
-  margin-bottom: 0;
 }
 
 .sync-actions {

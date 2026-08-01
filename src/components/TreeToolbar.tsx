@@ -10,7 +10,7 @@ import {
   PlusIcon,
   RefreshIcon,
 } from "./treeIcons";
-import { GRAPH_TAB_PATH } from "../store/vaultStore";
+import { GRAPH_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
 
 export type TreeCreateKind = "note" | "drawio" | "mdlnks" | "folder";
 
@@ -117,7 +117,9 @@ export function TreeToolbar({
   const [refreshing, setRefreshing] = useState(false);
   const graphOpen = activePath === GRAPH_TAB_PATH;
   const canLocate =
-    Boolean(activePath) && activePath !== GRAPH_TAB_PATH;
+    Boolean(activePath) &&
+    activePath !== GRAPH_TAB_PATH &&
+    activePath !== SETTINGS_TAB_PATH;
 
   if (!vaultPath) return null;
 

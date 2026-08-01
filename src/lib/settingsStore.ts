@@ -29,12 +29,16 @@ function mergePrefs(raw: LegacyPrefs | null | undefined): Prefs {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_PREFS };
 
   const legacySize =
-    typeof raw.editorFontSize === "number" && Number.isFinite(raw.editorFontSize)
+    typeof raw.editorFontSize === "number" &&
+    Number.isFinite(raw.editorFontSize)
       ? Math.min(28, Math.max(11, Math.round(raw.editorFontSize)))
       : undefined;
 
   return {
-    theme: raw.theme === "dark" || raw.theme === "light" ? raw.theme : DEFAULT_PREFS.theme,
+    theme:
+      raw.theme === "dark" || raw.theme === "light"
+        ? raw.theme
+        : DEFAULT_PREFS.theme,
     uiDensity:
       raw.uiDensity === "compact" || raw.uiDensity === "comfortable"
         ? raw.uiDensity
@@ -91,7 +95,8 @@ export async function saveLastVault(path: string): Promise<void> {
 
 export async function loadExpandedPaths(vaultPath: string): Promise<string[]> {
   const store = await Store.load(STORE_FILE);
-  const map = (await store.get<Record<string, string[]>>("expandedByVault")) ?? {};
+  const map =
+    (await store.get<Record<string, string[]>>("expandedByVault")) ?? {};
   return map[vaultPath] ?? [];
 }
 
@@ -100,54 +105,95 @@ export async function saveExpandedPaths(
   expanded: string[],
 ): Promise<void> {
   const store = await Store.load(STORE_FILE);
-  const map = (await store.get<Record<string, string[]>>("expandedByVault")) ?? {};
+  const map =
+    (await store.get<Record<string, string[]>>("expandedByVault")) ?? {};
   map[vaultPath] = expanded.filter((p) => p !== "");
   await store.set("expandedByVault", map);
   await store.save();
 }
 
+/** Sigma camera pose — vault-local, restored when the graph tab reopens. */
+export type GraphCameraState = {
+  x: number;
+  y: number;
+  ratio: number;
+  angle: number;
+};
+
 export type GraphUiSettings = {
   tagsOnly: boolean;
   showUntagged: boolean;
   labelThreshold: number;
-  gravity: number;
+  /** Layout spread, 0 (tight ball) … 1 (loose constellation). */
+  spread: number;
   /** First-level vault project path; null means the entire vault. */
   projectPath: string | null;
+  /** Last camera pose; null means “fit content on next open”. */
+  camera: GraphCameraState | null;
 };
 
 export const DEFAULT_GRAPH_UI_SETTINGS: GraphUiSettings = {
   tagsOnly: false,
   showUntagged: false,
   labelThreshold: 7,
-  gravity: 1,
+  spread: 0.5,
   projectPath: null,
+  camera: null,
 };
 
 const GRAPH_UI_BY_VAULT_KEY = "graphUiByVault";
 
+/** Pre-spread vaults stored a raw ForceAtlas2 gravity (0.2 … 4). */
+function spreadFromLegacyGravity(gravity: number): number {
+  const clamped = Math.min(4, Math.max(0.2, gravity));
+  return Math.min(1, Math.max(0, 1 - (Math.log(clamped) + 1.61) / 3.3));
+}
+
+function normalizeCamera(raw: unknown): GraphCameraState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Partial<GraphCameraState>;
+  const { x, y, ratio, angle } = value;
+  if (
+    typeof x !== "number" ||
+    !Number.isFinite(x) ||
+    typeof y !== "number" ||
+    !Number.isFinite(y) ||
+    typeof ratio !== "number" ||
+    !Number.isFinite(ratio) ||
+    typeof angle !== "number" ||
+    !Number.isFinite(angle)
+  ) {
+    return null;
+  }
+  return { x, y, ratio: Math.max(0.0001, ratio), angle };
+}
+
 function normalizeGraphUiSettings(raw: unknown): GraphUiSettings {
-  const value =
+  const value: Partial<GraphUiSettings> & { gravity?: unknown } =
     raw && typeof raw === "object"
-      ? (raw as Partial<GraphUiSettings>)
+      ? (raw as Partial<GraphUiSettings> & { gravity?: unknown })
       : DEFAULT_GRAPH_UI_SETTINGS;
   const labelThreshold =
     typeof value.labelThreshold === "number" &&
     Number.isFinite(value.labelThreshold)
       ? Math.min(10, Math.max(0, value.labelThreshold))
       : DEFAULT_GRAPH_UI_SETTINGS.labelThreshold;
-  const gravity =
-    typeof value.gravity === "number" && Number.isFinite(value.gravity)
-      ? Math.min(4, Math.max(0.2, value.gravity))
-      : DEFAULT_GRAPH_UI_SETTINGS.gravity;
+  const spread =
+    typeof value.spread === "number" && Number.isFinite(value.spread)
+      ? Math.min(1, Math.max(0, value.spread))
+      : typeof value.gravity === "number" && Number.isFinite(value.gravity)
+        ? spreadFromLegacyGravity(value.gravity)
+        : DEFAULT_GRAPH_UI_SETTINGS.spread;
   return {
     tagsOnly: Boolean(value.tagsOnly),
     showUntagged: Boolean(value.showUntagged),
     labelThreshold,
-    gravity,
+    spread,
     projectPath:
       typeof value.projectPath === "string" && value.projectPath.trim()
         ? value.projectPath
         : null,
+    camera: normalizeCamera(value.camera),
   };
 }
 
@@ -173,7 +219,7 @@ export async function saveGraphUiSettings(
   await store.save();
 }
 
-export type SavedTabKind = "file" | "graph";
+export type SavedTabKind = "file" | "graph" | "settings";
 
 export type SavedEditorTab = {
   path: string;
@@ -190,6 +236,7 @@ const VAULT_SESSIONS_KEY = "vaultSessions";
 
 function normalizeSavedTabKind(kind: unknown, path: string): SavedTabKind {
   if (kind === "graph" || path === "markspace:graph") return "graph";
+  if (kind === "settings" || path === "markspace:settings") return "settings";
   return "file";
 }
 
@@ -266,7 +313,9 @@ export const AUTO_SYNC_OPTIONS: { value: AutoSyncMinutes; label: string }[] = [
 ];
 
 export function normalizeAutoSyncMinutes(value: unknown): AutoSyncMinutes {
-  return value === 5 || value === 15 || value === 30 || value === 60 ? value : 0;
+  return value === 5 || value === 15 || value === 30 || value === 60
+    ? value
+    : 0;
 }
 
 /**
@@ -308,7 +357,8 @@ export async function loadGithubSync(): Promise<GithubSyncStore> {
     }
   }
   return {
-    token: typeof raw?.token === "string" && raw.token.length > 0 ? raw.token : null,
+    token:
+      typeof raw?.token === "string" && raw.token.length > 0 ? raw.token : null,
     byVault,
   };
 }

@@ -192,19 +192,19 @@ fn get_root(state: &VaultState) -> Result<PathBuf, String> {
         .ok_or_else(|| "No vault open".to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_favorites(state: State<VaultState>) -> Result<Vec<String>, String> {
     let root = get_root(&state)?;
     list_favorite_paths(&root)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn add_favorite(path: String, state: State<VaultState>) -> Result<Vec<String>, String> {
     let root = get_root(&state)?;
     add_favorite_path(&root, &path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_favorite(path: String, state: State<VaultState>) -> Result<Vec<String>, String> {
     let root = get_root(&state)?;
     remove_favorite_path(&root, &path)

@@ -52,12 +52,10 @@ export function useTagGraph(options: TagGraphViewOptions) {
     }
   }, []);
 
-  // Fetch when the graph tab becomes active.
+  // Keep the payload warm while the graph tab stays mounted in the background.
   useEffect(() => {
-    if (!isActive) return;
-    setLoading(true);
     void refresh();
-  }, [isActive, refresh]);
+  }, [refresh]);
 
   // Re-fetch when the tag catalog changes (watcher / save), debounced.
   useEffect(() => {

@@ -74,6 +74,14 @@ pub struct SyncRuntime {
     pub device_code: Mutex<Option<String>>,
 }
 
+/// Sync commands run on a thread pool, so two of them could otherwise interleave
+/// writes to the same git index. Every repository mutation takes this first.
+static REPO_LOCK: Mutex<()> = Mutex::new(());
+
+fn repo_guard() -> std::sync::MutexGuard<'static, ()> {
+    REPO_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn vault_root(state: &VaultState) -> Result<PathBuf, String> {
     state
         .root
@@ -504,13 +512,14 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_github_client_id() -> Option<String> {
     github_client_id().map(|s| s.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_status(vault: State<'_, VaultState>) -> Result<SyncStatus, String> {
+    let _guard = repo_guard();
     let root = match vault_root(&vault) {
         Ok(r) => r,
         Err(e) => return Ok(empty_status(Some(e))),
@@ -521,12 +530,13 @@ pub fn sync_status(vault: State<'_, VaultState>) -> Result<SyncStatus, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_connect(
     remote_url: String,
     token: Option<String>,
     vault: State<'_, VaultState>,
 ) -> Result<SyncStatus, String> {
+    let _guard = repo_guard();
     let root = vault_root(&vault)?;
     let url = normalize_remote_url(&remote_url)?;
     let token_ref = token.as_deref().filter(|t| !t.is_empty());
@@ -588,8 +598,9 @@ pub fn sync_connect(
     Ok(build_status(&repo))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_disconnect(vault: State<'_, VaultState>) -> Result<SyncStatus, String> {
+    let _guard = repo_guard();
     let root = vault_root(&vault)?;
     let repo = match Repository::open(&root) {
         Ok(r) => r,
@@ -603,11 +614,12 @@ pub fn sync_disconnect(vault: State<'_, VaultState>) -> Result<SyncStatus, Strin
     Ok(build_status(&repo))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_now(
     token: Option<String>,
     vault: State<'_, VaultState>,
 ) -> Result<SyncResult, String> {
+    let _guard = repo_guard();
     let root = vault_root(&vault)?;
     let repo = open_repo(&root)?;
     if remote_url(&repo).is_none() {
@@ -662,12 +674,13 @@ pub fn sync_now(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_resolve_conflict(
     path: String,
     choice: String,
     vault: State<'_, VaultState>,
 ) -> Result<SyncStatus, String> {
+    let _guard = repo_guard();
     let root = vault_root(&vault)?;
     let repo = open_repo(&root)?;
     let rel = path.trim().trim_start_matches('/');
@@ -730,7 +743,7 @@ struct GhTokenApi {
     error_description: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_device_flow_start(
     runtime: State<'_, SyncRuntime>,
 ) -> Result<DeviceCodeResponse, String> {
@@ -772,7 +785,7 @@ pub fn sync_device_flow_start(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sync_device_flow_poll(
     device_code: String,
     runtime: State<'_, SyncRuntime>,
