@@ -2,7 +2,8 @@ use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -26,10 +27,17 @@ pub struct VaultChange {
 }
 
 type OrderMap = HashMap<String, Vec<String>>;
+/// Vault-relative `.md` path → tags from that note's frontmatter.
+type TagIndex = HashMap<String, Vec<String>>;
+
+/// Bytes to read from the start of a note when indexing tags (frontmatter only).
+const TAG_HEAD_BYTES: usize = 4096;
 
 pub struct VaultState {
     pub root: Mutex<Option<PathBuf>>,
     pub watcher: Mutex<Option<RecommendedWatcher>>,
+    /// In-memory tag catalog; rebuilt on vault open, patched on write/rename/delete.
+    pub tag_index: Mutex<TagIndex>,
 }
 
 impl Default for VaultState {
@@ -37,6 +45,7 @@ impl Default for VaultState {
         Self {
             root: Mutex::new(None),
             watcher: Mutex::new(None),
+            tag_index: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -911,6 +920,7 @@ pub fn open_vault(
         *guard = Some(root.clone());
     }
 
+    replace_tag_index(&state, rebuild_tag_index(&root));
     start_watcher(app, &state, &root)?;
     let order = read_order(&root);
     make_root_node(&root, &order)
@@ -984,7 +994,12 @@ pub fn write_note(path: String, content: String, state: State<VaultState>) -> Re
         fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
     }
     let content = normalize_newlines(&content);
-    fs::write(&full, content).map_err(|e| format!("Cannot write note: {e}"))
+    fs::write(&full, &content).map_err(|e| format!("Cannot write note: {e}"))?;
+    let rel = relative_to_root(&root, &full);
+    if is_markdown(&rel) {
+        set_tag_index_path(&state, &rel, tags_from_note_content(&content));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1006,9 +1021,10 @@ pub fn create_note(path: String, state: State<VaultState>) -> Result<String, Str
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "Untitled".into());
     let content = format!("# {stem}\n\n");
-    fs::write(&full, content).map_err(|e| format!("Cannot create note: {e}"))?;
+    fs::write(&full, &content).map_err(|e| format!("Cannot create note: {e}"))?;
 
     let created = relative_to_root(&root, &full);
+    set_tag_index_path(&state, &created, Vec::new());
     let parent = parent_rel(&created);
     let name = entry_name(&created);
     let mut order = read_order(&root);
@@ -1150,6 +1166,14 @@ pub fn import_paths(
         )?;
     }
     write_order(&root, &order)?;
+    for rel in &created {
+        if is_markdown(rel) {
+            let full = root.join(rel);
+            if let Ok(head) = read_file_head(&full, TAG_HEAD_BYTES) {
+                set_tag_index_path(&state, rel, tags_from_note_content(&head));
+            }
+        }
+    }
     Ok(created)
 }
 
@@ -1267,6 +1291,11 @@ pub fn import_document_bytes(
     let mut order = read_order(&root);
     order_insert_child(&mut order, &parent_rel, &unique, None);
     write_order(&root, &order)?;
+    if is_markdown(&created) {
+        if let Ok(head) = read_file_head(&dest, TAG_HEAD_BYTES) {
+            set_tag_index_path(&state, &created, tags_from_note_content(&head));
+        }
+    }
     Ok(created)
 }
 
@@ -1321,14 +1350,30 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     rewrite_drawio_after_path_change(&root, &from_rel, &to_rel, was_dir, was_drawio)?;
 
     let mut order = read_order(&root);
-    order_remove_child(&mut order, &from_parent, &from_name);
-    order_insert_child(&mut order, &to_parent, &to_name, None);
+    if from_parent == to_parent {
+        // Keep sort position: replace basename in-place instead of remove+append.
+        let mut replaced = false;
+        if let Some(list) = order.get_mut(&from_parent) {
+            if let Some(pos) = list.iter().position(|n| n == &from_name) {
+                list[pos] = to_name.clone();
+                replaced = true;
+            }
+        }
+        if !replaced {
+            materialize_parent_order(&root, &mut order, &to_parent)?;
+        }
+    } else {
+        order_remove_child(&mut order, &from_parent, &from_name);
+        materialize_parent_order(&root, &mut order, &to_parent)?;
+        order_insert_child(&mut order, &to_parent, &to_name, None);
+    }
     if was_dir {
         rewrite_order_keys_after_move(&mut order, &from_rel, &to_rel);
     }
     write_order(&root, &order)?;
     let _ = crate::favorites::remap_favorites(&root, &from_rel, Some(&to_rel));
     let _ = crate::projects::remap_project_properties(&root, &from_rel, Some(&to_rel));
+    remap_tag_index_path(&state, &from_rel, Some(&to_rel));
 
     Ok(to_rel)
 }
@@ -1400,6 +1445,7 @@ pub fn move_entry(
     if !same_parent {
         let _ = crate::favorites::remap_favorites(&root, &from, Some(&new_rel));
         let _ = crate::projects::remap_project_properties(&root, &from, Some(&new_rel));
+        remap_tag_index_path(&state, &from, Some(&new_rel));
     }
 
     Ok(if same_parent { from } else { new_rel })
@@ -1434,6 +1480,7 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     write_order(&root, &order)?;
     let _ = crate::favorites::remap_favorites(&root, &rel, None);
     let _ = crate::projects::remap_project_properties(&root, &rel, None);
+    remove_tag_index_path(&state, &rel);
     Ok(())
 }
 
@@ -1578,6 +1625,267 @@ pub fn search_notes(
     }
 
     Ok(hits)
+}
+
+/// Extract YAML frontmatter body between leading `---` fences, if present.
+fn frontmatter_yaml(content: &str) -> Option<&str> {
+    let text = content.strip_prefix('\u{feff}').unwrap_or(content);
+    let after_open = if text.starts_with("---\r\n") {
+        5
+    } else if text.starts_with("---\n") {
+        4
+    } else {
+        return None;
+    };
+    let rest = &text[after_open..];
+    let close = if rest.starts_with("---") {
+        0
+    } else {
+        rest.find("\n---")?
+    };
+    let yaml = &rest[..close];
+    Some(yaml.strip_suffix('\r').unwrap_or(yaml))
+}
+
+fn normalize_tag_name(raw: &str) -> Option<String> {
+    let mut t = raw.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if let Some(rest) = t.strip_prefix('#') {
+        t = rest.trim();
+    }
+    if t.is_empty() {
+        return None;
+    }
+    Some(t.to_string())
+}
+
+/// Pull tag strings from a frontmatter YAML snippet (common Obsidian forms).
+fn tags_from_frontmatter_yaml(yaml: &str) -> Vec<String> {
+    let mut tags: Vec<String> = Vec::new();
+    let mut in_tags_list = false;
+
+    for raw_line in yaml.lines() {
+        let line = raw_line.trim_end();
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            if in_tags_list && !line.starts_with(' ') && !line.starts_with('\t') {
+                in_tags_list = false;
+            }
+            continue;
+        }
+
+        if let Some(rest) = trimmed.strip_prefix("tags:") {
+            in_tags_list = false;
+            let value = rest.trim();
+            if value.is_empty() {
+                in_tags_list = true;
+                continue;
+            }
+            if let Some(inner) = value
+                .strip_prefix('[')
+                .and_then(|s| s.strip_suffix(']'))
+            {
+                for part in inner.split(',') {
+                    let part = part.trim().trim_matches('"').trim_matches('\'');
+                    if let Some(name) = normalize_tag_name(part) {
+                        tags.push(name);
+                    }
+                }
+                continue;
+            }
+            // Scalar or comma-separated.
+            if value.contains(',') {
+                for part in value.split(',') {
+                    let part = part.trim().trim_matches('"').trim_matches('\'');
+                    if let Some(name) = normalize_tag_name(part) {
+                        tags.push(name);
+                    }
+                }
+            } else {
+                let part = value.trim_matches('"').trim_matches('\'');
+                if let Some(name) = normalize_tag_name(part) {
+                    tags.push(name);
+                }
+            }
+            continue;
+        }
+
+        if in_tags_list {
+            let is_indent = line.starts_with(' ') || line.starts_with('\t');
+            if !is_indent {
+                in_tags_list = false;
+            } else if let Some(item) = trimmed.strip_prefix("- ") {
+                let part = item.trim().trim_matches('"').trim_matches('\'');
+                if let Some(name) = normalize_tag_name(part) {
+                    tags.push(name);
+                }
+            } else if trimmed == "-" {
+                continue;
+            } else {
+                in_tags_list = false;
+            }
+        }
+    }
+
+    tags
+}
+
+fn tags_from_note_content(content: &str) -> Vec<String> {
+    let Some(yaml) = frontmatter_yaml(content) else {
+        return Vec::new();
+    };
+    // Dedupe within a note (case-insensitive).
+    let mut seen: HashMap<String, String> = HashMap::new();
+    for tag in tags_from_frontmatter_yaml(yaml) {
+        let key = tag.to_lowercase();
+        seen.entry(key).or_insert(tag);
+    }
+    seen.into_values().collect()
+}
+
+fn read_file_head(path: &Path, max_bytes: usize) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|e| format!("Cannot open note: {e}"))?;
+    let mut buf = vec![0u8; max_bytes];
+    let n = file
+        .read(&mut buf)
+        .map_err(|e| format!("Cannot read note: {e}"))?;
+    buf.truncate(n);
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+fn unique_sorted_tags(index: &TagIndex) -> Vec<String> {
+    let mut seen: HashMap<String, String> = HashMap::new();
+    for tags in index.values() {
+        for tag in tags {
+            let key = tag.to_lowercase();
+            seen.entry(key).or_insert_with(|| tag.clone());
+        }
+    }
+    let mut out: Vec<String> = seen.into_values().collect();
+    out.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    out
+}
+
+fn rebuild_tag_index(root: &Path) -> TagIndex {
+    let mut index = TagIndex::new();
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            e.file_name()
+                .to_str()
+                .map(|n| !is_hidden(n))
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy();
+        if !is_markdown(&name) {
+            continue;
+        }
+        let Ok(head) = read_file_head(entry.path(), TAG_HEAD_BYTES) else {
+            continue;
+        };
+        let tags = tags_from_note_content(&head);
+        if tags.is_empty() {
+            continue;
+        }
+        let rel = relative_to_root(root, entry.path());
+        index.insert(rel, tags);
+    }
+    index
+}
+
+fn set_tag_index_path(state: &VaultState, rel: &str, tags: Vec<String>) {
+    let Ok(mut guard) = state.tag_index.lock() else {
+        return;
+    };
+    if tags.is_empty() {
+        guard.remove(rel);
+    } else {
+        guard.insert(rel.to_string(), tags);
+    }
+}
+
+fn remove_tag_index_path(state: &VaultState, rel: &str) {
+    let Ok(mut guard) = state.tag_index.lock() else {
+        return;
+    };
+    guard.remove(rel);
+    let prefix = format!("{rel}/");
+    guard.retain(|path, _| !path.starts_with(&prefix));
+}
+
+fn remap_tag_index_path(state: &VaultState, from: &str, to: Option<&str>) {
+    let Ok(mut guard) = state.tag_index.lock() else {
+        return;
+    };
+    let mut next = TagIndex::new();
+    for (path, tags) in guard.drain() {
+        if path == from {
+            if let Some(to) = to {
+                next.insert(to.to_string(), tags);
+            }
+            continue;
+        }
+        if let Some(rest) = path.strip_prefix(&format!("{from}/")) {
+            if let Some(to) = to {
+                next.insert(format!("{to}/{rest}"), tags);
+            }
+            continue;
+        }
+        next.insert(path, tags);
+    }
+    *guard = next;
+}
+
+fn replace_tag_index(state: &VaultState, index: TagIndex) {
+    if let Ok(mut guard) = state.tag_index.lock() {
+        *guard = index;
+    }
+}
+
+#[tauri::command]
+pub fn list_vault_tags(state: State<VaultState>) -> Result<Vec<String>, String> {
+    let guard = state
+        .tag_index
+        .lock()
+        .map_err(|_| "Tag index lock poisoned")?;
+    Ok(unique_sorted_tags(&guard))
+}
+
+/// Re-read one note's head into the tag index (external edits / watcher).
+#[tauri::command]
+pub fn reindex_note_tags(path: String, state: State<VaultState>) -> Result<Vec<String>, String> {
+    let root = get_root(&state)?;
+    let rel = path.trim().trim_start_matches('/').to_string();
+    if !rel.to_lowercase().ends_with(".md") {
+        let guard = state
+            .tag_index
+            .lock()
+            .map_err(|_| "Tag index lock poisoned")?;
+        return Ok(unique_sorted_tags(&guard));
+    }
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    if !full.is_file() {
+        remove_tag_index_path(&state, &rel);
+    } else {
+        let head = read_file_head(&full, TAG_HEAD_BYTES)?;
+        let tags = tags_from_note_content(&head);
+        set_tag_index_path(&state, &rel, tags);
+    }
+    let guard = state
+        .tag_index
+        .lock()
+        .map_err(|_| "Tag index lock poisoned")?;
+    Ok(unique_sorted_tags(&guard))
 }
 
 #[tauri::command]

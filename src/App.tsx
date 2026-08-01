@@ -14,6 +14,7 @@ import { StatusBar } from "./components/StatusBar";
 import { SyncConflictBanner } from "./components/SyncConflictBanner";
 import { EditorChrome } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { PageTags } from "./components/PageTags";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
@@ -160,6 +161,16 @@ function App() {
 
       await refreshTree();
       void refreshSyncStatus();
+
+      const mdPaths = paths.filter((p) => p.toLowerCase().endsWith(".md"));
+      if (mdPaths.length === 1) {
+        await useVaultStore.getState().reindexVaultNoteTags(mdPaths[0]!);
+      } else if (mdPaths.length > 1) {
+        // Several notes changed (sync/bulk) — patch each head, then read catalog.
+        for (const p of mdPaths) {
+          await useVaultStore.getState().reindexVaultNoteTags(p);
+        }
+      }
 
       const { activePath: current, dirty } = useVaultStore.getState();
       if (!current || dirty) return;
@@ -350,13 +361,21 @@ function App() {
                                             : "document-editor-slot"
                                         }
                                       >
-                                        <MarkdownSourceEditor
-                                          path={tabPath}
-                                          content={tabContent}
-                                          onChange={(markdown) =>
-                                            onEditorChange(tabPath, markdown)
-                                          }
-                                        />
+                                        <div className="source-editor-wrap">
+                                          <PageTags
+                                            content={tabContent}
+                                            onChange={(markdown) =>
+                                              onEditorChange(tabPath, markdown)
+                                            }
+                                          />
+                                          <MarkdownSourceEditor
+                                            path={tabPath}
+                                            content={tabContent}
+                                            onChange={(markdown) =>
+                                              onEditorChange(tabPath, markdown)
+                                            }
+                                          />
+                                        </div>
                                       </div>
                                     </>
                                   )}

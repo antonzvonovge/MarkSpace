@@ -146,6 +146,8 @@ pub fn run() {
             vault::absolute_path,
             vault::write_asset,
             vault::search_notes,
+            vault::list_vault_tags,
+            vault::reindex_note_tags,
             favorites::list_favorites,
             favorites::add_favorite,
             favorites::remove_favorite,

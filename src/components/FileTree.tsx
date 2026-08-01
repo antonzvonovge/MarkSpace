@@ -776,15 +776,22 @@ function InlineRenameInput({
     return () => window.cancelAnimationFrame(id);
   }, [initialValue]);
 
-  const commit = () => {
+  const finish = (action: () => void) => {
     if (committed.current) return;
     committed.current = true;
+    // Blur before unmount so react-dnd-treeview releases its input drag-lock
+    // (focusout often does not fire when a focused input is removed).
+    inputRef.current?.blur();
+    action();
+  };
+
+  const commit = () => {
     const next = value.trim();
     if (!next || next === initialValue) {
-      onCancel();
+      finish(() => onCancel());
       return;
     }
-    onCommit(next);
+    finish(() => onCommit(next));
   };
 
   return (
@@ -803,8 +810,7 @@ function InlineRenameInput({
           commit();
         } else if (e.key === "Escape") {
           e.preventDefault();
-          committed.current = true;
-          onCancel();
+          finish(() => onCancel());
         }
       }}
       onBlur={commit}

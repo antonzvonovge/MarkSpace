@@ -12,10 +12,12 @@ import {
   joinPath,
   listFavorites,
   listTree,
+  listVaultTags,
   moveEntry,
   openVault,
   parentPath,
   readNote,
+  reindexNoteTags as reindexNoteTagsApi,
   removeFavorite,
   renamePath,
   writeNote,
@@ -61,6 +63,8 @@ type VaultStore = {
   expandedPaths: string[];
   /** Vault-relative favorite paths (pages and folders), sorted. */
   favoritePaths: string[];
+  /** Unique tags from note frontmatter across the vault. */
+  vaultTags: string[];
   content: string;
   viewMode: ViewMode;
   /** Live-mode document outline (TOC) pane. */
@@ -72,6 +76,9 @@ type VaultStore = {
   suppressWatchUntil: number;
   openVaultAt: (path: string) => Promise<void>;
   refreshTree: () => Promise<void>;
+  refreshVaultTags: () => Promise<void>;
+  /** Patch in-memory tag index for one note after an external edit. */
+  reindexVaultNoteTags: (path: string) => Promise<void>;
   openNote: (path: string, options?: OpenNoteOptions) => Promise<void>;
   pinTab: (path: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
@@ -288,6 +295,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   selectedFolderExplicit: false,
   expandedPaths: [],
   favoritePaths: [],
+  vaultTags: [],
   content: "",
   viewMode: "live",
   showOutline: false,
@@ -296,6 +304,25 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   loading: false,
   error: null,
   suppressWatchUntil: 0,
+
+  refreshVaultTags: async () => {
+    try {
+      const vaultTags = await listVaultTags();
+      set({ vaultTags });
+    } catch {
+      set({ vaultTags: [] });
+    }
+  },
+
+  /** Patch tag index for one note after an external disk change. */
+  reindexVaultNoteTags: async (path) => {
+    try {
+      const vaultTags = await reindexNoteTagsApi(path);
+      set({ vaultTags });
+    } catch {
+      await get().refreshVaultTags();
+    }
+  },
 
   openVaultAt: async (path) => {
     set({ loading: true, error: null });
@@ -322,8 +349,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         selectedFolderExplicit: false,
         expandedPaths,
         favoritePaths,
+        vaultTags: [],
         tabs: restoredTabs,
       });
+      void get().refreshVaultTags();
 
       if (restoredTabs.length > 0) {
         const active =
@@ -586,6 +615,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         saving: false,
         tabs: withTabBody(tabs, activePath, content, false),
       });
+      void get().refreshVaultTags();
     } catch (e) {
       set({
         saving: false,
@@ -740,6 +770,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
       persistSession(get());
       await get().refreshTree();
+      void get().refreshVaultTags();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -808,6 +839,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
       persistSession(get());
       await get().refreshTree();
+      void get().refreshVaultTags();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -875,6 +907,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       persistSession(get());
       await get().refreshTree();
+      void get().refreshVaultTags();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -897,6 +930,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
       if (created.length) {
         await get().refreshTree();
+        void get().refreshVaultTags();
       }
       return created;
     } catch (e) {

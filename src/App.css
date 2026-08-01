@@ -16,6 +16,11 @@
   --muted: #5d6b73;
   --line: rgba(28, 36, 40, 0.1);
   --danger: #b44848;
+  /* Page tags: matte Material blue (Blue 50/100 tint, Blue 800 ink). */
+  --tag-bg: #e6edf7;
+  --tag-bg-hover: #d8e4f4;
+  --tag-border: #c2d5ec;
+  --tag-text: #1565c0;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
   --font-live: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
   --font-source: "JetBrains Mono", ui-monospace, monospace;
@@ -54,6 +59,10 @@
   --muted: #8a9aa3;
   --line: rgba(231, 238, 242, 0.12);
   --danger: #e06a6a;
+  --tag-bg: rgba(100, 181, 246, 0.14);
+  --tag-bg-hover: rgba(100, 181, 246, 0.22);
+  --tag-border: rgba(144, 202, 249, 0.28);
+  --tag-text: #90caf9;
 }
 
 /* Cursor-like thin file-tree rows */
@@ -1680,10 +1689,211 @@ li.dnd-drop-target > .tree-row {
   padding-left: 12px;
 }
 
-.editor-canvas {
+.editor-canvas-wrap {
+  position: relative;
   max-width: 760px;
   margin: 0 auto;
+}
+
+.editor-canvas {
   padding: 8px 12px 64px;
+}
+
+/* Page tags — overlay on content perimeter (not DocumentToolbar). */
+.page-tags {
+  position: sticky;
+  top: 6px;
+  z-index: 6;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+  padding: 0 12px;
+  margin-bottom: -4px;
+}
+
+.page-tags-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+.page-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 160px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--tag-border);
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.page-tag-chip:hover {
+  background: var(--tag-bg-hover);
+}
+
+.page-tag-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-tag-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tag-text);
+  opacity: 0.65;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.page-tag-chip-remove:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--tag-text) 16%, transparent);
+}
+
+.page-tags-add-wrap {
+  position: relative;
+}
+
+.page-tags-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px dashed var(--tag-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tag-bg) 55%, transparent);
+  color: var(--tag-text);
+  opacity: 0.8;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.page-tags-add.is-empty {
+  padding: 0 10px;
+  border-style: solid;
+}
+
+.page-tags-add:hover,
+.page-tags-add[aria-expanded="true"] {
+  background: var(--tag-bg-hover);
+  border-color: color-mix(in srgb, var(--tag-text) 35%, var(--tag-border));
+  opacity: 1;
+}
+
+.page-tags-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: min(240px, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.18);
+}
+
+.page-tags-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  outline: none;
+}
+
+.page-tags-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.page-tags-suggestions {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.page-tags-suggestion {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.page-tags-suggestion.is-active,
+.page-tags-suggestion:hover {
+  background: var(--sidebar-hover);
+}
+
+.page-tags-suggestion strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.page-tags-empty {
+  margin-top: 4px;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.source-editor-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+}
+
+.source-editor-wrap > .page-tags {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 6;
+  margin: 0;
+  padding: 0;
+}
+
+.source-editor-wrap > .source-editor-shell {
+  flex: 1;
+  min-height: 0;
 }
 
 .editor-canvas .bn-container {
@@ -1708,26 +1918,48 @@ li.dnd-drop-target > .tree-row {
   padding: 3px 2px;
 }
 
+/* Sizes are in em so headings scale with the live editor font setting,
+   not with the UI font size. */
 .editor-canvas [data-content-type="heading"] {
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="1"] {
-  font-size: 1.85rem;
+  font-size: 1.5em;
   font-weight: 700;
-  margin-top: 0.35em;
+  margin-top: 0.6em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="2"] {
-  font-size: 1.4rem;
+  font-size: 1.3em;
+  font-weight: 680;
+  margin-top: 0.55em;
+}
+
+.editor-canvas [data-content-type="heading"][data-level="3"] {
+  font-size: 1.15em;
   font-weight: 650;
   margin-top: 0.5em;
 }
 
-.editor-canvas [data-content-type="heading"][data-level="3"] {
-  font-size: 1.15rem;
-  font-weight: 600;
+.editor-canvas [data-content-type="heading"][data-level="4"] {
+  font-size: 1.05em;
+  font-weight: 650;
   margin-top: 0.45em;
+}
+
+.editor-canvas [data-content-type="heading"][data-level="5"] {
+  font-size: 1em;
+  font-weight: 620;
+  margin-top: 0.4em;
+}
+
+.editor-canvas [data-content-type="heading"][data-level="6"] {
+  font-size: 0.95em;
+  font-weight: 620;
+  margin-top: 0.4em;
+  color: var(--muted);
 }
 
 .editor-canvas [data-content-type="table"] table {

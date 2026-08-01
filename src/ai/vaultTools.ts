@@ -16,6 +16,10 @@ import {
 } from "./chatAttachments";
 import { buildAskUserTool } from "./askUser";
 import { buildDrawioTools } from "./drawio/tools";
+import {
+  MARKDOWN_FORMAT_GUIDE,
+  markdownCoreRules,
+} from "./markdownFormat";
 import type { ChatMode } from "./types";
 import { buildWebTools } from "./webTools";
 
@@ -167,6 +171,15 @@ export function buildVaultTools(
           content: content.slice(0, 80_000),
         };
       },
+    }),
+
+    read_format_guide: tool({
+      description:
+        "Return the full MarkSpace Markdown dialect specification (wiki-links, Draw.io embeds, image widths, tables, diagrams, unsupported syntax). Call when unsure how to write or edit note markdown, or before non-trivial markdown edits.",
+      inputSchema: z.object({}),
+      execute: async () => ({
+        guide: MARKDOWN_FORMAT_GUIDE,
+      }),
     }),
   };
 
@@ -412,7 +425,8 @@ export function buildSystemPrompt(opts: {
     "When you need a decision, confirmation, or clarification with clear choices: use ask_user (multiple-choice + optional free-text) instead of listing A/B/C options in plain chat text. Keep questions focused; prefer one round of 1–3 questions.",
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
     "When the user mentions vault paths in their message (files or folders ending with /), use read_note and/or list_notes as needed — do not ask them to paste the contents again.",
-    "When writing or editing Markdown: put exactly one blank line between paragraphs (and between a paragraph and a list/heading/code block). Do not collapse paragraphs into a single block and do not leave multiple consecutive blank lines.",
+    "MarkSpace Markdown is a dialect of standard Markdown. Follow these rules exactly; call read_format_guide when unsure or before writing non-trivial markdown:",
+    ...markdownCoreRules(),
     "In chat replies you may include diagrams as fenced code blocks: ```mermaid for Mermaid, or ```plantuml / ```puml for PlantUML. The UI renders them inline. Prefer these for architecture/flow sketches in answers; use Draw.io tools only for .drawio vault files.",
   ];
   if (opts.mode === "agent") {
@@ -423,7 +437,7 @@ export function buildSystemPrompt(opts: {
       "For .drawio files: use mutate_diagram for batch edits (never many parallel single updates — they race). Use temp_id on new nodes and reference them from add_edges / child parent in the same call. Never raw edit_note on XML.",
       "Draw.io layout: for multi-shape diagrams OMIT x/y — mutate_diagram auto-layouts top-down (ArchiMate: Motivation→Strategy→Business→Application→Technology→Implementation). Do not invent sideways coordinates. Use layout:{type:'none'} only when intentionally keeping positions; layout:{type:'archimate'|'hierarchical'|'grid', direction:'top_down'|'left_right'} to override.",
       "Draw.io capabilities: text align/vertical_align/font_*; sketch; page_settings; shapes include group/swimlane and ArchiMate 3.2 (archimate.*); edges relation=serving|realization|assignment|…; parent=temp_id nesting; waypoints + exit_*/entry_*; add_pages/rename_pages.",
-      "Images in notes: save with save_attachment (chat images) or write_asset (raw base64), then edit_note to insert ![alt](.assets/filename.ext) using the returned url. Put exactly one blank line before and after the image markdown. Never invent .assets paths.",
+      "Images in notes: save with save_attachment (chat images) or write_asset (raw base64), then edit_note to insert the markdown using the returned url. Never invent .assets paths.",
     );
   }
   if (opts.vaultPath) {

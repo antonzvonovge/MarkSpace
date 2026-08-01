@@ -126,6 +126,16 @@ export async function searchNotes(query: string): Promise<SearchHit[]> {
   return invoke("search_notes", { query });
 }
 
+/** Unique note tags from the in-memory vault tag index. */
+export async function listVaultTags(): Promise<string[]> {
+  return invoke("list_vault_tags");
+}
+
+/** Re-read one note's frontmatter into the tag index; returns full catalog. */
+export async function reindexNoteTags(path: string): Promise<string[]> {
+  return invoke("reindex_note_tags", { path });
+}
+
 /** Vault-relative paths stored as one file each under `.markspace/favorites/`. */
 export async function listFavorites(): Promise<string[]> {
   return invoke("list_favorites");

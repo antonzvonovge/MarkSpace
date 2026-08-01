@@ -1,0 +1,29 @@
+---
+description: Keep MarkSpace Markdown dialect docs in sync with format code
+alwaysApply: true
+---
+
+# Markdown format (agent knowledge)
+
+MarkSpace notes use a **dialect** of Markdown (wiki-links, Draw.io embeds, image widths, colored HTML tables, etc.). The built-in chat agent learns this from [`docs/markdown-format.md`](docs/markdown-format.md).
+
+## Single source of truth
+
+- Spec: `docs/markdown-format.md`
+- Core rules (always in the agent system prompt) live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
+- Full guide is exposed to the agent via the `read_format_guide` tool (`src/ai/markdownFormat.ts`).
+
+## When you change the format
+
+If you change on-disk syntax or round-trip behavior in any of these areas, **update `docs/markdown-format.md` in the same change** (including the core-rules block when the change is agent-critical):
+
+- `src/lib/wikiMarkdown.ts` — wiki-links, `![[*.drawio]]` embeds
+- `src/lib/imageMarkdown.ts` — `![alt|width](…)` / assets
+- `src/lib/tableMarkdown.ts` — colored table HTML
+- `src/lib/normalizeMarkdown.ts` — CRLF / fence healing
+- `src/editor/schema.ts` and `src/editor/{mermaid,plantuml,drawio}/` — custom blocks
+- `src/editor/NoteEditor.tsx` — load/save pipeline that affects on-disk markdown
+
+Otherwise the in-app agent will keep writing obsolete or unsupported syntax.
+
+Keep product UI copy in English; this rule is for developers and coding agents working on MarkSpace itself.

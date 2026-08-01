@@ -12,11 +12,13 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DocumentOutline } from "../components/DocumentOutline";
 import { DocumentToolbar } from "../components/DocumentToolbar";
+import { PageTags } from "../components/PageTags";
 import {
   applyImagePreviewWidths,
   collectImageSizeRefs,
   restoreImagePreviewWidthsFromAlt,
 } from "../lib/imageMarkdown";
+import { noteBody, withNoteBody } from "../lib/noteFrontmatter";
 import { normalizeMarkdown } from "../lib/normalizeMarkdown";
 import {
   applyColoredTableHtml,
@@ -135,7 +137,12 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const applyingRef = useRef(false);
   const adoptNextChangeRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
+  /** Full file content last seen from props / emitted onChange. */
   const lastExternalRef = useRef(content);
+  /** Full file used as frontmatter source when merging Live body edits. */
+  const frontmatterBaseRef = useRef(content);
+  /** Last body markdown loaded into / serialized from BlockNote. */
+  const lastBodyRef = useRef(noteBody(content));
   const notePathRef = useRef(path);
   notePathRef.current = path;
   const editorRef = useRef<ReturnType<typeof useCreateBlockNote> | null>(null);
@@ -251,15 +258,23 @@ export function NoteEditor({ path, content, onChange }: Props) {
       ),
     );
     const wikiMd = markdownToWiki(md);
+    const full = withNoteBody(frontmatterBaseRef.current, wikiMd);
     // External loads / round-trips: adopt serialization, do not pin preview.
     if (applyingRef.current || adoptNextChangeRef.current) {
-      lastExternalRef.current = wikiMd;
+      lastBodyRef.current = wikiMd;
+      frontmatterBaseRef.current = withNoteBody(
+        frontmatterBaseRef.current,
+        wikiMd,
+      );
+      lastExternalRef.current = frontmatterBaseRef.current;
       if (!applyingRef.current) adoptNextChangeRef.current = false;
       return;
     }
-    if (wikiMd === lastExternalRef.current) return;
-    lastExternalRef.current = wikiMd;
-    onChange(wikiMd);
+    if (full === lastExternalRef.current) return;
+    lastBodyRef.current = wikiMd;
+    frontmatterBaseRef.current = full;
+    lastExternalRef.current = full;
+    onChange(full);
   }, editor);
 
   const getSlashMenuItems = useCallback(
@@ -272,15 +287,20 @@ export function NoteEditor({ path, content, onChange }: Props) {
     const externalChange = content !== lastExternalRef.current;
     if (!pathChanged && !externalChange) return;
 
+    frontmatterBaseRef.current = content;
+    lastExternalRef.current = content;
+    lastPathRef.current = path;
+
+    const body = noteBody(normalizeMarkdown(content));
+    const bodyChanged = pathChanged || body !== lastBodyRef.current;
+    if (!bodyChanged) return;
+
     applyingRef.current = true;
     const blocks = restoreImagePreviewWidthsFromAlt(
-      editor.tryParseMarkdownToBlocks(
-        wikiToMarkdown(normalizeMarkdown(content)),
-      ),
+      editor.tryParseMarkdownToBlocks(wikiToMarkdown(body)),
     );
     editor.replaceBlocks(editor.document, blocks);
-    lastPathRef.current = path;
-    lastExternalRef.current = content;
+    lastBodyRef.current = body;
     adoptNextChangeRef.current = true;
     // replaceBlocks may notify listeners after this tick.
     queueMicrotask(() => {
@@ -424,14 +444,21 @@ export function NoteEditor({ path, content, onChange }: Props) {
       <div className="editor-column">
         <DocumentToolbar />
         <div className="editor-main">
-          <div className="editor-canvas">
-            <BlockNoteView editor={editor} theme={editorTheme} slashMenu={false}>
-              <SuggestionMenuController
-                triggerCharacter="/"
-                getItems={getSlashMenuItems}
-                suggestionMenuComponent={NoteSlashSuggestionMenu}
-              />
-            </BlockNoteView>
+          <div className="editor-canvas-wrap">
+            <PageTags content={content} onChange={onChange} />
+            <div className="editor-canvas">
+              <BlockNoteView
+                editor={editor}
+                theme={editorTheme}
+                slashMenu={false}
+              >
+                <SuggestionMenuController
+                  triggerCharacter="/"
+                  getItems={getSlashMenuItems}
+                  suggestionMenuComponent={NoteSlashSuggestionMenu}
+                />
+              </BlockNoteView>
+            </div>
           </div>
         </div>
       </div>

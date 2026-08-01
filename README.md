@@ -92,6 +92,8 @@ Without this, users authenticate with a Personal Access Token.
 | `[Site](https://example.com)` | Opens in system browser |
 | `[Local](./Welcome.md)` | Opens local note when possible |
 
+Full dialect (embeds, image widths, tables, diagrams, unsupported syntax): [docs/markdown-format.md](docs/markdown-format.md).
+
 ## Stack
 
 Tauri 2 · React · TypeScript · BlockNote · Zustand · git2 · [@minoru/react-dnd-treeview](https://github.com/minop1205/react-dnd-treeview)
