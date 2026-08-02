@@ -22,7 +22,7 @@ function sourcePathFor(node: Node | null): { sourcePath: string | null } | null 
   if (!el) return null;
   if (el.closest(".chat-composer")) return null;
   if (el.closest(".chat-messages")) return { sourcePath: null };
-  if (el.closest(".bn-container, .cm-editor")) {
+  if (el.closest(".bn-container, .cm-editor, .pdf-viewer")) {
     return { sourcePath: useVaultStore.getState().activePath };
   }
   return null;
@@ -59,7 +59,7 @@ function anchorFromSelection(): Anchor | null {
 
 /**
  * Floating "Add to chat" affordance shown next to a text selection in the
- * note editor (Live or Source) and in chat messages.
+ * note editor (Live or Source), PDF viewer, and chat messages.
  */
 export function SelectionToChatButton() {
   const [anchor, setAnchor] = useState<Anchor | null>(null);

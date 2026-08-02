@@ -421,6 +421,7 @@ select {
 
 .app-splitter:hover::before,
 .app-splitter[data-separator][data-active]::before,
+.app-splitter.is-active::before,
 .app-splitter:focus-visible::before {
   width: 2px;
   background: var(--accent);
@@ -816,6 +817,39 @@ select {
   display: block;
   width: var(--tree-icon-size);
   height: var(--tree-icon-size);
+}
+
+.tree-project-flag,
+.chat-project-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  line-height: 1;
+  /* Flag glyphs are wide rectangles; shrink so they match square SVG icons. */
+  font-size: calc(var(--tree-icon-size) * 0.72);
+  transform: scaleX(0.92);
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.chat-project-flag {
+  --tree-icon-size: 14px;
+  font-size: 11px;
+}
+
+.chat-project-option-icon .chat-project-flag,
+.chat-project-trigger-icon .chat-project-flag {
+  width: 14px;
+  height: 14px;
+}
+
+.dnd-preview-icon .tree-project-flag {
+  --tree-icon-size: 16px;
+  width: 16px;
+  height: 16px;
 }
 
 .tree-drop-line {
@@ -2313,6 +2347,288 @@ li.dnd-drop-target > .tree-row {
   background: var(--editor-surface);
 }
 
+.pdf-viewer {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-surface);
+}
+
+.pdf-viewer__toolbar,
+.pdf-viewer__find {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.65rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.08));
+  background: var(--panel-bg, var(--editor-surface));
+}
+
+/* Only direct toolbar controls — not tag chips / add / remove inside __tags. */
+.pdf-viewer__toolbar > button,
+.pdf-viewer__toolbar-group > button,
+.pdf-viewer__find button {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pdf-viewer__toolbar > button:hover:not(:disabled),
+.pdf-viewer__toolbar-group > button:hover:not(:disabled),
+.pdf-viewer__find button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.pdf-viewer__toolbar > button.is-active,
+.pdf-viewer__toolbar-group > button.is-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.pdf-viewer__toolbar > button:disabled,
+.pdf-viewer__toolbar-group > button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pdf-viewer__toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pdf-viewer__tags {
+  margin-left: auto;
+  flex: 1 1 10rem;
+  min-width: 7rem;
+  max-width: min(420px, 100%);
+}
+
+.pdf-viewer__tags .page-tags {
+  position: static;
+  pointer-events: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  justify-content: flex-end;
+}
+
+.pdf-viewer__tags .page-tags-chips {
+  justify-content: flex-end;
+}
+
+.pdf-viewer__tags .page-tag-chip {
+  flex-shrink: 0;
+}
+
+.pdf-viewer__tags .page-tags-popover {
+  right: 0;
+  left: auto;
+}
+
+.pdf-viewer__page-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text-muted, var(--text));
+}
+
+.pdf-viewer__page-label input {
+  width: 3.2rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  border-radius: 4px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.pdf-viewer__find input[type="search"] {
+  flex: 1;
+  min-width: 10rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.pdf-viewer__find-status {
+  font-size: 0.8rem;
+  color: var(--text-muted, var(--text));
+}
+
+.pdf-viewer__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.pdf-viewer__outline {
+  flex: 0 0 auto;
+  width: 220px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: none;
+  padding: 0.5rem 0.35rem;
+  background: var(--panel-bg, var(--editor-surface));
+}
+
+.pdf-viewer__outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pdf-viewer__outline-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pdf-viewer__outline-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.pdf-viewer__outline-item.is-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.pdf-viewer__scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  background: color-mix(in srgb, var(--text) 4%, var(--editor-surface));
+}
+
+.pdf-viewer__page {
+  position: relative;
+  display: block;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Sized by JS to match the rendered viewport. Transform is used only for
+   instant zoom preview between full canvas re-renders. */
+.pdf-viewer__page-inner {
+  position: relative;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.pdf-viewer__page.is-zooming .pdf-viewer__text-layer {
+  pointer-events: none;
+}
+
+.pdf-viewer__page-canvas {
+  display: block;
+  /* Never let global media rules collapse the bitmap. */
+  max-width: none;
+}
+
+/* Selectable text overlay (pdf.js TextLayer). Text is transparent; selection shows. */
+.pdf-viewer__text-layer.textLayer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  opacity: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  transform-origin: 0 0;
+  z-index: 1;
+  caret-color: CanvasText;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+}
+
+.pdf-viewer__text-layer.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.pdf-viewer__text-layer.textLayer {
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor, 1) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-viewer__text-layer.textLayer > :not(.markedContent),
+.pdf-viewer__text-layer.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+}
+
+.pdf-viewer__text-layer.textLayer .markedContent {
+  display: contents;
+}
+
+.pdf-viewer__text-layer.textLayer ::selection {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: transparent;
+}
+
+.pdf-viewer__status {
+  margin: 2rem auto;
+  color: var(--text-muted, var(--text));
+  font-size: 0.9rem;
+}
+
+.pdf-viewer__status.is-error {
+  color: var(--danger);
+}
+
 .drawio-embed {
   margin: 0.35rem 0;
 }
@@ -2351,6 +2667,11 @@ li.dnd-drop-target > .tree-row {
 .tree-drawio-icon {
   display: inline-flex;
   color: var(--accent);
+}
+
+.tree-pdf-icon {
+  display: inline-flex;
+  color: var(--text-muted, var(--text));
 }
 
 .source-editor-shell {
@@ -4808,6 +5129,7 @@ li.dnd-drop-target > .tree-row {
 .chat-project-option {
   display: flex;
   align-items: center;
+  gap: 6px;
   width: 100%;
   border: 0;
   background: transparent;
@@ -4818,6 +5140,16 @@ li.dnd-drop-target > .tree-row {
   padding: 6px 8px;
   border-radius: 7px;
   cursor: pointer;
+}
+
+.chat-project-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  line-height: 0;
 }
 
 .chat-project-option:hover {
@@ -5600,6 +5932,7 @@ li.dnd-drop-target > .tree-row {
 }
 
 .app-dialog-body .app-dialog-label + .app-dialog-input,
+.app-dialog-body .app-dialog-label + .ms-select,
 .app-dialog-body .app-dialog-label + .link-dialog-tags {
   margin-bottom: 12px;
 }

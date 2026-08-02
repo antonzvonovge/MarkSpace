@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use super::model::{EMBEDDING_DIM, MODEL_ID};
 
-pub const INDEX_VERSION: u32 = 1;
+pub const INDEX_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,18 +91,26 @@ pub fn save_index(dir: &Path, index: &EmbeddingIndex) -> Result<(), String> {
 }
 
 pub fn content_hash(content: &str) -> String {
+    content_hash_bytes(content.as_bytes())
+}
+
+pub fn content_hash_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(content.as_bytes());
+    hasher.update(bytes);
     let digest = hasher.finalize();
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// True when the saved embeddings for `rel` still match the file on disk.
 pub fn is_indexed(index: &EmbeddingIndex, rel: &str, content: &str) -> bool {
+    is_indexed_hash(index, rel, &content_hash(content))
+}
+
+pub fn is_indexed_hash(index: &EmbeddingIndex, rel: &str, hash: &str) -> bool {
     index
         .files
         .get(rel)
-        .map(|rec| rec.content_hash == content_hash(content))
+        .map(|rec| rec.content_hash == hash)
         .unwrap_or(false)
 }
 

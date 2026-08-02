@@ -10,10 +10,10 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use walkdir::WalkDir;
 
-use super::chunk::chunk_markdown;
+use super::chunk::{chunk_markdown, chunk_pdf};
 use super::index::{
-    content_hash, cosine_similarity, index_dir, is_indexed, load_index, save_index, ChunkRecord,
-    EmbeddingIndex, FileRecord,
+    content_hash, content_hash_bytes, cosine_similarity, index_dir, is_indexed, is_indexed_hash,
+    load_index, save_index, ChunkRecord, EmbeddingIndex, FileRecord,
 };
 use super::download::model_is_installed;
 use super::model::{Embedder, MODEL_ID};
@@ -278,17 +278,28 @@ impl WorkerState {
         let Some(root) = self.vault_root.clone() else {
             return;
         };
-        let md_files = list_markdown_files(&root);
+        let files = list_indexable_files(&root);
         let mut live: HashSet<String> = HashSet::new();
-        for rel in &md_files {
+        for rel in &files {
             live.insert(rel.clone());
             let full = root.join(rel);
-            let Ok(content) = std::fs::read_to_string(&full) else {
-                self.pending.insert(rel.clone());
-                continue;
-            };
-            if !is_indexed(&self.index, rel, &content) {
-                self.pending.insert(rel.clone());
+            if rel.ends_with(".pdf") {
+                let Ok(bytes) = std::fs::read(&full) else {
+                    self.pending.insert(rel.clone());
+                    continue;
+                };
+                let hash = content_hash_bytes(&bytes);
+                if !is_indexed_hash(&self.index, rel, &hash) {
+                    self.pending.insert(rel.clone());
+                }
+            } else {
+                let Ok(content) = std::fs::read_to_string(&full) else {
+                    self.pending.insert(rel.clone());
+                    continue;
+                };
+                if !is_indexed(&self.index, rel, &content) {
+                    self.pending.insert(rel.clone());
+                }
             }
         }
         let stale: Vec<String> = self
@@ -304,7 +315,7 @@ impl WorkerState {
         }
         self.total_work = self.pending.len();
         self.done_work = 0;
-        self.reused_work = md_files.len().saturating_sub(self.pending.len());
+        self.reused_work = files.len().saturating_sub(self.pending.len());
         self.progress = if self.total_work == 0 { 100 } else { 0 };
         if self.pending.is_empty() {
             self.indexing = false;
@@ -323,7 +334,7 @@ impl WorkerState {
             return;
         }
         let path = normalize_rel(path);
-        if !path.ends_with(".md") {
+        if !path.ends_with(".md") && !path.ends_with(".pdf") {
             return;
         }
         if path.split('/').any(|p| p.starts_with('.')) {
@@ -387,7 +398,7 @@ impl WorkerState {
             self.debounce.insert(to.clone(), t);
         }
         // Folder rename prefix
-        if !from.ends_with(".md") {
+        if !from.ends_with(".md") && !from.ends_with(".pdf") {
             let from_prefix = format!("{from}/");
             let to_prefix = format!("{to}/");
             let keys: Vec<String> = self
@@ -506,15 +517,45 @@ impl WorkerState {
             self.dirty = true;
             return Ok(());
         }
-        let content = std::fs::read_to_string(&full)
-            .map_err(|e| format!("Cannot read {rel} for embeddings: {e}"))?;
-        let hash = content_hash(&content);
-        if let Some(existing) = self.index.files.get(rel) {
-            if existing.content_hash == hash {
-                return Ok(());
+
+        let (hash, chunks) = if rel.ends_with(".pdf") {
+            let bytes = std::fs::read(&full)
+                .map_err(|e| format!("Cannot read {rel} for embeddings: {e}"))?;
+            let hash = content_hash_bytes(&bytes);
+            if let Some(existing) = self.index.files.get(rel) {
+                if existing.content_hash == hash {
+                    return Ok(());
+                }
             }
-        }
-        let chunks = chunk_markdown(&content);
+            let pages = match crate::pdf_text::extract_pdf_pages(&bytes) {
+                Ok(p) => p,
+                Err(_) => {
+                    // Unreadable / encrypted / empty text layer — store empty record.
+                    self.index.files.insert(
+                        rel.to_string(),
+                        FileRecord {
+                            content_hash: hash,
+                            chunks: Vec::new(),
+                        },
+                    );
+                    self.dirty = true;
+                    return Ok(());
+                }
+            };
+            let chunks = chunk_pdf(&pages);
+            (hash, chunks)
+        } else {
+            let content = std::fs::read_to_string(&full)
+                .map_err(|e| format!("Cannot read {rel} for embeddings: {e}"))?;
+            let hash = content_hash(&content);
+            if let Some(existing) = self.index.files.get(rel) {
+                if existing.content_hash == hash {
+                    return Ok(());
+                }
+            }
+            (hash, chunk_markdown(&content))
+        };
+
         if chunks.is_empty() {
             self.index.files.insert(
                 rel.to_string(),
@@ -605,7 +646,7 @@ fn normalize_rel(path: &str) -> String {
     path.trim().trim_start_matches('/').replace('\\', "/")
 }
 
-fn list_markdown_files(root: &Path) -> Vec<String> {
+fn list_indexable_files(root: &Path) -> Vec<String> {
     let mut out = Vec::new();
     for entry in WalkDir::new(root)
         .into_iter()
@@ -613,7 +654,8 @@ fn list_markdown_files(root: &Path) -> Vec<String> {
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
-        if path.extension().and_then(|x| x.to_str()) != Some("md") {
+        let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("");
+        if ext != "md" && ext != "pdf" {
             continue;
         }
         if path.components().any(|c| {

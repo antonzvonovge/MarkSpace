@@ -32,8 +32,8 @@ export type BuildTagGraphOptions = {
   /** Only emit tag nodes and co-occurrence edges between tags. Default false. */
   tagsOnly?: boolean;
   /**
-   * All vault-relative `.md` paths (from the file tree). Used for untagged notes
-   * and optional local-graph scoping.
+   * All vault-relative document paths (`.md` / `.pdf` from the file tree). Used for
+   * untagged documents and optional local-graph scoping.
    */
   allNotePaths?: string[];
   /**
@@ -56,7 +56,16 @@ export function tagNodeId(tag: string): string {
 
 export function noteLabel(path: string): string {
   const name = path.split("/").pop() ?? path;
-  return name.replace(/\.md$/i, "");
+  return name
+    .replace(/\.md$/i, "")
+    .replace(/\.pdf$/i, "")
+    .replace(/\.drawio$/i, "")
+    .replace(/\.mdlnks$/i, "");
+}
+
+function isGraphDocumentPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".pdf");
 }
 
 function normalizeRoot(
@@ -71,7 +80,7 @@ function normalizeRoot(
   if (trimmed.startsWith("tag:")) {
     return { kind: "tag", key: trimmed.slice("tag:".length) };
   }
-  if (trimmed.toLowerCase().endsWith(".md") || trimmed.includes("/")) {
+  if (isGraphDocumentPath(trimmed) || trimmed.includes("/")) {
     return { kind: "note", key: trimmed };
   }
   return { kind: "tag", key: trimmed };
@@ -96,7 +105,7 @@ export function buildTagGraph(
 
   for (const entry of noteTags) {
     const path = entry.path.trim();
-    if (!path.toLowerCase().endsWith(".md")) continue;
+    if (!isGraphDocumentPath(path)) continue;
     const tags: string[] = [];
     for (const raw of entry.tags) {
       const name = raw.trim();
@@ -113,7 +122,7 @@ export function buildTagGraph(
   if (showUntagged && !tagsOnly) {
     const all = options.allNotePaths ?? [];
     for (const path of all) {
-      if (!path.toLowerCase().endsWith(".md")) continue;
+      if (!isGraphDocumentPath(path)) continue;
       if (taggedPaths.has(path)) continue;
       untaggedPaths.push(path);
     }

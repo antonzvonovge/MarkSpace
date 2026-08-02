@@ -74,7 +74,8 @@ export function isVaultDocumentName(name: string): boolean {
   return (
     lower.endsWith(".md") ||
     lower.endsWith(".drawio") ||
-    lower.endsWith(".mdlnks")
+    lower.endsWith(".mdlnks") ||
+    lower.endsWith(".pdf")
   );
 }
 

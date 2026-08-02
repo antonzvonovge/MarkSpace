@@ -76,7 +76,7 @@ export async function importPaths(
   return invoke("import_paths", { parent, sources });
 }
 
-/** Write a .md / .drawio / .mdlnks from bytes into a vault folder. */
+/** Write a .md / .drawio / .mdlnks / .pdf from bytes into a vault folder. */
 export async function importDocumentBytes(
   parent: string,
   fileName: string,
@@ -203,10 +203,25 @@ export type SearchHit = {
   path: string;
   line: number;
   snippet: string;
+  /** 1-based page for PDF hits. */
+  page?: number;
 };
 
 export async function searchNotes(query: string): Promise<SearchHit[]> {
   return invoke("search_notes", { query });
+}
+
+export type PdfTextExtract = {
+  path: string;
+  pageCount: number;
+  text: string;
+  pages: string[];
+  truncated: boolean;
+};
+
+/** Extract plain text from a vault PDF (Rust pdf-extract). */
+export async function extractPdfText(path: string): Promise<PdfTextExtract> {
+  return invoke("extract_pdf_text_cmd", { path });
 }
 
 export type SemanticSearchHit = {
@@ -279,6 +294,19 @@ export async function reindexNoteTags(path: string): Promise<string[]> {
   return invoke("reindex_note_tags", { path });
 }
 
+/** Tags for a vault file stored in `.markspace/filemeta/` (e.g. PDF). */
+export async function getFileTags(path: string): Promise<string[]> {
+  return invoke("get_file_tags", { path });
+}
+
+/** Set tags for a vault file (sidecar). Empty list removes the sidecar. */
+export async function setFileTags(
+  path: string,
+  tags: string[],
+): Promise<string[]> {
+  return invoke("set_file_tags", { path, tags });
+}
+
 /** Vault-relative paths stored as one file each under `.markspace/favorites/`. */
 export async function listFavorites(): Promise<string[]> {
   return invoke("list_favorites");
@@ -292,23 +320,105 @@ export async function removeFavorite(path: string): Promise<string[]> {
   return invoke("remove_favorite", { path });
 }
 
+/** Project type stored in `.markspace/projects/*.json` (`""` = unset). */
+export type ProjectTypeId = "" | "knowledgeBase" | "languageLearning";
+
+export const PROJECT_TYPE_OPTIONS: {
+  value: ProjectTypeId;
+  label: string;
+}[] = [
+  { value: "", label: "None" },
+  { value: "knowledgeBase", label: "Knowledge base" },
+  { value: "languageLearning", label: "Foreign language learning" },
+];
+
+export function projectTypeLabel(type: ProjectTypeId | string): string {
+  return PROJECT_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? "";
+}
+
+export function isProjectTypeId(value: unknown): value is ProjectTypeId {
+  return (
+    value === "" || value === "knowledgeBase" || value === "languageLearning"
+  );
+}
+
 export type ProjectProperties = {
   path: string;
   /** Free-form description ("What is this project about"). */
   about: string;
+  /** `""` | `knowledgeBase` | `languageLearning`. */
+  projectType: ProjectTypeId;
+  /** ISO 639-1 code when type is language learning; otherwise empty. */
+  learningLanguage: string;
 };
+
+export function emptyProjectProperties(path: string): ProjectProperties {
+  return {
+    path,
+    about: "",
+    projectType: "",
+    learningLanguage: "",
+  };
+}
 
 export async function getProjectProperties(
   path: string,
 ): Promise<ProjectProperties> {
-  return invoke("get_project_properties", { path });
+  const raw = await invoke<ProjectProperties>("get_project_properties", {
+    path,
+  });
+  return {
+    path: raw.path,
+    about: raw.about ?? "",
+    projectType: isProjectTypeId(raw.projectType) ? raw.projectType : "",
+    learningLanguage:
+      raw.projectType === "languageLearning"
+        ? (raw.learningLanguage ?? "").trim()
+        : "",
+  };
 }
 
 export async function setProjectProperties(
   path: string,
-  about: string,
+  props: {
+    about: string;
+    projectType: ProjectTypeId;
+    learningLanguage: string;
+  },
 ): Promise<ProjectProperties> {
-  return invoke("set_project_properties", { path, about });
+  const projectType = isProjectTypeId(props.projectType) ? props.projectType : "";
+  const learningLanguage =
+    projectType === "languageLearning"
+      ? props.learningLanguage.trim()
+      : "";
+  const raw = await invoke<ProjectProperties>("set_project_properties", {
+    path,
+    about: props.about,
+    projectType,
+    learningLanguage,
+  });
+  return {
+    path: raw.path,
+    about: raw.about ?? "",
+    projectType: isProjectTypeId(raw.projectType) ? raw.projectType : "",
+    learningLanguage:
+      raw.projectType === "languageLearning"
+        ? (raw.learningLanguage ?? "").trim()
+        : "",
+  };
+}
+
+export async function listProjectProperties(): Promise<ProjectProperties[]> {
+  const raw = await invoke<ProjectProperties[]>("list_project_properties");
+  return (raw ?? []).map((item) => ({
+    path: item.path,
+    about: item.about ?? "",
+    projectType: isProjectTypeId(item.projectType) ? item.projectType : "",
+    learningLanguage:
+      item.projectType === "languageLearning"
+        ? (item.learningLanguage ?? "").trim()
+        : "",
+  }));
 }
 
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -385,12 +495,13 @@ export function listVaultProjects(
     .map((n) => ({ path: n.path, name: n.name }));
 }
 
-export type DocumentKind = "markdown" | "drawio" | "mdlnks";
+export type DocumentKind = "markdown" | "drawio" | "mdlnks" | "pdf";
 
 export function documentKind(path: string): DocumentKind {
   const lower = path.toLowerCase();
   if (lower.endsWith(".drawio")) return "drawio";
   if (lower.endsWith(".mdlnks")) return "mdlnks";
+  if (lower.endsWith(".pdf")) return "pdf";
   return "markdown";
 }
 
@@ -400,4 +511,8 @@ export function isDrawioPath(path: string): boolean {
 
 export function isMdlnksPath(path: string): boolean {
   return documentKind(path) === "mdlnks";
+}
+
+export function isPdfPath(path: string): boolean {
+  return documentKind(path) === "pdf";
 }

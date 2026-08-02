@@ -124,6 +124,22 @@ describe("vault agent tools", () => {
     expect(prompt).toContain("list_tags");
   });
 
+  it("includes project type and learning language in the system prompt", () => {
+    const prompt = buildSystemPrompt({
+      mode: "ask",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      projectPath: "Spanish",
+      projectType: "languageLearning",
+      projectLearningLanguage: "es",
+      projectAbout: "A1 vocab",
+    });
+    expect(prompt).toContain("Project type: Foreign language learning.");
+    expect(prompt).toContain("Learning language: Spanish (es).");
+    expect(prompt).toContain("A1 vocab");
+  });
+
   it("tells the model to address the user by name when Profile name is set", async () => {
     const { usePrefsStore } = await import("../store/prefsStore");
     const { DEFAULT_PREFS } = await import("../settings/types");

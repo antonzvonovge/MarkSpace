@@ -16,7 +16,8 @@ export type NativeLanguageId =
   | "ja"
   | "ko"
   | "uk"
-  | "pl";
+  | "pl"
+  | "ka";
 
 export type Prefs = {
   userName: string;
@@ -59,6 +60,7 @@ export const NATIVE_LANGUAGE_OPTIONS: {
   { value: "it", label: "Italian" },
   { value: "pt", label: "Portuguese" },
   { value: "pl", label: "Polish" },
+  { value: "ka", label: "Georgian" },
   { value: "zh", label: "Chinese" },
   { value: "ja", label: "Japanese" },
   { value: "ko", label: "Korean" },

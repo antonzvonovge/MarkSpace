@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Graph from "graphology";
 import type { Attributes } from "graphology-types";
+import { createNodeBorderProgram } from "@sigma/node-border";
 import Sigma from "sigma";
 import type { SigmaNodeEventPayload } from "sigma/types";
 import { animateNodes } from "sigma/utils";
@@ -38,12 +39,20 @@ type NodeAttrs = Attributes & {
   key: string;
   x: number;
   y: number;
+  /** Sigma node program key — PDFs use a 1px black border circle. */
+  type?: string;
   community?: number;
   untagged?: boolean;
   highlighted?: boolean;
   /** Pinned while dragged: ForceAtlas2 leaves such nodes where they are. */
   fixed?: boolean;
 };
+
+function noteNodeType(kind: TagGraphNode["kind"], key: string): string {
+  if (kind !== "note") return "circle";
+  if (/\.pdf$/i.test(key)) return "pdf";
+  return "circle";
+}
 
 type EdgeAttrs = Attributes & {
   color: string;
@@ -171,12 +180,14 @@ function syncGraphology(
     if (!pos) fresh.add(node.id);
     const x = pos?.x ?? (Math.random() - 0.5) * 40;
     const y = pos?.y ?? (Math.random() - 0.5) * 40;
+    const type = noteNodeType(node.kind, node.key);
     if (graph.hasNode(node.id)) {
       graph.mergeNodeAttributes(node.id, {
         label: node.label,
         size: nodeSize(node),
         kind: node.kind,
         key: node.key,
+        type,
         untagged: Boolean(node.untagged),
       });
     } else {
@@ -186,6 +197,7 @@ function syncGraphology(
         color: theme.note,
         kind: node.kind,
         key: node.key,
+        type,
         x,
         y,
         untagged: Boolean(node.untagged),
@@ -733,6 +745,17 @@ export function TagGraphView() {
     const labelRenderers = createNodeLabelRenderers<NodeAttrs, EdgeAttrs>(
       () => themeRef.current,
     );
+    // Same fill as markdown notes, plus a black outline for PDFs.
+    // Avoid 1px in "pixels" mode: the border shader drops rings where
+    // borderSize <= u_correctionRatio (so value:1 never paints).
+    const PdfNodeProgram = createNodeBorderProgram({
+      borders: [
+        { size: { value: 0.18, mode: "relative" }, color: { value: "#000000" } },
+        { size: { fill: true }, color: { attribute: "color" } },
+      ],
+      drawLabel: labelRenderers.drawLabel,
+      drawHover: labelRenderers.drawHover,
+    });
     const sigma = new Sigma(graph, el, {
       allowInvalidContainer: true,
       renderLabels: true,
@@ -745,7 +768,11 @@ export function TagGraphView() {
       defaultDrawNodeHover: labelRenderers.drawHover,
       defaultEdgeColor: theme.edge,
       defaultNodeColor: theme.note,
+      defaultNodeType: "circle",
       zIndex: true,
+      nodeProgramClasses: {
+        pdf: PdfNodeProgram,
+      },
     });
     sigmaRef.current = sigma;
     // Pin the coordinate frame: without it sigma re-normalizes to the current

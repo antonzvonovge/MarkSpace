@@ -72,6 +72,25 @@ pub fn chunk_markdown(content: &str) -> Vec<TextChunk> {
     out
 }
 
+/// Chunk PDF page texts. `start_line` is the 1-based page number.
+pub fn chunk_pdf(pages: &[String]) -> Vec<TextChunk> {
+    let mut out = Vec::new();
+    for (idx, page) in pages.iter().enumerate() {
+        let text = page.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let page_no = (idx + 1) as u32;
+        let heading = Some(format!("Page {page_no}"));
+        if text.chars().count() <= MAX_CHARS {
+            out.push(make_chunk(heading, page_no, text));
+        } else {
+            out.extend(split_oversized(heading, page_no, text));
+        }
+    }
+    out
+}
+
 fn parse_heading(line: &str) -> Option<String> {
     let trimmed = line.trim();
     if !trimmed.starts_with('#') {
@@ -159,5 +178,16 @@ mod tests {
         let chunks = chunk_markdown(md);
         assert!(chunks.len() >= 2);
         assert_eq!(chunks[0].heading.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn chunks_pdf_by_page() {
+        let pages = vec!["alpha".into(), "".into(), "beta gamma".into()];
+        let chunks = chunk_pdf(&pages);
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].heading.as_deref(), Some("Page 1"));
+        assert_eq!(chunks[0].start_line, 1);
+        assert_eq!(chunks[1].heading.as_deref(), Some("Page 3"));
+        assert_eq!(chunks[1].start_line, 3);
     }
 }

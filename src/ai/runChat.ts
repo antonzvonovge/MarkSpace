@@ -26,6 +26,8 @@ export type RunChatParams = {
   activeExcerpt: string | null;
   projectPath?: string | null;
   projectAbout?: string | null;
+  projectType?: string | null;
+  projectLearningLanguage?: string | null;
   skills?: SkillMeta[] | null;
   forcedSkills?: LoadedSkill[] | null;
   forcedTools?: string[] | null;
@@ -223,6 +225,8 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     activeExcerpt: params.activeExcerpt,
     projectPath: params.projectPath,
     projectAbout: params.projectAbout,
+    projectType: params.projectType,
+    projectLearningLanguage: params.projectLearningLanguage,
     skills: params.skills,
     forcedSkills: params.forcedSkills,
     forcedTools: params.forcedTools,

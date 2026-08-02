@@ -5,14 +5,18 @@ import {
   createNote,
   deleteFolderIfEmpty,
   ensureFolder,
+  extractPdfText,
   getEmbeddingModelStatus,
+  getFileTags,
   listNoteTags,
   listTree,
   listVaultTags,
   parentPath,
+  projectTypeLabel,
   readNote,
   searchNotes,
   semanticSearchNotes,
+  setFileTags,
   writeAsset,
   writeNote,
   type TreeNode,
@@ -163,7 +167,8 @@ export function buildVaultTools(
           (p) =>
             (p.endsWith(".md") ||
               p.endsWith(".drawio") ||
-              p.endsWith(".mdlnks")) &&
+              p.endsWith(".mdlnks") ||
+              p.endsWith(".pdf")) &&
             inProject(p),
         );
         await yieldToUi();
@@ -215,7 +220,7 @@ export function buildVaultTools(
 
     search_notes: tool({
       description:
-        "Exact/substring search over markdown note contents (case-insensitive). Use for precise strings, symbols, filenames, or quoted phrases. For conceptual / meaning-based questions prefer semantic_search. When a project is selected, results are limited to that project.",
+        "Exact/substring search over markdown notes and text-extractable PDF documents (case-insensitive). Use for precise strings, symbols, filenames, or quoted phrases. For conceptual / meaning-based questions prefer semantic_search. PDF hits include page (1-based). When a project is selected, results are limited to that project.",
       inputSchema: z.object({
         query: z.string().min(1).describe("Search query"),
       }),
@@ -229,7 +234,7 @@ export function buildVaultTools(
 
     semantic_search: tool({
       description:
-        "Semantic search over vault notes using a separately downloaded local embedding model (meaning / paraphrases, RU and EN). Prefer this for conceptual questions like “what did I write about onboarding”. Returns path, score, snippet, optional heading. Follow up with read_note on the best hits. For exact substrings use search_notes instead. When a project is selected, results are limited to that project.",
+        "Semantic search over vault notes and text-extractable PDFs using a separately downloaded local embedding model (meaning / paraphrases, RU and EN). Prefer this for conceptual questions like “what did I write about onboarding”. Returns path, score, snippet, optional heading; for PDFs startLine is the page number. Follow up with read_note (or read_file for PDFs) on the best hits. For exact substrings use search_notes instead. When a project is selected, results are limited to that project.",
       inputSchema: z.object({
         query: z.string().min(1).describe("Natural-language search query"),
         limit: z
@@ -280,7 +285,7 @@ export function buildVaultTools(
 
     list_tags: tool({
       description:
-        "List the current unique note tags in the vault, collected from YAML frontmatter and inline #tags. Use this before choosing or changing tags. When a project is selected, only tags from notes in that project are returned.",
+        "List the current unique document tags in the vault (markdown frontmatter / #tags and PDF filemeta tags). Use this before choosing or changing tags. When a project is selected, only tags from documents in that project are returned.",
       inputSchema: z.object({}),
       execute: async () => {
         if (!projectPath) {
@@ -302,9 +307,24 @@ export function buildVaultTools(
       },
     }),
 
+    get_file_tags: tool({
+      description:
+        "Read tags for a vault file that uses filemeta sidecars (currently PDFs). For markdown notes prefer read_note and inspect YAML tags / #tags instead.",
+      inputSchema: z.object({
+        path: z.string().describe("Vault-relative path, e.g. Docs/spec.pdf"),
+      }),
+      execute: async ({ path }) => {
+        const rel = normalizeToolPath(path);
+        if (!rel) return { ok: false as const, error: "Path required" };
+        const tags = await getFileTags(rel);
+        await yieldToUi();
+        return { ok: true as const, path: rel, tags };
+      },
+    }),
+
     read_note: tool({
       description:
-        "Read a note by vault-relative path. Prefer start_line/end_line to read only a slice and save tokens; omit both to read the full file (capped).",
+        "Read a note by vault-relative path. Prefer start_line/end_line to read only a slice and save tokens; omit both to read the full file (capped). For .pdf files returns extracted plain text (scanned PDFs may be empty); start_line/end_line then mean 1-based page numbers.",
       inputSchema: z.object({
         path: z.string().describe("Vault-relative path, e.g. Folder/Note.md"),
         start_line: z
@@ -312,16 +332,82 @@ export function buildVaultTools(
           .int()
           .min(1)
           .optional()
-          .describe("1-based start line (inclusive)"),
+          .describe("1-based start line (inclusive); for PDFs = start page"),
         end_line: z
           .number()
           .int()
           .min(1)
           .optional()
-          .describe("1-based end line (inclusive)"),
+          .describe("1-based end line (inclusive); for PDFs = end page"),
       }),
       execute: async ({ path, start_line: startLine, end_line: endLine }) => {
-        const content = await readNote(path);
+        const rel = normalizeToolPath(path);
+        if (rel.toLowerCase().endsWith(".pdf")) {
+          const extracted = await extractPdfText(rel);
+          await yieldToUi();
+          const pages = extracted.pages;
+          if (startLine != null || endLine != null) {
+            const start = Math.max(1, startLine ?? 1);
+            const end = Math.min(pages.length, endLine ?? pages.length);
+            if (pages.length === 0) {
+              return {
+                path: rel,
+                kind: "pdf" as const,
+                page_count: 0,
+                content: "",
+                note: "No extractable text (scanned or empty PDF)",
+              };
+            }
+            if (start > end) {
+              return {
+                ok: false as const,
+                error: `Invalid range: start_line ${start} > end_line ${end}`,
+                page_count: pages.length,
+              };
+            }
+            const slice = pages
+              .slice(start - 1, end)
+              .map((t, i) => `--- Page ${start + i} ---\n${t}`)
+              .join("\n\n");
+            return {
+              path: rel,
+              kind: "pdf" as const,
+              start_page: start,
+              end_page: end,
+              page_count: pages.length,
+              content: slice,
+            };
+          }
+          const max = 80_000;
+          const text = extracted.text;
+          if (!text.trim()) {
+            return {
+              path: rel,
+              kind: "pdf" as const,
+              page_count: extracted.pageCount,
+              content: "",
+              note: "No extractable text (scanned or empty PDF)",
+            };
+          }
+          if (text.length > max) {
+            return {
+              path: rel,
+              kind: "pdf" as const,
+              truncated: true,
+              page_count: extracted.pageCount,
+              content: text.slice(0, max),
+            };
+          }
+          return {
+            path: rel,
+            kind: "pdf" as const,
+            truncated: extracted.truncated,
+            page_count: extracted.pageCount,
+            content: text,
+          };
+        }
+
+        const content = await readNote(rel);
         const lines = content.split("\n");
         await yieldToUi();
         if (startLine != null || endLine != null) {
@@ -336,7 +422,7 @@ export function buildVaultTools(
           }
           const slice = lines.slice(start - 1, end).join("\n");
           return {
-            path,
+            path: rel,
             start_line: start,
             end_line: end,
             line_count: lines.length,
@@ -346,14 +432,14 @@ export function buildVaultTools(
         const max = 80_000;
         if (content.length > max) {
           return {
-            path,
+            path: rel,
             truncated: true,
             line_count: lines.length,
             content: content.slice(0, max),
           };
         }
         return {
-          path,
+          path: rel,
           truncated: false,
           line_count: lines.length,
           content,
@@ -399,19 +485,27 @@ export function buildVaultTools(
 
     open_note: tool({
       description:
-        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note or diagram, or when they should see the file you are discussing. Does not replace read_note for reading contents.",
+        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page.",
       inputSchema: z.object({
         path: z
           .string()
-          .describe("Vault-relative path, e.g. Folder/Note.md or diagram.drawio"),
+          .describe(
+            "Vault-relative path, e.g. Folder/Note.md, diagram.drawio, or report.pdf",
+          ),
         preview: z
           .boolean()
           .optional()
           .describe(
             "If true (default), open as a preview tab (replaced by the next preview). If false, open as a pinned tab.",
           ),
+        page: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe("1-based PDF page to open (ignored for non-PDF files)"),
       }),
-      execute: async ({ path, preview }) => {
+      execute: async ({ path, preview, page }) => {
         const rel = normalizeToolPath(path);
         if (!rel) {
           return { ok: false as const, error: "Path required" };
@@ -421,7 +515,10 @@ export function buildVaultTools(
         const wasActive = store.activePath === rel;
         const asPreview = preview !== false;
 
-        await store.openNote(rel, { preview: asPreview });
+        await store.openNote(rel, {
+          preview: asPreview,
+          ...(page != null ? { page } : {}),
+        });
         await yieldToUi();
 
         const after = useVaultStore.getState();
@@ -439,6 +536,7 @@ export function buildVaultTools(
           already_open: wasOpen,
           already_active: wasActive,
           preview: Boolean(tab?.preview),
+          ...(page != null ? { page } : {}),
         };
       },
     }),
@@ -505,6 +603,30 @@ export function buildVaultTools(
     ...webTools,
     ...fileTools,
     ...askUserTool,
+    set_file_tags: tool({
+      description:
+        "Set tags for a PDF (or other filemeta-backed vault file). Replaces the full tag list. Pass an empty array to clear tags. For markdown notes, edit YAML frontmatter tags via edit_note instead.",
+      inputSchema: z.object({
+        path: z.string().describe("Vault-relative path, e.g. Docs/spec.pdf"),
+        tags: z
+          .array(z.string())
+          .describe("Full tag list to store (empty clears tags)"),
+      }),
+      execute: async ({ path, tags }) => {
+        const rel = normalizeToolPath(path);
+        if (!rel) return { ok: false as const, error: "Path required" };
+        if (!rel.toLowerCase().endsWith(".pdf")) {
+          return {
+            ok: false as const,
+            error: "set_file_tags is for PDF filemeta; use edit_note for markdown tags",
+          };
+        }
+        const saved = await setFileTags(rel, tags);
+        await useVaultStore.getState().refreshVaultTags();
+        await yieldToUi();
+        return { ok: true as const, path: rel, tags: saved };
+      },
+    }),
     edit_note: tool({
       description:
         "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note.",
@@ -1009,6 +1131,10 @@ export function buildSystemPrompt(opts: {
   projectPath?: string | null;
   /** Project "about" description from project properties. */
   projectAbout?: string | null;
+  /** Project type from project properties (`""` | knowledgeBase | languageLearning). */
+  projectType?: string | null;
+  /** Learning language ISO code when project type is language learning. */
+  projectLearningLanguage?: string | null;
   /** Skill catalog (name + description) for model auto-discovery. */
   skills?: SkillMeta[] | null;
   /** Full skill bodies forced by the user via slash in the composer. */
@@ -1026,6 +1152,7 @@ export function buildSystemPrompt(opts: {
     "You mostly read and edit Markdown (.md) notes — plain text with Markdown formatting.",
     "You can also inspect and edit Draw.io diagrams (.drawio) via diagram tools. Prefer mutate_diagram for any multi-element change (add/update/color/align/connect/page settings/layout in one call). Also: read_diagram, create_diagram, and single-element helpers.",
     "You can manage link collections (.mdlnks) via links tools: read_links, add_link, update_link, remove_link, reorder_links, set_links_filter, create_links. Call read_mdlnks_format when unsure. Never raw-edit .mdlnks with edit_note/write_note.",
+    "PDF documents (.pdf) are first-class vault files (view-only). They appear in list_notes/list_folder, are indexed for search_notes and semantic_search when text is extractable, and open in the PDF viewer via open_note (optional page). Use read_note or read_file to get extracted text; scanned PDFs may have no text. Tags for PDFs are stored in vault filemeta (same catalog as notes / tag graph); never edit_note/write_note on PDFs.",
     ...mdlnksCoreRules().map((r) => `Links (.mdlnks): ${r}`),
     "You can search the public web (web_search) and fetch pages as markdown (fetch_url) when vault notes are not enough. fetch_url auto-picks Tavily (if configured) or Jina; x.com/twitter.com status URLs use FxTwitter automatically.",
     `Web API keys configured: Tavily=${tavilyConfigured ? "yes" : "no"}, Firecrawl=${firecrawlConfigured ? "yes" : "no"}. These flags are authoritative — never ask the user whether a key is set. If Firecrawl=yes and they ask for Firecrawl / provider=firecrawl / scrape_url, call the tool immediately. If Firecrawl=no and they insist on Firecrawl, tell them to add the key in Settings → Firecrawl API key.`,
@@ -1042,7 +1169,7 @@ export function buildSystemPrompt(opts: {
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
     "When the user mentions vault paths in their message (files or folders ending with /), use list_folder, read_note, and/or list_notes as needed — do not ask them to paste the contents again.",
     "Use list_folder to inspect folder contents (folders vs files; recursive optional). Prefer it over list_notes when checking whether a folder exists or listing empty folders.",
-    "When the user asks to open, show, or switch to a note/diagram in the editor, call open_note (preview tab by default). Prefer open_note to show work; still use read_note/get_active_note to read contents.",
+    "When the user asks to open, show, or switch to a note/diagram/PDF in the editor, call open_note (preview tab by default; for PDFs pass page from search hits). Prefer open_note to show work; still use read_note/get_active_note to read contents.",
     "MarkSpace Markdown is a dialect of standard Markdown. Follow these rules exactly; call read_format_guide when unsure or before writing non-trivial markdown:",
     ...markdownCoreRules(),
     "In chat replies you may include diagrams as fenced code blocks: ```mermaid for Mermaid, or ```plantuml / ```puml for PlantUML. The UI renders them inline. Prefer these for architecture/flow sketches in answers; use Draw.io tools only for .drawio vault files.",
@@ -1056,6 +1183,7 @@ export function buildSystemPrompt(opts: {
       "When reading long notes: use read_note/get_active_note with start_line and end_line instead of loading the whole file.",
       "Preserve existing Markdown structure; keep one empty line between paragraphs in any text you insert or rewrite.",
       "For .drawio files: use mutate_diagram for batch edits (never many parallel single updates — they race). Use temp_id on new nodes and reference them from add_edges / child parent in the same call. Never raw edit_note on XML.",
+      "For .pdf files: use set_file_tags / get_file_tags for document tags (sidecar in .markspace/filemeta). Never edit_note/write_note on PDFs.",
       "For .mdlnks files: use add_link / update_link / remove_link / reorder_links / set_links_filter (never raw edit_note on the links text format).",
       "Draw.io layout: for multi-shape diagrams OMIT x/y — mutate_diagram auto-layouts top-down (ArchiMate: Motivation→Strategy→Business→Application→Technology→Implementation). Do not invent sideways coordinates. Use layout:{type:'none'} only when intentionally keeping positions; layout:{type:'archimate'|'hierarchical'|'grid', direction:'top_down'|'left_right'} to override.",
       "Draw.io capabilities: text align/vertical_align/font_*; sketch; page_settings; shapes include group/swimlane and ArchiMate 3.2 (archimate.*); edges relation=serving|realization|assignment|…; parent=temp_id nesting; waypoints + exit_*/entry_*; add_pages/rename_pages.",
@@ -1091,6 +1219,23 @@ export function buildSystemPrompt(opts: {
   }
   if (opts.projectPath) {
     lines.push(`Active project: ${opts.projectPath}`);
+    const typeLabel = projectTypeLabel(opts.projectType ?? "");
+    if (typeLabel) {
+      lines.push(`Project type: ${typeLabel}.`);
+    }
+    if (opts.projectType === "languageLearning") {
+      const code = (opts.projectLearningLanguage ?? "").trim();
+      if (code) {
+        const label = isNativeLanguageId(code)
+          ? nativeLanguageLabel(code)
+          : code;
+        lines.push(`Learning language: ${label} (${code}).`);
+      } else {
+        lines.push(
+          "Learning language: not set (ask the user which language they are learning if needed).",
+        );
+      }
+    }
     const about = opts.projectAbout?.trim();
     if (about) {
       lines.push("Project description:");

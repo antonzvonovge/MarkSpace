@@ -83,8 +83,12 @@ fn is_mdlnks(name: &str) -> bool {
     name.ends_with(".mdlnks")
 }
 
+fn is_pdf(name: &str) -> bool {
+    name.ends_with(".pdf")
+}
+
 fn is_vault_document(name: &str) -> bool {
-    is_markdown(name) || is_drawio(name) || is_mdlnks(name)
+    is_markdown(name) || is_drawio(name) || is_mdlnks(name) || is_pdf(name)
 }
 
 const EMPTY_MDLNKS: &str = "# MarkSpace links v1\n";
@@ -101,7 +105,7 @@ const EMPTY_DRAWIO: &str = r#"<mxfile host="MarkSpace" agent="MarkSpace" version
 </mxfile>
 "#;
 
-fn ensure_inside(root: &Path, candidate: &Path) -> Result<PathBuf, String> {
+pub(crate) fn ensure_inside(root: &Path, candidate: &Path) -> Result<PathBuf, String> {
     let root = root
         .canonicalize()
         .map_err(|e| format!("Cannot resolve vault root: {e}"))?;
@@ -598,6 +602,8 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
                 to_rel.truncate(to_rel.len() - 3);
             } else if to_rel.ends_with(".mdlnks") {
                 to_rel.truncate(to_rel.len() - 7);
+            } else if to_rel.ends_with(".pdf") {
+                to_rel.truncate(to_rel.len() - 4);
             }
             to_rel.push_str(".drawio");
         }
@@ -609,8 +615,23 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
                 to_rel.truncate(to_rel.len() - 3);
             } else if to_rel.ends_with(".drawio") {
                 to_rel.truncate(to_rel.len() - 7);
+            } else if to_rel.ends_with(".pdf") {
+                to_rel.truncate(to_rel.len() - 4);
             }
             to_rel.push_str(".mdlnks");
+        }
+        return to_rel;
+    }
+    if is_pdf(&from_name) {
+        if !to_rel.ends_with(".pdf") {
+            if to_rel.ends_with(".md") {
+                to_rel.truncate(to_rel.len() - 3);
+            } else if to_rel.ends_with(".drawio") {
+                to_rel.truncate(to_rel.len() - 7);
+            } else if to_rel.ends_with(".mdlnks") {
+                to_rel.truncate(to_rel.len() - 7);
+            }
+            to_rel.push_str(".pdf");
         }
         return to_rel;
     }
@@ -618,6 +639,7 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         && !to_rel.ends_with(".md")
         && !to_rel.ends_with(".drawio")
         && !to_rel.ends_with(".mdlnks")
+        && !to_rel.ends_with(".pdf")
     {
         to_rel.push_str(".md");
     }
@@ -771,7 +793,7 @@ fn make_root_node(root: &Path, order: &OrderMap) -> Result<TreeNode, String> {
     })
 }
 
-fn get_root(state: &VaultState) -> Result<PathBuf, String> {
+pub(crate) fn get_root(state: &VaultState) -> Result<PathBuf, String> {
     state
         .root
         .lock()
@@ -983,13 +1005,14 @@ fn start_watcher(app: AppHandle, state: &VaultState, root: &Path) -> Result<(), 
                     }
                     let rel = relative_to_root(&root_for_cb, &path);
                     if rel.ends_with(".md")
+                        || rel.ends_with(".pdf")
                         || path.is_dir()
                         || matches!(
                             event.kind,
                             notify::EventKind::Remove(_) | notify::EventKind::Modify(_)
                         )
                     {
-                        if rel.ends_with(".md") {
+                        if rel.ends_with(".md") || rel.ends_with(".pdf") {
                             crate::embeddings::notify_file_changed(&rel);
                         } else if matches!(event.kind, notify::EventKind::Remove(_)) {
                             crate::embeddings::notify_file_removed(&rel);
@@ -1354,7 +1377,7 @@ pub fn import_document_bytes(
     let parent_rel = parent.trim().trim_start_matches('/').to_string();
     let name = sanitize_asset_filename(&file_name);
     if !is_vault_document(&name) {
-        return Err("Only .md and .drawio files can be imported".into());
+        return Err("Only .md, .drawio, .mdlnks, and .pdf files can be imported".into());
     }
 
     let data = STANDARD
@@ -1384,6 +1407,9 @@ pub fn import_document_bytes(
         if let Ok(text) = fs::read_to_string(&dest) {
             set_tag_index_path(&state, &created, tags_from_note_content(&text));
         }
+        crate::embeddings::notify_file_changed(&created);
+    } else if is_pdf(&created) {
+        crate::embeddings::notify_file_changed(&created);
     }
     Ok(created)
 }
@@ -1510,6 +1536,7 @@ pub fn delete_folder_if_empty(
             write_order(&root, &order)?;
             let _ = crate::favorites::remap_favorites(&root, &rel, None);
             let _ = crate::projects::remap_project_properties(&root, &rel, None);
+            let _ = crate::filemeta::remap_filemeta(&root, &rel, None);
             Ok(DeleteFolderIfEmptyResult {
                 path: rel,
                 deleted: true,
@@ -1585,6 +1612,7 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     write_order(&root, &order)?;
     let _ = crate::favorites::remap_favorites(&root, &from_rel, Some(&to_rel));
     let _ = crate::projects::remap_project_properties(&root, &from_rel, Some(&to_rel));
+    let _ = crate::filemeta::remap_filemeta(&root, &from_rel, Some(&to_rel));
     remap_tag_index_path(&state, &from_rel, Some(&to_rel));
     crate::embeddings::notify_file_renamed(&from_rel, &to_rel);
 
@@ -1666,6 +1694,7 @@ pub fn move_entry(
     if !same_parent {
         let _ = crate::favorites::remap_favorites(&root, &from, Some(&new_rel));
         let _ = crate::projects::remap_project_properties(&root, &from, Some(&new_rel));
+        let _ = crate::filemeta::remap_filemeta(&root, &from, Some(&new_rel));
         remap_tag_index_path(&state, &from, Some(&new_rel));
         crate::embeddings::notify_file_renamed(&from, &new_rel);
     }
@@ -1705,6 +1734,7 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     write_order(&root, &order)?;
     let _ = crate::favorites::remap_favorites(&root, &rel, None);
     let _ = crate::projects::remap_project_properties(&root, &rel, None);
+    let _ = crate::filemeta::remap_filemeta(&root, &rel, None);
     remove_tag_index_path(&state, &rel);
     crate::embeddings::notify_file_removed(&rel);
     Ok(())
@@ -1717,7 +1747,12 @@ pub fn resolve_wiki_target(
 ) -> Result<Option<String>, String> {
     let root = get_root(&state)?;
     let target = target.trim().trim_start_matches('/');
-    let direct = if target.ends_with(".md") {
+    let lower = target.to_lowercase();
+    let direct = if lower.ends_with(".md")
+        || lower.ends_with(".pdf")
+        || lower.ends_with(".drawio")
+        || lower.ends_with(".mdlnks")
+    {
         target.to_string()
     } else {
         format!("{target}.md")
@@ -1734,6 +1769,8 @@ pub fn resolve_wiki_target(
         .unwrap_or_else(|| target.to_string())
         .to_lowercase();
 
+    let prefer_pdf = lower.ends_with(".pdf");
+
     for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if !path.is_file() {
@@ -1745,7 +1782,12 @@ pub fn resolve_wiki_target(
         {
             continue;
         }
-        if path.extension().and_then(|x| x.to_str()) != Some("md") {
+        let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("");
+        if prefer_pdf {
+            if ext != "pdf" {
+                continue;
+            }
+        } else if ext != "md" {
             continue;
         }
         let stem = path
@@ -1779,6 +1821,9 @@ pub struct SearchHit {
     pub path: String,
     pub line: usize,
     pub snippet: String,
+    /// 1-based PDF page when the hit comes from a PDF; omitted/null for markdown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<usize>,
 }
 
 #[tauri::command(async)]
@@ -1818,12 +1863,51 @@ pub fn search_notes(
             continue;
         }
         let name = entry.file_name().to_string_lossy();
-        if !is_markdown(&name) {
+        if !is_markdown(&name) && !is_pdf(&name) {
             continue;
         }
         files_searched += 1;
         let full = entry.path();
         let rel = relative_to_root(&root, full);
+
+        if is_pdf(&name) {
+            let Ok(bytes) = fs::read(full) else {
+                continue;
+            };
+            let Ok(pages) = crate::pdf_text::extract_pdf_pages(&bytes) else {
+                continue;
+            };
+            let mut file_hits = 0usize;
+            for (idx, page_text) in pages.iter().enumerate() {
+                if file_hits >= MAX_HITS_PER_FILE || hits.len() >= MAX_TOTAL {
+                    break;
+                }
+                if !page_text.to_lowercase().contains(&q_lower) {
+                    continue;
+                }
+                let snippet = page_text
+                    .lines()
+                    .find(|line| line.to_lowercase().contains(&q_lower))
+                    .unwrap_or(page_text)
+                    .trim();
+                let snippet = if snippet.chars().count() > 200 {
+                    let truncated: String = snippet.chars().take(200).collect();
+                    format!("{truncated}…")
+                } else {
+                    snippet.to_string()
+                };
+                let page = idx + 1;
+                hits.push(SearchHit {
+                    path: rel.clone(),
+                    line: page,
+                    snippet,
+                    page: Some(page),
+                });
+                file_hits += 1;
+            }
+            continue;
+        }
+
         let Ok(content) = fs::read_to_string(full) else {
             continue;
         };
@@ -1844,6 +1928,7 @@ pub fn search_notes(
                     path: rel.clone(),
                     line: idx + 1,
                     snippet,
+                    page: None,
                 });
                 file_hits += 1;
             }
@@ -2192,10 +2277,17 @@ fn rebuild_tag_index(root: &Path) -> TagIndex {
         let rel = relative_to_root(root, entry.path());
         index.insert(rel, tags);
     }
+    for (rel, tags) in crate::filemeta::load_all_filemeta_tags(root) {
+        if tags.is_empty() {
+            continue;
+        }
+        // Filemeta wins for its path (PDF etc.); md paths shouldn't share sidecars.
+        index.insert(rel, tags);
+    }
     index
 }
 
-fn set_tag_index_path(state: &VaultState, rel: &str, tags: Vec<String>) {
+pub(crate) fn set_tag_index_path(state: &VaultState, rel: &str, tags: Vec<String>) {
     let Ok(mut guard) = state.tag_index.lock() else {
         return;
     };
@@ -2279,25 +2371,31 @@ pub fn list_note_tags(state: State<VaultState>) -> Result<Vec<NoteTags>, String>
     Ok(out)
 }
 
-/// Re-read one note's head into the tag index (external edits / watcher).
+/// Re-read one note or filemeta-tagged document into the tag index.
 #[tauri::command(async)]
 pub fn reindex_note_tags(path: String, state: State<VaultState>) -> Result<Vec<String>, String> {
     let root = get_root(&state)?;
     let rel = path.trim().trim_start_matches('/').to_string();
-    if !rel.to_lowercase().ends_with(".md") {
-        let guard = state
-            .tag_index
-            .lock()
-            .map_err(|_| "Tag index lock poisoned")?;
-        return Ok(unique_sorted_tags(&guard));
-    }
-    let full = ensure_inside(&root, Path::new(&rel))?;
-    if !full.is_file() {
-        remove_tag_index_path(&state, &rel);
+    let lower = rel.to_lowercase();
+    if lower.ends_with(".md") {
+        let full = ensure_inside(&root, Path::new(&rel))?;
+        if !full.is_file() {
+            remove_tag_index_path(&state, &rel);
+        } else {
+            let text = fs::read_to_string(&full).map_err(|e| format!("Cannot read note: {e}"))?;
+            let tags = tags_from_note_content(&text);
+            set_tag_index_path(&state, &rel, tags);
+        }
+    } else if lower.ends_with(".pdf") {
+        let full = ensure_inside(&root, Path::new(&rel))?;
+        if !full.is_file() {
+            remove_tag_index_path(&state, &rel);
+        } else {
+            let tags = crate::filemeta::get_tags_for_path(&root, &rel).unwrap_or_default();
+            set_tag_index_path(&state, &rel, tags);
+        }
     } else {
-        let text = fs::read_to_string(&full).map_err(|e| format!("Cannot read note: {e}"))?;
-        let tags = tags_from_note_content(&text);
-        set_tag_index_path(&state, &rel, tags);
+        // Non-md / non-pdf: leave index as-is for this path.
     }
     let guard = state
         .tag_index

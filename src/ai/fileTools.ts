@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import {
+  extractPdfText,
   httpFetchBytes,
   readFileBytes,
   writeFileBytes,
@@ -295,6 +296,38 @@ export function buildFileTools(mode: ChatMode) {
 
           if (mediaType.startsWith("image/")) {
             result.data_base64 = dataBase64;
+          } else if (
+            mediaType === "application/pdf" ||
+            filename.toLowerCase().endsWith(".pdf")
+          ) {
+            if (sourceKind === "vault") {
+              try {
+                const extracted = await extractPdfText(
+                  trimmed.replace(/^\/+/, ""),
+                );
+                const maxChars = 80_000;
+                if (!extracted.text.trim()) {
+                  result.text = "";
+                  result.text_truncated = false;
+                } else if (extracted.text.length > maxChars) {
+                  result.text = extracted.text.slice(0, maxChars);
+                  result.text_truncated = true;
+                } else {
+                  result.text = extracted.text;
+                  result.text_truncated = extracted.truncated;
+                }
+              } catch (e) {
+                return {
+                  ok: false,
+                  error:
+                    e instanceof Error
+                      ? e.message
+                      : "Failed to extract PDF text",
+                };
+              }
+            } else if (dataBase64.length <= MAX_INLINE_BASE64_CHARS) {
+              result.data_base64 = dataBase64;
+            }
           } else if (looksLikeText(mediaType, bytes)) {
             const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
             const maxChars = 80_000;

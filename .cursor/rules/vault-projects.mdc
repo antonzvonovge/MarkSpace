@@ -9,14 +9,17 @@ In MarkSpace, a **project** is a first-level folder directly under the vault roo
 
 - Helper: `isVaultProjectFolder(path, isDir)` in `src/lib/vaultApi.ts`.
 - Tree UI uses a package icon (`FcPackage`) for projects; nested dirs keep folder icons.
+- Language-learning projects with a set **Learning language** show that country's flag emoji instead of the package icon (tree + chat project picker).
 - Prefer the word "project" in product copy and agent language when referring to those top-level folders.
 
 ## Project properties
 
 Editable via tree context menu **Project properties…** → dialog.
 
-- Stored in `.markspace/projects/<sha256(path)>.json` (`path`, `about`).
-- First property: **`about`** — UI label **What is this project about**.
+- Stored in `.markspace/projects/<sha256(path)>.json` (`path`, `about`, `projectType`, `learningLanguage`).
+- **`about`** — UI label **What is this project about**.
+- **`projectType`** — `""` (None) | `knowledgeBase` | `languageLearning`. Default empty.
+- **`learningLanguage`** — ISO 639-1 code (same catalog as native language prefs); only meaningful when `projectType` is `languageLearning` (cleared otherwise). UI label **Learning language**.
 - APIs: `get_project_properties` / `set_project_properties` (Rust `projects.rs`); TS `getProjectProperties` / `setProjectProperties`.
 - Remapped on rename/move/delete like favorites.
 
@@ -24,4 +27,4 @@ Editable via tree context menu **Project properties…** → dialog.
 
 Composer toolbar has a **project picker** (left of Ask/Agent). Selection is per chat thread (`projectPath` on the thread file).
 
-When a project is selected, `buildSystemPrompt` includes `Active project:` and the project **about** description so the agent knows the project context.
+When a project is selected, `buildSystemPrompt` includes `Active project:`, optional **Project type** / **Learning language**, and the project **about** description so the agent knows the project context.

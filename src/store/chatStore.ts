@@ -40,7 +40,10 @@ import {
   wrapSelectionMarker,
   type ChatSelectionRef,
 } from "../lib/chatSelectionChips";
-import { getProjectProperties } from "../lib/vaultApi";
+import {
+  getProjectProperties,
+  type ProjectTypeId,
+} from "../lib/vaultApi";
 import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
@@ -87,6 +90,10 @@ type ChatStore = {
   projectPath: string | null;
   /** Cached "about" text for `projectPath` (for prompt + context meter). */
   projectAbout: string;
+  /** Cached project type for `projectPath`. */
+  projectType: ProjectTypeId;
+  /** Cached learning language code when type is language learning. */
+  projectLearningLanguage: string;
   /** Cached Skills/ catalog for system prompt preview / context meter. */
   skillsCatalog: SkillMeta[];
   status: ChatStatus;
@@ -162,6 +169,8 @@ function emptySession(vaultBound: string | null = null) {
     draftSelections: {} as Record<string, ChatSelectionRef>,
     projectPath: null as string | null,
     projectAbout: "",
+    projectType: "" as ProjectTypeId,
+    projectLearningLanguage: "",
     skillsCatalog: [] as SkillMeta[],
     ...defaultsFromSettings(),
   };
@@ -193,13 +202,31 @@ function withoutAttention(ids: string[], threadId: string): string[] {
   return ids.includes(threadId) ? ids.filter((id) => id !== threadId) : ids;
 }
 
-async function loadProjectAbout(projectPath: string | null): Promise<string> {
-  if (!projectPath) return "";
+type ProjectContext = {
+  about: string;
+  projectType: ProjectTypeId;
+  learningLanguage: string;
+};
+
+const EMPTY_PROJECT_CONTEXT: ProjectContext = {
+  about: "",
+  projectType: "",
+  learningLanguage: "",
+};
+
+async function loadProjectContext(
+  projectPath: string | null,
+): Promise<ProjectContext> {
+  if (!projectPath) return EMPTY_PROJECT_CONTEXT;
   try {
     const props = await getProjectProperties(projectPath);
-    return props.about ?? "";
+    return {
+      about: props.about ?? "",
+      projectType: props.projectType ?? "",
+      learningLanguage: props.learningLanguage ?? "",
+    };
   } catch {
-    return "";
+    return EMPTY_PROJECT_CONTEXT;
   }
 }
 
@@ -213,7 +240,7 @@ async function loadThreadIntoState(
   const baseUrl = useAiSettingsStore.getState().settings.baseUrl;
   const thread = await getChatThread(vaultPath, threadId);
   const projectPath = thread.projectPath?.trim() || null;
-  const projectAbout = await loadProjectAbout(projectPath);
+  const project = await loadProjectContext(projectPath);
   return {
     vaultBound: vaultPath,
     threads,
@@ -223,7 +250,9 @@ async function loadThreadIntoState(
     mode: thread.mode === "agent" ? ("agent" as const) : ("ask" as const),
     modelId: resolveModelId(baseUrl, thread.modelId || modelId),
     projectPath,
-    projectAbout,
+    projectAbout: project.about,
+    projectType: project.projectType,
+    projectLearningLanguage: project.learningLanguage,
     status: "ready" as const,
     error: null,
     abort: null,
@@ -374,6 +403,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   modelId: DEFAULT_MODEL_PLACEHOLDER(),
   projectPath: null,
   projectAbout: "",
+  projectType: "",
+  projectLearningLanguage: "",
   skillsCatalog: [],
   status: "ready",
   error: null,
@@ -502,8 +533,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   setProjectPath: async (projectPath) => {
     const next = projectPath?.trim() || null;
-    const projectAbout = await loadProjectAbout(next);
-    set({ projectPath: next, projectAbout });
+    const project = await loadProjectContext(next);
+    set({
+      projectPath: next,
+      projectAbout: project.about,
+      projectType: project.projectType,
+      projectLearningLanguage: project.learningLanguage,
+    });
     void get().persistActive();
   },
 
@@ -543,6 +579,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       modelId: meta.modelId || modelId,
       projectPath: null,
       projectAbout: "",
+      projectType: "",
+      projectLearningLanguage: "",
       status: "ready",
       error: null,
       draft: "",
@@ -855,10 +893,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         : null;
 
     const projectPath = get().projectPath;
-    const projectAbout = projectPath
-      ? await loadProjectAbout(projectPath)
-      : "";
-    if (projectPath) set({ projectAbout });
+    const project = projectPath
+      ? await loadProjectContext(projectPath)
+      : EMPTY_PROJECT_CONTEXT;
+    if (projectPath) {
+      set({
+        projectAbout: project.about,
+        projectType: project.projectType,
+        projectLearningLanguage: project.learningLanguage,
+      });
+    }
 
     const skills = await get().refreshSkillsCatalog();
     const forcedSkills = skillIds.length
@@ -876,7 +920,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activePath: vault.activePath,
         activeExcerpt: excerpt,
         projectPath,
-        projectAbout,
+        projectAbout: project.about,
+        projectType: project.projectType,
+        projectLearningLanguage: project.learningLanguage,
         skills,
         forcedSkills,
         forcedTools,
@@ -976,6 +1022,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       activeExcerpt: vault.content ? vault.content.slice(0, 4000) : null,
       projectPath: get().projectPath,
       projectAbout: get().projectAbout,
+      projectType: get().projectType,
+      projectLearningLanguage: get().projectLearningLanguage,
       skills: get().skillsCatalog,
     });
   },

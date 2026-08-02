@@ -152,6 +152,8 @@ export function ChatComposer() {
   const setMode = useChatStore((s) => s.setMode);
   const projectPath = useChatStore((s) => s.projectPath);
   const projectAbout = useChatStore((s) => s.projectAbout);
+  const projectType = useChatStore((s) => s.projectType);
+  const projectLearningLanguage = useChatStore((s) => s.projectLearningLanguage);
   const setProjectPath = useChatStore((s) => s.setProjectPath);
   const modelId = useChatStore((s) => s.modelId);
   const setModelId = useChatStore((s) => s.setModelId);
@@ -206,6 +208,8 @@ export function ChatComposer() {
     mode,
     projectPath,
     projectAbout,
+    projectType,
+    projectLearningLanguage,
     skillsCatalog,
     systemPromptPreview,
     streaming,

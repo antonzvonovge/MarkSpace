@@ -22,6 +22,7 @@ import { PlainSourceEditor } from "./editor/PlainSourceEditor";
 import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
+import { PdfViewer } from "./editor/pdf/PdfViewer";
 import type { VaultChange } from "./lib/vaultApi";
 import { documentKind, readNote } from "./lib/vaultApi";
 import {
@@ -201,18 +202,21 @@ function App() {
       await refreshTree();
       void refreshSyncStatus();
 
-      const mdPaths = paths.filter((p) => p.toLowerCase().endsWith(".md"));
-      if (mdPaths.length === 1) {
-        await useVaultStore.getState().reindexVaultNoteTags(mdPaths[0]!);
-      } else if (mdPaths.length > 1) {
-        // Several notes changed (sync/bulk) — patch each head, then read catalog.
-        for (const p of mdPaths) {
+      const tagPaths = paths.filter((p) => {
+        const lower = p.toLowerCase();
+        return lower.endsWith(".md") || lower.endsWith(".pdf");
+      });
+      if (tagPaths.length === 1) {
+        await useVaultStore.getState().reindexVaultNoteTags(tagPaths[0]!);
+      } else if (tagPaths.length > 1) {
+        for (const p of tagPaths) {
           await useVaultStore.getState().reindexVaultNoteTags(p);
         }
       }
 
       const { activePath: current, dirty } = useVaultStore.getState();
       if (!current || dirty) return;
+      if (documentKind(current) === "pdf") return;
       const hit = paths.some(
         (path) =>
           path === current ||
@@ -417,6 +421,8 @@ function App() {
                                   content={tabContent}
                                   onChange={(xml) => onEditorChange(tabPath, xml)}
                                 />
+                              ) : kind === "pdf" ? (
+                                <PdfViewer path={tabPath} />
                               ) : kind === "mdlnks" ? (
                                 <>
                                   <div

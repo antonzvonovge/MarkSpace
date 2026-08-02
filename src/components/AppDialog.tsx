@@ -2,9 +2,18 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { credentialsFromSettings } from "../ai/languageModel";
 import { suggestLinkMeta } from "../ai/suggestLinkMeta";
+import {
+  PROJECT_TYPE_OPTIONS,
+  type ProjectTypeId,
+} from "../lib/vaultApi";
+import {
+  NATIVE_LANGUAGE_OPTIONS,
+  type NativeLanguageId,
+} from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { useVaultStore } from "../store/vaultStore";
 import { TagChipsInput } from "./TagChipsInput";
+import { Select } from "./ui/Select";
 
 type PromptDialogProps = {
   open: boolean;
@@ -212,14 +221,30 @@ export function ConfirmDialog({
   );
 }
 
+export type ProjectPropertiesDialogValue = {
+  about: string;
+  projectType: ProjectTypeId;
+  learningLanguage: string;
+};
+
 type ProjectPropertiesDialogProps = {
   open: boolean;
   projectName: string;
   about: string;
+  projectType?: ProjectTypeId;
+  learningLanguage?: string;
   saving?: boolean;
   onCancel: () => void;
-  onSave: (about: string) => void;
+  onSave: (value: ProjectPropertiesDialogValue) => void;
 };
+
+const LEARNING_LANGUAGE_OPTIONS: {
+  value: "" | NativeLanguageId;
+  label: string;
+}[] = [
+  { value: "", label: "None" },
+  ...NATIVE_LANGUAGE_OPTIONS,
+];
 
 export type LinkItemDialogValue = {
   url: string;
@@ -437,6 +462,8 @@ export function ProjectPropertiesDialog({
   open,
   projectName,
   about,
+  projectType = "",
+  learningLanguage = "",
   saving = false,
   onCancel,
   onSave,
@@ -444,19 +471,27 @@ export function ProjectPropertiesDialog({
   const aboutId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState(about);
+  const [type, setType] = useState<ProjectTypeId>(projectType);
+  const [language, setLanguage] = useState(learningLanguage);
 
   useEffect(() => {
     if (!open) return;
     setValue(about);
+    setType(projectType);
+    setLanguage(learningLanguage);
     const id = window.requestAnimationFrame(() => {
       textareaRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(id);
-  }, [open, about]);
+  }, [open, about, projectType, learningLanguage]);
 
   const submit = () => {
     if (saving) return;
-    onSave(value);
+    onSave({
+      about: value,
+      projectType: type,
+      learningLanguage: type === "languageLearning" ? language : "",
+    });
   };
 
   return (
@@ -487,6 +522,37 @@ export function ProjectPropertiesDialog({
       }
     >
       <div className="app-dialog-body">
+        <label className="app-dialog-label" id="project-type-label">
+          Project type
+        </label>
+        <Select
+          variant="field"
+          menuPlacement="below"
+          aria-label="Project type"
+          value={type}
+          options={PROJECT_TYPE_OPTIONS}
+          onChange={(next) => {
+            setType(next);
+            if (next !== "languageLearning") setLanguage("");
+          }}
+        />
+
+        {type === "languageLearning" ? (
+          <>
+            <label className="app-dialog-label" id="learning-language-label">
+              Learning language
+            </label>
+            <Select
+              variant="field"
+              menuPlacement="below"
+              aria-label="Learning language"
+              value={(language || "") as "" | NativeLanguageId}
+              options={LEARNING_LANGUAGE_OPTIONS}
+              onChange={(next) => setLanguage(next)}
+            />
+          </>
+        ) : null}
+
         <label className="app-dialog-label" htmlFor={aboutId}>
           What is this project about
         </label>

@@ -11,10 +11,12 @@ import {
   documentKind,
   importDocumentBytes,
   importPaths,
+  isPdfPath,
   isSkillsFolder,
   isValidSkillId,
   joinPath,
   listFavorites,
+  listProjectProperties,
   listTree,
   listVaultTags,
   moveEntry,
@@ -26,6 +28,7 @@ import {
   renamePath,
   skillPathForId,
   writeNote,
+  type ProjectProperties,
 } from "../lib/vaultApi";
 import {
   loadExpandedPaths,
@@ -69,6 +72,8 @@ type OpenNoteOptions = {
    * (used when restoring a vault session on app open).
    */
   syncTreeSelection?: boolean;
+  /** 1-based page to jump to when opening a PDF. */
+  page?: number;
 };
 
 type VaultStore = {
@@ -87,6 +92,8 @@ type VaultStore = {
   expandedPaths: string[];
   /** Vault-relative favorite paths (pages and folders), sorted. */
   favoritePaths: string[];
+  /** Project properties keyed by project path (first-level folder). */
+  projectPropertiesByPath: Record<string, ProjectProperties>;
   /** Unique tags from note frontmatter and inline `#tags` across the vault. */
   vaultTags: string[];
   content: string;
@@ -97,13 +104,21 @@ type VaultStore = {
   saving: boolean;
   loading: boolean;
   error: string | null;
+  /** 1-based page requested when opening a PDF; consumed by PdfViewer. */
+  pendingPdfPage: number | null;
   suppressWatchUntil: number;
   openVaultAt: (path: string) => Promise<void>;
   refreshTree: () => Promise<void>;
   refreshVaultTags: () => Promise<void>;
+  /** Reload `.markspace/projects` markers into `projectPropertiesByPath`. */
+  refreshProjectProperties: () => Promise<void>;
+  /** Upsert one project's properties in the in-memory map (after dialog save). */
+  upsertProjectProperties: (props: ProjectProperties) => void;
   /** Patch in-memory tag index for one note after an external edit. */
   reindexVaultNoteTags: (path: string) => Promise<void>;
   openNote: (path: string, options?: OpenNoteOptions) => Promise<void>;
+  /** Take and clear a pending PDF page jump (1-based), if any. */
+  takePendingPdfPage: () => number | null;
   /** Open (or focus) the singleton tag graph tab. */
   openGraphTab: (options?: { syncTreeSelection?: boolean }) => Promise<void>;
   /** Open (or focus) the singleton settings tab. */
@@ -175,6 +190,21 @@ async function loadFavoritePaths(): Promise<string[]> {
   }
 }
 
+async function loadProjectPropertiesMap(): Promise<
+  Record<string, ProjectProperties>
+> {
+  try {
+    const list = await listProjectProperties();
+    const map: Record<string, ProjectProperties> = {};
+    for (const props of list) {
+      map[props.path] = props;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 function remapExpanded(expanded: string[], from: string, to: string): string[] {
   return expanded.map((p) => {
     if (p === from) return to;
@@ -223,7 +253,8 @@ function tabLabel(path: string, kind?: TabKind): string {
   return name
     .replace(/\.md$/i, "")
     .replace(/\.drawio$/i, "")
-    .replace(/\.mdlnks$/i, "");
+    .replace(/\.mdlnks$/i, "")
+    .replace(/\.pdf$/i, "");
 }
 
 function collectFilePaths(node: TreeNode, out: string[] = []): string[] {
@@ -497,6 +528,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   treeSelectionVisible: false,
   expandedPaths: [],
   favoritePaths: [],
+  projectPropertiesByPath: {},
   vaultTags: [],
   content: "",
   viewMode: "live",
@@ -505,7 +537,14 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   saving: false,
   loading: false,
   error: null,
+  pendingPdfPage: null,
   suppressWatchUntil: 0,
+
+  takePendingPdfPage: () => {
+    const page = get().pendingPdfPage;
+    if (page != null) set({ pendingPdfPage: null });
+    return page;
+  },
 
   refreshVaultTags: async () => {
     try {
@@ -514,6 +553,20 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     } catch {
       set({ vaultTags: [] });
     }
+  },
+
+  refreshProjectProperties: async () => {
+    const projectPropertiesByPath = await loadProjectPropertiesMap();
+    set({ projectPropertiesByPath });
+  },
+
+  upsertProjectProperties: (props) => {
+    set({
+      projectPropertiesByPath: {
+        ...get().projectPropertiesByPath,
+        [props.path]: props,
+      },
+    });
   },
 
   /** Patch tag index for one note after an external disk change. */
@@ -530,11 +583,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const tree = await openVault(path);
-      const [expandedPaths, favoritePaths, session] = await Promise.all([
-        loadExpandedPaths(path),
-        loadFavoritePaths(),
-        loadVaultSession(path),
-      ]);
+      const [expandedPaths, favoritePaths, projectPropertiesByPath, session] =
+        await Promise.all([
+          loadExpandedPaths(path),
+          loadFavoritePaths(),
+          loadProjectPropertiesMap(),
+          loadVaultSession(path),
+        ]);
       const existing = new Set(collectFilePaths(tree));
       const restoredTabs: EditorTab[] = (session?.tabs ?? [])
         .filter(
@@ -564,6 +619,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         treeSelectionVisible: false,
         expandedPaths,
         favoritePaths,
+        projectPropertiesByPath,
         vaultTags: [],
         tabs: restoredTabs,
       });
@@ -612,11 +668,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       tail = tail.then(async () => {
         scheduled = false;
         try {
-          const [tree, favoritePaths] = await Promise.all([
-            listTree(),
-            loadFavoritePaths(),
-          ]);
-          set({ favoritePaths });
+          const [tree, favoritePaths, projectPropertiesByPath] =
+            await Promise.all([
+              listTree(),
+              loadFavoritePaths(),
+              loadProjectPropertiesMap(),
+            ]);
+          set({ favoritePaths, projectPropertiesByPath });
           await pruneMissingTabs(set, get, tree);
         } catch (e) {
           set({ error: e instanceof Error ? e.message : String(e) });
@@ -639,6 +697,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     const asPreview = options?.preview !== false;
     const syncTreeSelection = options?.syncTreeSelection !== false;
+    const pdfPage =
+      typeof options?.page === "number" && options.page >= 1
+        ? Math.floor(options.page)
+        : null;
     const stashed = stashActiveIntoTabs(
       get().tabs,
       get().activePath,
@@ -656,6 +718,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
     }
 
+    const loadContent = async (): Promise<string> => {
+      if (isPdfPath(path)) return "";
+      return readNote(path);
+    };
+
     const { tabs, activePath } = get();
     const existing = tabs.find((t) => t.path === path && isFileTab(t));
     if (existing) {
@@ -668,17 +735,19 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         if (nextTabs !== tabs) {
           set({
             tabs: nextTabs,
+            ...(pdfPage != null ? { pendingPdfPage: pdfPage } : {}),
             ...(syncTreeSelection
               ? { selectedFolderExplicit: false, treeSelectionVisible: true }
               : { treeSelectionVisible: false }),
           });
           persistSession(get());
         } else {
-          set(
-            syncTreeSelection
+          set({
+            ...(pdfPage != null ? { pendingPdfPage: pdfPage } : {}),
+            ...(syncTreeSelection
               ? { selectedFolderExplicit: false, treeSelectionVisible: true }
-              : { treeSelectionVisible: false },
-          );
+              : { treeSelectionVisible: false }),
+          });
         }
         return;
       }
@@ -693,13 +762,14 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           Boolean(existing.dirty),
           syncTreeSelection,
         );
+        if (pdfPage != null) set({ pendingPdfPage: pdfPage });
         persistSession(get());
         return;
       }
 
       set({ loading: true, error: null });
       try {
-        const content = await readNote(path);
+        const content = await loadContent();
         activateLoaded(
           set,
           get().vaultPath,
@@ -709,6 +779,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           false,
           syncTreeSelection,
         );
+        if (pdfPage != null) set({ pendingPdfPage: pdfPage });
         persistSession(get());
       } catch (e) {
         set({
@@ -721,7 +792,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
     set({ loading: true, error: null });
     try {
-      const content = await readNote(path);
+      const content = await loadContent();
       let nextTabs = [...get().tabs];
 
       if (asPreview) {
@@ -757,6 +828,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         false,
         syncTreeSelection,
       );
+      if (pdfPage != null) set({ pendingPdfPage: pdfPage });
       persistSession(get());
     } catch (e) {
       set({
@@ -892,6 +964,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   saveActive: async () => {
     const { activePath, content, dirty, tabs } = get();
     if (!activePath || !dirty) return;
+    if (isPdfPath(activePath)) return;
     const active = tabs.find((t) => t.path === activePath);
     if (active && isVirtualTab(active)) return;
     set({ saving: true, suppressWatchUntil: Date.now() + 1200 });

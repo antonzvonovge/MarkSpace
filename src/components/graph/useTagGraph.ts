@@ -16,12 +16,15 @@ export type TagGraphViewOptions = {
   focusRoot: string | null;
 };
 
-function collectMarkdownPaths(node: TreeNode | null, out: string[] = []): string[] {
+function collectDocumentPaths(node: TreeNode | null, out: string[] = []): string[] {
   if (!node) return out;
-  if (!node.isDir && node.path.toLowerCase().endsWith(".md")) {
-    out.push(node.path);
+  if (!node.isDir) {
+    const lower = node.path.toLowerCase();
+    if (lower.endsWith(".md") || lower.endsWith(".pdf")) {
+      out.push(node.path);
+    }
   }
-  for (const child of node.children ?? []) collectMarkdownPaths(child, out);
+  for (const child of node.children ?? []) collectDocumentPaths(child, out);
   return out;
 }
 
@@ -70,7 +73,7 @@ export function useTagGraph(options: TagGraphViewOptions) {
     };
   }, [vaultTags, isActive, refresh]);
 
-  const allNotePaths = useMemo(() => collectMarkdownPaths(tree), [tree]);
+  const allNotePaths = useMemo(() => collectDocumentPaths(tree), [tree]);
   const inSelectedProject = useCallback(
     (path: string) =>
       !options.projectPath || path.startsWith(`${options.projectPath}/`),

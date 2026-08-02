@@ -101,4 +101,26 @@ describe("buildTagGraph", () => {
   it("returns empty graph for empty input", () => {
     expect(buildTagGraph([])).toEqual({ nodes: [], edges: [] });
   });
+
+  it("includes tagged PDFs alongside markdown notes", () => {
+    const g = buildTagGraph([
+      ...sample,
+      { path: "Docs/spec.pdf", tags: ["work"] },
+    ]);
+    expect(g.nodes.some((n) => n.key === "Docs/spec.pdf")).toBe(true);
+    expect(g.nodes.find((n) => n.key === "Docs/spec.pdf")?.label).toBe("spec");
+    expect(g.nodes.find((n) => n.id === tagNodeId("work"))?.degree).toBe(3);
+  });
+
+  it("includes untagged PDFs when requested", () => {
+    const g = buildTagGraph(sample, {
+      showUntagged: true,
+      allNotePaths: ["Scratch/Empty.md", "Docs/scan.pdf"],
+    });
+    expect(g.nodes.find((n) => n.key === "Docs/scan.pdf")).toMatchObject({
+      kind: "note",
+      untagged: true,
+      label: "scan",
+    });
+  });
 });

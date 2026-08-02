@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FcPackage } from "react-icons/fc";
+import { learningLanguageFlagEmoji } from "../../lib/languageFlags";
 import { listVaultProjects } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
 
@@ -11,6 +12,28 @@ type Props = {
 };
 
 type MenuPos = { left: number; bottom: number; width: number };
+
+function ProjectIcon({
+  path,
+  size = 14,
+}: {
+  path: string;
+  size?: number;
+}) {
+  const props = useVaultStore((s) => s.projectPropertiesByPath[path]);
+  const flag =
+    props?.projectType === "languageLearning"
+      ? learningLanguageFlagEmoji(props.learningLanguage)
+      : "";
+  if (flag) {
+    return (
+      <span className="chat-project-flag" aria-hidden>
+        {flag}
+      </span>
+    );
+  }
+  return <FcPackage size={size} />;
+}
 
 export function ChatProjectPicker({ value, disabled, onChange }: Props) {
   const tree = useVaultStore((s) => s.tree);
@@ -127,6 +150,9 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
                     setOpen(false);
                   }}
                 >
+                  <span className="chat-project-option-icon" aria-hidden>
+                    <ProjectIcon path={p.path} size={14} />
+                  </span>
                   <span className="chat-project-option-name">{p.name}</span>
                 </button>
               ))
@@ -161,7 +187,7 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
       >
         {value ? (
           <span className="chat-project-trigger-icon" aria-hidden>
-            <FcPackage size={14} />
+            <ProjectIcon path={value} size={14} />
           </span>
         ) : null}
         <span className="chat-project-trigger-label">{label}</span>

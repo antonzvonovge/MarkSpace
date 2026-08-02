@@ -22,6 +22,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { TreeNode } from "../lib/vaultApi";
 import {
   absolutePath,
+  emptyProjectProperties,
   getProjectProperties,
   isSkillsFolder,
   isVaultProjectFolder,
@@ -30,6 +31,7 @@ import {
   type ProjectProperties,
 } from "../lib/vaultApi";
 import { saveExpandedPaths } from "../lib/settingsStore";
+import { learningLanguageFlagEmoji } from "../lib/languageFlags";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 import { startClipArticleJob } from "../ai/clipArticle";
@@ -39,6 +41,7 @@ import {
 } from "../ai/translateNote";
 import { nativeLanguageLabel } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";
+import { useChatStore } from "../store/chatStore";
 import {
   PromptDialog,
   ConfirmDialog,
@@ -71,6 +74,7 @@ import {
   CollectionPlusIcon,
   DiagramIcon,
   LinksIcon,
+  PdfIcon,
   PlusIcon,
 } from "./treeIcons";
 import type { TreeCreateKind } from "./TreeToolbar";
@@ -124,13 +128,26 @@ function FolderTreeIcon({
   path,
   isOpen,
   size = 20,
+  learningLanguage,
 }: {
   path: string;
   isOpen: boolean;
   size?: number;
+  /** When set for a language-learning project, show that country's flag. */
+  learningLanguage?: string | null;
 }) {
   if (isSkillsFolder(path)) return <FcWorkflow size={size} />;
-  if (isVaultProjectFolder(path, true)) return <FcPackage size={size} />;
+  if (isVaultProjectFolder(path, true)) {
+    const flag = learningLanguageFlagEmoji(learningLanguage);
+    if (flag) {
+      return (
+        <span className="tree-project-flag" aria-hidden>
+          {flag}
+        </span>
+      );
+    }
+    return <FcPackage size={size} />;
+  }
   return isOpen ? <FcOpenedFolder size={size} /> : <FcFolder size={size} />;
 }
 
@@ -871,6 +888,7 @@ function FavoritesTreeRows({
   treeSelectionVisible,
   renamingPath,
   favoriteSet,
+  projectPropertiesByPath,
   onOpenContextMenu,
   onSelectFolder,
   onOpenNote,
@@ -887,6 +905,7 @@ function FavoritesTreeRows({
   treeSelectionVisible: boolean;
   renamingPath: string | null;
   favoriteSet: Set<string>;
+  projectPropertiesByPath: Record<string, ProjectProperties>;
   onOpenContextMenu: (menu: ContextMenuState) => void;
   onSelectFolder: (path: string) => void;
   onOpenNote: (path: string, options?: { preview?: boolean }) => void;
@@ -906,6 +925,7 @@ function FavoritesTreeRows({
         const isSkills = isSkillsFolder(path, isDir);
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
         const isMdlnks = !isDir && path.toLowerCase().endsWith(".mdlnks");
+        const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
         const selected =
           treeSelectionVisible &&
           isDir &&
@@ -1012,7 +1032,16 @@ function FavoritesTreeRows({
 
               <span className="tree-node-icon" aria-hidden>
                 {isDir ? (
-                  <FolderTreeIcon path={path} isOpen={isOpen} />
+                  <FolderTreeIcon
+                    path={path}
+                    isOpen={isOpen}
+                    learningLanguage={
+                      projectPropertiesByPath[path]?.projectType ===
+                      "languageLearning"
+                        ? projectPropertiesByPath[path]?.learningLanguage
+                        : null
+                    }
+                  />
                 ) : isDrawio ? (
                   <span className="tree-drawio-icon">
                     <DiagramIcon />
@@ -1020,6 +1049,10 @@ function FavoritesTreeRows({
                 ) : isMdlnks ? (
                   <span className="tree-mdlnks-icon">
                     <LinksIcon />
+                  </span>
+                ) : isPdf ? (
+                  <span className="tree-pdf-icon">
+                    <PdfIcon />
                   </span>
                 ) : (
                   <FcDocument size={20} />
@@ -1049,6 +1082,7 @@ function FavoritesTreeRows({
                 treeSelectionVisible={treeSelectionVisible}
                 renamingPath={renamingPath}
                 favoriteSet={favoriteSet}
+                projectPropertiesByPath={projectPropertiesByPath}
                 onOpenContextMenu={onOpenContextMenu}
                 onSelectFolder={onSelectFolder}
                 onOpenNote={onOpenNote}
@@ -1070,6 +1104,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
   const treeRevealRequest = useSidebarUiStore((s) => s.treeRevealRequest);
   const favoritePaths = useVaultStore((s) => s.favoritePaths);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
+  const upsertProjectProperties = useVaultStore(
+    (s) => s.upsertProjectProperties,
+  );
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
   const selectedFolderExplicit = useVaultStore((s) => s.selectedFolderExplicit);
@@ -1110,26 +1150,42 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       setProjectPropsTarget(props);
     } catch (err) {
       console.error("Failed to load project properties", err);
-      setProjectPropsTarget({ path, about: "" });
+      setProjectPropsTarget(emptyProjectProperties(path));
     } finally {
       setProjectPropsLoading(false);
     }
   }, []);
 
   const saveProjectProperties = useCallback(
-    async (about: string) => {
+    async (value: {
+      about: string;
+      projectType: ProjectProperties["projectType"];
+      learningLanguage: string;
+    }) => {
       if (!projectPropsTarget) return;
       setProjectPropsSaving(true);
       try {
-        await setProjectProperties(projectPropsTarget.path, about);
+        const saved = await setProjectProperties(
+          projectPropsTarget.path,
+          value,
+        );
         setProjectPropsTarget(null);
+        upsertProjectProperties(saved);
+        const chat = useChatStore.getState();
+        if (chat.projectPath === saved.path) {
+          useChatStore.setState({
+            projectAbout: saved.about,
+            projectType: saved.projectType,
+            projectLearningLanguage: saved.learningLanguage,
+          });
+        }
       } catch (err) {
         console.error("Failed to save project properties", err);
       } finally {
         setProjectPropsSaving(false);
       }
     },
-    [projectPropsTarget],
+    [projectPropsTarget, upsertProjectProperties],
   );
 
   const setTreeScrollRef = useCallback((node: HTMLDivElement | null) => {
@@ -1510,13 +1566,15 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         open={projectPropsTarget !== null && !projectPropsLoading}
         projectName={projectPropsTarget?.path ?? ""}
         about={projectPropsTarget?.about ?? ""}
+        projectType={projectPropsTarget?.projectType ?? ""}
+        learningLanguage={projectPropsTarget?.learningLanguage ?? ""}
         saving={projectPropsSaving}
         onCancel={() => {
           if (projectPropsSaving) return;
           setProjectPropsTarget(null);
         }}
-        onSave={(about) => {
-          void saveProjectProperties(about);
+        onSave={(value) => {
+          void saveProjectProperties(value);
         }}
       />
 
@@ -1529,7 +1587,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               ? "Delete diagram"
               : deleteTarget?.path.endsWith(".mdlnks")
                 ? "Delete links"
-                : "Delete note"
+                : deleteTarget?.path.endsWith(".pdf")
+                  ? "Delete PDF"
+                  : "Delete note"
         }
         description={
           deleteTarget?.isDir
@@ -1575,6 +1635,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               treeSelectionVisible={treeSelectionVisible}
               renamingPath={renamingPath}
               favoriteSet={favoriteSet}
+              projectPropertiesByPath={projectPropertiesByPath}
               onOpenContextMenu={setContextMenu}
               onSelectFolder={selectFolder}
               onOpenNote={(path, options) => {
@@ -1645,11 +1706,21 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               dragPreviewRender={(monitor) => {
                 const dragPath = String(monitor.item.data?.path ?? "");
                 const isDir = Boolean(monitor.item.droppable);
+                const props = projectPropertiesByPath[dragPath];
                 return (
                   <div className="dnd-preview">
                     <span className="dnd-preview-icon" aria-hidden>
                       {isDir ? (
-                        <FolderTreeIcon path={dragPath} isOpen={false} size={16} />
+                        <FolderTreeIcon
+                          path={dragPath}
+                          isOpen={false}
+                          size={16}
+                          learningLanguage={
+                            props?.projectType === "languageLearning"
+                              ? props.learningLanguage
+                              : null
+                          }
+                        />
                       ) : (
                         <FcDocument size={16} />
                       )}
@@ -1670,6 +1741,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   !isDir && path.toLowerCase().endsWith(".drawio");
                 const isMdlnks =
                   !isDir && path.toLowerCase().endsWith(".mdlnks");
+                const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
                 const selected =
                   treeSelectionVisible &&
                   isDir &&
@@ -1792,7 +1864,17 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         isVault ? (
                           <FcSafe size={20} />
                         ) : (
-                          <FolderTreeIcon path={path} isOpen={isOpen} />
+                          <FolderTreeIcon
+                            path={path}
+                            isOpen={isOpen}
+                            learningLanguage={
+                              projectPropertiesByPath[path]?.projectType ===
+                              "languageLearning"
+                                ? projectPropertiesByPath[path]
+                                    ?.learningLanguage
+                                : null
+                            }
+                          />
                         )
                       ) : isDrawio ? (
                         <span className="tree-drawio-icon">
@@ -1801,6 +1883,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       ) : isMdlnks ? (
                         <span className="tree-mdlnks-icon">
                           <LinksIcon />
+                        </span>
+                      ) : isPdf ? (
+                        <span className="tree-pdf-icon">
+                          <PdfIcon />
                         </span>
                       ) : (
                         <FcDocument size={20} />

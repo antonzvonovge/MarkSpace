@@ -102,6 +102,14 @@ export function loadDocOutlineUi(
   return readEntry(vaultPath, notePath);
 }
 
+/** True when this document already has a saved outline UI entry. */
+export function hasDocOutlineUi(
+  vaultPath: string | null | undefined,
+  notePath: string,
+): boolean {
+  return normalizeEntry(readStore()[outlineUiStorageKey(vaultPath, notePath)]) != null;
+}
+
 export function saveDocOutlineOpen(
   vaultPath: string | null | undefined,
   notePath: string,

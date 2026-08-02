@@ -25,6 +25,8 @@ type Props<T extends string> = {
   disabled?: boolean;
   /** "setting" — compact control in SettingRow; "field" — full-width form field. */
   variant?: "setting" | "field";
+  /** Preferred menu direction. `auto` picks the side with more space. */
+  menuPlacement?: "auto" | "below" | "above";
   className?: string;
   "aria-label"?: string;
   placeholder?: string;
@@ -36,6 +38,7 @@ export function Select<T extends string>({
   onChange,
   disabled,
   variant = "setting",
+  menuPlacement = "auto",
   className,
   "aria-label": ariaLabel,
   placeholder,
@@ -58,7 +61,12 @@ export function Select<T extends string>({
     const r = el.getBoundingClientRect();
     const spaceAbove = r.top - MENU_GAP;
     const spaceBelow = window.innerHeight - r.bottom - MENU_GAP;
-    const up = spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
+    const up =
+      menuPlacement === "above"
+        ? true
+        : menuPlacement === "below"
+          ? false
+          : spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
     const width = Math.max(r.width, variant === "setting" ? 140 : r.width);
     setPos({
       left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
@@ -78,7 +86,7 @@ export function Select<T extends string>({
       return;
     }
     updatePos();
-  }, [open, variant]);
+  }, [open, variant, menuPlacement]);
 
   useEffect(() => {
     if (!open) return;

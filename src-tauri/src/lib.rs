@@ -1,9 +1,11 @@
 mod chat_history;
 mod embeddings;
 mod favorites;
+mod filemeta;
 mod git_sync;
 mod http_fetch;
 mod order_merge;
+mod pdf_text;
 mod projects;
 mod vault;
 
@@ -156,6 +158,7 @@ pub fn run() {
             vault::list_vault_tags,
             vault::list_note_tags,
             vault::reindex_note_tags,
+            pdf_text::extract_pdf_text_cmd,
             embeddings::worker::semantic_search_notes,
             embeddings::worker::get_embeddings_index_status,
             embeddings::download::get_embedding_model_status,
@@ -163,8 +166,11 @@ pub fn run() {
             favorites::list_favorites,
             favorites::add_favorite,
             favorites::remove_favorite,
+            filemeta::get_file_tags,
+            filemeta::set_file_tags,
             projects::get_project_properties,
             projects::set_project_properties,
+            projects::list_project_properties,
             http_fetch::http_fetch,
             http_fetch::http_fetch_bytes,
             chat_history::list_chat_threads,

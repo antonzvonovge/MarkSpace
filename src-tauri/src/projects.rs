@@ -11,6 +11,10 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use tauri::State;
 
+/// Known project types (`""` = unset).
+const PROJECT_TYPE_KNOWLEDGE_BASE: &str = "knowledgeBase";
+const PROJECT_TYPE_LANGUAGE_LEARNING: &str = "languageLearning";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectProperties {
@@ -18,6 +22,27 @@ pub struct ProjectProperties {
     /// Free-form description: what the project is about.
     #[serde(default)]
     pub about: String,
+    /// `""` | `knowledgeBase` | `languageLearning`.
+    #[serde(default)]
+    pub project_type: String,
+    /// ISO 639-1 code when `project_type` is `languageLearning`; otherwise empty.
+    #[serde(default)]
+    pub learning_language: String,
+}
+
+fn normalize_project_type(raw: &str) -> String {
+    match raw.trim() {
+        PROJECT_TYPE_KNOWLEDGE_BASE => PROJECT_TYPE_KNOWLEDGE_BASE.to_string(),
+        PROJECT_TYPE_LANGUAGE_LEARNING => PROJECT_TYPE_LANGUAGE_LEARNING.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn normalize_learning_language(project_type: &str, raw: &str) -> String {
+    if project_type != PROJECT_TYPE_LANGUAGE_LEARNING {
+        return String::new();
+    }
+    raw.trim().to_string()
 }
 
 fn normalize_project_path(path: &str) -> Result<String, String> {
@@ -80,7 +105,25 @@ fn read_project_file(path: &Path) -> Option<ProjectProperties> {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    Some(ProjectProperties { path: rel, about })
+    let project_type = normalize_project_type(
+        value
+            .get("projectType")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    );
+    let learning_language = normalize_learning_language(
+        &project_type,
+        value
+            .get("learningLanguage")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    );
+    Some(ProjectProperties {
+        path: rel,
+        about,
+        project_type,
+        learning_language,
+    })
 }
 
 fn write_project_file(root: &Path, props: &ProjectProperties) -> Result<(), String> {
@@ -90,6 +133,8 @@ fn write_project_file(root: &Path, props: &ProjectProperties) -> Result<(), Stri
     let body = serde_json::to_string_pretty(&json!({
         "path": props.path,
         "about": props.about,
+        "projectType": props.project_type,
+        "learningLanguage": props.learning_language,
     }))
     .map_err(|e| format!("Cannot serialize project properties: {e}"))?;
     fs::write(&file, format!("{body}\n"))
@@ -142,7 +187,16 @@ fn get_root(state: &VaultState) -> Result<PathBuf, String> {
         .ok_or_else(|| "No vault open".to_string())
 }
 
-/// Load properties for a project folder. Missing file → empty `about`.
+fn empty_props(path: String) -> ProjectProperties {
+    ProjectProperties {
+        path,
+        about: String::new(),
+        project_type: String::new(),
+        learning_language: String::new(),
+    }
+}
+
+/// Load properties for a project folder. Missing file → empty defaults.
 #[tauri::command(async)]
 pub fn get_project_properties(
     path: String,
@@ -168,22 +222,47 @@ pub fn get_project_properties(
             let healed = ProjectProperties {
                 path: rel.clone(),
                 about: props.about,
+                project_type: props.project_type,
+                learning_language: props.learning_language,
             };
             write_project_file(&root, &healed)?;
             return Ok(healed);
         }
     }
 
-    Ok(ProjectProperties {
-        path: rel,
-        about: String::new(),
-    })
+    Ok(empty_props(rel))
+}
+
+/// List all stored project property markers for the open vault.
+#[tauri::command(async)]
+pub fn list_project_properties(
+    state: State<VaultState>,
+) -> Result<Vec<ProjectProperties>, String> {
+    let root = get_root(&state)?;
+    let mut out: Vec<ProjectProperties> = Vec::new();
+    for (marker, props) in scan_project_markers(&root)? {
+        if !path_exists_dir(&root, &props.path) {
+            let _ = fs::remove_file(&marker);
+            continue;
+        }
+        // Heal mismatched hash filename.
+        let expected = project_file_path(&root, &props.path);
+        if marker != expected {
+            let _ = fs::remove_file(&marker);
+            let _ = write_project_file(&root, &props);
+        }
+        out.push(props);
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(out)
 }
 
 #[tauri::command(async)]
 pub fn set_project_properties(
     path: String,
     about: String,
+    project_type: String,
+    learning_language: String,
     state: State<VaultState>,
 ) -> Result<ProjectProperties, String> {
     let root = get_root(&state)?;
@@ -192,9 +271,13 @@ pub fn set_project_properties(
         return Err("Project not found".into());
     }
 
+    let project_type = normalize_project_type(&project_type);
+    let learning_language = normalize_learning_language(&project_type, &learning_language);
     let props = ProjectProperties {
         path: rel,
         about: about.trim().to_string(),
+        project_type,
+        learning_language,
     };
 
     // Drop any stale markers for this path (wrong hash filename).
@@ -234,6 +317,8 @@ pub fn remap_project_properties(root: &Path, from: &str, to: Option<&str>) -> Re
                 let next = ProjectProperties {
                     path: new_path.clone(),
                     about: props.about,
+                    project_type: props.project_type,
+                    learning_language: props.learning_language,
                 };
                 let _ = write_project_file(root, &next);
             }
@@ -268,11 +353,54 @@ mod tests {
         let props = ProjectProperties {
             path: "Alpha".into(),
             about: "Notes about Alpha".into(),
+            project_type: String::new(),
+            learning_language: String::new(),
         };
         write_project_file(&root, &props).unwrap();
         let file = project_file_path(&root, "Alpha");
         let loaded = read_project_file(&file).unwrap();
         assert_eq!(loaded.about, "Notes about Alpha");
+        assert_eq!(loaded.project_type, "");
+        assert_eq!(loaded.learning_language, "");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_and_read_language_learning() {
+        let root = temp_vault();
+        let props = ProjectProperties {
+            path: "Alpha".into(),
+            about: "Spanish notes".into(),
+            project_type: PROJECT_TYPE_LANGUAGE_LEARNING.into(),
+            learning_language: "es".into(),
+        };
+        write_project_file(&root, &props).unwrap();
+        let loaded = read_project_file(&project_file_path(&root, "Alpha")).unwrap();
+        assert_eq!(loaded.project_type, PROJECT_TYPE_LANGUAGE_LEARNING);
+        assert_eq!(loaded.learning_language, "es");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn learning_language_cleared_when_not_language_learning() {
+        let root = temp_vault();
+        // Simulate a hand-edited file that still has a language with another type.
+        let file = project_file_path(&root, "Alpha");
+        fs::create_dir_all(projects_dir(&root)).unwrap();
+        fs::write(
+            &file,
+            r#"{
+  "path": "Alpha",
+  "about": "",
+  "projectType": "knowledgeBase",
+  "learningLanguage": "es"
+}
+"#,
+        )
+        .unwrap();
+        let loaded = read_project_file(&file).unwrap();
+        assert_eq!(loaded.project_type, PROJECT_TYPE_KNOWLEDGE_BASE);
+        assert_eq!(loaded.learning_language, "");
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -290,6 +418,8 @@ mod tests {
             &ProjectProperties {
                 path: "Alpha".into(),
                 about: "A".into(),
+                project_type: PROJECT_TYPE_KNOWLEDGE_BASE.into(),
+                learning_language: String::new(),
             },
         )
         .unwrap();
@@ -301,6 +431,7 @@ mod tests {
         let loaded = read_project_file(&file).unwrap();
         assert_eq!(loaded.path, "Gamma");
         assert_eq!(loaded.about, "A");
+        assert_eq!(loaded.project_type, PROJECT_TYPE_KNOWLEDGE_BASE);
         assert!(!project_file_path(&root, "Alpha").exists());
 
         fs::remove_dir_all(root.join("Gamma")).unwrap();
@@ -317,6 +448,8 @@ mod tests {
             &ProjectProperties {
                 path: "Alpha".into(),
                 about: "A".into(),
+                project_type: String::new(),
+                learning_language: String::new(),
             },
         )
         .unwrap();
