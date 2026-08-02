@@ -1,0 +1,11 @@
+---
+description: Keep docs/mddict-format.md in sync when .mddict format or tools change
+alwaysApply: false
+globs: src/lib/mddictFormat.ts,src/ai/mddict/**,src/editor/mddict/**,docs/mddict-format.md
+---
+
+# Dictionary format (`.mddict`)
+
+Spec: [`docs/mddict-format.md`](docs/mddict-format.md). Core rules live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
+
+If you change on-disk syntax, parse/serialize, or agent tools for dictionary files, **update `docs/mddict-format.md` in the same change** (including the core-rules block when agent-critical).

@@ -83,15 +83,24 @@ fn is_mdlnks(name: &str) -> bool {
     name.ends_with(".mdlnks")
 }
 
+fn is_mddict(name: &str) -> bool {
+    name.ends_with(".mddict")
+}
+
 fn is_pdf(name: &str) -> bool {
     name.ends_with(".pdf")
 }
 
 fn is_vault_document(name: &str) -> bool {
-    is_markdown(name) || is_drawio(name) || is_mdlnks(name) || is_pdf(name)
+    is_markdown(name)
+        || is_drawio(name)
+        || is_mdlnks(name)
+        || is_mddict(name)
+        || is_pdf(name)
 }
 
 const EMPTY_MDLNKS: &str = "# MarkSpace links v1\n";
+const EMPTY_MDDICT: &str = "# MarkSpace dictionary v1\n";
 
 const EMPTY_DRAWIO: &str = r#"<mxfile host="MarkSpace" agent="MarkSpace" version="28.2.5" type="device">
   <diagram id="page-1" name="Page-1">
@@ -587,6 +596,20 @@ fn rewrite_drawio_after_path_change(
     Ok(())
 }
 
+fn strip_known_doc_ext(rel: &mut String) {
+    if rel.ends_with(".md") {
+        rel.truncate(rel.len() - 3);
+    } else if rel.ends_with(".drawio") {
+        rel.truncate(rel.len() - 7);
+    } else if rel.ends_with(".mdlnks") {
+        rel.truncate(rel.len() - 7);
+    } else if rel.ends_with(".mddict") {
+        rel.truncate(rel.len() - 7);
+    } else if rel.ends_with(".pdf") {
+        rel.truncate(rel.len() - 4);
+    }
+}
+
 fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
     let mut to_rel = to_rel.trim().trim_start_matches('/').to_string();
     if !from_full.is_file() {
@@ -598,39 +621,28 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         .unwrap_or_default();
     if is_drawio(&from_name) {
         if !to_rel.ends_with(".drawio") {
-            if to_rel.ends_with(".md") {
-                to_rel.truncate(to_rel.len() - 3);
-            } else if to_rel.ends_with(".mdlnks") {
-                to_rel.truncate(to_rel.len() - 7);
-            } else if to_rel.ends_with(".pdf") {
-                to_rel.truncate(to_rel.len() - 4);
-            }
+            strip_known_doc_ext(&mut to_rel);
             to_rel.push_str(".drawio");
         }
         return to_rel;
     }
     if is_mdlnks(&from_name) {
         if !to_rel.ends_with(".mdlnks") {
-            if to_rel.ends_with(".md") {
-                to_rel.truncate(to_rel.len() - 3);
-            } else if to_rel.ends_with(".drawio") {
-                to_rel.truncate(to_rel.len() - 7);
-            } else if to_rel.ends_with(".pdf") {
-                to_rel.truncate(to_rel.len() - 4);
-            }
+            strip_known_doc_ext(&mut to_rel);
             to_rel.push_str(".mdlnks");
+        }
+        return to_rel;
+    }
+    if is_mddict(&from_name) {
+        if !to_rel.ends_with(".mddict") {
+            strip_known_doc_ext(&mut to_rel);
+            to_rel.push_str(".mddict");
         }
         return to_rel;
     }
     if is_pdf(&from_name) {
         if !to_rel.ends_with(".pdf") {
-            if to_rel.ends_with(".md") {
-                to_rel.truncate(to_rel.len() - 3);
-            } else if to_rel.ends_with(".drawio") {
-                to_rel.truncate(to_rel.len() - 7);
-            } else if to_rel.ends_with(".mdlnks") {
-                to_rel.truncate(to_rel.len() - 7);
-            }
+            strip_known_doc_ext(&mut to_rel);
             to_rel.push_str(".pdf");
         }
         return to_rel;
@@ -639,6 +651,7 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         && !to_rel.ends_with(".md")
         && !to_rel.ends_with(".drawio")
         && !to_rel.ends_with(".mdlnks")
+        && !to_rel.ends_with(".mddict")
         && !to_rel.ends_with(".pdf")
     {
         to_rel.push_str(".md");
@@ -1149,11 +1162,7 @@ pub fn create_mdlnks(path: String, state: State<VaultState>) -> Result<String, S
     let root = get_root(&state)?;
     let mut rel = path.trim().trim_start_matches('/').to_string();
     if !rel.ends_with(".mdlnks") {
-        if rel.ends_with(".md") {
-            rel.truncate(rel.len() - 3);
-        } else if rel.ends_with(".drawio") {
-            rel.truncate(rel.len() - 7);
-        }
+        strip_known_doc_ext(&mut rel);
         rel.push_str(".mdlnks");
     }
     let full = ensure_inside(&root, Path::new(&rel))?;
@@ -1164,6 +1173,33 @@ pub fn create_mdlnks(path: String, state: State<VaultState>) -> Result<String, S
         fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
     }
     fs::write(&full, EMPTY_MDLNKS).map_err(|e| format!("Cannot create links file: {e}"))?;
+
+    let created = relative_to_root(&root, &full);
+    let parent = parent_rel(&created);
+    let name = entry_name(&created);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent, &name, None);
+    write_order(&root, &order)?;
+
+    Ok(created)
+}
+
+#[tauri::command(async)]
+pub fn create_mddict(path: String, state: State<VaultState>) -> Result<String, String> {
+    let root = get_root(&state)?;
+    let mut rel = path.trim().trim_start_matches('/').to_string();
+    if !rel.ends_with(".mddict") {
+        strip_known_doc_ext(&mut rel);
+        rel.push_str(".mddict");
+    }
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    if full.exists() {
+        return Err("Dictionary file already exists".into());
+    }
+    if let Some(parent) = full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
+    }
+    fs::write(&full, EMPTY_MDDICT).map_err(|e| format!("Cannot create dictionary file: {e}"))?;
 
     let created = relative_to_root(&root, &full);
     let parent = parent_rel(&created);
@@ -1377,7 +1413,7 @@ pub fn import_document_bytes(
     let parent_rel = parent.trim().trim_start_matches('/').to_string();
     let name = sanitize_asset_filename(&file_name);
     if !is_vault_document(&name) {
-        return Err("Only .md, .drawio, .mdlnks, and .pdf files can be imported".into());
+        return Err("Only .md, .drawio, .mdlnks, .mddict, and .pdf files can be imported".into());
     }
 
     let data = STANDARD
@@ -1752,6 +1788,7 @@ pub fn resolve_wiki_target(
         || lower.ends_with(".pdf")
         || lower.ends_with(".drawio")
         || lower.ends_with(".mdlnks")
+        || lower.ends_with(".mddict")
     {
         target.to_string()
     } else {
@@ -2343,6 +2380,76 @@ pub fn list_vault_tags(state: State<VaultState>) -> Result<Vec<String>, String> 
         .lock()
         .map_err(|_| "Tag index lock poisoned")?;
     Ok(unique_sorted_tags(&guard))
+}
+
+/// Collect unique tags from all `.mddict` files (`filter:` + per-entry `tags:`).
+/// Separate from the note/PDF tag index — never fed into the tag graph.
+#[tauri::command(async)]
+pub fn list_dictionary_tags(state: State<VaultState>) -> Result<Vec<String>, String> {
+    let root = get_root(&state)?;
+    let mut seen: HashMap<String, String> = HashMap::new();
+    for entry in WalkDir::new(&root)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            e.file_name()
+                .to_str()
+                .map(|n| !is_hidden(n))
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy();
+        if !is_mddict(&name) {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        for tag in tags_from_mddict_content(&text) {
+            let key = tag.to_lowercase();
+            seen.entry(key).or_insert(tag);
+        }
+    }
+    let mut out: Vec<String> = seen.into_values().collect();
+    out.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    Ok(out)
+}
+
+fn tags_from_mddict_content(content: &str) -> Vec<String> {
+    let mut seen: HashMap<String, String> = HashMap::new();
+    for raw_line in content.lines() {
+        let line = raw_line.trim();
+        let value = if let Some(rest) = line
+            .strip_prefix("filter:")
+            .or_else(|| line.strip_prefix("Filter:"))
+            .or_else(|| line.strip_prefix("FILTER:"))
+        {
+            rest
+        } else if let Some(rest) = line
+            .strip_prefix("tags:")
+            .or_else(|| line.strip_prefix("Tags:"))
+            .or_else(|| line.strip_prefix("TAGS:"))
+        {
+            rest
+        } else {
+            continue;
+        };
+        for part in value.split(',') {
+            let t = part.trim();
+            if t.is_empty() {
+                continue;
+            }
+            let key = t.to_lowercase();
+            seen.entry(key).or_insert_with(|| t.to_string());
+        }
+    }
+    seen.into_values().collect()
 }
 
 /// One note's path and its tags (frontmatter ∪ inline `#tags`) from the in-memory index.

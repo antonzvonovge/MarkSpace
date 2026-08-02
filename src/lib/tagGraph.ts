@@ -60,7 +60,8 @@ export function noteLabel(path: string): string {
     .replace(/\.md$/i, "")
     .replace(/\.pdf$/i, "")
     .replace(/\.drawio$/i, "")
-    .replace(/\.mdlnks$/i, "");
+    .replace(/\.mdlnks$/i, "")
+    .replace(/\.mddict$/i, "");
 }
 
 function isGraphDocumentPath(path: string): boolean {

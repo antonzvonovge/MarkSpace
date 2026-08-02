@@ -24,7 +24,11 @@ export async function listTree(): Promise<TreeNode> {
 
 function skipMarkdownNormalize(path: string): boolean {
   const lower = path.toLowerCase();
-  return lower.endsWith(".drawio") || lower.endsWith(".mdlnks");
+  return (
+    lower.endsWith(".drawio") ||
+    lower.endsWith(".mdlnks") ||
+    lower.endsWith(".mddict")
+  );
 }
 
 export async function readNote(path: string): Promise<string> {
@@ -60,6 +64,10 @@ export async function createMdlnks(path: string): Promise<string> {
   return invoke("create_mdlnks", { path });
 }
 
+export async function createMddict(path: string): Promise<string> {
+  return invoke("create_mddict", { path });
+}
+
 /** Embed path for a .drawio: vault-relative if already inside, else copy next to the note. */
 export async function importDrawio(
   notePath: string,
@@ -76,7 +84,7 @@ export async function importPaths(
   return invoke("import_paths", { parent, sources });
 }
 
-/** Write a .md / .drawio / .mdlnks / .pdf from bytes into a vault folder. */
+/** Write a .md / .drawio / .mdlnks / .mddict / .pdf from bytes into a vault folder. */
 export async function importDocumentBytes(
   parent: string,
   fileName: string,
@@ -276,6 +284,11 @@ export async function downloadEmbeddingModel(): Promise<EmbeddingModelStatus> {
 /** Unique note tags (frontmatter ∪ inline `#tags`) from the in-memory vault index. */
 export async function listVaultTags(): Promise<string[]> {
   return invoke("list_vault_tags");
+}
+
+/** Unique tags from all `.mddict` files (separate from note/PDF vault tags). */
+export async function listDictionaryTags(): Promise<string[]> {
+  return invoke("list_dictionary_tags");
 }
 
 /** One note's path and its tags from the in-memory vault index. */
@@ -495,12 +508,13 @@ export function listVaultProjects(
     .map((n) => ({ path: n.path, name: n.name }));
 }
 
-export type DocumentKind = "markdown" | "drawio" | "mdlnks" | "pdf";
+export type DocumentKind = "markdown" | "drawio" | "mdlnks" | "mddict" | "pdf";
 
 export function documentKind(path: string): DocumentKind {
   const lower = path.toLowerCase();
   if (lower.endsWith(".drawio")) return "drawio";
   if (lower.endsWith(".mdlnks")) return "mdlnks";
+  if (lower.endsWith(".mddict")) return "mddict";
   if (lower.endsWith(".pdf")) return "pdf";
   return "markdown";
 }
@@ -511,6 +525,10 @@ export function isDrawioPath(path: string): boolean {
 
 export function isMdlnksPath(path: string): boolean {
   return documentKind(path) === "mdlnks";
+}
+
+export function isMddictPath(path: string): boolean {
+  return documentKind(path) === "mddict";
 }
 
 export function isPdfPath(path: string): boolean {

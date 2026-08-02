@@ -9,10 +9,11 @@ import {
   LocateIcon,
   PlusIcon,
   RefreshIcon,
+  DictionaryIcon,
 } from "./treeIcons";
 import { GRAPH_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
 
-export type TreeCreateKind = "note" | "drawio" | "mdlnks" | "folder";
+export type TreeCreateKind = "note" | "drawio" | "mdlnks" | "mddict" | "folder";
 
 function TreeCreateMenu({
   onCreate,
@@ -85,6 +86,15 @@ function TreeCreateMenu({
           >
             <LinksIcon />
             <span>New links</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-create-item"
+            onClick={() => pick("mddict")}
+          >
+            <DictionaryIcon />
+            <span>New dictionary</span>
           </button>
           <button
             type="button"

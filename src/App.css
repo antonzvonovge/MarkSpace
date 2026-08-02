@@ -5931,6 +5931,310 @@ li.dnd-drop-target > .tree-row {
   color: var(--accent);
 }
 
+.tree-mddict-icon {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+/* ── Dictionary editor (.mddict) ───────────────────────────── */
+
+.dict-editor-column {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.dict-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 32px;
+  box-sizing: border-box;
+}
+
+.dict-editor-toolbar {
+  --dict-control-h: 34px;
+  --links-control-h: 34px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.dict-editor-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+  position: relative;
+}
+
+.dict-editor-filter-chips {
+  flex: 1;
+  min-width: 160px;
+}
+
+.dict-editor-search {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 0 1 220px;
+  min-width: 160px;
+}
+
+.dict-editor-add-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--dict-control-h);
+  border: 0;
+  border-radius: 8px;
+  padding: 0 14px;
+  margin-left: auto;
+  flex-shrink: 0;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dict-editor-add-btn:hover {
+  background: var(--accent-strong);
+}
+
+.dict-editor-filter-label {
+  display: inline-flex;
+  align-items: center;
+  height: var(--dict-control-h);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.dict-editor-search-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  height: var(--dict-control-h);
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.dict-editor-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dict-editor-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.dict-editor-empty h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.dict-editor-error {
+  padding: 24px 8px;
+}
+
+.dict-editor-error h2 {
+  margin: 0 0 8px;
+}
+
+.dict-editor-error-hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dict-editor-sheet {
+  flex: 0 0 auto;
+  border-radius: 8px;
+  overflow: visible;
+  color: var(--text);
+}
+
+.dict-editor-sheet .dsg-container {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: var(--editor-surface);
+  font-size: 13px;
+  overflow: hidden !important;
+}
+
+.dict-editor-sheet .dsg-input {
+  color: var(--text);
+  background: transparent;
+  font-size: 13px;
+}
+
+.dict-editor-sheet .dsg-cell-header,
+.dict-editor-sheet .dsg-cell-gutter,
+.dict-editor-sheet .dsg-cell-header.dsg-cell-gutter {
+  background: color-mix(in srgb, #6b7c8f 14%, var(--editor-surface)) !important;
+  color: var(--muted);
+  box-shadow: 1px 0 var(--line) !important;
+  font-size: 12px;
+  align-items: flex-start !important;
+  padding-top: 8px;
+}
+
+.dict-editor-sheet .dsg-cell-header.dsg-cell-sticky-right {
+  box-shadow: none !important;
+}
+
+.dict-editor-sheet .dsg-row-header {
+  background: color-mix(in srgb, #6b7c8f 14%, var(--editor-surface));
+}
+
+.dict-editor-sheet .dsg-cell-header-active,
+.dict-editor-sheet .dsg-cell-gutter-active {
+  color: var(--text);
+}
+
+.dict-editor-sheet .dsg-cell {
+  background: var(--editor-surface);
+  font-size: 13px;
+  align-items: flex-start !important;
+}
+
+.dict-editor-sheet .dsg-add-row {
+  display: none !important;
+}
+
+.dict-dsg-placeholder {
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  user-select: none;
+  font-size: 13px;
+}
+
+.dict-dsg-wrap-display {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dict-dsg-wrap-input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: none;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  outline: none;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Word + Transcript body cells only (not header). */
+.dict-editor-sheet .dsg-cell.dict-dsg-cell-lg .dict-dsg-wrap-display,
+.dict-editor-sheet .dsg-cell.dict-dsg-cell-lg .dict-dsg-wrap-input,
+.dict-editor-sheet .dsg-cell.dict-dsg-cell-lg .dict-dsg-placeholder {
+  font-size: 15px;
+}
+
+/* Word column: larger + bold. */
+.dict-editor-sheet .dsg-cell.dict-dsg-cell-word .dict-dsg-wrap-display,
+.dict-editor-sheet .dsg-cell.dict-dsg-cell-word .dict-dsg-wrap-input,
+.dict-editor-sheet .dsg-cell.dict-dsg-cell-word .dict-dsg-placeholder {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.dict-dsg-tags-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 6px;
+  align-items: flex-start;
+  align-content: flex-start;
+  width: 100%;
+}
+
+.dict-dsg-tag-chip {
+  display: inline-flex;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-strong, var(--accent));
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dict-dsg-tags-edit {
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  align-self: stretch;
+}
+
+.dict-dsg-tags-input {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  font-size: 13px;
+}
+
+.dict-dsg-tags-input .tag-chips-input-box {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  min-height: 100%;
+  height: 100%;
+  padding: 6px 8px;
+  align-items: flex-start;
+  align-content: flex-start;
+  box-shadow: none;
+}
+
+.dict-dsg-tags-input .tag-chips-input-box:focus-within {
+  border: none;
+  box-shadow: none;
+}
+
+.dict-dsg-tags-input .tag-chips-input-field-wrap {
+  flex: 1 1 60px;
+  min-width: 60px;
+}
+
 .app-dialog-body .app-dialog-label + .app-dialog-input,
 .app-dialog-body .app-dialog-label + .ms-select,
 .app-dialog-body .app-dialog-label + .link-dialog-tags {

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { credentialsFromSettings } from "../ai/languageModel";
+import { suggestDictEntry } from "../ai/suggestDictEntry";
 import { suggestLinkMeta } from "../ai/suggestLinkMeta";
 import {
   PROJECT_TYPE_OPTIONS,
@@ -8,9 +9,11 @@ import {
 } from "../lib/vaultApi";
 import {
   NATIVE_LANGUAGE_OPTIONS,
+  nativeLanguageLabel,
   type NativeLanguageId,
 } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
 import { TagChipsInput } from "./TagChipsInput";
 import { Select } from "./ui/Select";
@@ -453,6 +456,162 @@ export function LinkItemDialog({
           ariaLabel="Link tags"
           disabled={suggesting}
         />
+      </div>
+    </DialogShell>
+  );
+}
+
+export type AddWordDialogValue = {
+  word: string;
+  transcript: string;
+  translation: string;
+  examples: string[];
+};
+
+type AddWordDialogProps = {
+  open: boolean;
+  learningLanguageCode?: string;
+  learningLanguageLabel?: string;
+  onCancel: () => void;
+  onConfirm: (value: AddWordDialogValue) => void;
+};
+
+export function AddWordDialog({
+  open,
+  learningLanguageCode = "",
+  learningLanguageLabel = "",
+  onCancel,
+  onConfirm,
+}: AddWordDialogProps) {
+  const wordId = useId();
+  const wordRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [word, setWord] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const aiSettings = useAiSettingsStore((s) => s.settings);
+  const nativeLanguage = usePrefsStore((s) => s.prefs.nativeLanguage);
+
+  useEffect(() => {
+    if (!open) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setBusy(false);
+      setError(null);
+      return;
+    }
+    setWord("");
+    setError(null);
+    const id = window.requestAnimationFrame(() => {
+      wordRef.current?.focus();
+      wordRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open]);
+
+  const submit = async () => {
+    const trimmed = word.trim();
+    if (!trimmed || busy) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await suggestDictEntry({
+        word: trimmed,
+        learningLanguageCode,
+        learningLanguageLabel,
+        nativeLanguageCode: nativeLanguage,
+        nativeLanguageLabel: nativeLanguageLabel(nativeLanguage),
+        keys: credentialsFromSettings(aiSettings),
+        fallbackModelId: aiSettings.modelId,
+        abortSignal: ac.signal,
+      });
+      if (ac.signal.aborted) return;
+      onConfirm({
+        word: trimmed,
+        transcript: result.transcript,
+        translation: result.translation,
+        examples: result.examples,
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (abortRef.current === ac) {
+        abortRef.current = null;
+        setBusy(false);
+      }
+    }
+  };
+
+  return (
+    <DialogShell
+      open={open}
+      title="Add entry"
+      description={
+        learningLanguageLabel
+          ? `Enter a ${learningLanguageLabel} word or expression. AI will fill transcript, translation, and examples.`
+          : "Enter a word or expression. AI will fill transcript, translation, and examples."
+      }
+      onCancel={() => {
+        if (busy) {
+          abortRef.current?.abort();
+          return;
+        }
+        onCancel();
+      }}
+      footer={
+        <>
+          <button
+            type="button"
+            className="app-dialog-btn"
+            onClick={() => {
+              abortRef.current?.abort();
+              onCancel();
+            }}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="app-dialog-btn is-primary"
+            disabled={!word.trim() || busy}
+            onClick={() => void submit()}
+          >
+            {busy ? "Filling…" : "Add"}
+          </button>
+        </>
+      }
+    >
+      <div className="app-dialog-body">
+        <label className="app-dialog-label" htmlFor={wordId}>
+          Word or expression
+        </label>
+        <input
+          ref={wordRef}
+          id={wordId}
+          className="app-dialog-input"
+          value={word}
+          onChange={(e) => setWord(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+          placeholder="e.g. sprechen / auf Wiedersehen"
+          spellCheck
+          autoComplete="off"
+          disabled={busy}
+        />
+        {error ? (
+          <p className="link-dialog-suggest-error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
     </DialogShell>
   );

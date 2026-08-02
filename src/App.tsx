@@ -22,6 +22,7 @@ import { PlainSourceEditor } from "./editor/PlainSourceEditor";
 import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
+import { DictionaryEditor } from "./editor/mddict/DictionaryEditor";
 import { PdfViewer } from "./editor/pdf/PdfViewer";
 import type { VaultChange } from "./lib/vaultApi";
 import { documentKind, readNote } from "./lib/vaultApi";
@@ -127,7 +128,7 @@ function App() {
         const tab = st.tabs.find((t) => t.path === path);
         if (tab && !isFileTab(tab)) return;
         const kind = documentKind(path);
-        if (kind !== "markdown" && kind !== "mdlnks") return;
+        if (kind !== "markdown" && kind !== "mdlnks" && kind !== "mddict") return;
         toggleViewMode();
       }
       if (e.key === "," || code === "Comma") {
@@ -212,6 +213,10 @@ function App() {
         for (const p of tagPaths) {
           await useVaultStore.getState().reindexVaultNoteTags(p);
         }
+      }
+
+      if (paths.some((p) => p.toLowerCase().endsWith(".mddict"))) {
+        void useVaultStore.getState().refreshDictionaryTags();
       }
 
       const { activePath: current, dirty } = useVaultStore.getState();
@@ -356,7 +361,8 @@ function App() {
                         if (activeTab && !isFileTab(activeTab)) return null;
                         return (
                           (documentKind(activePath) === "markdown" ||
-                            documentKind(activePath) === "mdlnks") &&
+                            documentKind(activePath) === "mdlnks" ||
+                            documentKind(activePath) === "mddict") &&
                           viewMode === "source" ? (
                             <DocumentToolbar
                               showOutlineToggle={
@@ -433,6 +439,41 @@ function App() {
                                     }
                                   >
                                     <LinksEditor
+                                      path={tabPath}
+                                      content={tabContent}
+                                      onChange={(next) =>
+                                        onEditorChange(tabPath, next)
+                                      }
+                                    />
+                                  </div>
+                                  <div
+                                    className={
+                                      viewMode === "source"
+                                        ? "document-editor-slot is-active"
+                                        : "document-editor-slot"
+                                    }
+                                  >
+                                    <div className="source-editor-wrap">
+                                      <PlainSourceEditor
+                                        path={tabPath}
+                                        content={tabContent}
+                                        onChange={(text) =>
+                                          onEditorChange(tabPath, text)
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                </>
+                              ) : kind === "mddict" ? (
+                                <>
+                                  <div
+                                    className={
+                                      viewMode === "live"
+                                        ? "document-editor-slot is-active"
+                                        : "document-editor-slot"
+                                    }
+                                  >
+                                    <DictionaryEditor
                                       path={tabPath}
                                       content={tabContent}
                                       onChange={(next) =>

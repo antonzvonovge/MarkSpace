@@ -154,6 +154,25 @@ export function LinksIcon() {
   );
 }
 
+export function DictionaryIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.5 2.5h7.2c.7 0 1.3.6 1.3 1.3v9.4c0 .5-.4.8-.8.8H4.3c-.7 0-1.3-.6-1.3-1.3V3.3c0-.4.4-.8.5-.8Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.5 5h5M5.5 7.5h5M5.5 10h3.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function PdfIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

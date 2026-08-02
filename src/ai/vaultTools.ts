@@ -31,6 +31,8 @@ import { buildAskUserTool } from "./askUser";
 import { buildDrawioTools } from "./drawio/tools";
 import { buildMdlnksTools } from "./mdlnks/tools";
 import { mdlnksCoreRules } from "./mdlnksFormat";
+import { buildMddictTools } from "./mddict/tools";
+import { mddictCoreRules } from "./mddictFormat";
 import { clipArticle } from "./clipArticle";
 import { buildFileTools } from "./fileTools";
 import {
@@ -168,6 +170,7 @@ export function buildVaultTools(
             (p.endsWith(".md") ||
               p.endsWith(".drawio") ||
               p.endsWith(".mdlnks") ||
+              p.endsWith(".mddict") ||
               p.endsWith(".pdf")) &&
             inProject(p),
         );
@@ -581,6 +584,7 @@ export function buildVaultTools(
 
   const drawioTools = buildDrawioTools(mode);
   const mdlnksTools = buildMdlnksTools(mode);
+  const mddictTools = buildMddictTools(mode);
   const webTools = buildWebTools();
   const fileTools = buildFileTools(mode);
   const askUserTool = { ask_user: buildAskUserTool() };
@@ -590,6 +594,7 @@ export function buildVaultTools(
       ...readTools,
       ...drawioTools,
       ...mdlnksTools,
+      ...mddictTools,
       ...webTools,
       ...fileTools,
       ...askUserTool,
@@ -600,6 +605,7 @@ export function buildVaultTools(
     ...readTools,
     ...drawioTools,
     ...mdlnksTools,
+    ...mddictTools,
     ...webTools,
     ...fileTools,
     ...askUserTool,
@@ -1152,8 +1158,10 @@ export function buildSystemPrompt(opts: {
     "You mostly read and edit Markdown (.md) notes — plain text with Markdown formatting.",
     "You can also inspect and edit Draw.io diagrams (.drawio) via diagram tools. Prefer mutate_diagram for any multi-element change (add/update/color/align/connect/page settings/layout in one call). Also: read_diagram, create_diagram, and single-element helpers.",
     "You can manage link collections (.mdlnks) via links tools: read_links, add_link, update_link, remove_link, reorder_links, set_links_filter, create_links. Call read_mdlnks_format when unsure. Never raw-edit .mdlnks with edit_note/write_note.",
+    "You can manage vocabulary dictionaries (.mddict) via dictionary tools: read_dictionary, add_entry, update_entry, remove_entry, reorder_entries, set_dictionary_filter, create_dictionary. Call read_mddict_format when unsure. Never raw-edit .mddict with edit_note/write_note. Dictionary tags are a separate bank from note/PDF tags and do not appear in the tag graph.",
     "PDF documents (.pdf) are first-class vault files (view-only). They appear in list_notes/list_folder, are indexed for search_notes and semantic_search when text is extractable, and open in the PDF viewer via open_note (optional page). Use read_note or read_file to get extracted text; scanned PDFs may have no text. Tags for PDFs are stored in vault filemeta (same catalog as notes / tag graph); never edit_note/write_note on PDFs.",
     ...mdlnksCoreRules().map((r) => `Links (.mdlnks): ${r}`),
+    ...mddictCoreRules().map((r) => `Dictionary (.mddict): ${r}`),
     "You can search the public web (web_search) and fetch pages as markdown (fetch_url) when vault notes are not enough. fetch_url auto-picks Tavily (if configured) or Jina; x.com/twitter.com status URLs use FxTwitter automatically.",
     `Web API keys configured: Tavily=${tavilyConfigured ? "yes" : "no"}, Firecrawl=${firecrawlConfigured ? "yes" : "no"}. These flags are authoritative — never ask the user whether a key is set. If Firecrawl=yes and they ask for Firecrawl / provider=firecrawl / scrape_url, call the tool immediately. If Firecrawl=no and they insist on Firecrawl, tell them to add the key in Settings → Firecrawl API key.`,
     "scrape_url (Firecrawl browser scrape, markdown only) is expensive — ONLY call it when the user explicitly asks to scrape a page (or names Firecrawl / scrape_url). Never use it for routine fetch_url work.",
@@ -1185,6 +1193,7 @@ export function buildSystemPrompt(opts: {
       "For .drawio files: use mutate_diagram for batch edits (never many parallel single updates — they race). Use temp_id on new nodes and reference them from add_edges / child parent in the same call. Never raw edit_note on XML.",
       "For .pdf files: use set_file_tags / get_file_tags for document tags (sidecar in .markspace/filemeta). Never edit_note/write_note on PDFs.",
       "For .mdlnks files: use add_link / update_link / remove_link / reorder_links / set_links_filter (never raw edit_note on the links text format).",
+      "For .mddict files: use add_entry / update_entry / remove_entry / reorder_entries / set_dictionary_filter (never raw edit_note on the dictionary text format).",
       "Draw.io layout: for multi-shape diagrams OMIT x/y — mutate_diagram auto-layouts top-down (ArchiMate: Motivation→Strategy→Business→Application→Technology→Implementation). Do not invent sideways coordinates. Use layout:{type:'none'} only when intentionally keeping positions; layout:{type:'archimate'|'hierarchical'|'grid', direction:'top_down'|'left_right'} to override.",
       "Draw.io capabilities: text align/vertical_align/font_*; sketch; page_settings; shapes include group/swimlane and ArchiMate 3.2 (archimate.*); edges relation=serving|realization|assignment|…; parent=temp_id nesting; waypoints + exit_*/entry_*; add_pages/rename_pages.",
       "Images in notes: save with save_attachment (chat images), write_asset (raw base64 into note .assets/), read_file with save_as (URL/vault file → any vault path), or clip_article (web page → note + .assets/). Then edit_note to insert markdown using the returned path/url. Never invent .assets paths.",
@@ -1235,6 +1244,9 @@ export function buildSystemPrompt(opts: {
           "Learning language: not set (ask the user which language they are learning if needed).",
         );
       }
+      lines.push(
+        "For vocabulary / word lists in this project, prefer .mddict dictionary files and dictionary tools over Markdown tables.",
+      );
     }
     const about = opts.projectAbout?.trim();
     if (about) {

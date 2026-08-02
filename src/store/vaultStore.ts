@@ -5,6 +5,7 @@ import {
   addFavorite,
   createDrawio,
   createFolder,
+  createMddict,
   createMdlnks,
   createNote,
   deletePath,
@@ -15,6 +16,7 @@ import {
   isSkillsFolder,
   isValidSkillId,
   joinPath,
+  listDictionaryTags,
   listFavorites,
   listProjectProperties,
   listTree,
@@ -96,6 +98,8 @@ type VaultStore = {
   projectPropertiesByPath: Record<string, ProjectProperties>;
   /** Unique tags from note frontmatter and inline `#tags` across the vault. */
   vaultTags: string[];
+  /** Unique tags from all `.mddict` files (separate bank; not in tag graph). */
+  dictionaryTags: string[];
   content: string;
   viewMode: ViewMode;
   /** Live-mode document outline (TOC) pane. */
@@ -110,6 +114,8 @@ type VaultStore = {
   openVaultAt: (path: string) => Promise<void>;
   refreshTree: () => Promise<void>;
   refreshVaultTags: () => Promise<void>;
+  /** Reload dictionary tag bank from all `.mddict` files. */
+  refreshDictionaryTags: () => Promise<void>;
   /** Reload `.markspace/projects` markers into `projectPropertiesByPath`. */
   refreshProjectProperties: () => Promise<void>;
   /** Upsert one project's properties in the in-memory map (after dialog save). */
@@ -144,6 +150,7 @@ type VaultStore = {
   createNoteInSelection: (name: string) => Promise<void>;
   createDrawioInSelection: (name: string) => Promise<void>;
   createMdlnksInSelection: (name: string) => Promise<void>;
+  createMddictInSelection: (name: string) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
   /** Create Skills/<id>.md with skill frontmatter template. */
   createSkill: (id: string) => Promise<void>;
@@ -254,6 +261,7 @@ function tabLabel(path: string, kind?: TabKind): string {
     .replace(/\.md$/i, "")
     .replace(/\.drawio$/i, "")
     .replace(/\.mdlnks$/i, "")
+    .replace(/\.mddict$/i, "")
     .replace(/\.pdf$/i, "");
 }
 
@@ -530,6 +538,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   favoritePaths: [],
   projectPropertiesByPath: {},
   vaultTags: [],
+  dictionaryTags: [],
   content: "",
   viewMode: "live",
   showOutline: false,
@@ -552,6 +561,15 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ vaultTags });
     } catch {
       set({ vaultTags: [] });
+    }
+  },
+
+  refreshDictionaryTags: async () => {
+    try {
+      const dictionaryTags = await listDictionaryTags();
+      set({ dictionaryTags });
+    } catch {
+      set({ dictionaryTags: [] });
     }
   },
 
@@ -621,9 +639,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         favoritePaths,
         projectPropertiesByPath,
         vaultTags: [],
+        dictionaryTags: [],
         tabs: restoredTabs,
       });
       void get().refreshVaultTags();
+      void get().refreshDictionaryTags();
 
       if (restoredTabs.length > 0) {
         const active =
@@ -985,6 +1005,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         tabs: withTabBody(current.tabs, activePath, savedContent, false),
       });
       void get().refreshVaultTags();
+      void get().refreshDictionaryTags();
     } catch (e) {
       set({
         saving: false,
@@ -1082,6 +1103,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const trimmed = name
       .trim()
       .replace(/\.mdlnks$/i, "")
+      .replace(/\.mddict$/i, "")
       .replace(/\.drawio$/i, "")
       .replace(/\.md$/i, "");
     if (!trimmed) return;
@@ -1089,6 +1111,26 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       const rel = joinPath(selectedFolderPath, trimmed);
       const created = await createMdlnks(rel);
       await get().refreshTree();
+      await get().openNote(created, { preview: false });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  createMddictInSelection: async (name) => {
+    const { selectedFolderPath } = get();
+    const trimmed = name
+      .trim()
+      .replace(/\.mddict$/i, "")
+      .replace(/\.mdlnks$/i, "")
+      .replace(/\.drawio$/i, "")
+      .replace(/\.md$/i, "");
+    if (!trimmed) return;
+    try {
+      const rel = joinPath(selectedFolderPath, trimmed);
+      const created = await createMddict(rel);
+      await get().refreshTree();
+      void get().refreshDictionaryTags();
       await get().openNote(created, { preview: false });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -1201,6 +1243,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
+      void get().refreshDictionaryTags();
       return nextPath;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -1226,6 +1269,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (to === from || to === from.replace(/\.drawio$/i, "")) return;
     } else if (fromKind === "mdlnks") {
       if (to === from || to === from.replace(/\.mdlnks$/i, "")) return;
+    } else if (fromKind === "mddict") {
+      if (to === from || to === from.replace(/\.mddict$/i, "")) return;
     } else if (to === from || to === from.replace(/\.md$/i, "")) {
       return;
     }
@@ -1282,6 +1327,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
+      void get().refreshDictionaryTags();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -1333,6 +1379,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
+      void get().refreshDictionaryTags();
       return true;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -1358,6 +1405,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (created.length) {
         await get().refreshTree();
         void get().refreshVaultTags();
+        void get().refreshDictionaryTags();
       }
       return created;
     } catch (e) {

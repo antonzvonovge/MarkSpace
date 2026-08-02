@@ -111,6 +111,8 @@ function mediaTypeFromExt(ext: string): string | null {
       return "application/xml";
     case "mdlnks":
       return "text/plain";
+    case "mddict":
+      return "text/plain";
     default:
       return null;
   }

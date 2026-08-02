@@ -73,6 +73,7 @@ import {
 import {
   CollectionPlusIcon,
   DiagramIcon,
+  DictionaryIcon,
   LinksIcon,
   PdfIcon,
   PlusIcon,
@@ -465,6 +466,7 @@ function TreeContextMenu({
   onNewNote,
   onNewDiagram,
   onNewLinks,
+  onNewDictionary,
   onNewFolder,
   onNewSkill,
   onDownloadArticle,
@@ -485,6 +487,7 @@ function TreeContextMenu({
   onNewNote: () => void;
   onNewDiagram: () => void;
   onNewLinks: () => void;
+  onNewDictionary: () => void;
   onNewFolder: () => void;
   onNewSkill: () => void;
   onDownloadArticle: () => void;
@@ -656,6 +659,18 @@ function TreeContextMenu({
             >
               <LinksIcon />
               <span>New links</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onNewDictionary();
+              }}
+            >
+              <DictionaryIcon />
+              <span>New dictionary</span>
             </button>
             <button
               type="button"
@@ -925,6 +940,7 @@ function FavoritesTreeRows({
         const isSkills = isSkillsFolder(path, isDir);
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
         const isMdlnks = !isDir && path.toLowerCase().endsWith(".mdlnks");
+        const isMddict = !isDir && path.toLowerCase().endsWith(".mddict");
         const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
         const selected =
           treeSelectionVisible &&
@@ -1050,6 +1066,10 @@ function FavoritesTreeRows({
                   <span className="tree-mdlnks-icon">
                     <LinksIcon />
                   </span>
+                ) : isMddict ? (
+                  <span className="tree-mddict-icon">
+                    <DictionaryIcon />
+                  </span>
                 ) : isPdf ? (
                   <span className="tree-pdf-icon">
                     <PdfIcon />
@@ -1117,6 +1137,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const createNoteInSelection = useVaultStore((s) => s.createNoteInSelection);
   const createDrawioInSelection = useVaultStore((s) => s.createDrawioInSelection);
   const createMdlnksInSelection = useVaultStore((s) => s.createMdlnksInSelection);
+  const createMddictInSelection = useVaultStore((s) => s.createMddictInSelection);
   const createFolderInSelection = useVaultStore((s) => s.createFolderInSelection);
   const createSkill = useVaultStore((s) => s.createSkill);
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
@@ -1413,6 +1434,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       void createMdlnksInSelection(name).then(revealActiveInTree);
       return;
     }
+    if (kind === "mddict") {
+      void createMddictInSelection(name).then(revealActiveInTree);
+      return;
+    }
     void createFolderInSelection(name).then(() => {
       revealPathInTree(useVaultStore.getState().selectedFolderPath, {
         isDir: true,
@@ -1431,9 +1456,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               ? "New diagram"
               : promptKind === "mdlnks"
                 ? "New links"
-                : promptKind === "skill"
-                  ? "New skill"
-                  : "New note"
+                : promptKind === "mddict"
+                  ? "New dictionary"
+                  : promptKind === "skill"
+                    ? "New skill"
+                    : "New note"
         }
         description={
           promptKind === "folder"
@@ -1442,9 +1469,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               ? "Create a Draw.io diagram in the selected location."
               : promptKind === "mdlnks"
                 ? "Create a links collection in the selected location."
-                : promptKind === "skill"
-                  ? "Skill id: lowercase letters, digits, and hyphens (e.g. meeting-notes)."
-                  : "Create a markdown note in the selected location."
+                : promptKind === "mddict"
+                  ? "Create a vocabulary dictionary in the selected location."
+                  : promptKind === "skill"
+                    ? "Skill id: lowercase letters, digits, and hyphens (e.g. meeting-notes)."
+                    : "Create a markdown note in the selected location."
         }
         label={promptKind === "skill" ? "Skill id" : "Name"}
         defaultValue={
@@ -1454,9 +1483,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               ? "Diagram"
               : promptKind === "mdlnks"
                 ? "Links"
-                : promptKind === "skill"
-                  ? "my-skill"
-                  : "Untitled"
+                : promptKind === "mddict"
+                  ? "Dictionary"
+                  : promptKind === "skill"
+                    ? "my-skill"
+                    : "Untitled"
         }
         confirmLabel="Create"
         onCancel={() => setPromptKind(null)}
@@ -1506,6 +1537,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
             );
             setPromptKind("mdlnks");
+          }}
+          onNewDictionary={() => {
+            selectFolder(
+              contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
+            );
+            setPromptKind("mddict");
           }}
           onNewFolder={() => {
             selectFolder(
@@ -1587,9 +1624,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               ? "Delete diagram"
               : deleteTarget?.path.endsWith(".mdlnks")
                 ? "Delete links"
-                : deleteTarget?.path.endsWith(".pdf")
-                  ? "Delete PDF"
-                  : "Delete note"
+                : deleteTarget?.path.endsWith(".mddict")
+                  ? "Delete dictionary"
+                  : deleteTarget?.path.endsWith(".pdf")
+                    ? "Delete PDF"
+                    : "Delete note"
         }
         description={
           deleteTarget?.isDir
@@ -1741,6 +1780,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   !isDir && path.toLowerCase().endsWith(".drawio");
                 const isMdlnks =
                   !isDir && path.toLowerCase().endsWith(".mdlnks");
+                const isMddict =
+                  !isDir && path.toLowerCase().endsWith(".mddict");
                 const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
                 const selected =
                   treeSelectionVisible &&
@@ -1883,6 +1924,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       ) : isMdlnks ? (
                         <span className="tree-mdlnks-icon">
                           <LinksIcon />
+                        </span>
+                      ) : isMddict ? (
+                        <span className="tree-mddict-icon">
+                          <DictionaryIcon />
                         </span>
                       ) : isPdf ? (
                         <span className="tree-pdf-icon">
