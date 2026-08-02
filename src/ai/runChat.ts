@@ -28,6 +28,7 @@ export type RunChatParams = {
   projectAbout?: string | null;
   skills?: SkillMeta[] | null;
   forcedSkills?: LoadedSkill[] | null;
+  forcedTools?: string[] | null;
   abortSignal?: AbortSignal;
   onMessages: (messages: UIMessage[]) => void;
   /**
@@ -224,6 +225,7 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     projectAbout: params.projectAbout,
     skills: params.skills,
     forcedSkills: params.forcedSkills,
+    forcedTools: params.forcedTools,
   });
 
   const tools = buildVaultTools(params.mode, {

@@ -27,10 +27,15 @@ export type AiSettings = {
   /** Direct Google AI API key — bypasses OpenRouter when set. */
   googleApiKey: string;
   /**
-   * Optional Tavily API key. When set, web_search + fetch_url use Tavily;
-   * otherwise free DuckDuckGo search + Jina Reader fetch.
+   * Optional Tavily API key. When set, web_search / fetch_url / clip_article prefer Tavily;
+   * otherwise free DuckDuckGo + Jina. Tools may override via provider.
    */
   tavilyApiKey: string;
+  /**
+   * Optional Firecrawl API key for scrape_url and for clip_article when
+   * provider=firecrawl is requested. Not used by fetch_url or default clip auto-pick.
+   */
+  firecrawlApiKey: string;
   modelId: string;
   defaultMode: ChatMode;
   /** Default context window when model does not override */
@@ -45,6 +50,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   anthropicApiKey: "",
   googleApiKey: "",
   tavilyApiKey: "",
+  firecrawlApiKey: "",
   modelId: "anthropic/claude-sonnet-4.6",
   defaultMode: "ask",
   contextWindow: 200_000,

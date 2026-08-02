@@ -236,22 +236,38 @@ export function StatusBar() {
   return (
     <footer className="status-bar">
       <div className="status-bar-left">
-        {bgJobs.map((job) => (
-          <span
-            key={job.id}
-            className={
-              job.status === "error"
-                ? "status-bar-item is-conflict"
-                : job.status === "running"
-                  ? "status-bar-item is-busy"
-                  : "status-bar-item"
-            }
-            title={job.detail ? `${jobTitle(job)} · ${job.detail}` : jobTitle(job)}
-          >
-            {job.status === "running" ? <SpinnerIcon /> : null}
-            <span>{jobTitle(job)}</span>
-          </span>
-        ))}
+        {bgJobs.map((job) => {
+          const title = job.detail
+            ? `${jobTitle(job)} · ${job.detail}`
+            : jobTitle(job);
+          const className =
+            job.status === "error"
+              ? "status-bar-item is-conflict"
+              : job.status === "running"
+                ? "status-bar-item is-busy"
+                : "status-bar-item";
+          if (job.status === "error") {
+            return (
+              <button
+                key={job.id}
+                type="button"
+                className={className}
+                title={`${title} (click to dismiss)`}
+                onClick={() =>
+                  useBackgroundJobsStore.getState().removeJob(job.id)
+                }
+              >
+                <span>{jobTitle(job)}</span>
+              </button>
+            );
+          }
+          return (
+            <span key={job.id} className={className} title={title}>
+              {job.status === "running" ? <SpinnerIcon /> : null}
+              <span>{jobTitle(job)}</span>
+            </span>
+          );
+        })}
       </div>
       <div className="status-bar-right" ref={rootRef}>
         <button

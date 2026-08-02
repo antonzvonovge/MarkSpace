@@ -1046,6 +1046,10 @@ li.dnd-drop-target > .tree-row {
   cursor: default;
 }
 
+.status-bar-left button.status-bar-item {
+  cursor: pointer;
+}
+
 .status-bar-right {
   position: relative;
   margin-left: auto;
@@ -2564,6 +2568,23 @@ li.dnd-drop-target > .tree-row {
   box-shadow: 0 0 0 2px rgba(203, 17, 171, 0.2);
 }
 
+.setting-text {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--editor-surface);
+  color: var(--text);
+  width: 220px;
+  max-width: 36vw;
+  min-width: 0;
+  outline: none;
+}
+
+.setting-text:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(203, 17, 171, 0.2);
+}
+
 /* —— Shared Select —— */
 
 .ms-select {
@@ -4026,12 +4047,33 @@ li.dnd-drop-target > .tree-row {
   letter-spacing: 0.01em;
 }
 
+.chat-tool-call-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
 .chat-tool-call-name {
+  flex-shrink: 0;
   font-family: var(--font-mono);
   font-weight: 450;
 }
 
+.chat-tool-call-args {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sidebar-muted, var(--muted));
+  opacity: 0.65;
+  font-weight: 400;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .chat-tool-call-state {
+  flex-shrink: 0;
   color: inherit;
   opacity: 0.75;
   text-transform: lowercase;
@@ -4572,6 +4614,10 @@ li.dnd-drop-target > .tree-row {
 
 .chat-skill-chip {
   background: var(--tag-bg-hover);
+}
+
+.chat-tool-chip {
+  background: color-mix(in srgb, var(--accent) 14%, var(--tag-bg-hover));
 }
 
 .chat-selection-chip {

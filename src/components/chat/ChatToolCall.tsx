@@ -6,6 +6,8 @@ type Props = {
 };
 
 const DISPLAY_CAP = 4_000;
+/** Keep the collapsed summary cheap even for huge tool inputs. */
+const ARGS_SUMMARY_CAP = 240;
 
 function formatToolPayload(value: unknown): string {
   if (value === undefined) return "";
@@ -21,6 +23,39 @@ function formatToolPayload(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function formatArgValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    return value.replace(/\s+/g, " ").trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return String(value);
+  }
+}
+
+/** One-line, comma-separated tool args for the collapsed header. */
+function formatToolArgsSummary(input: unknown): string {
+  if (input === undefined || input === null) return "";
+  let summary: string;
+  if (typeof input === "object" && !Array.isArray(input)) {
+    const parts: string[] = [];
+    for (const value of Object.values(input as Record<string, unknown>)) {
+      const s = formatArgValue(value);
+      if (s) parts.push(s);
+    }
+    summary = parts.join(", ");
+  } else {
+    summary = formatArgValue(input);
+  }
+  if (summary.length <= ARGS_SUMMARY_CAP) return summary;
+  return `${summary.slice(0, ARGS_SUMMARY_CAP)}…`;
 }
 
 function ChatToolCallInner({ part }: Props) {
@@ -42,6 +77,11 @@ function ChatToolCallInner({ part }: Props) {
     state === "approval-responded";
   const done = state === "output-available" || state === "output-error";
   const err = state === "output-error";
+
+  const argsSummary = useMemo(() => {
+    if (!("input" in part) || part.input === undefined) return "";
+    return formatToolArgsSummary(part.input);
+  }, [part]);
 
   // Only serialize when expanded — pretty-printing 80KB+ payloads every render freezes UI.
   const input = useMemo(() => {
@@ -67,7 +107,14 @@ function ChatToolCallInner({ part }: Props) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        <span className="chat-tool-call-name">{toolName}</span>
+        <span className="chat-tool-call-title">
+          <span className="chat-tool-call-name">{toolName}</span>
+          {argsSummary ? (
+            <span className="chat-tool-call-args" title={argsSummary}>
+              {argsSummary}
+            </span>
+          ) : null}
+        </span>
         <span className="chat-tool-call-state">
           {running ? "running" : done ? (err ? "error" : "done") : state}
         </span>

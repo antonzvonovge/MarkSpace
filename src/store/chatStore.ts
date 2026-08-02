@@ -29,6 +29,7 @@ import {
 import { arrayMove } from "../lib/arrayMove";
 import {
   extractSkillIdsFromDraft,
+  extractToolIdsFromDraft,
   unwrapComposerMarkers,
 } from "../lib/chatComposerDom";
 import {
@@ -772,6 +773,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   send: async (text) => {
     const rawDraft = text ?? get().draft;
     const skillIds = extractSkillIdsFromDraft(rawDraft);
+    const toolIds = extractToolIdsFromDraft(rawDraft);
     const draftText = unwrapComposerMarkers(
       expandSelectionMarkers(rawDraft, get().draftSelections),
     );
@@ -862,6 +864,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const forcedSkills = skillIds.length
       ? await loadSkills(skillIds)
       : [];
+    const forcedTools = toolIds.length ? toolIds : [];
 
     try {
       const finalMessages = await runChat({
@@ -876,6 +879,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         projectAbout,
         skills,
         forcedSkills,
+        forcedTools,
         abortSignal: controller.signal,
         onMessages: (next) => {
           if (get().abort !== controller) return;

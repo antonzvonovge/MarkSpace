@@ -25,12 +25,18 @@ describe("vault agent tools", () => {
     expect(askTools).not.toHaveProperty("delete_path");
     expect(askTools).not.toHaveProperty("ensure_folder");
     expect(askTools).not.toHaveProperty("delete_folder_if_empty");
+    expect(askTools).not.toHaveProperty("clip_article");
+    expect(askTools).not.toHaveProperty("translate_note");
+    expect(askTools).toHaveProperty("scrape_url");
     expect(agentTools).toHaveProperty("list_tags");
+    expect(agentTools).toHaveProperty("scrape_url");
     expect(agentTools).toHaveProperty("list_folder");
     expect(agentTools).toHaveProperty("move_path");
     expect(agentTools).toHaveProperty("delete_path");
     expect(agentTools).toHaveProperty("ensure_folder");
     expect(agentTools).toHaveProperty("delete_folder_if_empty");
+    expect(agentTools).toHaveProperty("clip_article");
+    expect(agentTools).toHaveProperty("translate_note");
   });
 
   it("tells the model when to use the new tools", () => {
@@ -46,6 +52,7 @@ describe("vault agent tools", () => {
     expect(askPrompt).toContain(
       "In **chat replies**, reference vault notes with `[[vault/path/Note.md]]`",
     );
+    expect(askPrompt).toMatch(/Web API keys configured: Tavily=(yes|no), Firecrawl=(yes|no)/);
 
     const agentPrompt = buildSystemPrompt({ ...base, mode: "agent" });
     expect(agentPrompt).toContain("move_path");
@@ -53,6 +60,53 @@ describe("vault agent tools", () => {
     expect(agentPrompt).toContain("list_folder");
     expect(agentPrompt).toContain("ensure_folder");
     expect(agentPrompt).toContain("delete_folder_if_empty");
+    expect(agentPrompt).toContain("clip_article");
+    expect(agentPrompt).toContain("translate_note");
+    expect(agentPrompt).toContain("scrape_url");
+    expect(askPrompt).toContain("scrape_url");
+    expect(askPrompt).not.toContain("translate_note");
+  });
+
+  it("reports configured web API keys without exposing secrets", async () => {
+    const { useAiSettingsStore } = await import("../store/aiSettingsStore");
+    const { DEFAULT_AI_SETTINGS } = await import("./types");
+    const prev = useAiSettingsStore.getState().settings;
+    useAiSettingsStore.setState({
+      settings: {
+        ...DEFAULT_AI_SETTINGS,
+        tavilyApiKey: "tvly-test",
+        firecrawlApiKey: "fc-test",
+      },
+      hydrated: true,
+    });
+    try {
+      const prompt = buildSystemPrompt({
+        mode: "ask",
+        vaultPath: null,
+        activePath: null,
+        activeExcerpt: null,
+      });
+      expect(prompt).toContain(
+        "Web API keys configured: Tavily=yes, Firecrawl=yes",
+      );
+      expect(prompt).not.toContain("tvly-test");
+      expect(prompt).not.toContain("fc-test");
+    } finally {
+      useAiSettingsStore.setState({ settings: prev });
+    }
+  });
+
+  it("mentions user-requested tools from @ chips", () => {
+    const prompt = buildSystemPrompt({
+      mode: "ask",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      forcedTools: ["web_search", "read_note"],
+    });
+    expect(prompt).toContain("@web_search");
+    expect(prompt).toContain("@read_note");
+    expect(prompt).toContain("Prefer calling them when relevant");
   });
 
   it("documents project-scoped discovery tools in the system prompt", () => {
@@ -68,6 +122,42 @@ describe("vault agent tools", () => {
     expect(prompt).toContain("list_notes");
     expect(prompt).toContain("semantic_search");
     expect(prompt).toContain("list_tags");
+  });
+
+  it("tells the model to address the user by name when Profile name is set", async () => {
+    const { usePrefsStore } = await import("../store/prefsStore");
+    const { DEFAULT_PREFS } = await import("../settings/types");
+    const prev = usePrefsStore.getState().prefs;
+    usePrefsStore.setState({
+      prefs: { ...DEFAULT_PREFS, userName: "Alex" },
+      hydrated: true,
+    });
+    try {
+      const withName = buildSystemPrompt({
+        mode: "ask",
+        vaultPath: null,
+        activePath: null,
+        activeExcerpt: null,
+      });
+      expect(withName).toContain("The user's name is Alex.");
+      expect(withName).toContain("Address them as Alex");
+      expect(withName).toContain("warm, friendly tone");
+
+      usePrefsStore.setState({
+        prefs: { ...DEFAULT_PREFS, userName: "" },
+        hydrated: true,
+      });
+      const withoutName = buildSystemPrompt({
+        mode: "ask",
+        vaultPath: null,
+        activePath: null,
+        activeExcerpt: null,
+      });
+      expect(withoutName).not.toContain("The user's name is");
+      expect(withoutName).not.toContain("Address them as");
+    } finally {
+      usePrefsStore.setState({ prefs: prev });
+    }
   });
 
   it("matches paths inside the active project only", () => {

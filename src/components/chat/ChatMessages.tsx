@@ -1,4 +1,12 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   isFileUIPart,
   isReasoningUIPart,
@@ -18,15 +26,28 @@ import {
   parseUserTextSegments,
   selectionChipLabel,
 } from "../../lib/chatSelectionChips";
+import { writeClipboardText } from "../../lib/clipboardText";
 import { findModel, OPENROUTER_MODELS } from "../../ai/models";
 import { resolveModelId } from "../../ai/resolveModelId";
 import type { AiSettings } from "../../ai/types";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
+import { EditContextMenu } from "../EditContextMenu";
 import { ChatAskUser } from "./ChatAskUser";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { ChatReasoning } from "./ChatReasoning";
 import { ChatToolCall } from "./ChatToolCall";
+
+type CopyMenuState = { x: number; y: number; text: string };
+
+/** Selected text if the selection is inside `el`, otherwise "". */
+function selectionTextIn(el: HTMLElement): string {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
+  const range = sel.getRangeAt(0);
+  if (!el.contains(range.commonAncestorContainer)) return "";
+  return sel.toString();
+}
 
 type Props = {
   messages: UIMessage[];
@@ -163,12 +184,14 @@ type UserRowProps = {
   message: UIMessage;
   sticky: boolean;
   stickyRef: React.RefObject<HTMLDivElement | null>;
+  onOpenCopyMenu: (e: ReactMouseEvent, fullText: string) => void;
 };
 
 const UserMessageRow = memo(function UserMessageRow({
   message,
   sticky,
   stickyRef,
+  onOpenCopyMenu,
 }: UserRowProps) {
   const files = filePartsFrom(message);
   const text = displayTextFromUserMessage(message);
@@ -203,6 +226,7 @@ const UserMessageRow = memo(function UserMessageRow({
       className={
         sticky ? "chat-msg chat-msg-user is-sticky" : "chat-msg chat-msg-user"
       }
+      onContextMenu={(e) => onOpenCopyMenu(e, text)}
     >
       {(files.length > 0 || attachedDocNames.length > 0) && (
         <div className="chat-msg-attachments">
@@ -262,21 +286,27 @@ type AssistantRowProps = {
   message: UIMessage;
   streaming: boolean;
   isLast: boolean;
+  onOpenCopyMenu: (e: ReactMouseEvent, fullText: string) => void;
 };
 
 const AssistantMessageRow = memo(function AssistantMessageRow({
   message,
   streaming,
   isLast,
+  onOpenCopyMenu,
 }: AssistantRowProps) {
   const msgParts = message.parts ?? [];
   const hasAnswerText = msgParts.some(
     (p) => p.type === "text" && p.text.trim().length > 0,
   );
   const streamingThis = streaming && isLast;
+  const copyText = textFrom(message);
 
   return (
-    <div className="chat-msg chat-msg-assistant">
+    <div
+      className="chat-msg chat-msg-assistant"
+      onContextMenu={(e) => onOpenCopyMenu(e, copyText)}
+    >
       {msgParts.map((part, i) => {
         if (isReasoningUIPart(part)) {
           const laterHasAnswer = msgParts
@@ -347,6 +377,19 @@ export function ChatMessages({ messages, streaming }: Props) {
   const pinnedUserIdRef = useRef<string | null>(null);
   const followBottomRef = useRef(true);
   const ignoreScrollRef = useRef(false);
+  const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
+
+  const openCopyMenu = useCallback(
+    (e: ReactMouseEvent, fullText: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const selected = selectionTextIn(e.currentTarget as HTMLElement);
+      const text = selected || fullText;
+      if (!text.trim()) return;
+      setCopyMenu({ x: e.clientX, y: e.clientY, text });
+    },
+    [],
+  );
 
   const stickyIdx = lastStickyUserIndex(messages);
   const stickyId = stickyIdx >= 0 ? messages[stickyIdx]!.id : null;
@@ -439,6 +482,7 @@ export function ChatMessages({ messages, streaming }: Props) {
               message={message}
               sticky={index === stickyIdx}
               stickyRef={stickyRef}
+              onOpenCopyMenu={openCopyMenu}
             />
           );
         }
@@ -458,6 +502,7 @@ export function ChatMessages({ messages, streaming }: Props) {
             message={message}
             streaming={streaming}
             isLast={message.id === last?.id}
+            onOpenCopyMenu={openCopyMenu}
           />
         );
       })}
@@ -466,6 +511,13 @@ export function ChatMessages({ messages, streaming }: Props) {
           <WaitingIndicator />
         </div>
       )}
+      {copyMenu ? (
+        <EditContextMenu
+          menu={{ x: copyMenu.x, y: copyMenu.y }}
+          onClose={() => setCopyMenu(null)}
+          onCopy={() => void writeClipboardText(copyMenu.text)}
+        />
+      ) : null}
     </div>
   );
 }

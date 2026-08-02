@@ -1,6 +1,7 @@
 import { Store } from "@tauri-apps/plugin-store";
 import {
   DEFAULT_PREFS,
+  isNativeLanguageId,
   type EditorFontFamilyId,
   type Prefs,
 } from "../settings/types";
@@ -34,7 +35,16 @@ function mergePrefs(raw: LegacyPrefs | null | undefined): Prefs {
       ? Math.min(28, Math.max(11, Math.round(raw.editorFontSize)))
       : undefined;
 
+  const userName =
+    typeof raw.userName === "string"
+      ? raw.userName.trim().slice(0, 80)
+      : DEFAULT_PREFS.userName;
+
   return {
+    userName,
+    nativeLanguage: isNativeLanguageId(raw.nativeLanguage)
+      ? raw.nativeLanguage
+      : DEFAULT_PREFS.nativeLanguage,
     theme:
       raw.theme === "dark" || raw.theme === "light"
         ? raw.theme

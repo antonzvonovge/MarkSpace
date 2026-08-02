@@ -184,9 +184,18 @@ export type HttpFetchBytesResult = {
   byteLength: number;
 };
 
-export async function httpFetchBytes(url: string): Promise<HttpFetchBytesResult> {
+export async function httpFetchBytes(
+  url: string,
+  opts?: { timeoutSecs?: number },
+): Promise<HttpFetchBytesResult> {
   return invoke("http_fetch_bytes", {
-    req: { url, method: "GET", headers: null, body: null },
+    req: {
+      url,
+      method: "GET",
+      headers: null,
+      body: null,
+      timeoutSecs: opts?.timeoutSecs ?? null,
+    },
   });
 }
 

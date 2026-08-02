@@ -3,13 +3,17 @@ import {
   chipLabelForPath,
   createPathChipElement,
   createSkillChipElement,
+  createToolChipElement,
   extractSkillIdsFromDraft,
+  extractToolIdsFromDraft,
   renderComposerFromDraft,
+  replaceAtWithToolChip,
   replaceSlashWithSkillChip,
   serializeComposer,
   unwrapComposerMarkers,
   unwrapVaultPathMarkers,
   wrapSkillMarker,
+  wrapToolMarker,
   wrapVaultPathMarker,
 } from "./chatComposerDom";
 
@@ -36,6 +40,19 @@ describe("skill markers", () => {
     expect(
       unwrapComposerMarkers("use ⦃meeting-notes⦄ on ⟦Notes/a.md⟧"),
     ).toBe("use /meeting-notes on Notes/a.md");
+  });
+});
+
+describe("tool markers", () => {
+  it("wraps, extracts, and unwraps tool chips", () => {
+    expect(wrapToolMarker("web_search")).toBe("⟪web_search⟫");
+    expect(extractToolIdsFromDraft("use ⟪web_search⟫ and ⟪read_note⟫")).toEqual([
+      "web_search",
+      "read_note",
+    ]);
+    expect(
+      unwrapComposerMarkers("use ⟪web_search⟫ on ⟦Notes/a.md⟧"),
+    ).toBe("use @web_search on Notes/a.md");
   });
 });
 
@@ -101,6 +118,18 @@ describe("serialize / render composer", () => {
     );
   });
 
+  it("round-trips tool chips", () => {
+    const root = document.createElement("div");
+    renderComposerFromDraft(root, "run ⟪web_search⟫ please");
+    expect(serializeComposer(root)).toBe("run ⟪web_search⟫ please");
+    const chip = root.querySelector(".chat-tool-chip") as HTMLElement;
+    expect(chip?.textContent).toBe("@web_search");
+    expect(chip?.dataset.toolId).toBe("web_search");
+    expect(createToolChipElement("x").classList.contains("chat-tool-chip")).toBe(
+      true,
+    );
+  });
+
   it("renders selection chips from resolved text", () => {
     const root = document.createElement("div");
     renderComposerFromDraft(root, "explain ⟬s1⟭ now", (id) =>
@@ -143,5 +172,30 @@ describe("replaceSlashWithSkillChip", () => {
 
     replaceSlashWithSkillChip(root, "meeting-notes", slashRange);
     expect(serializeComposer(root)).toBe("⦃meeting-notes⦄ hello");
+  });
+});
+
+describe("replaceAtWithToolChip", () => {
+  it("replaces a leading @ using a saved range even if caret moved", () => {
+    document.body.replaceChildren();
+    const root = document.createElement("div");
+    root.contentEditable = "true";
+    document.body.appendChild(root);
+    root.appendChild(document.createTextNode("@ hello"));
+
+    const text = root.firstChild as Text;
+    const atRange = document.createRange();
+    atRange.setStart(text, 0);
+    atRange.setEnd(text, 1);
+
+    const end = document.createRange();
+    end.setStart(text, text.length);
+    end.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(end);
+
+    replaceAtWithToolChip(root, "web_search", atRange);
+    expect(serializeComposer(root)).toBe("⟪web_search⟫ hello");
   });
 });

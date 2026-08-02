@@ -200,6 +200,27 @@ export function AiSettingsPanel() {
       </section>
 
       <section className="sync-block">
+        <h3 className="sync-block-title">Firecrawl API key</h3>
+        <p className="sync-block-desc">
+          Optional. Powers Firecrawl browser scrape from{" "}
+          <a href="https://www.firecrawl.dev" target="_blank" rel="noreferrer">
+            Firecrawl
+          </a>
+          : <code>scrape_url</code> (markdown only) and{" "}
+          <code>clip_article</code> with <code>provider=firecrawl</code> (note +
+          images). Not used by ordinary fetch_url / default clip_article.
+        </p>
+        <input
+          type="password"
+          className="sync-input"
+          value={settings.firecrawlApiKey}
+          onChange={(e) => setSettings({ firecrawlApiKey: e.target.value })}
+          placeholder="fc-…"
+          autoComplete="off"
+        />
+      </section>
+
+      <section className="sync-block">
         <h3 className="sync-block-title">Tavily API key</h3>
         <p className="sync-block-desc">
           Optional. Without it, the agent uses free DuckDuckGo search + Jina
@@ -207,7 +228,8 @@ export function AiSettingsPanel() {
           <a href="https://tavily.com" target="_blank" rel="noreferrer">
             Tavily
           </a>
-          , both web_search and fetch_url use Tavily (~1k free credits/month).
+          , web_search, fetch_url, and clip_article default to Tavily (~1k free
+          credits/month).
         </p>
         <input
           type="password"

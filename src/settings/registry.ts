@@ -1,7 +1,15 @@
 import type { PrefKey, Prefs } from "./types";
-import { DEFAULT_PREFS } from "./types";
+import {
+  DEFAULT_PREFS,
+  NATIVE_LANGUAGE_OPTIONS,
+} from "./types";
 
-export type SettingCategory = "appearance" | "editor" | "ai" | "sync";
+export type SettingCategory =
+  | "profile"
+  | "appearance"
+  | "editor"
+  | "ai"
+  | "sync";
 
 export type SettingControl =
   | {
@@ -13,6 +21,11 @@ export type SettingControl =
       min: number;
       max: number;
       step?: number;
+    }
+  | {
+      type: "text";
+      placeholder?: string;
+      maxLength?: number;
     };
 
 export type SettingDescriptor = {
@@ -34,6 +47,7 @@ export type CategoryDescriptor = {
 };
 
 export const CATEGORIES: CategoryDescriptor[] = [
+  { id: "profile", label: "Profile", scope: "app" },
   { id: "appearance", label: "Appearance", scope: "app" },
   { id: "editor", label: "Editor", scope: "app" },
   { id: "ai", label: "AI", scope: "app", separatorBefore: true },
@@ -46,6 +60,31 @@ const FONT_FAMILY_OPTIONS = [
 ];
 
 export const SETTINGS_REGISTRY: SettingDescriptor[] = [
+  {
+    id: "userName",
+    category: "profile",
+    label: "Your name",
+    description:
+      "When set, the chat agent knows your name and speaks to you in a friendly tone.",
+    control: {
+      type: "text",
+      placeholder: "Your name",
+      maxLength: 80,
+    },
+    default: DEFAULT_PREFS.userName,
+  },
+  {
+    id: "nativeLanguage",
+    category: "profile",
+    label: "Native language",
+    description:
+      "Target language for Translate in the note context menu. Translated notes get a .XX suffix (e.g. Note.RU.md).",
+    control: {
+      type: "enum",
+      options: NATIVE_LANGUAGE_OPTIONS,
+    },
+    default: DEFAULT_PREFS.nativeLanguage,
+  },
   {
     id: "theme",
     category: "appearance",

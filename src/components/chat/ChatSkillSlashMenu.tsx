@@ -8,36 +8,54 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import type { SkillMeta } from "../../ai/skills";
+
+export type ChatMentionItem = {
+  id: string;
+  description: string;
+};
 
 type Props = {
-  skills: SkillMeta[];
+  items: ChatMentionItem[];
   query: string;
   onSelect: (id: string) => void;
   onClose: () => void;
   anchorRect: DOMRect | null;
   /** Clicks on this element do not dismiss the menu (e.g. the + trigger). */
   excludeCloseRef?: RefObject<HTMLElement | null>;
+  /** Shown before the id (`/` for skills, `@` for tools). */
+  prefix?: string;
+  /** Cap filtered results (e.g. 10 for tools). */
+  limit?: number;
+  ariaLabel?: string;
+  emptyNoItems?: string;
+  emptyNoMatch?: string;
 };
 
 export function ChatSkillSlashMenu({
-  skills,
+  items,
   query,
   onSelect,
   onClose,
   anchorRect,
   excludeCloseRef,
+  prefix = "/",
+  limit,
+  ariaLabel = "Skills",
+  emptyNoItems = "No skills yet — create one in Skills/",
+  emptyNoMatch = "No matching skills",
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!q) return skills;
-    return skills.filter(
-      (s) =>
-        s.id.includes(q) ||
-        s.description.toLowerCase().includes(q),
-    );
-  }, [skills, q]);
+    const list = !q
+      ? items
+      : items.filter(
+          (s) =>
+            s.id.toLowerCase().includes(q) ||
+            s.description.toLowerCase().includes(q),
+        );
+    return limit != null ? list.slice(0, limit) : list;
+  }, [items, q, limit]);
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const selectedIndexRef = useRef(0);
@@ -45,7 +63,7 @@ export function ChatSkillSlashMenu({
 
   useLayoutEffect(() => {
     setSelectedIndex(0);
-  }, [q, skills]);
+  }, [q, items]);
 
   useEffect(() => {
     if (filtered.length === 0) return;
@@ -118,14 +136,12 @@ export function ChatSkillSlashMenu({
       ref={menuRef}
       className="chat-skill-slash-menu"
       role="listbox"
-      aria-label="Skills"
+      aria-label={ariaLabel}
       style={style}
     >
       {filtered.length === 0 ? (
         <div className="chat-skill-slash-empty">
-          {skills.length === 0
-            ? "No skills yet — create one in Skills/"
-            : "No matching skills"}
+          {items.length === 0 ? emptyNoItems : emptyNoMatch}
         </div>
       ) : (
         <ul className="chat-skill-slash-list">
@@ -146,7 +162,10 @@ export function ChatSkillSlashMenu({
                   onSelect(s.id);
                 }}
               >
-                <span className="chat-skill-slash-id">/{s.id}</span>
+                <span className="chat-skill-slash-id">
+                  {prefix}
+                  {s.id}
+                </span>
                 {s.description ? (
                   <span className="chat-skill-slash-desc">{s.description}</span>
                 ) : null}

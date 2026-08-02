@@ -28,11 +28,13 @@ describe("normalizeAiSettings", () => {
       anthropicApiKey: "sk-ant",
       googleApiKey: "AIza",
       tavilyApiKey: "tvly",
+      firecrawlApiKey: "fc-",
     });
     expect(merged.openaiApiKey).toBe("sk-openai");
     expect(merged.anthropicApiKey).toBe("sk-ant");
     expect(merged.googleApiKey).toBe("AIza");
     expect(merged.tavilyApiKey).toBe("tvly");
+    expect(merged.firecrawlApiKey).toBe("fc-");
   });
 
   it("ignores non-string key fields", () => {

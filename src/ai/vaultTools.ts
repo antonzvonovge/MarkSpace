@@ -27,6 +27,7 @@ import { buildAskUserTool } from "./askUser";
 import { buildDrawioTools } from "./drawio/tools";
 import { buildMdlnksTools } from "./mdlnks/tools";
 import { mdlnksCoreRules } from "./mdlnksFormat";
+import { clipArticle } from "./clipArticle";
 import { buildFileTools } from "./fileTools";
 import {
   MARKDOWN_FORMAT_GUIDE,
@@ -39,8 +40,24 @@ import {
   type LoadedSkill,
   type SkillMeta,
 } from "./skills";
+import { formatForcedToolsLines } from "./toolCatalog";
 import type { ChatMode } from "./types";
 import { buildWebTools } from "./webTools";
+import {
+  isNativeLanguageId,
+  nativeLanguageLabel,
+  NATIVE_LANGUAGE_OPTIONS,
+} from "../settings/types";
+import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { usePrefsStore } from "../store/prefsStore";
+import { translateNoteInPlaceWithJob } from "./translateNote";
+
+const TRANSLATE_LANGUAGE_ENUM = z.enum(
+  NATIVE_LANGUAGE_OPTIONS.map((o) => o.value) as [
+    (typeof NATIVE_LANGUAGE_OPTIONS)[number]["value"],
+    ...(typeof NATIVE_LANGUAGE_OPTIONS)[number]["value"][],
+  ],
+);
 
 const MAX_WRITE_ASSET_BYTES = 10 * 1024 * 1024;
 
@@ -569,6 +586,127 @@ export function buildVaultTools(
         return { ok: true, path: created };
       },
     }),
+    translate_note: tool({
+      description:
+        "Smart-translate a markdown note in place (overwrites the same file). Preserves YAML frontmatter and inline #tags; only the note body is translated via LLM. Defaults to the user's native language from Settings → Profile. Prefer this over write_note/edit_note when the user asks to translate a note. Context-menu Translate still creates a sibling .XX copy — this tool replaces content.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .optional()
+          .describe(
+            "Vault-relative .md path. Omit to translate the currently open note.",
+          ),
+        language: TRANSLATE_LANGUAGE_ENUM.optional().describe(
+          "ISO 639-1 target language. Omit to use Profile native language.",
+        ),
+      }),
+      execute: async ({ path, language }) => {
+        const store = useVaultStore.getState();
+        const target = normalizeToolPath(path ?? "") || store.activePath || "";
+        if (!target) {
+          return {
+            ok: false as const,
+            error: "No note path given and no note is open",
+          };
+        }
+        if (!target.toLowerCase().endsWith(".md")) {
+          return {
+            ok: false as const,
+            error: "Only markdown (.md) notes can be translated",
+            path: target,
+          };
+        }
+        const lang =
+          language && isNativeLanguageId(language)
+            ? language
+            : usePrefsStore.getState().prefs.nativeLanguage;
+        try {
+          const result = await translateNoteInPlaceWithJob({
+            sourcePath: target,
+            targetLanguage: lang,
+          });
+          await yieldToUi();
+          return {
+            ok: true as const,
+            path: result.path,
+            language: result.language,
+            language_label: nativeLanguageLabel(result.language),
+            mode: "in_place" as const,
+          };
+        } catch (err) {
+          await yieldToUi();
+          const msg = err instanceof Error ? err.message : String(err);
+          return {
+            ok: false as const,
+            error: msg || "Translation failed",
+            path: target,
+            language: lang,
+          };
+        }
+      },
+    }),
+    clip_article: tool({
+      description:
+        "Save a web article into the vault as a markdown note, downloading images into the note's .assets/ folder and rewriting links to local paths. Use when the user wants to clip/save/archive a page (not for a quick read — prefer fetch_url). Then open_note on the returned path.",
+      inputSchema: z.object({
+        url: z.string().url().describe("http(s) URL of the article"),
+        folder: z
+          .string()
+          .optional()
+          .describe(
+            "Vault-relative folder for the new note (e.g. Research/Inbox). Filename is derived from the title. Ignored if path is set. If omitted, uses Clippings/ (or <project>/Clippings/ when a project is selected).",
+          ),
+        path: z
+          .string()
+          .optional()
+          .describe(
+            "Optional full vault-relative note path (e.g. Project/Clippings/My Article.md). Overrides folder when set.",
+          ),
+        title: z
+          .string()
+          .optional()
+          .describe("Optional note title / filename stem override"),
+        download_images: z
+          .boolean()
+          .optional()
+          .describe("Download remote images into .assets/ (default true)"),
+        max_images: z
+          .number()
+          .int()
+          .min(0)
+          .max(50)
+          .optional()
+          .describe("Max images to download (default 20)"),
+        provider: z
+          .enum(["firecrawl", "tavily", "jina"])
+          .optional()
+          .describe(
+            "Fetch backend. Omit to auto-pick Tavily → Jina (same as fetch_url). Pass firecrawl when the user wants Firecrawl for the clip (see system prompt for whether the Firecrawl key is configured). Prefer scrape_url for a read-only Firecrawl scrape without saving.",
+          ),
+      }),
+      execute: async ({
+        url,
+        folder,
+        path,
+        title,
+        download_images: downloadImages,
+        max_images: maxImages,
+        provider,
+      }) => {
+        const result = await clipArticle({
+          url,
+          folder,
+          path,
+          title,
+          download_images: downloadImages,
+          max_images: maxImages,
+          provider,
+          defaultFolder: projectPath,
+        });
+        await yieldToUi();
+        return result;
+      },
+    }),
     create_folder: tool({
       description:
         "Create an empty folder at a vault-relative path (creates parents as needed). Fails if the folder already exists — prefer ensure_folder when you only need the path to exist. Use when the user wants a folder without a note; for a note inside a new path prefer create_note.",
@@ -875,14 +1013,24 @@ export function buildSystemPrompt(opts: {
   skills?: SkillMeta[] | null;
   /** Full skill bodies forced by the user via slash in the composer. */
   forcedSkills?: LoadedSkill[] | null;
+  /** Tool names pinned by the user via @ chips in the composer. */
+  forcedTools?: string[] | null;
 }): string {
+  const ai = useAiSettingsStore.getState().settings;
+  const prefs = usePrefsStore.getState().prefs;
+  const tavilyConfigured = Boolean(ai.tavilyApiKey.trim());
+  const firecrawlConfigured = Boolean(ai.firecrawlApiKey.trim());
+
   const lines = [
     "You are MarkSpace, an AI assistant embedded in a local Markdown vault app.",
     "You mostly read and edit Markdown (.md) notes — plain text with Markdown formatting.",
     "You can also inspect and edit Draw.io diagrams (.drawio) via diagram tools. Prefer mutate_diagram for any multi-element change (add/update/color/align/connect/page settings/layout in one call). Also: read_diagram, create_diagram, and single-element helpers.",
     "You can manage link collections (.mdlnks) via links tools: read_links, add_link, update_link, remove_link, reorder_links, set_links_filter, create_links. Call read_mdlnks_format when unsure. Never raw-edit .mdlnks with edit_note/write_note.",
     ...mdlnksCoreRules().map((r) => `Links (.mdlnks): ${r}`),
-    "You can search the public web (web_search) and fetch pages as markdown (fetch_url) when vault notes are not enough.",
+    "You can search the public web (web_search) and fetch pages as markdown (fetch_url) when vault notes are not enough. fetch_url auto-picks Tavily (if configured) or Jina; x.com/twitter.com status URLs use FxTwitter automatically.",
+    `Web API keys configured: Tavily=${tavilyConfigured ? "yes" : "no"}, Firecrawl=${firecrawlConfigured ? "yes" : "no"}. These flags are authoritative — never ask the user whether a key is set. If Firecrawl=yes and they ask for Firecrawl / provider=firecrawl / scrape_url, call the tool immediately. If Firecrawl=no and they insist on Firecrawl, tell them to add the key in Settings → Firecrawl API key.`,
+    "scrape_url (Firecrawl browser scrape, markdown only) is expensive — ONLY call it when the user explicitly asks to scrape a page (or names Firecrawl / scrape_url). Never use it for routine fetch_url work.",
+    "In Agent mode, use clip_article to save a web page as a vault note with images downloaded into .assets/ (prefer this over fetch_url + manual image saves when the user wants to keep the article). Default provider is Tavily/Jina; pass provider=firecrawl when the user wants Firecrawl for the clip.",
     "You can read vault files or download http(s) URLs with read_file (images are returned for vision analysis). In Agent mode, pass save_as to store a copy at a vault-relative path of your choice.",
     `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes and folders via tools)"}.`,
     "Be concise. Prefer tools over guessing vault contents or the web.",
@@ -911,12 +1059,24 @@ export function buildSystemPrompt(opts: {
       "For .mdlnks files: use add_link / update_link / remove_link / reorder_links / set_links_filter (never raw edit_note on the links text format).",
       "Draw.io layout: for multi-shape diagrams OMIT x/y — mutate_diagram auto-layouts top-down (ArchiMate: Motivation→Strategy→Business→Application→Technology→Implementation). Do not invent sideways coordinates. Use layout:{type:'none'} only when intentionally keeping positions; layout:{type:'archimate'|'hierarchical'|'grid', direction:'top_down'|'left_right'} to override.",
       "Draw.io capabilities: text align/vertical_align/font_*; sketch; page_settings; shapes include group/swimlane and ArchiMate 3.2 (archimate.*); edges relation=serving|realization|assignment|…; parent=temp_id nesting; waypoints + exit_*/entry_*; add_pages/rename_pages.",
-      "Images in notes: save with save_attachment (chat images), write_asset (raw base64 into note .assets/), or read_file with save_as (URL/vault file → any vault path). Then edit_note to insert markdown using the returned path/url. Never invent .assets paths.",
+      "Images in notes: save with save_attachment (chat images), write_asset (raw base64 into note .assets/), read_file with save_as (URL/vault file → any vault path), or clip_article (web page → note + .assets/). Then edit_note to insert markdown using the returned path/url. Never invent .assets paths.",
+      "When the user asks to clip/save/archive a web article into the vault, call clip_article then open_note on the returned path. Do not manually chain fetch_url + many read_file downloads for that workflow.",
+      "When the user asks to translate a note (to their native language or another), call translate_note — it smart-translates in place (keeps frontmatter and #tags). Do not manually rewrite the whole note with write_note/edit_note for translation.",
     );
   }
   if (opts.vaultPath) {
     lines.push(`Open vault: ${opts.vaultPath}`);
   }
+  const userName = prefs.userName.trim();
+  if (userName) {
+    lines.push(`The user's name is ${userName}.`);
+    lines.push(
+      `Address them as ${userName} in a warm, friendly tone (like a helpful colleague). Use their name naturally — greetings, check-ins, wrap-ups — but not in every short reply. Stay concise; do not be overly familiar or sycophantic.`,
+    );
+  }
+  lines.push(
+    `User's native language: ${nativeLanguageLabel(prefs.nativeLanguage)} (${prefs.nativeLanguage}). Prefer this language when the user writes in it or asks for a translation.`,
+  );
   const catalogLines = formatSkillsCatalogLines(opts.skills ?? []);
   if (catalogLines.length > 0) {
     lines.push(...catalogLines);
@@ -924,6 +1084,10 @@ export function buildSystemPrompt(opts: {
   const forcedLines = formatForcedSkillsLines(opts.forcedSkills ?? []);
   if (forcedLines.length > 0) {
     lines.push(...forcedLines);
+  }
+  const forcedToolLines = formatForcedToolsLines(opts.forcedTools ?? []);
+  if (forcedToolLines.length > 0) {
+    lines.push(...forcedToolLines);
   }
   if (opts.projectPath) {
     lines.push(`Active project: ${opts.projectPath}`);

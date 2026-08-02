@@ -26,6 +26,23 @@ export function SettingRow({ setting, value, onChange }: Props) {
             options={control.options}
             onChange={(next) => onChange(next as Prefs[PrefKey])}
           />
+        ) : control.type === "text" ? (
+          <input
+            className="setting-text"
+            type="text"
+            value={String(value ?? "")}
+            placeholder={control.placeholder}
+            maxLength={control.maxLength}
+            aria-label={setting.label}
+            onChange={(e) => {
+              const next = e.target.value;
+              const clipped =
+                control.maxLength != null
+                  ? next.slice(0, control.maxLength)
+                  : next;
+              onChange(clipped as Prefs[PrefKey]);
+            }}
+          />
         ) : (
           <input
             className="setting-number"

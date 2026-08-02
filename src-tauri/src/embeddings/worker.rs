@@ -478,11 +478,17 @@ impl WorkerState {
             self.done_work += 1;
             let total = self.total_work.max(1);
             self.progress = ((self.done_work * 100) / total).min(99) as u32;
-            if self.pending.is_empty() {
-                self.progress = 100;
-            }
             // Checkpoint per file so an interrupted run resumes where it stopped.
             self.persist_checkpoint();
+            if self.pending.is_empty() {
+                // Finish here — the worker loop blocks on recv when idle and
+                // would otherwise leave the UI stuck at "running · 100%".
+                self.indexing = false;
+                self.progress = 100;
+                self.persist();
+                self.emit_job("done", 100, Some(self.work_detail()));
+                return false;
+            }
             let detail = self.work_detail();
             self.emit_job("running", self.progress, Some(detail));
         }

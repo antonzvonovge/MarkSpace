@@ -91,7 +91,6 @@ export function ImageLightbox({ src, alt, onClose }: Props) {
   }, []);
 
   const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
-    if (!(event.ctrlKey || event.metaKey)) return;
     event.preventDefault();
     changeZoom(nextZoom(zoom, event.deltaY < 0 ? 1 : -1));
   };

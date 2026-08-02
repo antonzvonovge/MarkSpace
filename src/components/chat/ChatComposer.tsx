@@ -1,22 +1,37 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   formatAttachmentSize,
   type ChatAttachment,
 } from "../../ai/chatAttachments";
 import { estimateContextTokens } from "../../ai/estimateTokens";
+import { listChatTools } from "../../ai/toolCatalog";
 import { contextWindowForModel, type AiModelOption } from "../../ai/types";
-import { readImagesFromSystemClipboard } from "../../editor/pasteImages";
+import {
+  readImagesFromSystemClipboard,
+  readTextFromSystemClipboard,
+} from "../../editor/pasteImages";
 import {
   focusComposerEnd,
+  getComposerAtQuery,
   getComposerSlashQuery,
   insertPathChip,
   insertSkillChip,
   isComposerVisuallyEmpty,
   renderComposerFromDraft,
+  replaceAtWithToolChip,
   replaceSlashWithSkillChip,
   serializeComposer,
 } from "../../lib/chatComposerDom";
 import { expandSelectionMarkers } from "../../lib/chatSelectionChips";
+import { writeClipboardText } from "../../lib/clipboardText";
 import {
   clearVaultTreeDrag,
   isVaultTreeDrag,
@@ -24,10 +39,23 @@ import {
 } from "../../lib/vaultTreeDrag";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
+import {
+  EditContextMenu,
+  type EditContextMenuState,
+} from "../EditContextMenu";
 import { ChatContextMeter } from "./ChatContextMeter";
 import { ChatModelPicker } from "./ChatModelPicker";
 import { ChatProjectPicker } from "./ChatProjectPicker";
 import { ChatSkillSlashMenu } from "./ChatSkillSlashMenu";
+
+/** Selected text if the selection is inside `el`, otherwise "". */
+function selectionTextIn(el: HTMLElement): string {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
+  const range = sel.getRangeAt(0);
+  if (!el.contains(range.commonAncestorContainer)) return "";
+  return sel.toString();
+}
 
 const COMPOSER_INPUT_MIN_HEIGHT_PX = 28;
 const COMPOSER_INPUT_MAX_HEIGHT_PX = 160;
@@ -100,9 +128,14 @@ export function ChatComposer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const plusBtnRef = useRef<HTMLButtonElement>(null);
   const slashRangeRef = useRef<Range | null>(null);
+  const atRangeRef = useRef<Range | null>(null);
   const [dragOver, setDragOver] = useState<DragKind | null>(null);
   const [attachHint, setAttachHint] = useState<string | null>(null);
   const [slashMenu, setSlashMenu] = useState<{
+    query: string;
+    rect: DOMRect;
+  } | null>(null);
+  const [atMenu, setAtMenu] = useState<{
     query: string;
     rect: DOMRect;
   } | null>(null);
@@ -180,7 +213,10 @@ export function ChatComposer() {
 
   const limit = contextWindowForModel(settings, modelId || settings.modelId);
 
-  const skillMenuOpen = slashMenu != null || skillPickerRect != null;
+  const skillMenuOpen =
+    slashMenu != null || skillPickerRect != null || atMenu != null;
+
+  const toolsCatalog = useMemo(() => listChatTools(mode), [mode]);
 
   const focusInput = () => {
     queueMicrotask(() => inputRef.current?.focus());
@@ -188,27 +224,47 @@ export function ChatComposer() {
 
   const closeSkillMenus = () => {
     slashRangeRef.current = null;
+    atRangeRef.current = null;
     setSlashMenu(null);
+    setAtMenu(null);
     setSkillPickerRect(null);
   };
 
-  const syncSlashMenu = () => {
+  const syncMentionMenus = () => {
     const el = inputRef.current;
     if (!el || streaming) {
       closeSkillMenus();
       return;
     }
-    const q = getComposerSlashQuery(el);
-    if (!q) {
-      slashRangeRef.current = null;
-      setSlashMenu(null);
+    const slash = getComposerSlashQuery(el);
+    if (slash) {
+      slashRangeRef.current = slash.range.cloneRange();
+      atRangeRef.current = null;
+      setAtMenu(null);
+      setSkillPickerRect(null);
+      setSlashMenu({
+        query: slash.query,
+        rect: slash.range.getBoundingClientRect(),
+      });
+      void refreshSkillsCatalog();
       return;
     }
-    slashRangeRef.current = q.range.cloneRange();
-    const rect = q.range.getBoundingClientRect();
-    setSkillPickerRect(null);
-    setSlashMenu({ query: q.query, rect });
-    void refreshSkillsCatalog();
+    const at = getComposerAtQuery(el);
+    if (at) {
+      atRangeRef.current = at.range.cloneRange();
+      slashRangeRef.current = null;
+      setSlashMenu(null);
+      setSkillPickerRect(null);
+      setAtMenu({
+        query: at.query,
+        rect: at.range.getBoundingClientRect(),
+      });
+      return;
+    }
+    slashRangeRef.current = null;
+    atRangeRef.current = null;
+    setSlashMenu(null);
+    setAtMenu(null);
   };
 
   const applySkillChipFromSlash = (id: string) => {
@@ -229,12 +285,23 @@ export function ChatComposer() {
     focusInput();
   };
 
+  const applyToolChipFromAt = (id: string) => {
+    const el = inputRef.current;
+    if (!el) return;
+    replaceAtWithToolChip(el, id, atRangeRef.current);
+    closeSkillMenus();
+    syncDraftFromDom();
+    focusInput();
+  };
+
   const openSkillPicker = () => {
     if (streaming) return;
     const btn = plusBtnRef.current;
     if (!btn) return;
     slashRangeRef.current = null;
+    atRangeRef.current = null;
     setSlashMenu(null);
+    setAtMenu(null);
     setSkillPickerRect(btn.getBoundingClientRect());
     void refreshSkillsCatalog();
   };
@@ -269,6 +336,14 @@ export function ChatComposer() {
   };
 
   const clipboardImageInFlight = useRef(false);
+  const [contextMenu, setContextMenu] = useState<EditContextMenuState | null>(
+    null,
+  );
+  /** Survives menu close (button focus clears the live DOM selection). */
+  const pendingEditRef = useRef<{ text: string; range: Range | null }>({
+    text: "",
+    range: null,
+  });
   const tryAttachClipboardImages = async () => {
     if (streaming || clipboardImageInFlight.current) return;
     clipboardImageInFlight.current = true;
@@ -281,6 +356,81 @@ export function ChatComposer() {
       }, 400);
     }
   };
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const openComposerContextMenu = useCallback(
+    (e: ReactMouseEvent) => {
+      if (streaming) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const el = inputRef.current;
+      const selected = el ? selectionTextIn(el) : "";
+      const sel = window.getSelection();
+      pendingEditRef.current = {
+        text: selected,
+        range:
+          selected && sel && sel.rangeCount > 0
+            ? sel.getRangeAt(0).cloneRange()
+            : null,
+      };
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        canCut: selected.length > 0,
+        canCopy: selected.length > 0,
+        canPaste: true,
+      });
+    },
+    [streaming],
+  );
+
+  const restorePendingRange = () => {
+    const { range } = pendingEditRef.current;
+    const el = inputRef.current;
+    if (!range || !el) return;
+    el.focus();
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  };
+
+  const cutComposerSelection = useCallback(async () => {
+    if (streaming) return;
+    const { text, range } = pendingEditRef.current;
+    if (!text) return;
+    await writeClipboardText(text);
+    if (range && inputRef.current) {
+      restorePendingRange();
+      range.deleteContents();
+      syncDraftFromDom();
+    }
+    pendingEditRef.current = { text: "", range: null };
+  }, [streaming]);
+
+  const copyComposerSelection = useCallback(async () => {
+    const { text } = pendingEditRef.current;
+    if (!text) return;
+    await writeClipboardText(text);
+  }, []);
+
+  const pasteIntoComposer = useCallback(async () => {
+    if (streaming) return;
+    restorePendingRange();
+    if (!pendingEditRef.current.range) inputRef.current?.focus();
+    const images = await readImagesFromSystemClipboard(2);
+    if (images.length) {
+      await ingestFiles(images);
+      pendingEditRef.current = { text: "", range: null };
+      return;
+    }
+    const text = await readTextFromSystemClipboard();
+    if (text) {
+      document.execCommand("insertText", false, text);
+      syncDraftFromDom();
+    }
+    pendingEditRef.current = { text: "", range: null };
+  }, [streaming]);
 
   const handleSend = () => {
     if (!canSend) return;
@@ -431,9 +581,10 @@ export function ChatComposer() {
         contentEditable={!streaming}
         suppressContentEditableWarning
         data-placeholder={streaming ? "Streaming…" : "Message…"}
+        onContextMenu={openComposerContextMenu}
         onInput={() => {
           syncDraftFromDom();
-          syncSlashMenu();
+          syncMentionMenus();
         }}
         onPaste={(e) => {
           if (streaming) return;
@@ -488,9 +639,23 @@ export function ChatComposer() {
           }
         }}
       />
-      {skillMenuOpen ? (
+      {atMenu ? (
         <ChatSkillSlashMenu
-          skills={skillsCatalog}
+          items={toolsCatalog}
+          query={atMenu.query}
+          prefix="@"
+          limit={10}
+          ariaLabel="Tools"
+          emptyNoItems="No tools available"
+          emptyNoMatch="No matching tools"
+          anchorRect={atMenu.rect}
+          onClose={closeSkillMenus}
+          onSelect={applyToolChipFromAt}
+        />
+      ) : null}
+      {slashMenu != null || skillPickerRect != null ? (
+        <ChatSkillSlashMenu
+          items={skillsCatalog}
           query={slashMenu?.query ?? ""}
           anchorRect={slashMenu?.rect ?? skillPickerRect}
           excludeCloseRef={plusBtnRef}
@@ -498,6 +663,15 @@ export function ChatComposer() {
           onSelect={
             slashMenu ? applySkillChipFromSlash : applySkillChipInsert
           }
+        />
+      ) : null}
+      {contextMenu ? (
+        <EditContextMenu
+          menu={contextMenu}
+          onClose={closeContextMenu}
+          onCut={() => void cutComposerSelection()}
+          onCopy={() => void copyComposerSelection()}
+          onPaste={() => void pasteIntoComposer()}
         />
       ) : null}
       <div className="chat-composer-toolbar">

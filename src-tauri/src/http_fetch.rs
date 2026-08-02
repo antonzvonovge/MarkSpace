@@ -7,6 +7,7 @@ use std::time::Duration;
 
 const MAX_BODY_BYTES: usize = 2_000_000;
 const MAX_BINARY_BYTES: usize = 10 * 1024 * 1024;
+const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const DEFAULT_UA: &str = "Mozilla/5.0 (compatible; MarkSpace/1.0; +https://markspace.app)";
 
 #[derive(Debug, Deserialize)]
@@ -17,6 +18,9 @@ pub struct HttpFetchRequest {
     pub method: String,
     pub headers: Option<HashMap<String, String>>,
     pub body: Option<String>,
+    /// Optional request timeout in seconds (clamped 1..=120). Default 30.
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
 }
 
 fn default_method() -> String {
@@ -39,9 +43,13 @@ pub struct HttpFetchBytesResponse {
     pub byte_length: usize,
 }
 
+fn resolve_timeout(timeout_secs: Option<u64>) -> Duration {
+    Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS).clamp(1, 120))
+}
+
 fn build_client_request(
     req: &HttpFetchRequest,
-) -> Result<(reqwest::blocking::RequestBuilder, reqwest::Url), String> {
+) -> Result<reqwest::blocking::RequestBuilder, String> {
     let url = req.url.trim();
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
@@ -66,26 +74,25 @@ fn build_client_request(
     }
 
     let client = Client::builder()
-        .timeout(Duration::from_secs(30))
+        .timeout(resolve_timeout(req.timeout_secs))
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()
         .map_err(|e| format!("HTTP client error: {e}"))?;
 
     let mut builder = if method == "POST" {
-        client.post(parsed.clone())
+        client.post(parsed)
     } else {
-        client.get(parsed.clone())
+        client.get(parsed)
     };
     builder = builder.headers(headers);
     if let Some(body) = &req.body {
         builder = builder.body(body.clone());
     }
-    Ok((builder, parsed))
+    Ok(builder)
 }
 
-#[tauri::command(async)]
-pub fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
-    let (builder, _) = build_client_request(&req)?;
+fn http_fetch_inner(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
+    let builder = build_client_request(&req)?;
     let res = builder
         .send()
         .map_err(|e| format!("Request failed: {e}"))?;
@@ -103,10 +110,8 @@ pub fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
     Ok(HttpFetchResponse { status, body })
 }
 
-/// Fetch raw bytes (images/binaries) as base64. Larger limit than text `http_fetch`.
-#[tauri::command(async)]
-pub fn http_fetch_bytes(req: HttpFetchRequest) -> Result<HttpFetchBytesResponse, String> {
-    let (builder, _) = build_client_request(&req)?;
+fn http_fetch_bytes_inner(req: HttpFetchRequest) -> Result<HttpFetchBytesResponse, String> {
+    let builder = build_client_request(&req)?;
     let res = builder
         .send()
         .map_err(|e| format!("Request failed: {e}"))?;
@@ -132,4 +137,21 @@ pub fn http_fetch_bytes(req: HttpFetchRequest) -> Result<HttpFetchBytesResponse,
         data_base64: STANDARD.encode(&bytes),
         byte_length: bytes.len(),
     })
+}
+
+/// Blocking reqwest must not run on the async runtime — it creates its own Tokio
+/// runtime and panics on drop ("Cannot drop a runtime…"). Always use spawn_blocking.
+#[tauri::command]
+pub async fn http_fetch(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || http_fetch_inner(req))
+        .await
+        .map_err(|e| format!("HTTP fetch task failed: {e}"))?
+}
+
+/// Fetch raw bytes (images/binaries) as base64. Larger limit than text `http_fetch`.
+#[tauri::command]
+pub async fn http_fetch_bytes(req: HttpFetchRequest) -> Result<HttpFetchBytesResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || http_fetch_bytes_inner(req))
+        .await
+        .map_err(|e| format!("HTTP fetch task failed: {e}"))?
 }

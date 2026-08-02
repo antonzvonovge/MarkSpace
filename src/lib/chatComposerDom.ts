@@ -8,10 +8,15 @@ export const VAULT_PATH_CLOSE = "⟧";
 export const SKILL_OPEN = "⦃";
 export const SKILL_CLOSE = "⦄";
 
+/** Markers for tool chips (@-selected tools). */
+export const TOOL_OPEN = "⟪";
+export const TOOL_CLOSE = "⟫";
+
 const PATH_MARKER_RE = /⟦([^⟧]*)⟧/g;
 const SKILL_MARKER_RE = /⦃([^⦄]*)⦄/g;
-/** Path, skill or selection markers in document order. */
-const ANY_MARKER_RE = /⟦([^⟧]*)⟧|⦃([^⦄]*)⦄|⟬([^⟭]*)⟭/g;
+const TOOL_MARKER_RE = /⟪([^⟫]*)⟫/g;
+/** Path, skill, selection or tool markers in document order. */
+const ANY_MARKER_RE = /⟦([^⟧]*)⟧|⦃([^⦄]*)⦄|⟬([^⟭]*)⟭|⟪([^⟫]*)⟫/g;
 
 /** Resolves a selection chip id to the text it stands for. */
 export type SelectionTextResolver = (id: string) => string | undefined;
@@ -26,6 +31,11 @@ export function wrapSkillMarker(id: string): string {
   return `${SKILL_OPEN}${safe}${SKILL_CLOSE}`;
 }
 
+export function wrapToolMarker(id: string): string {
+  const safe = id.replace(/[⟪⟫]/g, "");
+  return `${TOOL_OPEN}${safe}${TOOL_CLOSE}`;
+}
+
 /** Expand chip markers to plain vault-relative paths for the model. */
 export function unwrapVaultPathMarkers(text: string): string {
   return text.replace(PATH_MARKER_RE, "$1");
@@ -36,9 +46,14 @@ export function unwrapSkillMarkers(text: string): string {
   return text.replace(SKILL_MARKER_RE, (_m, id: string) => `/${id}`);
 }
 
-/** Path + skill markers → plain text for the model. */
+/** Replace tool chips with `@tool_name` in the user-visible message text. */
+export function unwrapToolMarkers(text: string): string {
+  return text.replace(TOOL_MARKER_RE, (_m, id: string) => `@${id}`);
+}
+
+/** Path + skill + tool markers → plain text for the model. */
 export function unwrapComposerMarkers(text: string): string {
-  return unwrapSkillMarkers(unwrapVaultPathMarkers(text));
+  return unwrapToolMarkers(unwrapSkillMarkers(unwrapVaultPathMarkers(text)));
 }
 
 /** Skill ids embedded as chips in the draft (order preserved, deduped). */
@@ -48,6 +63,21 @@ export function extractSkillIdsFromDraft(text: string): string[] {
   SKILL_MARKER_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = SKILL_MARKER_RE.exec(text))) {
+    const id = (match[1] ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** Tool ids embedded as chips in the draft (order preserved, deduped). */
+export function extractToolIdsFromDraft(text: string): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  TOOL_MARKER_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TOOL_MARKER_RE.exec(text))) {
     const id = (match[1] ?? "").trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);
@@ -103,6 +133,15 @@ export function createSkillChipElement(id: string): HTMLSpanElement {
   return span;
 }
 
+export function createToolChipElement(id: string): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = "chat-path-chip chat-tool-chip";
+  span.contentEditable = "false";
+  span.dataset.toolId = id;
+  span.textContent = `@${id}`;
+  return span;
+}
+
 export function createSelectionChipElement(
   id: string,
   text: string,
@@ -130,6 +169,13 @@ function isSkillChip(el: HTMLElement): boolean {
   );
 }
 
+function isToolChip(el: HTMLElement): boolean {
+  return (
+    el.classList.contains("chat-tool-chip") &&
+    typeof el.dataset.toolId === "string"
+  );
+}
+
 function isSelectionChip(el: HTMLElement): boolean {
   return (
     el.classList.contains("chat-selection-chip") &&
@@ -138,7 +184,9 @@ function isSelectionChip(el: HTMLElement): boolean {
 }
 
 function isComposerChip(el: HTMLElement): boolean {
-  return isPathChip(el) || isSkillChip(el) || isSelectionChip(el);
+  return (
+    isPathChip(el) || isSkillChip(el) || isToolChip(el) || isSelectionChip(el)
+  );
 }
 
 /** Serialize contentEditable DOM → draft string with markers. */
@@ -155,6 +203,10 @@ export function serializeComposer(root: HTMLElement): string {
       const childEl = child as HTMLElement;
       if (isSkillChip(childEl)) {
         parts.push(wrapSkillMarker(childEl.dataset.skillId!));
+        continue;
+      }
+      if (isToolChip(childEl)) {
+        parts.push(wrapToolMarker(childEl.dataset.toolId!));
         continue;
       }
       if (isSelectionChip(childEl)) {
@@ -218,6 +270,8 @@ export function renderComposerFromDraft(
       if (text != null) {
         frag.appendChild(createSelectionChipElement(match[3], text));
       }
+    } else if (match[4] != null) {
+      frag.appendChild(createToolChipElement(match[4]));
     }
     last = match.index + match[0].length;
   }
@@ -362,7 +416,22 @@ export function insertSkillChip(
   insertChipNodes(root, createSkillChipElement(skillId), clientX, clientY, true);
 }
 
+/** Insert a tool chip at the caret, always followed by a space to type after. */
+export function insertToolChip(
+  root: HTMLElement,
+  toolId: string,
+  clientX?: number,
+  clientY?: number,
+): void {
+  insertChipNodes(root, createToolChipElement(toolId), clientX, clientY, true);
+}
+
 export type ComposerSlashQuery = {
+  query: string;
+  range: Range;
+};
+
+export type ComposerAtQuery = {
   query: string;
   range: Range;
 };
@@ -392,6 +461,33 @@ export function getComposerSlashQuery(
 
   const out = document.createRange();
   out.setStart(range.startContainer, slashIdx);
+  out.setEnd(range.startContainer, caret);
+  return { query, range: out };
+}
+
+/**
+ * If the caret is in an `@tool-query` token, return the query and a range
+ * covering from `@` through the caret.
+ */
+export function getComposerAtQuery(root: HTMLElement): ComposerAtQuery | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return null;
+  if (range.startContainer.nodeType !== Node.TEXT_NODE) return null;
+
+  const text = range.startContainer.textContent ?? "";
+  const caret = range.startOffset;
+  const before = text.slice(0, caret);
+  const atIdx = before.lastIndexOf("@");
+  if (atIdx < 0) return null;
+  if (atIdx > 0 && !/\s/.test(before[atIdx - 1]!)) return null;
+
+  const query = before.slice(atIdx + 1);
+  if (!/^[a-z0-9_]*$/i.test(query)) return null;
+
+  const out = document.createRange();
+  out.setStart(range.startContainer, atIdx);
   out.setEnd(range.startContainer, caret);
   return { query, range: out };
 }
@@ -428,6 +524,41 @@ export function replaceSlashWithSkillChip(
   }
   range.deleteContents();
   const chip = createSkillChipElement(skillId);
+  const after = charAfterRange(range);
+  const spaceAfter = !/\s/.test(after);
+  const frag = document.createDocumentFragment();
+  frag.appendChild(chip);
+  let afterNode: Node = chip;
+  if (spaceAfter) {
+    const sp = document.createTextNode(" ");
+    frag.appendChild(sp);
+    afterNode = sp;
+  }
+  range.insertNode(frag);
+  placeCaretAfter(afterNode);
+}
+
+/**
+ * Replace the active `@query` token with a tool chip (or insert at caret).
+ * Pass `atRange` from when the menu opened so a lost selection still
+ * inserts at the @ instead of falling back to the end of the composer.
+ */
+export function replaceAtWithToolChip(
+  root: HTMLElement,
+  toolId: string,
+  atRange?: Range | null,
+): void {
+  root.focus();
+  const range =
+    atRange && isLiveRangeInRoot(atRange, root)
+      ? atRange
+      : getComposerAtQuery(root)?.range ?? null;
+  if (!range) {
+    insertToolChip(root, toolId);
+    return;
+  }
+  range.deleteContents();
+  const chip = createToolChipElement(toolId);
   const after = charAfterRange(range);
   const spaceAfter = !/\s/.test(after);
   const frag = document.createDocumentFragment();

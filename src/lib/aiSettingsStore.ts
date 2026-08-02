@@ -160,6 +160,7 @@ export function normalizeAiSettings(
     anthropicApiKey: stringField(raw, "anthropicApiKey"),
     googleApiKey: stringField(raw, "googleApiKey"),
     tavilyApiKey: stringField(raw, "tavilyApiKey"),
+    firecrawlApiKey: stringField(raw, "firecrawlApiKey"),
     modelId: known,
     defaultMode: mode,
     contextWindow:
@@ -199,6 +200,7 @@ export async function saveAiSettings(settings: AiSettings): Promise<void> {
     anthropicApiKey: settings.anthropicApiKey ?? "",
     googleApiKey: settings.googleApiKey ?? "",
     tavilyApiKey: settings.tavilyApiKey ?? "",
+    firecrawlApiKey: settings.firecrawlApiKey ?? "",
     defaultMode:
       settings.defaultMode === "agent" || settings.defaultMode === "ask"
         ? settings.defaultMode

@@ -1,4 +1,13 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -23,6 +32,13 @@ import {
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
+import { startClipArticleJob } from "../ai/clipArticle";
+import {
+  startTranslateNote,
+  startTranslateNoteInPlace,
+} from "../ai/translateNote";
+import { nativeLanguageLabel } from "../settings/types";
+import { usePrefsStore } from "../store/prefsStore";
 import {
   PromptDialog,
   ConfirmDialog,
@@ -253,6 +269,47 @@ function PropertiesIcon() {
   );
 }
 
+function TranslateIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.75 4.25h6.5M6 4.25c0 3.5-1.75 6.25-3.5 7.5M4.25 7.5h3.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.25 12.25 11.5 6.75l2.25 5.5M9.9 10.75h3.2"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DownloadArticleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 2.75v6.5M5.5 7.25 8 9.75l2.5-2.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3.25 11.25v1a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -393,6 +450,9 @@ function TreeContextMenu({
   onNewLinks,
   onNewFolder,
   onNewSkill,
+  onDownloadArticle,
+  onTranslate,
+  onTranslateReplace,
   onRename,
   onDelete,
   onReveal,
@@ -400,6 +460,8 @@ function TreeContextMenu({
   onCopyAbsolutePath,
   onToggleFavorite,
   onProjectProperties,
+  translateLabel,
+  translateReplaceLabel,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
@@ -408,6 +470,9 @@ function TreeContextMenu({
   onNewLinks: () => void;
   onNewFolder: () => void;
   onNewSkill: () => void;
+  onDownloadArticle: () => void;
+  onTranslate: () => void;
+  onTranslateReplace: () => void;
   onRename: () => void;
   onDelete: () => void;
   onReveal: () => void;
@@ -415,6 +480,8 @@ function TreeContextMenu({
   onCopyAbsolutePath: () => void;
   onToggleFavorite: () => void;
   onProjectProperties: () => void;
+  translateLabel: string;
+  translateReplaceLabel: string;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const isSkills = isSkillsFolder(menu.path, menu.isDir);
@@ -425,6 +492,13 @@ function TreeContextMenu({
     !menu.createOnly && isVaultProjectFolder(menu.path, menu.isDir);
   const showSkillCreate = isSkills || menu.createOnly === true;
   const showStandardCreate = !isSkills;
+  const showDownloadArticle =
+    !menu.createOnly && menu.isDir && !isSkills;
+  const showTranslate =
+    !menu.createOnly &&
+    !menu.isDir &&
+    !isSkills &&
+    menu.path.toLowerCase().endsWith(".md");
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -447,6 +521,257 @@ function TreeContextMenu({
   const left = Math.min(menu.x, window.innerWidth - 280);
   const top = Math.min(menu.y, window.innerHeight - 400);
 
+  const showCreate = showSkillCreate || showStandardCreate;
+  const showPaths = true; // Reveal is always available
+  const showContentActions = showDownloadArticle || showTranslate;
+  const showDelete = showEditActions;
+
+  const sections: ReactNode[] = [];
+
+  if (showFavorite) {
+    sections.push(
+      <button
+        key="favorite"
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        onClick={() => {
+          onClose();
+          onToggleFavorite();
+        }}
+      >
+        <StarIcon filled={menu.isFavorite} />
+        <span>
+          {menu.isFavorite ? "Remove from favorites" : "Add to favorites"}
+        </span>
+      </button>,
+    );
+  }
+
+  // Rename is its own group (2nd item) with separators above and below.
+  if (showEditActions) {
+    sections.push(
+      <button
+        key="rename"
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        onClick={() => {
+          onClose();
+          onRename();
+        }}
+      >
+        <RenameIcon />
+        <span>Rename</span>
+      </button>,
+    );
+  }
+
+  if (showProjectProperties) {
+    sections.push(
+      <button
+        key="project-properties"
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        onClick={() => {
+          onClose();
+          onProjectProperties();
+        }}
+      >
+        <PropertiesIcon />
+        <span>Project properties…</span>
+      </button>,
+    );
+  }
+
+  if (showCreate) {
+    sections.push(
+      <div key="create">
+        {showSkillCreate ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onNewSkill();
+            }}
+          >
+            <PlusIcon />
+            <span>New skill…</span>
+          </button>
+        ) : null}
+        {showStandardCreate ? (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onNewNote();
+              }}
+            >
+              <PlusIcon />
+              <span>New note</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onNewDiagram();
+              }}
+            >
+              <DiagramIcon />
+              <span>New diagram</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onNewLinks();
+              }}
+            >
+              <LinksIcon />
+              <span>New links</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onNewFolder();
+              }}
+            >
+              <CollectionPlusIcon />
+              <span>New folder</span>
+            </button>
+          </>
+        ) : null}
+      </div>,
+    );
+  }
+
+  if (showPaths) {
+    sections.push(
+      <div key="paths">
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={() => {
+            onClose();
+            onReveal();
+          }}
+        >
+          <RevealIcon />
+          <span>Reveal in file manager</span>
+        </button>
+        {showCopyPath ? (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onCopyPath();
+              }}
+            >
+              <CopyPathIcon />
+              <span>Copy relative path</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onCopyAbsolutePath();
+              }}
+            >
+              <CopyPathIcon />
+              <span>Copy absolute path</span>
+            </button>
+          </>
+        ) : null}
+      </div>,
+    );
+  }
+
+  if (showContentActions) {
+    sections.push(
+      <div key="content-actions">
+        {showDownloadArticle ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onDownloadArticle();
+            }}
+          >
+            <DownloadArticleIcon />
+            <span>Download article…</span>
+          </button>
+        ) : null}
+        {showTranslate ? (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onTranslate();
+              }}
+            >
+              <TranslateIcon />
+              <span>{translateLabel}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onTranslateReplace();
+              }}
+            >
+              <TranslateIcon />
+              <span>{translateReplaceLabel}</span>
+            </button>
+          </>
+        ) : null}
+      </div>,
+    );
+  }
+
+  if (showDelete) {
+    sections.push(
+      <button
+        key="delete"
+        type="button"
+        role="menuitem"
+        className="tree-context-item is-danger"
+        onClick={() => {
+          onClose();
+          onDelete();
+        }}
+      >
+        <TrashIcon />
+        <span>Delete</span>
+      </button>,
+    );
+  }
+
   return createPortal(
     <div
       ref={menuRef}
@@ -454,178 +779,18 @@ function TreeContextMenu({
       role="menu"
       style={{ left, top }}
     >
-      {showFavorite ? (
-        <>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onToggleFavorite();
-            }}
-          >
-            <StarIcon filled={menu.isFavorite} />
-            <span>
-              {menu.isFavorite ? "Remove from favorites" : "Add to favorites"}
-            </span>
-          </button>
-          <div className="tree-context-sep" role="separator" />
-        </>
-      ) : null}
-      {showProjectProperties ? (
-        <>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onProjectProperties();
-            }}
-          >
-            <PropertiesIcon />
-            <span>Project properties…</span>
-          </button>
-          <div className="tree-context-sep" role="separator" />
-        </>
-      ) : null}
-      {showSkillCreate ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="tree-context-item"
-          onClick={() => {
-            onClose();
-            onNewSkill();
-          }}
-        >
-          <PlusIcon />
-          <span>New skill…</span>
-        </button>
-      ) : null}
-      {showStandardCreate ? (
-        <>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onNewNote();
-            }}
-          >
-            <PlusIcon />
-            <span>New note</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onNewDiagram();
-            }}
-          >
-            <DiagramIcon />
-            <span>New diagram</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onNewLinks();
-            }}
-          >
-            <LinksIcon />
-            <span>New links</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onNewFolder();
-            }}
-          >
-            <CollectionPlusIcon />
-            <span>New folder</span>
-          </button>
-        </>
-      ) : null}
-      <div className="tree-context-sep" role="separator" />
-      <button
-        type="button"
-        role="menuitem"
-        className="tree-context-item"
-        onClick={() => {
-          onClose();
-          onReveal();
-        }}
-      >
-        <RevealIcon />
-        <span>Reveal in file manager</span>
-      </button>
-      {showCopyPath ? (
-        <>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onCopyPath();
-            }}
-          >
-            <CopyPathIcon />
-            <span>Copy relative path</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onCopyAbsolutePath();
-            }}
-          >
-            <CopyPathIcon />
-            <span>Copy absolute path</span>
-          </button>
-        </>
-      ) : null}
-      {showEditActions ? (
-        <>
-          <div className="tree-context-sep" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item"
-            onClick={() => {
-              onClose();
-              onRename();
-            }}
-          >
-            <RenameIcon />
-            <span>Rename</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="tree-context-item is-danger"
-            onClick={() => {
-              onClose();
-              onDelete();
-            }}
-          >
-            <TrashIcon />
-            <span>Delete</span>
-          </button>
-        </>
-      ) : null}
+      {sections.flatMap((section, i) =>
+        i === 0
+          ? [section]
+          : [
+              <div
+                key={`sep-${i}`}
+                className="tree-context-sep"
+                role="separator"
+              />,
+              section,
+            ],
+      )}
     </div>,
     document.body,
   );
@@ -928,6 +1093,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const treeFocusRef = useRef<HTMLDivElement | null>(null);
   const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
   const [promptKind, setPromptKind] = useState<PromptKind | null>(null);
+  const [clipFolder, setClipFolder] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
@@ -935,6 +1101,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     useState<ProjectProperties | null>(null);
   const [projectPropsLoading, setProjectPropsLoading] = useState(false);
   const [projectPropsSaving, setProjectPropsSaving] = useState(false);
+  const nativeLanguage = usePrefsStore((s) => s.prefs.nativeLanguage);
 
   const openProjectProperties = useCallback(async (path: string) => {
     setProjectPropsLoading(true);
@@ -1093,7 +1260,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "F2") return;
-      if (renamingPath || promptKind || deleteTarget) return;
+      if (renamingPath || promptKind || clipFolder !== null || deleteTarget) {
+        return;
+      }
       if (isEditableTarget(e.target)) return;
       const root = treeFocusRef.current;
       if (!root) return;
@@ -1118,7 +1287,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [renamingPath, promptKind, deleteTarget]);
+  }, [renamingPath, promptKind, clipFolder, deleteTarget]);
 
   const pasteOsFiles = (data: DataTransfer | null) => {
     if (!data || !clipboardHasOsFiles(data)) return false;
@@ -1238,6 +1407,28 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         onConfirm={submitCreate}
       />
 
+      <PromptDialog
+        open={clipFolder !== null}
+        title="Download article"
+        description={
+          clipFolder
+            ? `Save the page as a markdown note in “${clipFolder}”. Images are downloaded into .assets/.`
+            : "Save the page as a markdown note in Clippings. Images are downloaded into .assets/."
+        }
+        label="URL"
+        defaultValue="https://"
+        confirmLabel="Download"
+        onCancel={() => setClipFolder(null)}
+        onConfirm={(url) => {
+          const folder = clipFolder;
+          setClipFolder(null);
+          startClipArticleJob({
+            url,
+            folder: folder || undefined,
+          });
+        }}
+      />
+
       {contextMenu ? (
         <TreeContextMenu
           menu={contextMenu}
@@ -1270,6 +1461,21 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             selectFolder("Skills");
             setPromptKind("skill");
           }}
+          onDownloadArticle={() => {
+            const folder = contextMenu.isDir
+              ? contextMenu.path
+              : parentPath(contextMenu.path);
+            selectFolder(folder);
+            setClipFolder(folder);
+          }}
+          onTranslate={() => {
+            startTranslateNote(contextMenu.path);
+          }}
+          onTranslateReplace={() => {
+            startTranslateNoteInPlace(contextMenu.path);
+          }}
+          translateLabel={`Translate to ${nativeLanguageLabel(nativeLanguage)}`}
+          translateReplaceLabel={`Translate and replace (${nativeLanguageLabel(nativeLanguage)})`}
           onRename={() => setRenamingPath(contextMenu.path)}
           onDelete={() =>
             setDeleteTarget({

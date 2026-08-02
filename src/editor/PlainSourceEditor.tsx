@@ -1,7 +1,19 @@
 import { defaultKeymap, history, historyKeymap, redo, undo } from "@codemirror/commands";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
-import { useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import {
+  EditContextMenu,
+  type EditContextMenuState,
+} from "../components/EditContextMenu";
+import { writeClipboardText } from "../lib/clipboardText";
+import { readTextFromSystemClipboard } from "./pasteImages";
 
 type Props = {
   path: string;
@@ -54,6 +66,12 @@ const plainTheme = EditorView.theme({
   },
 });
 
+function selectedText(view: EditorView): string {
+  const { from, to } = view.state.selection.main;
+  if (from === to) return "";
+  return view.state.sliceDoc(from, to);
+}
+
 /** Plain-text CodeMirror source view (no Markdown language). */
 export function PlainSourceEditor({ path, content, onChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,6 +79,9 @@ export function PlainSourceEditor({ path, content, onChange }: Props) {
   const applyingRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
   const lastExternalRef = useRef(content);
+  const [contextMenu, setContextMenu] = useState<EditContextMenuState | null>(
+    null,
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -136,9 +157,72 @@ export function PlainSourceEditor({ path, content, onChange }: Props) {
     applyingRef.current = false;
   }, [path, content]);
 
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const openContextMenu = useCallback(
+    (e: ReactMouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const view = viewRef.current;
+      const selected = view ? selectedText(view) : "";
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        canCut: selected.length > 0,
+        canCopy: selected.length > 0,
+        canPaste: true,
+      });
+    },
+    [],
+  );
+
+  const cutSelection = useCallback(async () => {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    if (from === to) return;
+    const text = view.state.sliceDoc(from, to);
+    await writeClipboardText(text);
+    view.dispatch({
+      changes: { from, to, insert: "" },
+      selection: { anchor: from },
+    });
+    view.focus();
+  }, []);
+
+  const copySelection = useCallback(async () => {
+    const view = viewRef.current;
+    if (!view) return;
+    const text = selectedText(view);
+    if (!text) return;
+    await writeClipboardText(text);
+  }, []);
+
+  const pasteAtCursor = useCallback(async () => {
+    const view = viewRef.current;
+    if (!view) return;
+    const text = await readTextFromSystemClipboard();
+    if (!text) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+    });
+    view.focus();
+  }, []);
+
   return (
-    <div className="source-editor-shell">
+    <div className="source-editor-shell" onContextMenu={openContextMenu}>
       <div className="source-editor-canvas" ref={containerRef} />
+      {contextMenu ? (
+        <EditContextMenu
+          menu={contextMenu}
+          onClose={closeContextMenu}
+          onCut={() => void cutSelection()}
+          onCopy={() => void copySelection()}
+          onPaste={() => void pasteAtCursor()}
+        />
+      ) : null}
     </div>
   );
 }

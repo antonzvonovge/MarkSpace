@@ -10,11 +10,23 @@ import {
 } from "@blocknote/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { DocumentOutline } from "../components/DocumentOutline";
 import { DocumentToolbar } from "../components/DocumentToolbar";
+import {
+  EditContextMenu,
+  type EditContextMenuState,
+} from "../components/EditContextMenu";
 import { ImageLightbox } from "../components/ImageLightbox";
 import { PageTags } from "../components/PageTags";
+import { writeClipboardText } from "../lib/clipboardText";
 import {
   editorMarkdownToHashtags,
 } from "../lib/hashtagMarkdown";
@@ -51,7 +63,13 @@ import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
 import { createLayoutAgnosticKeymapExtension } from "./layoutAgnosticKeymap";
 import { NoteSlashSuggestionMenu } from "./NoteSlashSuggestionMenu";
-import { createImagePasteHandler } from "./pasteImages";
+import {
+  createImagePasteHandler,
+  markPasteGestureHandled,
+  pasteImagesFromSystemClipboard,
+  readTextFromSystemClipboard,
+  warnClipboardImageMissing,
+} from "./pasteImages";
 import { noteEditorSchema } from "./schema";
 import { createSelectAtomBlockAfterDropExtension } from "./selectAtomBlockAfterDrop";
 import { getNoteSlashMenuItems } from "./slashMenuItems";
@@ -399,6 +417,52 @@ export function NoteEditor({ path, content, onChange }: Props) {
   // Capture+stopPropagation keeps ProseMirror's drop pipeline out (it breaks atom
   // diagram selection); clear the drop-cursor via dragleave only.
   const shellRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<EditContextMenuState | null>(
+    null,
+  );
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const openEditorContextMenu = useCallback(
+    (e: ReactMouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const selected = editor.getSelectedText();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        canCut: selected.length > 0,
+        canCopy: selected.length > 0,
+        canPaste: true,
+      });
+    },
+    [editor],
+  );
+
+  const cutSelection = useCallback(async () => {
+    const text = editor.getSelectedText();
+    if (!text) return;
+    await writeClipboardText(text);
+    editor._tiptapEditor.commands.deleteSelection();
+  }, [editor]);
+
+  const copySelection = useCallback(async () => {
+    const text = editor.getSelectedText();
+    if (!text) return;
+    await writeClipboardText(text);
+  }, [editor]);
+
+  const pasteAtCursor = useCallback(async () => {
+    markPasteGestureHandled();
+    if (await pasteImagesFromSystemClipboard(editor)) return;
+    const text = await readTextFromSystemClipboard();
+    if (text) {
+      editor.pasteText(text);
+      return;
+    }
+    if (await pasteImagesFromSystemClipboard(editor, 2)) return;
+    warnClipboardImageMissing("Paste");
+  }, [editor]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -496,7 +560,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
         <div className="editor-main">
           <div className="editor-canvas-wrap">
             <PageTags content={content} onChange={onChange} />
-            <div className="editor-canvas">
+            <div className="editor-canvas" onContextMenu={openEditorContextMenu}>
               <BlockNoteView
                 editor={editor}
                 theme={editorTheme}
@@ -526,6 +590,15 @@ export function NoteEditor({ path, content, onChange }: Props) {
           src={viewedImage.src}
           alt={viewedImage.alt}
           onClose={() => setViewedImage(null)}
+        />
+      ) : null}
+      {contextMenu ? (
+        <EditContextMenu
+          menu={contextMenu}
+          onClose={closeContextMenu}
+          onCut={() => void cutSelection()}
+          onCopy={() => void copySelection()}
+          onPaste={() => void pasteAtCursor()}
         />
       ) : null}
     </div>

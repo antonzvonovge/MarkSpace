@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { tool } from "ai";
 import { z } from "zod";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import {
+  fetchTwitterStatusForClip,
+  parseTwitterStatusUrl,
+} from "./twitterArticle";
 
 export type WebSearchHit = {
   title: string;
@@ -10,6 +14,7 @@ export type WebSearchHit = {
 };
 
 export type WebSearchProvider = "tavily" | "duckduckgo";
+/** Providers for ordinary fetch_url / clip_article (not Firecrawl scrape). */
 export type WebFetchProvider = "tavily" | "jina";
 
 type HttpFetchResponse = {
@@ -23,6 +28,8 @@ async function nativeFetch(opts: {
   method?: "GET" | "POST";
   headers?: Record<string, string>;
   body?: string;
+  /** Seconds; Firecrawl scrapes often need longer than the 30s default. */
+  timeoutSecs?: number;
 }): Promise<HttpFetchResponse> {
   return invoke<HttpFetchResponse>("http_fetch", {
     req: {
@@ -30,12 +37,51 @@ async function nativeFetch(opts: {
       method: opts.method ?? "GET",
       headers: opts.headers ?? null,
       body: opts.body ?? null,
+      timeoutSecs: opts.timeoutSecs ?? null,
     },
   });
 }
 
 function tavilyApiKey(): string {
   return useAiSettingsStore.getState().settings.tavilyApiKey.trim();
+}
+
+function firecrawlApiKey(): string {
+  return useAiSettingsStore.getState().settings.firecrawlApiKey.trim();
+}
+
+/** Auto provider for ordinary fetch_url / clip_article: Tavily → Jina. */
+export function resolveWebFetchProvider(
+  preferred?: WebFetchProvider,
+): WebFetchProvider {
+  if (preferred) return preferred;
+  if (tavilyApiKey()) return "tavily";
+  return "jina";
+}
+
+function firecrawlErrorDetail(body: string): string {
+  const data = parseJsonBody<{
+    error?: string;
+    message?: string;
+    code?: string;
+  }>(body);
+  if (!data) return body.length < 300 ? body.trim() : "";
+  const parts = [data.error, data.message, data.code].filter(
+    (p): p is string => typeof p === "string" && p.trim().length > 0,
+  );
+  return parts[0] ?? (body.length < 300 ? body.trim() : "");
+}
+
+function metaString(
+  value: string | string[] | null | undefined,
+): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === "string" && item.trim()) return item.trim();
+    }
+  }
+  return null;
 }
 
 function parseJsonBody<T>(body: string): T | null {
@@ -294,9 +340,197 @@ export async function extractTavily(
   return { url: finalUrl, content, truncated: false };
 }
 
+type FirecrawlScrapeResponse = {
+  success?: boolean;
+  error?: string;
+  data?: {
+    markdown?: string | null;
+    images?: string[] | null;
+    metadata?: {
+      title?: string | string[] | null;
+      description?: string | string[] | null;
+      sourceURL?: string | null;
+      url?: string | null;
+      ogImage?: string | string[] | null;
+      "og:image"?: string | string[] | null;
+      image?: string | string[] | null;
+    } | null;
+  } | null;
+};
+
+export type FirecrawlScrapeResult = {
+  url: string;
+  content: string;
+  truncated: boolean;
+  /** Remote image URLs discovered by Firecrawl (for clip downloads). */
+  imageUrls: string[];
+};
+
+/**
+ * Firecrawl over-escapes punctuation in markdown (`https://x\.com`, `2026\-01\-01`).
+ * Undo common escapes outside fenced/inline code.
+ */
+export function normalizeFirecrawlMarkdown(markdown: string): string {
+  const parts = markdown.split(/(```[\s\S]*?```|`[^`\n]+`)/g);
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1) return part;
+      return part
+        .replace(/\\([\\`*_{}\[\]()#+\-.!|>])/g, "$1")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, "\n\n");
+    })
+    .join("");
+}
+
+function collectFirecrawlImageUrls(
+  data: NonNullable<FirecrawlScrapeResponse["data"]>,
+  markdown: string,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw: unknown) => {
+    if (typeof raw !== "string") return;
+    const url = raw.trim();
+    if (!/^https?:\/\//i.test(url) || seen.has(url)) return;
+    // Skip avatars / favicons / sprites — they crowd out article media.
+    if (
+      /profile_images|\/emoji\/|favicon|apple-touch-icon|\/sprites?\//i.test(
+        url,
+      )
+    ) {
+      return;
+    }
+    seen.add(url);
+    out.push(url);
+  };
+
+  for (const m of markdown.matchAll(
+    /!\[[^\]]*]\(\s*<?(https?:\/\/[^)\s>]+)>?\s*\)/gi,
+  )) {
+    push(m[1]);
+  }
+  for (const img of data.images ?? []) push(img);
+
+  const meta = data.metadata;
+  if (meta) {
+    const candidates = [meta.ogImage, meta["og:image"], meta.image];
+    for (const c of candidates) {
+      if (Array.isArray(c)) c.forEach(push);
+      else push(c);
+    }
+  }
+  return out;
+}
+
+/** Merge remote image URLs into markdown so clip_article can download them. */
+export function mergeImageUrlsIntoMarkdown(
+  markdown: string,
+  imageUrls: string[],
+): string {
+  if (!imageUrls.length) return markdown;
+  const existing = new Set<string>();
+  for (const m of markdown.matchAll(
+    /!\[[^\]]*]\(\s*<?(https?:\/\/[^)\s>]+)>?\s*\)/gi,
+  )) {
+    if (m[1]) existing.add(m[1]);
+  }
+  const missing = imageUrls.filter((u) => !existing.has(u));
+  if (!missing.length) return markdown;
+  const block = missing
+    .map((u, i) => `![image ${i + 1}](${u})`)
+    .join("\n\n");
+  return `${markdown.trim()}\n\n## Images\n\n${block}\n`;
+}
+
+/** Firecrawl /v2/scrape — browser-rendered page → markdown. */
+export async function scrapeFirecrawl(
+  url: string,
+  apiKey: string,
+  maxChars = 24_000,
+  opts?: { forClip?: boolean },
+): Promise<FirecrawlScrapeResult> {
+  const forClip = opts?.forClip === true;
+  const res = await nativeFetch({
+    url: "https://api.firecrawl.dev/v2/scrape",
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      url,
+      formats: forClip ? ["markdown", "images"] : ["markdown"],
+      onlyMainContent: true,
+      // Keep payload small; recover http(s) images via the images format / og:image.
+      removeBase64Images: true,
+      timeout: 60_000,
+    }),
+    timeoutSecs: 90,
+  });
+
+  if (res.status < 200 || res.status >= 300) {
+    const detail = firecrawlErrorDetail(res.body);
+    throw new Error(
+      `Firecrawl scrape failed: HTTP ${res.status}${detail ? ` — ${detail}` : ""}`,
+    );
+  }
+
+  const data = parseJsonBody<FirecrawlScrapeResponse>(res.body);
+  if (!data) {
+    throw new Error("Firecrawl scrape returned invalid JSON");
+  }
+  if (data.success === false || data.error) {
+    throw new Error(
+      `Firecrawl scrape failed: ${data.error?.trim() || "unknown error"}`,
+    );
+  }
+
+  let markdown = normalizeFirecrawlMarkdown(
+    (data.data?.markdown ?? "").trim(),
+  );
+  if (!markdown) {
+    throw new Error("Firecrawl scrape returned empty markdown");
+  }
+
+  const imageUrls = data.data
+    ? collectFirecrawlImageUrls(data.data, markdown)
+    : [];
+  if (forClip && imageUrls.length) {
+    markdown = mergeImageUrlsIntoMarkdown(markdown, imageUrls);
+  }
+
+  const meta = data.data?.metadata;
+  const title = metaString(meta?.title);
+  const finalUrl =
+    (meta?.sourceURL ?? meta?.url ?? url).trim() || url;
+  const withTitle = title ? `Title: ${title}\n\n${markdown}` : markdown;
+
+  if (withTitle.length > maxChars) {
+    return {
+      url: finalUrl,
+      content: withTitle.slice(0, maxChars),
+      truncated: true,
+      imageUrls,
+    };
+  }
+  return {
+    url: finalUrl,
+    content: withTitle,
+    truncated: false,
+    imageUrls,
+  };
+}
+
 export async function fetchUrlAsMarkdown(
   url: string,
   maxChars = 24_000,
+  provider?: WebFetchProvider,
 ): Promise<{
   url: string;
   content: string;
@@ -314,11 +548,49 @@ export async function fetchUrlAsMarkdown(
   }
 
   const normalized = parsed.toString();
-  const key = tavilyApiKey();
-  if (key) {
+
+  // X/Twitter status URLs: Jina/Tavily often return empty or login walls.
+  if (parseTwitterStatusUrl(normalized)) {
+    try {
+      const tw = await fetchTwitterStatusForClip(normalized);
+      if (tw?.content.trim()) {
+        let content = tw.content;
+        if (tw.imageUrls.length) {
+          content = mergeImageUrlsIntoMarkdown(content, tw.imageUrls);
+        }
+        if (content.length > maxChars) {
+          return {
+            url: tw.url,
+            content: content.slice(0, maxChars),
+            truncated: true,
+            provider: resolveWebFetchProvider(provider),
+          };
+        }
+        return {
+          url: tw.url,
+          content,
+          truncated: tw.truncated,
+          provider: resolveWebFetchProvider(provider),
+        };
+      }
+    } catch {
+      /* fall through to Tavily/Jina */
+    }
+  }
+
+  const resolved = resolveWebFetchProvider(provider);
+
+  if (resolved === "tavily") {
+    const key = tavilyApiKey();
+    if (!key) {
+      throw new Error(
+        "Tavily provider requested but no Tavily API key is set in AI settings",
+      );
+    }
     const page = await extractTavily(normalized, key, maxChars);
     return { ...page, provider: "tavily" };
   }
+
   const page = await fetchViaJina(normalized, maxChars);
   return { ...page, provider: "jina" };
 }
@@ -358,14 +630,63 @@ export function buildWebTools() {
 
     fetch_url: tool({
       description:
-        "Fetch a web page and return readable markdown. Use after web_search when you need the full page, not just a snippet.",
+        "Fetch a web page and return readable markdown. Use after web_search when you need the full page, not just a snippet. Auto-picks Tavily (if configured) or free Jina. x.com / twitter.com status URLs are fetched via FxTwitter (articles + media). For an explicit browser scrape, use scrape_url only when the user asks to scrape.",
       inputSchema: z.object({
         url: z.string().url().describe("http(s) URL to fetch"),
+        provider: z
+          .enum(["tavily", "jina"])
+          .optional()
+          .describe(
+            "Fetch backend for non-Twitter URLs. Omit to auto-pick: Tavily when a key is set, otherwise Jina. Ignored for x.com/twitter.com status links (always FxTwitter).",
+          ),
+      }),
+      execute: async ({ url, provider }) => {
+        try {
+          const page = await fetchUrlAsMarkdown(url, 24_000, provider);
+          return { ok: true as const, ...page };
+        } catch (error) {
+          return {
+            ok: false as const,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+    }),
+
+    scrape_url: tool({
+      description:
+        "Browser-scrape a URL via Firecrawl and return clean markdown. ONLY use when the user explicitly asks to scrape / Firecrawl a page (or names scrape_url). Do NOT use for ordinary reading, search follow-ups, or clipping — prefer fetch_url or clip_article. Whether Firecrawl is configured is stated in the system prompt — do not ask the user about the API key first.",
+      inputSchema: z.object({
+        url: z.string().url().describe("http(s) URL to scrape"),
       }),
       execute: async ({ url }) => {
         try {
-          const page = await fetchUrlAsMarkdown(url);
-          return { ok: true as const, ...page };
+          let parsed: URL;
+          try {
+            parsed = new URL(url);
+          } catch {
+            return { ok: false as const, error: "Invalid URL" };
+          }
+          if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            return {
+              ok: false as const,
+              error: "Only http(s) URLs are allowed",
+            };
+          }
+          const key = firecrawlApiKey();
+          if (!key) {
+            return {
+              ok: false as const,
+              error:
+                "No Firecrawl API key is set. Add one in Settings → Firecrawl API key.",
+            };
+          }
+          const page = await scrapeFirecrawl(parsed.toString(), key, 100_000);
+          return {
+            ok: true as const,
+            provider: "firecrawl" as const,
+            ...page,
+          };
         } catch (error) {
           return {
             ok: false as const,
