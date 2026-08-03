@@ -112,14 +112,15 @@ export function formatAiError(error: unknown): string {
   if (typeof error === "object") {
     const obj = error as Record<string, unknown>;
     // AI SDK / OpenRouter often throw plain objects: { message, error, code, ... }
-    const msg =
-      (typeof obj.message === "string" && obj.message) ||
-      (typeof obj.error === "string" && obj.error) ||
-      (obj.error &&
-        typeof obj.error === "object" &&
-        typeof (obj.error as { message?: unknown }).message === "string" &&
-        (obj.error as { message: string }).message) ||
-      null;
+    let msg: string | null = null;
+    if (typeof obj.message === "string") {
+      msg = obj.message;
+    } else if (typeof obj.error === "string") {
+      msg = obj.error;
+    } else if (obj.error && typeof obj.error === "object") {
+      const nested = (obj.error as { message?: unknown }).message;
+      if (typeof nested === "string") msg = nested;
+    }
     const status =
       typeof obj.statusCode === "number"
         ? obj.statusCode
