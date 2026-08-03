@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FcPackage } from "react-icons/fc";
+import { FcPackage, FcPlanner } from "react-icons/fc";
 import { learningLanguageFlagEmoji } from "../../lib/languageFlags";
 import { listVaultProjects } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
@@ -21,16 +21,18 @@ function ProjectIcon({
   size?: number;
 }) {
   const props = useVaultStore((s) => s.projectPropertiesByPath[path]);
-  const flag =
-    props?.projectType === "languageLearning"
-      ? learningLanguageFlagEmoji(props.learningLanguage)
-      : "";
-  if (flag) {
-    return (
-      <span className="chat-project-flag" aria-hidden>
-        {flag}
-      </span>
-    );
+  if (props?.projectType === "languageLearning") {
+    const flag = learningLanguageFlagEmoji(props.learningLanguage);
+    if (flag) {
+      return (
+        <span className="chat-project-flag" aria-hidden>
+          {flag}
+        </span>
+      );
+    }
+  }
+  if (props?.projectType === "diary") {
+    return <FcPlanner size={size} />;
   }
   return <FcPackage size={size} />;
 }

@@ -14,6 +14,7 @@ use tauri::State;
 /// Known project types (`""` = unset).
 const PROJECT_TYPE_KNOWLEDGE_BASE: &str = "knowledgeBase";
 const PROJECT_TYPE_LANGUAGE_LEARNING: &str = "languageLearning";
+const PROJECT_TYPE_DIARY: &str = "diary";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -22,7 +23,7 @@ pub struct ProjectProperties {
     /// Free-form description: what the project is about.
     #[serde(default)]
     pub about: String,
-    /// `""` | `knowledgeBase` | `languageLearning`.
+    /// `""` | `knowledgeBase` | `languageLearning` | `diary`.
     #[serde(default)]
     pub project_type: String,
     /// ISO 639-1 code when `project_type` is `languageLearning`; otherwise empty.
@@ -34,6 +35,7 @@ fn normalize_project_type(raw: &str) -> String {
     match raw.trim() {
         PROJECT_TYPE_KNOWLEDGE_BASE => PROJECT_TYPE_KNOWLEDGE_BASE.to_string(),
         PROJECT_TYPE_LANGUAGE_LEARNING => PROJECT_TYPE_LANGUAGE_LEARNING.to_string(),
+        PROJECT_TYPE_DIARY => PROJECT_TYPE_DIARY.to_string(),
         _ => String::new(),
     }
 }
@@ -378,6 +380,23 @@ mod tests {
         let loaded = read_project_file(&project_file_path(&root, "Alpha")).unwrap();
         assert_eq!(loaded.project_type, PROJECT_TYPE_LANGUAGE_LEARNING);
         assert_eq!(loaded.learning_language, "es");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_and_read_diary() {
+        let root = temp_vault();
+        let props = ProjectProperties {
+            path: "Journal".into(),
+            about: "Personal diary".into(),
+            project_type: PROJECT_TYPE_DIARY.into(),
+            learning_language: "es".into(),
+        };
+        write_project_file(&root, &props).unwrap();
+        let loaded = read_project_file(&project_file_path(&root, "Journal")).unwrap();
+        assert_eq!(loaded.project_type, PROJECT_TYPE_DIARY);
+        // Learning language is cleared for non-language-learning types.
+        assert_eq!(loaded.learning_language, "");
         let _ = fs::remove_dir_all(&root);
     }
 

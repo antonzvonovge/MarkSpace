@@ -26,6 +26,8 @@ export type Prefs = {
   uiDensity: UiDensityId;
   uiFontSize: number;
   liveFontSize: number;
+  /** Live editor font size for notes inside diary projects. */
+  liveFontSizeDiary: number;
   liveFontFamily: EditorFontFamilyId;
   sourceFontSize: number;
   sourceFontFamily: EditorFontFamilyId;
@@ -39,6 +41,7 @@ export const DEFAULT_PREFS: Prefs = {
   uiDensity: "comfortable",
   uiFontSize: 14,
   liveFontSize: 15,
+  liveFontSizeDiary: 15,
   liveFontFamily: "sans",
   sourceFontSize: 14,
   sourceFontFamily: "mono",

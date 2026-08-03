@@ -27,6 +27,7 @@ describe("vault agent tools", () => {
     expect(askTools).not.toHaveProperty("delete_folder_if_empty");
     expect(askTools).not.toHaveProperty("clip_article");
     expect(askTools).not.toHaveProperty("translate_note");
+    expect(askTools).not.toHaveProperty("open_or_create_daily_note");
     expect(askTools).toHaveProperty("scrape_url");
     expect(agentTools).toHaveProperty("list_tags");
     expect(agentTools).toHaveProperty("scrape_url");
@@ -37,6 +38,7 @@ describe("vault agent tools", () => {
     expect(agentTools).toHaveProperty("delete_folder_if_empty");
     expect(agentTools).toHaveProperty("clip_article");
     expect(agentTools).toHaveProperty("translate_note");
+    expect(agentTools).toHaveProperty("open_or_create_daily_note");
   });
 
   it("tells the model when to use the new tools", () => {
@@ -138,6 +140,34 @@ describe("vault agent tools", () => {
     expect(prompt).toContain("Project type: Foreign language learning.");
     expect(prompt).toContain("Learning language: Spanish (es).");
     expect(prompt).toContain("A1 vocab");
+  });
+
+  it("includes diary guidance in the system prompt", () => {
+    const prompt = buildSystemPrompt({
+      mode: "ask",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      projectPath: "Journal",
+      projectType: "diary",
+      projectAbout: "Daily reflections",
+    });
+    expect(prompt).toContain("Project type: Diary.");
+    expect(prompt).toContain("personal diary project");
+    expect(prompt).toContain("Daily reflections");
+    expect(prompt).toContain("{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md");
+    expect(prompt).toContain("open_or_create_daily_note");
+  });
+
+  it("documents diary daily-note tool in agent mode system prompt", () => {
+    const prompt = buildSystemPrompt({
+      mode: "agent",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+    });
+    expect(prompt).toContain("open_or_create_daily_note");
+    expect(prompt).toContain("{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md");
   });
 
   it("tells the model to address the user by name when Profile name is set", async () => {

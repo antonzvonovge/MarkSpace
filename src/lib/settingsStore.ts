@@ -61,6 +61,10 @@ function mergePrefs(raw: LegacyPrefs | null | undefined): Prefs {
       raw.liveFontSize ?? legacySize,
       DEFAULT_PREFS.liveFontSize,
     ),
+    liveFontSizeDiary: clampFontSize(
+      raw.liveFontSizeDiary ?? raw.liveFontSize ?? legacySize,
+      DEFAULT_PREFS.liveFontSizeDiary,
+    ),
     liveFontFamily: parseFontFamily(
       raw.liveFontFamily ?? raw.editorFontFamily,
       DEFAULT_PREFS.liveFontFamily,

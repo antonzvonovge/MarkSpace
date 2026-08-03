@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useVaultStore } from "../store/vaultStore";
+import { isUnderDiaryProject } from "../lib/diaryNotes";
 import {
   CollapseAllIcon,
   CollectionPlusIcon,
@@ -17,11 +18,17 @@ export type TreeCreateKind = "note" | "drawio" | "mdlnks" | "mddict" | "folder";
 
 function TreeCreateMenu({
   onCreate,
+  disabled,
 }: {
   onCreate: (kind: TreeCreateKind) => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   useEffect(() => {
     if (!open) return;
@@ -49,16 +56,24 @@ function TreeCreateMenu({
       <button
         type="button"
         className={open ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
-        title="Create"
+        title={
+          disabled
+            ? "Create is disabled in diary projects — use New daily note in the context menu"
+            : "Create"
+        }
         aria-label="Create"
         aria-expanded={open}
         aria-haspopup="menu"
-        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        onClick={() => {
+          if (disabled) return;
+          setOpen((v) => !v);
+        }}
       >
         <PlusIcon />
       </button>
 
-      {open && (
+      {open && !disabled && (
         <div className="tree-create-menu" role="menu">
           <button
             type="button"
@@ -121,6 +136,10 @@ export function TreeToolbar({
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
   const activePath = useVaultStore((s) => s.activePath);
+  const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const collapseAllFolders = useVaultStore((s) => s.collapseAllFolders);
   const openGraphTab = useVaultStore((s) => s.openGraphTab);
@@ -130,6 +149,10 @@ export function TreeToolbar({
     Boolean(activePath) &&
     activePath !== GRAPH_TAB_PATH &&
     activePath !== SETTINGS_TAB_PATH;
+  const createDisabled = isUnderDiaryProject(
+    selectedFolderPath,
+    projectPropertiesByPath,
+  );
 
   if (!vaultPath) return null;
 
@@ -181,7 +204,7 @@ export function TreeToolbar({
       >
         <GraphIcon />
       </button>
-      <TreeCreateMenu onCreate={onCreate} />
+      <TreeCreateMenu onCreate={onCreate} disabled={createDisabled} />
     </div>
   );
 }

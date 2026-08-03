@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { FcDocument, FcPlanner } from "react-icons/fc";
 import {
   useVaultStore,
   tabLabel,
@@ -7,6 +8,8 @@ import {
   isVirtualTab,
   type EditorTab,
 } from "../store/vaultStore";
+import { documentKind } from "../lib/vaultApi";
+import { isUnderDiaryProject } from "../lib/diaryNotes";
 import { useChatUiStore } from "../store/chatUiStore";
 import { useFocusUiStore } from "../store/focusUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
@@ -15,6 +18,78 @@ import {
   TabContextMenu,
   type TabContextMenuState,
 } from "./TabContextMenu";
+import {
+  DiagramIcon,
+  DictionaryIcon,
+  GraphIcon,
+  LinksIcon,
+  PdfIcon,
+} from "./treeIcons";
+
+function SettingsTabIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M6.5 1.5h3l.35 1.4a4.5 4.5 0 0 1 1.35.78l1.4-.35 1.5 2.6-1.05 1a4.6 4.6 0 0 1 0 1.56l1.05 1-1.5 2.6-1.4-.35a4.5 4.5 0 0 1-1.35.78L9.5 14.5h-3l-.35-1.4a4.5 4.5 0 0 1-1.35-.78l-1.4.35-1.5-2.6 1.05-1a4.6 4.6 0 0 1 0-1.56l-1.05-1 1.5-2.6 1.4.35a4.5 4.5 0 0 1 1.35-.78L6.5 1.5Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <circle cx="8" cy="8" r="1.75" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function TabFileIcon({ tab }: { tab: EditorTab }) {
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
+
+  if (isGraphTab(tab)) {
+    return (
+      <span className="editor-tab-icon" aria-hidden>
+        <GraphIcon />
+      </span>
+    );
+  }
+  if (isSettingsTab(tab)) {
+    return (
+      <span className="editor-tab-icon" aria-hidden>
+        <SettingsTabIcon />
+      </span>
+    );
+  }
+  if (isUnderDiaryProject(tab.path, projectPropertiesByPath)) {
+    return (
+      <span className="editor-tab-icon" aria-hidden>
+        <FcPlanner size={14} />
+      </span>
+    );
+  }
+
+  const kind = documentKind(tab.path);
+  return (
+    <span className="editor-tab-icon" aria-hidden>
+      {kind === "drawio" ? (
+        <DiagramIcon />
+      ) : kind === "mdlnks" ? (
+        <LinksIcon />
+      ) : kind === "mddict" ? (
+        <DictionaryIcon />
+      ) : kind === "pdf" ? (
+        <PdfIcon />
+      ) : (
+        <FcDocument size={14} />
+      )}
+    </span>
+  );
+}
 
 function TabItem({
   tab,
@@ -95,6 +170,7 @@ function TabItem({
       role="tab"
       aria-selected={active}
     >
+      <TabFileIcon tab={tab} />
       <span className="editor-tab-label">
         {tabLabel(tab.path, tab.kind)}
       </span>

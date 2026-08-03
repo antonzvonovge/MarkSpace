@@ -21,6 +21,12 @@ import {
   writeNote,
   type TreeNode,
 } from "../lib/vaultApi";
+import {
+  formatDailyNoteStem,
+  parseIsoDateOnly,
+  resolveDiaryProjectRoot,
+  startOfLocalDay,
+} from "../lib/diaryNotes";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 import {
@@ -703,7 +709,7 @@ export function buildVaultTools(
     }),
     create_note: tool({
       description:
-        "Create a new markdown note at a vault-relative path (adds .md if missing). Parent folders are created automatically.",
+        "Create a new markdown note at a vault-relative path (adds .md if missing). Parent folders are created automatically. For diary daily notes use open_or_create_daily_note instead (fixed `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` layout).",
       inputSchema: z.object({
         path: z.string().describe("Desired path, e.g. Ideas/New.md"),
       }),
@@ -712,6 +718,89 @@ export function buildVaultTools(
         await useVaultStore.getState().refreshTree();
         await yieldToUi();
         return { ok: true, path: created };
+      },
+    }),
+    open_or_create_daily_note: tool({
+      description:
+        "Open or create a diary daily note. Layout is always `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (English month abbr, e.g. Journal/2026/08/02.Aug.2026.md). Prefer this over create_note for dated diary entries. Defaults to today and the active diary project (chat project / selected folder / sole diary project).",
+      inputSchema: z.object({
+        date: z
+          .string()
+          .optional()
+          .describe(
+            "Calendar day as YYYY-MM-DD (local). Omit for today. Do not pass other formats.",
+          ),
+        project: z
+          .string()
+          .optional()
+          .describe(
+            "Diary project root folder (first-level vault folder with project type Diary). Omit to resolve from chat project / selection.",
+          ),
+      }),
+      execute: async ({ date: dateInput, project: projectInput }) => {
+        const day = dateInput?.trim()
+          ? parseIsoDateOnly(dateInput)
+          : startOfLocalDay();
+        if (!day) {
+          return {
+            ok: false as const,
+            error:
+              "Invalid date. Pass YYYY-MM-DD (e.g. 2026-08-02) or omit for today.",
+          };
+        }
+
+        const store = useVaultStore.getState();
+        const projectPropertiesByPath = store.projectPropertiesByPath;
+        const explicit = normalizeToolPath(projectInput ?? "");
+        let projectRoot: string | null = null;
+        if (explicit) {
+          const root = explicit.split("/")[0] ?? explicit;
+          if (projectPropertiesByPath[root]?.projectType === "diary") {
+            projectRoot = root;
+          } else {
+            return {
+              ok: false as const,
+              error: `Not a diary project: ${root || explicit}`,
+            };
+          }
+        } else {
+          projectRoot = resolveDiaryProjectRoot({
+            selectedFolderPath: store.selectedFolderPath,
+            activePath: store.activePath,
+            chatProjectPath: projectPath,
+            projectPropertiesByPath,
+          });
+        }
+
+        if (!projectRoot) {
+          return {
+            ok: false as const,
+            error:
+              "No diary project resolved. Pass project= (Diary project folder) or select a diary project in chat / the file tree.",
+          };
+        }
+
+        const result = await store.openOrCreateDailyNote(projectRoot, day);
+        await yieldToUi();
+        if (!result) {
+          return {
+            ok: false as const,
+            error:
+              useVaultStore.getState().error ??
+              "Could not open or create daily note",
+            project: projectRoot,
+            date: `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`,
+          };
+        }
+
+        return {
+          ok: true as const,
+          path: result.path,
+          created: result.created,
+          project: projectRoot,
+          date: `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`,
+          title: formatDailyNoteStem(day),
+        };
       },
     }),
     translate_note: tool({
@@ -1137,7 +1226,7 @@ export function buildSystemPrompt(opts: {
   projectPath?: string | null;
   /** Project "about" description from project properties. */
   projectAbout?: string | null;
-  /** Project type from project properties (`""` | knowledgeBase | languageLearning). */
+  /** Project type from project properties (`""` | knowledgeBase | languageLearning | diary). */
   projectType?: string | null;
   /** Learning language ISO code when project type is language learning. */
   projectLearningLanguage?: string | null;
@@ -1186,6 +1275,7 @@ export function buildSystemPrompt(opts: {
     lines.push(
       "When editing notes: prefer edit_note (partial replace) over write_note (full overwrite) to save tokens.",
       "Create empty folders with create_folder, or ensure_folder when you only need the path to exist (returns created vs already existed). To add a note in a new path, use create_note (parents are created automatically).",
+      "Diary daily notes: always `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` with English month abbreviations (e.g. Journal/2026/08/02.Aug.2026.md). Use open_or_create_daily_note (date as YYYY-MM-DD) to create or open a day — never invent a different diary path with create_note.",
       "Move files or folders between vault folders with move_path. Markdown note assets referenced from .assets are migrated automatically.",
       "Delete files or folders with delete_path only when the user clearly asks to delete/remove them (folders are recursive). Use delete_folder_if_empty to remove a folder only if it is vacant.",
       "When reading long notes: use read_note/get_active_note with start_line and end_line instead of loading the whole file.",
@@ -1246,6 +1336,14 @@ export function buildSystemPrompt(opts: {
       }
       lines.push(
         "For vocabulary / word lists in this project, prefer .mddict dictionary files and dictionary tools over Markdown tables.",
+      );
+    }
+    if (opts.projectType === "diary") {
+      lines.push(
+        "This is a personal diary project. Prefer dated daily notes and keep entries personal and chronological unless the user asks otherwise.",
+      );
+      lines.push(
+        "Daily notes live at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (e.g. Journal/2026/08/02.Aug.2026.md). In Agent mode call open_or_create_daily_note (optional date YYYY-MM-DD; omit for today) — do not hand-build paths with create_note.",
       );
     }
     const about = opts.projectAbout?.trim();

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { loadShellLayout } from "../lib/shellLayout";
 
 const OPEN_KEY = "markspace-sidebar-open";
+const CALENDAR_OPEN_KEY = "markspace-sidebar-calendar-open";
 
 function readOpen(): boolean {
   try {
@@ -22,18 +23,38 @@ function writeOpen(open: boolean) {
   }
 }
 
+function readCalendarOpen(): boolean {
+  try {
+    return localStorage.getItem(CALENDAR_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeCalendarOpen(open: boolean) {
+  try {
+    localStorage.setItem(CALENDAR_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
+
 type SidebarUiStore = {
   open: boolean;
+  calendarOpen: boolean;
   lastSizePercent: number;
   treeRevealRequest: { path: string; id: number } | null;
   setOpen: (open: boolean) => void;
   toggle: () => void;
+  setCalendarOpen: (open: boolean) => void;
+  toggleCalendar: () => void;
   rememberSizePercent: (percent: number) => void;
   revealPathInTree: (path: string) => void;
 };
 
 export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
   open: typeof window !== "undefined" ? readOpen() : true,
+  calendarOpen: typeof window !== "undefined" ? readCalendarOpen() : false,
   lastSizePercent:
     typeof window !== "undefined" ? loadShellLayout().sidebar : 22,
   treeRevealRequest: null,
@@ -46,6 +67,17 @@ export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
       const open = !s.open;
       writeOpen(open);
       return { open };
+    });
+  },
+  setCalendarOpen: (open) => {
+    writeCalendarOpen(open);
+    set({ calendarOpen: open });
+  },
+  toggleCalendar: () => {
+    set((s) => {
+      const calendarOpen = !s.calendarOpen;
+      writeCalendarOpen(calendarOpen);
+      return { calendarOpen };
     });
   },
   rememberSizePercent: (percent) => {

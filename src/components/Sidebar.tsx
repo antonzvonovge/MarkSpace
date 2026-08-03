@@ -1,10 +1,15 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
+import {
+  CalendarCheckIcon,
+  SidebarCalendar,
+} from "./SidebarCalendar";
 import { TreeToolbar } from "./TreeToolbar";
 import { loadLastVault, saveLastVault } from "../lib/settingsStore";
 import { usePrefsStore, useSettingsTabActive } from "../store/prefsStore";
+import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 
 export { loadLastVault, saveLastVault };
@@ -34,7 +39,19 @@ export function Sidebar() {
   const openVaultAt = useVaultStore((s) => s.openVaultAt);
   const settingsActive = useSettingsTabActive();
   const toggleSettings = usePrefsStore((s) => s.toggleSettings);
+  const calendarOpen = useSidebarUiStore((s) => s.calendarOpen);
+  const setCalendarOpen = useSidebarUiStore((s) => s.setCalendarOpen);
+  const toggleCalendar = useSidebarUiStore((s) => s.toggleCalendar);
   const fileTreeRef = useRef<FileTreeHandle>(null);
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCalendarOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [calendarOpen, setCalendarOpen]);
 
   const pickVault = async () => {
     const selected = await open({
@@ -55,6 +72,7 @@ export function Sidebar() {
         const el = e.target as HTMLElement;
         if (el.closest(".tree-row")) return;
         if (el.closest(".sidebar-footer")) return;
+        if (el.closest(".sidebar-calendar")) return;
         if (el.closest("button")) return;
         if (el.closest(".tree-context-menu")) return;
         e.preventDefault();
@@ -76,20 +94,38 @@ export function Sidebar() {
         <FileTree ref={fileTreeRef} />
       </div>
 
+      {calendarOpen && <SidebarCalendar />}
+
       <footer className="sidebar-footer">
-        <button
-          type="button"
-          className={
-            settingsActive
-              ? "sidebar-footer-btn is-active"
-              : "sidebar-footer-btn"
-          }
-          aria-label={settingsActive ? "Close settings" : "Open settings"}
-          title="Settings (Ctrl+,)"
-          onClick={() => toggleSettings()}
-        >
-          <SettingsGearIcon />
-        </button>
+        <div className="sidebar-footer-actions">
+          <button
+            type="button"
+            className={
+              settingsActive
+                ? "sidebar-footer-btn is-active"
+                : "sidebar-footer-btn"
+            }
+            aria-label={settingsActive ? "Close settings" : "Open settings"}
+            title="Settings (Ctrl+,)"
+            onClick={() => toggleSettings()}
+          >
+            <SettingsGearIcon />
+          </button>
+          <button
+            type="button"
+            className={
+              calendarOpen
+                ? "sidebar-footer-btn is-active"
+                : "sidebar-footer-btn"
+            }
+            aria-label={calendarOpen ? "Close calendar" : "Open calendar"}
+            aria-expanded={calendarOpen}
+            title="Calendar"
+            onClick={() => toggleCalendar()}
+          >
+            <CalendarCheckIcon />
+          </button>
+        </div>
         <button
           type="button"
           className="sidebar-footer-open"

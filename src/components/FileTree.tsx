@@ -30,6 +30,7 @@ import {
   setProjectProperties,
   type ProjectProperties,
 } from "../lib/vaultApi";
+import { diaryProjectRootForPath } from "../lib/diaryNotes";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagEmoji } from "../lib/languageFlags";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
@@ -52,6 +53,7 @@ import {
   FcFolder,
   FcOpenedFolder,
   FcPackage,
+  FcPlanner,
   FcSafe,
   FcWorkflow,
 } from "react-icons/fc";
@@ -129,23 +131,30 @@ function FolderTreeIcon({
   path,
   isOpen,
   size = 20,
+  projectType,
   learningLanguage,
 }: {
   path: string;
   isOpen: boolean;
   size?: number;
+  projectType?: string | null;
   /** When set for a language-learning project, show that country's flag. */
   learningLanguage?: string | null;
 }) {
   if (isSkillsFolder(path)) return <FcWorkflow size={size} />;
   if (isVaultProjectFolder(path, true)) {
-    const flag = learningLanguageFlagEmoji(learningLanguage);
-    if (flag) {
-      return (
-        <span className="tree-project-flag" aria-hidden>
-          {flag}
-        </span>
-      );
+    if (projectType === "languageLearning") {
+      const flag = learningLanguageFlagEmoji(learningLanguage);
+      if (flag) {
+        return (
+          <span className="tree-project-flag" aria-hidden>
+            {flag}
+          </span>
+        );
+      }
+    }
+    if (projectType === "diary") {
+      return <FcPlanner size={size} />;
     }
     return <FcPackage size={size} />;
   }
@@ -464,6 +473,7 @@ function TreeContextMenu({
   menu,
   onClose,
   onNewNote,
+  onNewDailyNote,
   onNewDiagram,
   onNewLinks,
   onNewDictionary,
@@ -481,10 +491,12 @@ function TreeContextMenu({
   onProjectProperties,
   translateLabel,
   translateReplaceLabel,
+  diaryProjectRoot,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
   onNewNote: () => void;
+  onNewDailyNote: () => void;
   onNewDiagram: () => void;
   onNewLinks: () => void;
   onNewDictionary: () => void;
@@ -502,9 +514,12 @@ function TreeContextMenu({
   onProjectProperties: () => void;
   translateLabel: string;
   translateReplaceLabel: string;
+  /** Non-null when the menu target is inside a diary project. */
+  diaryProjectRoot: string | null;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const isSkills = isSkillsFolder(menu.path, menu.isDir);
+  const isDiary = diaryProjectRoot !== null;
   const showEditActions = !menu.createOnly && menu.path !== "" && !isSkills;
   const showCopyPath = !menu.createOnly && menu.path !== "";
   const showFavorite = !menu.createOnly && menu.path !== "";
@@ -624,18 +639,33 @@ function TreeContextMenu({
         ) : null}
         {showStandardCreate ? (
           <>
-            <button
-              type="button"
-              role="menuitem"
-              className="tree-context-item"
-              onClick={() => {
-                onClose();
-                onNewNote();
-              }}
-            >
-              <PlusIcon />
-              <span>New note</span>
-            </button>
+            {isDiary ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-context-item"
+                onClick={() => {
+                  onClose();
+                  onNewDailyNote();
+                }}
+              >
+                <PlusIcon />
+                <span>New daily note</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-context-item"
+                onClick={() => {
+                  onClose();
+                  onNewNote();
+                }}
+              >
+                <PlusIcon />
+                <span>New note</span>
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"
@@ -1051,6 +1081,7 @@ function FavoritesTreeRows({
                   <FolderTreeIcon
                     path={path}
                     isOpen={isOpen}
+                    projectType={projectPropertiesByPath[path]?.projectType}
                     learningLanguage={
                       projectPropertiesByPath[path]?.projectType ===
                       "languageLearning"
@@ -1519,12 +1550,21 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       {contextMenu ? (
         <TreeContextMenu
           menu={contextMenu}
+          diaryProjectRoot={diaryProjectRootForPath(
+            contextMenu.path,
+            projectPropertiesByPath,
+          )}
           onClose={() => setContextMenu(null)}
           onNewNote={() => {
             selectFolder(
               contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
             );
             setPromptKind("note");
+          }}
+          onNewDailyNote={() => {
+            void useVaultStore
+              .getState()
+              .openOrCreateDailyNote(contextMenu.path);
           }}
           onNewDiagram={() => {
             selectFolder(
@@ -1754,6 +1794,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                           path={dragPath}
                           isOpen={false}
                           size={16}
+                          projectType={props?.projectType}
                           learningLanguage={
                             props?.projectType === "languageLearning"
                               ? props.learningLanguage
@@ -1908,6 +1949,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                           <FolderTreeIcon
                             path={path}
                             isOpen={isOpen}
+                            projectType={
+                              projectPropertiesByPath[path]?.projectType
+                            }
                             learningLanguage={
                               projectPropertiesByPath[path]?.projectType ===
                               "languageLearning"

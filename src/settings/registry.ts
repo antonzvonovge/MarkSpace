@@ -125,9 +125,17 @@ export const SETTINGS_REGISTRY: SettingDescriptor[] = [
     id: "liveFontSize",
     category: "editor",
     label: "Live Font Size",
-    description: "Font size in the Live (rich) editor.",
+    description: "Font size in the Live (rich) editor for non-diary notes.",
     control: { type: "number", min: 11, max: 28, step: 1 },
     default: DEFAULT_PREFS.liveFontSize,
+  },
+  {
+    id: "liveFontSizeDiary",
+    category: "editor",
+    label: "Diary Live Font Size",
+    description: "Font size in the Live editor for notes inside diary projects.",
+    control: { type: "number", min: 11, max: 28, step: 1 },
+    default: DEFAULT_PREFS.liveFontSizeDiary,
   },
   {
     id: "liveFontFamily",

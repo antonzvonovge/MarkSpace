@@ -16,6 +16,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { DocumentOutline } from "../components/DocumentOutline";
@@ -57,6 +58,7 @@ import {
   resolveWikiTarget,
   writeAsset,
 } from "../lib/vaultApi";
+import { isUnderDiaryProject } from "../lib/diaryNotes";
 import { editorFontStack } from "../settings/applyPrefs";
 import type { ThemeId } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";
@@ -84,6 +86,7 @@ import {
 import { createHashtagDecorationExtension } from "./tag/tagDecorations";
 import { getTagMenuItems, shouldOpenTagMenu } from "./tag/tagSuggestion";
 import { TagSuggestionMenu } from "./tag/TagSuggestionMenu";
+import { focusLiveEditorFromEmptyClick } from "./focusLiveEditor";
 import {
   clampOutlineWidth,
   loadDocOutlineUi,
@@ -172,6 +175,13 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const showOutline = useVaultStore((s) => s.showOutline);
   const theme = usePrefsStore((s) => s.prefs.theme);
   const liveFontFamily = usePrefsStore((s) => s.prefs.liveFontFamily);
+  const liveFontSize = usePrefsStore((s) => s.prefs.liveFontSize);
+  const liveFontSizeDiary = usePrefsStore((s) => s.prefs.liveFontSizeDiary);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
+  const diaryLiveFont = isUnderDiaryProject(path, projectPropertiesByPath);
+  const canvasLiveFontSize = diaryLiveFont ? liveFontSizeDiary : liveFontSize;
   const applyingRef = useRef(false);
   const adoptNextChangeRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
@@ -439,6 +449,22 @@ export function NoteEditor({ path, content, onChange }: Props) {
     [editor],
   );
 
+  const handleEmptyCanvasMouseDown = useCallback(
+    (e: ReactMouseEvent) => {
+      if (e.button !== 0) return;
+      if (
+        focusLiveEditorFromEmptyClick(editor, {
+          clientX: e.clientX,
+          clientY: e.clientY,
+          target: e.target,
+        })
+      ) {
+        e.preventDefault();
+      }
+    },
+    [editor],
+  );
+
   const cutSelection = useCallback(async () => {
     const text = editor.getSelectedText();
     if (!text) return;
@@ -557,10 +583,18 @@ export function NoteEditor({ path, content, onChange }: Props) {
       ) : null}
       <div className="editor-column">
         <DocumentToolbar />
-        <div className="editor-main">
+        <div className="editor-main" onMouseDown={handleEmptyCanvasMouseDown}>
           <div className="editor-canvas-wrap">
             <PageTags content={content} onChange={onChange} />
-            <div className="editor-canvas" onContextMenu={openEditorContextMenu}>
+            <div
+              className="editor-canvas"
+              style={
+                {
+                  "--live-font-size": `${canvasLiveFontSize}px`,
+                } as CSSProperties
+              }
+              onContextMenu={openEditorContextMenu}
+            >
               <BlockNoteView
                 editor={editor}
                 theme={editorTheme}

@@ -1,6 +1,6 @@
 [package]
 name = "markspace"
-version = "1.2.0"
+version = "1.3.0"
 description = "Markdown-first local vault with Notion-like editing"
 authors = ["you"]
 edition = "2021"

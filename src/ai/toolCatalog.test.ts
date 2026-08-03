@@ -17,6 +17,7 @@ describe("listChatTools", () => {
     const ids = agent.map((t) => t.id);
     expect(ids).toContain("edit_note");
     expect(ids).toContain("translate_note");
+    expect(ids).toContain("open_or_create_daily_note");
     expect(ids).toContain("web_search");
   });
 });

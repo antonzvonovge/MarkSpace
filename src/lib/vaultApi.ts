@@ -334,7 +334,11 @@ export async function removeFavorite(path: string): Promise<string[]> {
 }
 
 /** Project type stored in `.markspace/projects/*.json` (`""` = unset). */
-export type ProjectTypeId = "" | "knowledgeBase" | "languageLearning";
+export type ProjectTypeId =
+  | ""
+  | "knowledgeBase"
+  | "languageLearning"
+  | "diary";
 
 export const PROJECT_TYPE_OPTIONS: {
   value: ProjectTypeId;
@@ -343,6 +347,7 @@ export const PROJECT_TYPE_OPTIONS: {
   { value: "", label: "None" },
   { value: "knowledgeBase", label: "Knowledge base" },
   { value: "languageLearning", label: "Foreign language learning" },
+  { value: "diary", label: "Diary" },
 ];
 
 export function projectTypeLabel(type: ProjectTypeId | string): string {
@@ -351,7 +356,10 @@ export function projectTypeLabel(type: ProjectTypeId | string): string {
 
 export function isProjectTypeId(value: unknown): value is ProjectTypeId {
   return (
-    value === "" || value === "knowledgeBase" || value === "languageLearning"
+    value === "" ||
+    value === "knowledgeBase" ||
+    value === "languageLearning" ||
+    value === "diary"
   );
 }
 
@@ -359,7 +367,7 @@ export type ProjectProperties = {
   path: string;
   /** Free-form description ("What is this project about"). */
   about: string;
-  /** `""` | `knowledgeBase` | `languageLearning`. */
+  /** `""` | `knowledgeBase` | `languageLearning` | `diary`. */
   projectType: ProjectTypeId;
   /** ISO 639-1 code when type is language learning; otherwise empty. */
   learningLanguage: string;

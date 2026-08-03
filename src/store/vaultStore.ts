@@ -43,6 +43,11 @@ import {
   loadDocOutlineUi,
   saveDocOutlineOpen,
 } from "../lib/outlineUiState";
+import {
+  dailyNotePath,
+  diaryProjectRootForPath,
+} from "../lib/diaryNotes";
+import { getNoteTags, setNoteTags } from "../lib/noteFrontmatter";
 
 export type TabKind = "file" | "graph" | "settings";
 
@@ -152,6 +157,16 @@ type VaultStore = {
   createMdlnksInSelection: (name: string) => Promise<void>;
   createMddictInSelection: (name: string) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
+  /**
+   * Open a daily note under a diary project, creating
+   * `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` when missing.
+   * `fromPath` may be the project root or any path under it.
+   * Defaults to today when `date` is omitted.
+   */
+  openOrCreateDailyNote: (
+    fromPath: string,
+    date?: Date,
+  ) => Promise<{ path: string; created: boolean } | null>;
   /** Create Skills/<id>.md with skill frontmatter template. */
   createSkill: (id: string) => Promise<void>;
   moveTreeEntry: (
@@ -1081,6 +1096,52 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       await get().openNote(created, { preview: false });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  openOrCreateDailyNote: async (fromPath, date) => {
+    const { projectPropertiesByPath } = get();
+    const projectRoot = diaryProjectRootForPath(
+      fromPath,
+      projectPropertiesByPath,
+    );
+    if (!projectRoot) {
+      set({ error: "Daily notes are only available in diary projects." });
+      return null;
+    }
+    const day = date ?? new Date();
+    const rel = dailyNotePath(projectRoot, day);
+    try {
+      try {
+        await readNote(rel);
+        await get().openNote(rel, {
+          preview: false,
+          syncTreeSelection: false,
+        });
+        return { path: rel, created: false };
+      } catch {
+        // Note missing — create below.
+      }
+
+      const createdPath = await createNote(rel);
+      const initial = await readNote(createdPath);
+      const tagged = setNoteTags(initial, [
+        "diary",
+        ...getNoteTags(initial).filter(
+          (t) => t.toLowerCase() !== "diary",
+        ),
+      ]);
+      await writeNote(createdPath, tagged);
+      await get().refreshTree();
+      void get().refreshVaultTags();
+      await get().openNote(createdPath, {
+        preview: false,
+        syncTreeSelection: false,
+      });
+      return { path: createdPath, created: true };
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
     }
   },
 
