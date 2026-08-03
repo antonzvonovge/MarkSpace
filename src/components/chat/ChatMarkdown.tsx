@@ -2,7 +2,7 @@ import { Children, isValidElement, memo, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { FcDocument } from "react-icons/fc";
 import remarkGfm from "remark-gfm";
-import { resolveWikiTarget } from "../../lib/vaultApi";
+import { ensureFolderNote, folderPathFromFolderNote, resolveWikiTarget } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatDiagram, diagramEngineForLang } from "./ChatDiagram";
 
@@ -144,10 +144,19 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
                     void (async () => {
                       const resolved = await resolveWikiTarget(path);
                       if (resolved) {
-                        await openNote(resolved);
+                        const folder = folderPathFromFolderNote(resolved);
+                        const notePath = folder
+                          ? await ensureFolderNote(folder)
+                          : resolved;
+                        await openNote(notePath);
                         return;
                       }
                       // Exact vault-relative .md path from the model.
+                      const folder = folderPathFromFolderNote(path);
+                      if (folder) {
+                        await openNote(await ensureFolderNote(folder));
+                        return;
+                      }
                       await openNote(path);
                     })();
                   }}

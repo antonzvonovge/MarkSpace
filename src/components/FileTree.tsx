@@ -24,6 +24,7 @@ import {
   absolutePath,
   emptyProjectProperties,
   getProjectProperties,
+  isFolderNotePath,
   isSkillsFolder,
   isVaultProjectFolder,
   parentPath,
@@ -32,7 +33,8 @@ import {
 } from "../lib/vaultApi";
 import { diaryProjectRootForPath } from "../lib/diaryNotes";
 import { saveExpandedPaths } from "../lib/settingsStore";
-import { learningLanguageFlagEmoji } from "../lib/languageFlags";
+import { learningLanguageFlagSvg } from "../lib/languageFlags";
+import { LearningLanguageFlag } from "./LearningLanguageFlag";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 import { startClipArticleJob } from "../ai/clipArticle";
@@ -51,9 +53,11 @@ import {
 import {
   FcDocument,
   FcFolder,
+  FcLink,
   FcOpenedFolder,
   FcPackage,
   FcPlanner,
+  FcReading,
   FcSafe,
   FcWorkflow,
 } from "react-icons/fc";
@@ -144,12 +148,12 @@ function FolderTreeIcon({
   if (isSkillsFolder(path)) return <FcWorkflow size={size} />;
   if (isVaultProjectFolder(path, true)) {
     if (projectType === "languageLearning") {
-      const flag = learningLanguageFlagEmoji(learningLanguage);
-      if (flag) {
+      if (learningLanguageFlagSvg(learningLanguage)) {
         return (
-          <span className="tree-project-flag" aria-hidden>
-            {flag}
-          </span>
+          <LearningLanguageFlag
+            language={learningLanguage}
+            className="tree-project-flag"
+          />
         );
       }
     }
@@ -227,17 +231,46 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+function collectVisibleTreeRows(
+  nodes: TreeNode[],
+  expandedPaths: string[],
+  out: { path: string; isDir: boolean }[] = [],
+): { path: string; isDir: boolean }[] {
+  const expanded = new Set(expandedPaths);
+  for (const node of nodes) {
+    out.push({ path: node.path, isDir: node.isDir });
+    if (node.isDir && expanded.has(node.path) && node.children?.length) {
+      collectVisibleTreeRows(node.children, expandedPaths, out);
+    }
+  }
+  return out;
+}
+
+function scrollTreeRowIntoView(path: string) {
+  const root = document.querySelector(".tree-scroll");
+  if (!root) return;
+  const el = root.querySelector(
+    `[data-vault-path="${CSS.escape(path)}"]`,
+  ) as HTMLElement | null;
+  el?.scrollIntoView({ block: "nearest" });
+}
+
 function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
   const nodes: NodeModel<NodeData>[] = [];
 
   const walk = (node: TreeNode, parentId: string) => {
     const id = toNodeId(node.path);
     const children = node.children ?? [];
+    const isMdNote =
+      !node.isDir &&
+      node.name.toLowerCase().endsWith(".md") &&
+      !isSkillsFolder(parentPath(node.path), true);
     nodes.push({
       id,
       parent: parentId,
       text: node.name,
-      droppable: node.isDir,
+      // Markdown notes accept drops: they are promoted to folders on nest.
+      droppable: node.isDir || isMdNote,
       data: {
         path: node.path,
         isDir: node.isDir,
@@ -747,7 +780,7 @@ function TreeContextMenu({
               }}
             >
               <CopyPathIcon />
-              <span>Copy relative path</span>
+              <span>Copy path</span>
             </button>
             <button
               type="button"
@@ -936,6 +969,7 @@ function FavoritesTreeRows({
   projectPropertiesByPath,
   onOpenContextMenu,
   onSelectFolder,
+  onOpenFolder,
   onOpenNote,
   onToggleExpanded,
   onRenameCommit,
@@ -953,6 +987,7 @@ function FavoritesTreeRows({
   projectPropertiesByPath: Record<string, ProjectProperties>;
   onOpenContextMenu: (menu: ContextMenuState) => void;
   onSelectFolder: (path: string) => void;
+  onOpenFolder: (path: string) => void;
   onOpenNote: (path: string, options?: { preview?: boolean }) => void;
   onToggleExpanded: (path: string) => void;
   onRenameCommit: (path: string, nextName: string) => void;
@@ -1007,8 +1042,7 @@ function FavoritesTreeRows({
               onClick={() => {
                 if (renaming) return;
                 if (isDir) {
-                  onSelectFolder(path);
-                  if (hasChildren) onToggleExpanded(path);
+                  onOpenFolder(path);
                   return;
                 }
                 onOpenNote(path, { preview: true });
@@ -1094,13 +1128,9 @@ function FavoritesTreeRows({
                     <DiagramIcon />
                   </span>
                 ) : isMdlnks ? (
-                  <span className="tree-mdlnks-icon">
-                    <LinksIcon />
-                  </span>
+                  <FcLink size={20} />
                 ) : isMddict ? (
-                  <span className="tree-mddict-icon">
-                    <DictionaryIcon />
-                  </span>
+                  <FcReading size={20} />
                 ) : isPdf ? (
                   <span className="tree-pdf-icon">
                     <PdfIcon />
@@ -1136,6 +1166,7 @@ function FavoritesTreeRows({
                 projectPropertiesByPath={projectPropertiesByPath}
                 onOpenContextMenu={onOpenContextMenu}
                 onSelectFolder={onSelectFolder}
+                onOpenFolder={onOpenFolder}
                 onOpenNote={onOpenNote}
                 onToggleExpanded={onToggleExpanded}
                 onRenameCommit={onRenameCommit}
@@ -1172,10 +1203,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const createFolderInSelection = useVaultStore((s) => s.createFolderInSelection);
   const createSkill = useVaultStore((s) => s.createSkill);
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
+  const nestTreeEntryUnderNote = useVaultStore((s) => s.nestTreeEntryUnderNote);
   const renameTreeEntry = useVaultStore((s) => s.renameTreeEntry);
   const removePath = useVaultStore((s) => s.removePath);
   const importIntoSelection = useVaultStore((s) => s.importIntoSelection);
   const selectFolder = useVaultStore((s) => s.selectFolder);
+  const openOrCreateFolderNote = useVaultStore((s) => s.openOrCreateFolderNote);
   const openNote = useVaultStore((s) => s.openNote);
   const toggleExpanded = useVaultStore((s) => s.toggleExpanded);
   const addToFavorites = useVaultStore((s) => s.addToFavorites);
@@ -1328,8 +1361,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     [dndRoot],
   );
 
+  const [treeDragging, setTreeDragging] = useState(false);
+
   // Mirror vault file drags into dataTransfer so panes outside the DnD root
   // (chat composer, note editor for .drawio) can accept native drops.
+  // Also track drag lifetime so drop-target chrome cannot stick after dragend
+  // (HTML5Backend / WebView2 sometimes leave isOver true).
   useEffect(() => {
     if (!dndRoot) return;
     const onDragStart = (event: DragEvent) => {
@@ -1346,28 +1383,37 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       event.dataTransfer.setData("text/plain", path);
       event.dataTransfer.effectAllowed = "copyMove";
       beginVaultTreeDrag(path);
+      setTreeDragging(true);
       if (!isDir && path.toLowerCase().endsWith(".drawio")) {
         event.dataTransfer.setData(DRAWIO_TREE_MIME, path);
         beginDrawioTreeDrag(path);
       }
     };
-    const onDragEnd = () => {
+    const endDragChrome = () => {
       endVaultTreeDrag();
       endDrawioTreeDrag();
+      setTreeDragging(false);
+    };
+    const onDragEnd = () => {
+      endDragChrome();
     };
 
     dndRoot.addEventListener("dragstart", onDragStart, true);
     dndRoot.addEventListener("dragend", onDragEnd, true);
+    // drop/dragend outside the tree (or cancelled) must clear sticky drop-target UI.
+    window.addEventListener("dragend", onDragEnd, true);
+    window.addEventListener("drop", onDragEnd, true);
     return () => {
       dndRoot.removeEventListener("dragstart", onDragStart, true);
       dndRoot.removeEventListener("dragend", onDragEnd, true);
+      window.removeEventListener("dragend", onDragEnd, true);
+      window.removeEventListener("drop", onDragEnd, true);
     };
   }, [dndRoot]);
 
-  // F2 rename when the tree (or a row inside it) has focus.
+  // F2 rename + arrow-key selection when the tree has focus.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "F2") return;
       if (renamingPath || promptKind || clipFolder !== null || deleteTarget) {
         return;
       }
@@ -1377,21 +1423,138 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       const t = e.target as Node | null;
       if (t && !root.contains(t) && t !== root) return;
 
+      const store = useVaultStore.getState();
       const {
         activePath,
         selectedFolderPath,
         selectedFolderExplicit,
-      } = useVaultStore.getState();
-      let target: string | null = null;
-      if (selectedFolderExplicit && selectedFolderPath) {
-        target = selectedFolderPath;
-      } else if (activePath) {
-        target = activePath;
+        tree: vaultTree,
+        expandedPaths,
+      } = store;
+
+      if (e.key === "F2") {
+        let target: string | null = null;
+        if (selectedFolderExplicit && selectedFolderPath) {
+          target = selectedFolderPath;
+        } else if (activePath) {
+          target = activePath;
+        }
+        if (!target || isSkillsFolder(target)) return;
+        e.preventDefault();
+        setContextMenu(null);
+        setRenamingPath(target);
+        return;
       }
-      if (!target || isSkillsFolder(target)) return;
-      e.preventDefault();
-      setContextMenu(null);
-      setRenamingPath(target);
+
+      if (
+        e.key !== "ArrowDown" &&
+        e.key !== "ArrowUp" &&
+        e.key !== "ArrowLeft" &&
+        e.key !== "ArrowRight" &&
+        e.key !== "Enter"
+      ) {
+        return;
+      }
+
+      const children = vaultTree?.children ?? [];
+      if (!children.length) return;
+
+      const rows = collectVisibleTreeRows(children, expandedPaths);
+      if (!rows.length) return;
+
+      const currentPath =
+        selectedFolderExplicit && selectedFolderPath
+          ? selectedFolderPath
+          : activePath && isFolderNotePath(activePath)
+            ? parentPath(activePath)
+            : activePath;
+
+      let index = currentPath
+        ? rows.findIndex((r) => r.path === currentPath)
+        : -1;
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (index < 0) {
+          index = e.key === "ArrowDown" ? 0 : rows.length - 1;
+        } else {
+          index =
+            e.key === "ArrowDown"
+              ? Math.min(rows.length - 1, index + 1)
+              : Math.max(0, index - 1);
+        }
+        const row = rows[index];
+        if (!row) return;
+        if (row.isDir) {
+          void store.openOrCreateFolderNote(row.path);
+        } else {
+          void store.openNote(row.path, { preview: true });
+        }
+        scrollTreeRowIntoView(row.path);
+        return;
+      }
+
+      if (index < 0) return;
+      const row = rows[index];
+      if (!row) return;
+
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (row.isDir) {
+          void store.openOrCreateFolderNote(row.path);
+        } else {
+          void store.openNote(row.path, { preview: false });
+        }
+        return;
+      }
+
+      if (!row.isDir) {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          const parent = parentPath(row.path);
+          if (parent) {
+            void store.openOrCreateFolderNote(parent);
+            scrollTreeRowIntoView(parent);
+          }
+        }
+        return;
+      }
+
+      // Folder: Left/Right collapse/expand (and Left climbs to parent when collapsed).
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (!store.isExpanded(row.path) && row.path) {
+          // Expand only when there are (or may be) children — toggle is fine.
+          const node = findTreeNode(vaultTree, row.path);
+          if (node?.children?.length) {
+            store.toggleExpanded(row.path);
+            treeRef.current?.open(toNodeId(row.path));
+          }
+        } else if (store.isExpanded(row.path)) {
+          const node = findTreeNode(vaultTree, row.path);
+          const first = node?.children?.[0];
+          if (first) {
+            if (first.isDir) void store.openOrCreateFolderNote(first.path);
+            else void store.openNote(first.path, { preview: true });
+            scrollTreeRowIntoView(first.path);
+          }
+        }
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (store.isExpanded(row.path)) {
+          store.toggleExpanded(row.path);
+          treeRef.current?.close(toNodeId(row.path));
+        } else {
+          const parent = parentPath(row.path);
+          if (parent) {
+            void store.openOrCreateFolderNote(parent);
+            scrollTreeRowIntoView(parent);
+          }
+        }
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -1433,16 +1596,26 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     _newTree: NodeModel<NodeData>[],
     options: DropOptions<NodeData>,
   ) => {
-    const { dragSourceId, dropTargetId, relativeIndex } = options;
+    const { dragSourceId, dropTargetId, relativeIndex, dropTarget } = options;
     if (dragSourceId == null) return;
     if (dropTargetId === TREE_ROOT) return;
 
     const from = toStorePath(dragSourceId);
-    const toParent = toStorePath(dropTargetId);
+    const targetPath = toStorePath(dropTargetId);
     if (!from) return;
-    if (from === toParent || toParent.startsWith(`${from}/`)) return;
+    if (from === targetPath || targetPath.startsWith(`${from}/`)) return;
 
-    void moveTreeEntry(from, toParent, relativeIndex ?? 0);
+    const nestOntoNote =
+      dropTarget &&
+      !dropTarget.data?.isDir &&
+      targetPath.toLowerCase().endsWith(".md");
+
+    if (nestOntoNote) {
+      void nestTreeEntryUnderNote(from, targetPath, relativeIndex ?? 0);
+      return;
+    }
+
+    void moveTreeEntry(from, targetPath, relativeIndex ?? 0);
   };
 
   const submitCreate = (name: string) => {
@@ -1688,7 +1861,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           (detach with null → setDndRoot(null) → Tree unmounts → remounts with
           initialOpen), silently resetting expand/collapse state. */}
       <div
-        className="tree-scroll"
+        className={["tree-scroll", treeDragging ? "is-tree-dragging" : ""]
+          .filter(Boolean)
+          .join(" ")}
         ref={setTreeScrollRef}
         tabIndex={0}
         onPaste={(e) => {
@@ -1717,6 +1892,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               projectPropertiesByPath={projectPropertiesByPath}
               onOpenContextMenu={setContextMenu}
               onSelectFolder={selectFolder}
+              onOpenFolder={(path) => {
+                void openOrCreateFolderNote(path);
+              }}
               onOpenNote={(path, options) => {
                 void openNote(path, options);
               }}
@@ -1769,7 +1947,17 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 }
 
                 if (dropTargetId === VAULT_ID) return true;
-                if (dropTarget?.droppable) return true;
+                if (dropTarget?.data?.isDir) return true;
+
+                // Nest onto a markdown note (promoted to a folder on drop).
+                if (
+                  dropTarget &&
+                  !dropTarget.data?.isDir &&
+                  targetPath.toLowerCase().endsWith(".md") &&
+                  !isSkillsFolder(parentPath(targetPath), true)
+                ) {
+                  return true;
+                }
 
                 return false;
               }}
@@ -1784,7 +1972,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               onDrop={handleDrop}
               dragPreviewRender={(monitor) => {
                 const dragPath = String(monitor.item.data?.path ?? "");
-                const isDir = Boolean(monitor.item.droppable);
+                const isDir = Boolean(monitor.item.data?.isDir);
                 const props = projectPropertiesByPath[dragPath];
                 return (
                   <div className="dnd-preview">
@@ -1812,7 +2000,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               placeholderRender={() => <div className="dnd-placeholder-line" />}
               render={(node, { depth, isOpen, onToggle, isDropTarget, isDragging }) => {
                 const path = node.data?.path ?? toStorePath(node.id);
-                const isDir = Boolean(node.droppable);
+                const isDir = Boolean(node.data?.isDir);
                 const hasChildren = Boolean(node.data?.hasChildren);
                 const isVault = node.id === VAULT_ID;
                 const isProject = isVaultProjectFolder(path, isDir);
@@ -1843,8 +2031,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   treeFocusRef.current?.focus({ preventScroll: true });
                   if (renaming) return;
                   if (isDir) {
-                    selectFolder(path);
-                    if (!isVault && hasChildren) onToggle();
+                    if (isVault || !path) {
+                      selectFolder(path);
+                      return;
+                    }
+                    void openOrCreateFolderNote(path);
                     return;
                   }
                   void openNote(path, { preview: true });
@@ -1859,7 +2050,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       isProject ? "is-project" : "",
                       isSkills ? "is-skills" : "",
                       selected || active ? "is-selected" : "",
-                      isDropTarget ? "is-drop-target" : "",
+                      isDropTarget && treeDragging ? "is-drop-target" : "",
                       isDragging ? "is-dragging" : "",
                       renaming ? "is-renaming" : "",
                     ]
@@ -1966,13 +2157,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                           <DiagramIcon />
                         </span>
                       ) : isMdlnks ? (
-                        <span className="tree-mdlnks-icon">
-                          <LinksIcon />
-                        </span>
+                        <FcLink size={20} />
                       ) : isMddict ? (
-                        <span className="tree-mddict-icon">
-                          <DictionaryIcon />
-                        </span>
+                        <FcReading size={20} />
                       ) : isPdf ? (
                         <span className="tree-pdf-icon">
                           <PdfIcon />

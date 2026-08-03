@@ -123,6 +123,22 @@ export async function moveEntry(
   return invoke("move_entry", { from, toParent, toIndex });
 }
 
+export type NestUnderNoteResult = {
+  folder: string;
+  folderNote: string;
+  moved: string;
+  formerNote: string;
+};
+
+/** Promote `note` (.md) to a folder with `.folder.md`, then move `from` into it. */
+export async function nestUnderNote(
+  from: string,
+  note: string,
+  toIndex: number,
+): Promise<NestUnderNoteResult> {
+  return invoke("nest_under_note", { from, note, toIndex });
+}
+
 export async function deletePath(path: string): Promise<void> {
   return invoke("delete_path", { path });
 }
@@ -460,6 +476,32 @@ export function parentPath(path: string): string {
   const cleaned = path.replace(/^\/+|\/+$/g, "");
   const i = cleaned.lastIndexOf("/");
   return i === -1 ? "" : cleaned.slice(0, i);
+}
+
+/** Hidden overview note inside a folder (not shown in the sidebar tree). */
+export const FOLDER_NOTE_NAME = ".folder.md";
+
+/** True for `{folder}/.folder.md` (any depth). */
+export function isFolderNotePath(path: string): boolean {
+  const name = path.split("/").pop() ?? path;
+  return name.toLowerCase() === FOLDER_NOTE_NAME;
+}
+
+/** Vault-relative path of the folder note for `folder` (not for vault root). */
+export function folderNotePath(folder: string): string {
+  const cleaned = folder.replace(/^\/+|\/+$/g, "");
+  return joinPath(cleaned, FOLDER_NOTE_NAME);
+}
+
+/** Parent folder of a folder note, or null if `path` is not a folder note. */
+export function folderPathFromFolderNote(path: string): string | null {
+  if (!isFolderNotePath(path)) return null;
+  return parentPath(path);
+}
+
+/** Create `{folder}/.folder.md` if missing; return its vault-relative path. */
+export async function ensureFolderNote(folder: string): Promise<string> {
+  return invoke("ensure_folder_note", { folder });
 }
 
 /** Reserved vault-root folder for agent skills (one .md file per skill). */

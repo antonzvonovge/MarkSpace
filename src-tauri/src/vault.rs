@@ -50,6 +50,28 @@ fn is_hidden(name: &str) -> bool {
     name.starts_with('.')
 }
 
+/// Hidden overview note inside a folder (omitted from the sidebar tree).
+pub(crate) const FOLDER_NOTE_NAME: &str = ".folder.md";
+
+fn is_folder_note_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case(FOLDER_NOTE_NAME)
+}
+
+/// Vault-relative path of the folder note for `folder_rel` (must be non-empty).
+fn folder_note_rel(folder_rel: &str) -> String {
+    format!("{folder_rel}/{FOLDER_NOTE_NAME}")
+}
+
+/// WalkDir: skip hidden dirs/files, but still visit `.folder.md`.
+fn walk_entry_allowed(name: &str) -> bool {
+    is_folder_note_name(name) || !is_hidden(name)
+}
+
+/// True when a path component is a hidden name other than the folder note file.
+fn is_skipped_hidden_component(name: &str) -> bool {
+    name.starts_with('.') && !is_folder_note_name(name)
+}
+
 /// Reserved vault-root folder for agent skills (visible, protected).
 const SKILLS_FOLDER: &str = "Skills";
 
@@ -1516,6 +1538,35 @@ pub fn ensure_folder(
     })
 }
 
+/// Ensure `{folder}/.folder.md` exists (hidden overview note). Does not touch order.json.
+#[tauri::command(async)]
+pub fn ensure_folder_note(folder: String, state: State<VaultState>) -> Result<String, String> {
+    let root = get_root(&state)?;
+    let folder_rel = folder
+        .trim()
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+        .to_string();
+    if folder_rel.is_empty() {
+        return Err("Vault root has no folder note".into());
+    }
+    let dir = ensure_inside(&root, Path::new(&folder_rel))?;
+    if !dir.is_dir() {
+        return Err(format!("Not a folder: {folder_rel}"));
+    }
+    let note_rel = folder_note_rel(&folder_rel);
+    let full = ensure_inside(&root, Path::new(&note_rel))?;
+    if !full.exists() {
+        let title = entry_name(&folder_rel);
+        // Heading + blank line + empty line for the caret (second blank line).
+        let content = format!("# {title}\n\n\n");
+        fs::write(&full, &content).map_err(|e| format!("Cannot create folder note: {e}"))?;
+        set_tag_index_path(&state, &note_rel, Vec::new());
+        crate::embeddings::notify_file_changed(&note_rel);
+    }
+    Ok(note_rel)
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteFolderIfEmptyResult {
@@ -1738,6 +1789,117 @@ pub fn move_entry(
     Ok(if same_parent { from } else { new_rel })
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NestUnderNoteResult {
+    /// New folder created from the target note stem.
+    pub folder: String,
+    /// Former note path now living at `{folder}/.folder.md`.
+    pub folder_note: String,
+    /// Path of the dragged entry after the move into `folder`.
+    pub moved: String,
+    /// Original target note path (before promotion).
+    pub former_note: String,
+}
+
+/// Drop a vault entry onto a markdown note: the note becomes a folder
+/// (`Note.md` → `Note/.folder.md`), then `from` moves into that folder.
+#[tauri::command(async)]
+pub fn nest_under_note(
+    from: String,
+    note: String,
+    to_index: usize,
+    state: State<VaultState>,
+) -> Result<NestUnderNoteResult, String> {
+    let root = get_root(&state)?;
+    let from = from.trim().trim_start_matches('/').to_string();
+    let note = note.trim().trim_start_matches('/').to_string();
+
+    if from.is_empty() {
+        return Err("Cannot move vault root".into());
+    }
+    if note.is_empty() {
+        return Err("Target note required".into());
+    }
+    if from == note {
+        return Err("Cannot nest a note into itself".into());
+    }
+    if is_descendant_or_same(&from, &note) {
+        return Err("Cannot move a folder into one of its notes".into());
+    }
+    if is_skills_folder(&from) {
+        return Err("Cannot move the Skills folder".into());
+    }
+    if note == SKILLS_FOLDER
+        || note.starts_with(&format!("{SKILLS_FOLDER}/"))
+    {
+        return Err("Cannot nest under a Skills note".into());
+    }
+
+    let note_name = entry_name(&note);
+    if !is_markdown(&note_name) || is_folder_note_name(&note_name) {
+        return Err("Drop target must be a markdown note".into());
+    }
+
+    let note_full = ensure_inside(&root, Path::new(&note))?;
+    if !note_full.is_file() {
+        return Err("Drop target is not a note file".into());
+    }
+
+    let stem = note_full
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Invalid note name".to_string())?;
+    if stem.starts_with('.') {
+        return Err("Cannot promote a hidden note to a folder".into());
+    }
+
+    let note_parent = parent_rel(&note);
+    let folder_rel = join_parent(&note_parent, &stem);
+    if is_descendant_or_same(&from, &folder_rel) {
+        return Err("Cannot move a folder into itself".into());
+    }
+
+    let folder_full = ensure_inside(&root, Path::new(&folder_rel))?;
+    if folder_full.exists() {
+        return Err(format!("Folder already exists: {folder_rel}"));
+    }
+
+    fs::create_dir_all(&folder_full).map_err(|e| format!("Cannot create folder: {e}"))?;
+
+    let folder_note_path = folder_note_rel(&folder_rel);
+    let folder_note_full = ensure_inside(&root, Path::new(&folder_note_path))?;
+    fs::rename(&note_full, &folder_note_full)
+        .map_err(|e| format!("Cannot promote note to folder note: {e}"))?;
+    maybe_migrate_moved_note(&root, &note, &folder_note_path, true)?;
+
+    let mut order = read_order(&root);
+    materialize_parent_order(&root, &mut order, &note_parent)?;
+    let list = order.entry(note_parent.clone()).or_default();
+    let insert_at = list.iter().position(|n| n == &note_name).unwrap_or(list.len());
+    list.retain(|n| n != &note_name);
+    let idx = insert_at.min(list.len());
+    list.insert(idx, stem.clone());
+    // Folder note is hidden — keep it out of order.json.
+    write_order(&root, &order)?;
+
+    remap_tag_index_path(&state, &note, Some(&folder_note_path));
+    crate::embeddings::notify_file_renamed(&note, &folder_note_path);
+    let _ = crate::favorites::remap_favorites(&root, &note, Some(&folder_note_path));
+    let _ = crate::filemeta::remap_filemeta(&root, &note, Some(&folder_note_path));
+    // Project properties key off folder paths; a note was never a project root.
+
+    let moved = move_entry(from, folder_rel.clone(), to_index, state)?;
+
+    Ok(NestUnderNoteResult {
+        folder: folder_rel,
+        folder_note: folder_note_path,
+        moved,
+        former_note: note,
+    })
+}
+
 #[tauri::command(async)]
 pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String> {
     let root = get_root(&state)?;
@@ -1800,6 +1962,21 @@ pub fn resolve_wiki_target(
         return Ok(Some(relative_to_root(&root, &direct_path)));
     }
 
+    // Folder wiki target → hidden folder note path (may not exist yet).
+    let folder_candidate = if lower.ends_with(".md") {
+        target[..target.len() - 3].to_string()
+    } else {
+        target.to_string()
+    };
+    if !folder_candidate.is_empty() {
+        if let Ok(folder_path) = ensure_inside(&root, Path::new(&folder_candidate)) {
+            if folder_path.is_dir() {
+                let rel = relative_to_root(&root, &folder_path);
+                return Ok(Some(folder_note_rel(&rel)));
+            }
+        }
+    }
+
     let needle = Path::new(target)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -1808,14 +1985,60 @@ pub fn resolve_wiki_target(
 
     let prefer_pdf = lower.ends_with(".pdf");
 
-    for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+    // Basename walk: prefer a matching folder (folder note) over a distant file.
+    for entry in WalkDir::new(&root)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            e.file_name()
+                .to_str()
+                .map(walk_entry_allowed)
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if path
+            .components()
+            .any(|c| matches!(c, Component::Normal(n) if is_skipped_hidden_component(&n.to_string_lossy())))
+        {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if name.to_lowercase() == needle {
+            let rel = relative_to_root(&root, path);
+            return Ok(Some(folder_note_rel(&rel)));
+        }
+    }
+
+    for entry in WalkDir::new(&root)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            e.file_name()
+                .to_str()
+                .map(walk_entry_allowed)
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
         if path
             .components()
-            .any(|c| matches!(c, Component::Normal(n) if n.to_string_lossy().starts_with('.')))
+            .any(|c| matches!(c, Component::Normal(n) if is_skipped_hidden_component(&n.to_string_lossy())))
         {
             continue;
         }
@@ -1888,7 +2111,7 @@ pub fn search_notes(
             }
             e.file_name()
                 .to_str()
-                .map(|n| !is_hidden(n))
+                .map(walk_entry_allowed)
                 .unwrap_or(false)
         })
         .filter_map(|e| e.ok())
@@ -2292,7 +2515,7 @@ fn rebuild_tag_index(root: &Path) -> TagIndex {
             }
             e.file_name()
                 .to_str()
-                .map(|n| !is_hidden(n))
+                .map(walk_entry_allowed)
                 .unwrap_or(false)
         })
         .filter_map(|e| e.ok())
@@ -2396,7 +2619,7 @@ pub fn list_dictionary_tags(state: State<VaultState>) -> Result<Vec<String>, Str
             }
             e.file_name()
                 .to_str()
-                .map(|n| !is_hidden(n))
+                .map(walk_entry_allowed)
                 .unwrap_or(false)
         })
         .filter_map(|e| e.ok())

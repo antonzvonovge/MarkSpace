@@ -930,7 +930,15 @@ select {
   background: rgba(120, 140, 220, 0.22);
 }
 
-.tree-folder-row.is-drop-target {
+.tree-folder-row.is-drop-target,
+.tree-file.is-drop-target {
+  outline: 1px solid rgba(203, 17, 171, 0.55);
+  background: rgba(203, 17, 171, 0.1);
+}
+
+/* Library may leave `.dnd-drop-target` on a row after dragend; only paint while dragging. */
+.tree-scroll.is-tree-dragging .dnd-drop-target > .tree-row,
+.tree-scroll.is-tree-dragging li.dnd-drop-target > .tree-row {
   outline: 1px solid rgba(203, 17, 171, 0.55);
   background: rgba(203, 17, 171, 0.1);
 }
@@ -1021,23 +1029,19 @@ select {
 
 .tree-project-flag,
 .chat-project-flag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  line-height: 1;
-  /* Flag glyphs are wide rectangles; shrink so they match square SVG icons. */
-  font-size: calc(var(--tree-icon-size) * 0.72);
-  transform: scaleX(0.92);
-  overflow: hidden;
   border-radius: 2px;
+  overflow: hidden;
+  /* SVG fills the square icon slot (1×1 flag assets). */
+  object-fit: cover;
 }
 
 .chat-project-flag {
-  --tree-icon-size: 14px;
-  font-size: 11px;
+  width: 14px;
+  height: 14px;
 }
 
 .chat-project-option-icon .chat-project-flag,
@@ -1047,7 +1051,6 @@ select {
 }
 
 .dnd-preview-icon .tree-project-flag {
-  --tree-icon-size: 16px;
   width: 16px;
   height: 16px;
 }
@@ -1088,12 +1091,6 @@ select {
 
 .dnd-dragging {
   opacity: 0.4;
-}
-
-.dnd-drop-target > .tree-row,
-li.dnd-drop-target > .tree-row {
-  outline: 1px solid rgba(203, 17, 171, 0.55);
-  background: rgba(203, 17, 171, 0.1);
 }
 
 .dnd-placeholder {
@@ -3890,7 +3887,7 @@ li.dnd-drop-target > .tree-row {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 12px 20px 8px;
+  padding: 12px 20px 72px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -6171,16 +6168,6 @@ li.dnd-drop-target > .tree-row {
   color: var(--danger);
 }
 
-.tree-mdlnks-icon {
-  display: inline-flex;
-  color: var(--accent);
-}
-
-.tree-mddict-icon {
-  display: inline-flex;
-  color: var(--accent);
-}
-
 /* ── Dictionary editor (.mddict) ───────────────────────────── */
 
 .dict-editor-column {
@@ -6243,7 +6230,6 @@ li.dnd-drop-target > .tree-row {
   border: 0;
   border-radius: 8px;
   padding: 0 14px;
-  margin-left: auto;
   flex-shrink: 0;
   background: var(--accent);
   color: #fff;
@@ -6255,6 +6241,80 @@ li.dnd-drop-target > .tree-row {
 
 .dict-editor-add-btn:hover {
   background: var(--accent-strong);
+}
+
+.dict-editor-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.dict-reveal-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  box-sizing: border-box;
+  height: var(--dict-control-h);
+  border-radius: 8px;
+  background: rgba(28, 36, 40, 0.06);
+}
+
+:root[data-theme="dark"] .dict-reveal-switch {
+  background: rgba(231, 238, 242, 0.08);
+}
+
+.dict-reveal-switch-segment {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 10px;
+  height: 100%;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dict-reveal-switch-segment:hover:not(.is-active) {
+  color: var(--text);
+}
+
+.dict-reveal-switch-segment.is-active {
+  color: var(--text);
+  background: var(--editor-surface);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.dict-editor-icon-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--dict-control-h);
+  height: var(--dict-control-h);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dict-editor-icon-btn:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
+.dict-editor-icon-btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .dict-editor-filter-label {
@@ -6327,6 +6387,11 @@ li.dnd-drop-target > .tree-row {
   background: var(--editor-surface);
   font-size: 13px;
   overflow: hidden !important;
+  cursor: default;
+}
+
+.dict-editor-sheet .dsg-expand-rows-indicator {
+  display: none;
 }
 
 .dict-editor-sheet .dsg-input {
@@ -6363,6 +6428,7 @@ li.dnd-drop-target > .tree-row {
   background: var(--editor-surface);
   font-size: 13px;
   align-items: flex-start !important;
+  overflow: hidden;
 }
 
 .dict-editor-sheet .dsg-add-row {
@@ -6424,22 +6490,55 @@ li.dnd-drop-target > .tree-row {
 .dict-dsg-tags-display {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
-  padding: 6px;
+  gap: 4px 10px;
+  padding: 6px 8px;
   align-items: flex-start;
   align-content: flex-start;
   width: 100%;
 }
 
 .dict-dsg-tag-chip {
-  display: inline-flex;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent-strong, var(--accent));
-  font-size: 12px;
+  display: inline;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--tag-text);
+  font-size: 13px;
+  line-height: 1.35;
   overflow-wrap: anywhere;
   word-break: break-word;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--tag-text) 55%, transparent);
+  text-underline-offset: 2px;
+}
+
+/* Quiz / reveal modes: hide cell contents, keep layout & row height. */
+.dict-editor-sheet[data-dict-reveal="translation"]
+  .dict-dsg-cell-word
+  .dict-dsg-wrap-display,
+.dict-editor-sheet[data-dict-reveal="translation"]
+  .dict-dsg-cell-transcript
+  .dict-dsg-wrap-display,
+.dict-editor-sheet[data-dict-reveal="translation"]
+  .dict-dsg-cell-examples
+  .dict-dsg-wrap-display,
+.dict-editor-sheet[data-dict-reveal="translation"]
+  .dict-dsg-cell-tags
+  .dict-dsg-tags-display,
+.dict-editor-sheet[data-dict-reveal="word"]
+  .dict-dsg-cell-transcript
+  .dict-dsg-wrap-display,
+.dict-editor-sheet[data-dict-reveal="word"]
+  .dict-dsg-cell-translation
+  .dict-dsg-wrap-display,
+.dict-editor-sheet[data-dict-reveal="word"]
+  .dict-dsg-cell-examples
+  .dict-dsg-wrap-display,
+.dict-editor-sheet[data-dict-reveal="word"]
+  .dict-dsg-cell-tags
+  .dict-dsg-tags-display {
+  visibility: hidden;
 }
 
 .dict-dsg-tags-edit {

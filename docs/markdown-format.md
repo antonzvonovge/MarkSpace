@@ -6,7 +6,7 @@ these conventions. Agents that create or edit `.md` files **must** follow this
 guide. Call `read_format_guide` for the full text when unsure.
 
 <!-- core-rules:start -->
-- Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported).
+- Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported). A wiki target that names an existing **folder** resolves to that folder’s hidden overview note `{folder}/.folder.md` (created on open if missing).
 - In **chat replies**, reference vault notes with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — all render as a clickable file link that opens the note. Mention a note this way whenever you create, open, or cite one.
 - Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
@@ -65,11 +65,14 @@ In the note body, hashtags are styled inline tags (editable text in Live mode):
 | On disk | Meaning |
 |---|---|
 | `[[Welcome]]` | Wiki-link to note by path/name (opens or creates) |
+| `[[projects]]` | Wiki-link to a **folder** → hidden overview `{folder}/.folder.md` |
 | `[[projects/ideas\|Ideas]]` | Wiki-link with display alias |
 | `[Site](https://example.com)` | External URL (system browser) |
 | `[Local](./Welcome.md)` | Relative file link when possible |
 
 Wiki targets must not contain `#` or `|` inside the target segment. Heading anchors like `[[Note#Section]]` are **not** supported.
+
+Each vault folder may have a hidden **folder note** at `{folder}/.folder.md` (not shown in the sidebar tree). Clicking the folder creates it if missing and opens it. A wiki target that matches an existing folder resolves to that path; the note is created on open when absent.
 
 Internally the editor may temporarily rewrite wiki-links to `[text](wiki:…)` and back; on disk always prefer `[[…]]`.
 

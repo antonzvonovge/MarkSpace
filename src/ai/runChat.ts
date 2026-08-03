@@ -95,7 +95,48 @@ export function formatAiError(error: unknown): string {
     if (withCause.cause instanceof Error && withCause.cause.message) {
       return `${error.message} (${withCause.cause.message})`;
     }
+    if (
+      withCause.cause &&
+      typeof withCause.cause === "object" &&
+      !(withCause.cause instanceof Error)
+    ) {
+      const nested = formatAiError(withCause.cause);
+      if (nested && nested !== "[object Object]") {
+        return error.message ? `${error.message} (${nested})` : nested;
+      }
+    }
     return error.message || String(error);
+  }
+  if (typeof error === "string") return error;
+  if (error == null) return "Unknown error";
+  if (typeof error === "object") {
+    const obj = error as Record<string, unknown>;
+    // AI SDK / OpenRouter often throw plain objects: { message, error, code, ... }
+    const msg =
+      (typeof obj.message === "string" && obj.message) ||
+      (typeof obj.error === "string" && obj.error) ||
+      (obj.error &&
+        typeof obj.error === "object" &&
+        typeof (obj.error as { message?: unknown }).message === "string" &&
+        (obj.error as { message: string }).message) ||
+      null;
+    const status =
+      typeof obj.statusCode === "number"
+        ? obj.statusCode
+        : typeof obj.status === "number"
+          ? obj.status
+          : null;
+    if (msg) {
+      return status != null ? `HTTP ${status}: ${msg}` : msg;
+    }
+    try {
+      const json = JSON.stringify(error);
+      if (json && json !== "{}" && json !== "null") {
+        return json.length > 800 ? `${json.slice(0, 800)}…` : json;
+      }
+    } catch {
+      /* ignore */
+    }
   }
   return String(error);
 }

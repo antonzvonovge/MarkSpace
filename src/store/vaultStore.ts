@@ -10,8 +10,10 @@ import {
   createNote,
   deletePath,
   documentKind,
+  ensureFolderNote,
   importDocumentBytes,
   importPaths,
+  isFolderNotePath,
   isPdfPath,
   isSkillsFolder,
   isValidSkillId,
@@ -22,6 +24,7 @@ import {
   listTree,
   listVaultTags,
   moveEntry,
+  nestUnderNote,
   openVault,
   parentPath,
   readNote,
@@ -145,6 +148,11 @@ type VaultStore = {
   toggleOutline: () => void;
   saveActive: () => Promise<void>;
   selectFolder: (path: string) => void;
+  /**
+   * Select a folder and open its hidden overview note (`{folder}/.folder.md`),
+   * creating the note when missing. No-op for vault root (`""`).
+   */
+  openOrCreateFolderNote: (folder: string) => Promise<void>;
   toggleExpanded: (path: string) => void;
   /** Collapse every folder under the vault root (vault itself stays open). */
   collapseAllFolders: () => void;
@@ -173,6 +181,15 @@ type VaultStore = {
     from: string,
     toParent: string,
     toIndex: number,
+  ) => Promise<string | null>;
+  /**
+   * Drop onto a markdown note: promote the note to a folder (`.folder.md`)
+   * and move `from` into it.
+   */
+  nestTreeEntryUnderNote: (
+    from: string,
+    notePath: string,
+    toIndex?: number,
   ) => Promise<string | null>;
   renameTreeEntry: (from: string, nextName: string) => Promise<void>;
   removePath: (path: string) => Promise<boolean>;
@@ -271,6 +288,10 @@ function stashActiveIntoTabs(
 function tabLabel(path: string, kind?: TabKind): string {
   if (kind === "graph" || path === GRAPH_TAB_PATH) return "Graph";
   if (kind === "settings" || path === SETTINGS_TAB_PATH) return "Settings";
+  if (isFolderNotePath(path)) {
+    const folder = parentPath(path);
+    return folder.split("/").pop() || folder || "Folder";
+  }
   const name = path.split("/").pop() ?? path;
   return name
     .replace(/\.md$/i, "")
@@ -278,6 +299,19 @@ function tabLabel(path: string, kind?: TabKind): string {
     .replace(/\.mdlnks$/i, "")
     .replace(/\.mddict$/i, "")
     .replace(/\.pdf$/i, "");
+}
+
+/** Tree highlight after opening a note (folder notes keep the folder selected). */
+function treeSelectionForOpen(path: string): {
+  selectedFolderPath: string;
+  selectedFolderExplicit: boolean;
+  treeSelectionVisible: true;
+} {
+  return {
+    selectedFolderPath: parentPath(path),
+    selectedFolderExplicit: isFolderNotePath(path),
+    treeSelectionVisible: true,
+  };
 }
 
 function collectFilePaths(node: TreeNode, out: string[] = []): string[] {
@@ -319,11 +353,7 @@ function activateLoaded(
     dirty,
     loading: false,
     ...(syncTreeSelection
-      ? {
-          selectedFolderPath: parentPath(path),
-          selectedFolderExplicit: false,
-          treeSelectionVisible: true,
-        }
+      ? treeSelectionForOpen(path)
       : { treeSelectionVisible: false }),
     showOutline: outline.open,
   });
@@ -772,7 +802,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
             tabs: nextTabs,
             ...(pdfPage != null ? { pendingPdfPage: pdfPage } : {}),
             ...(syncTreeSelection
-              ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+              ? treeSelectionForOpen(path)
               : { treeSelectionVisible: false }),
           });
           persistSession(get());
@@ -780,7 +810,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           set({
             ...(pdfPage != null ? { pendingPdfPage: pdfPage } : {}),
             ...(syncTreeSelection
-              ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+              ? treeSelectionForOpen(path)
               : { treeSelectionVisible: false }),
           });
         }
@@ -1035,6 +1065,23 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       selectedFolderExplicit: true,
       treeSelectionVisible: true,
     }),
+
+  openOrCreateFolderNote: async (folder) => {
+    const cleaned = folder.replace(/^\/+|\/+$/g, "");
+    if (!cleaned) {
+      get().selectFolder("");
+      return;
+    }
+    get().selectFolder(cleaned);
+    try {
+      const notePath = await ensureFolderNote(cleaned);
+      await get().openNote(notePath, { preview: true });
+    } catch (e) {
+      set({
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
 
   isExpanded: (path) => {
     if (path === "") return true;
@@ -1306,6 +1353,89 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
       return nextPath;
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  },
+
+  nestTreeEntryUnderNote: async (from, notePath, toIndex = 0) => {
+    if (isSkillsFolder(from)) {
+      set({ error: "Cannot move the Skills folder" });
+      return null;
+    }
+    const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
+      get();
+    try {
+      if (dirty && activePath) {
+        await saveActive();
+      }
+      set({ suppressWatchUntil: Date.now() + 1500 });
+      const result = await nestUnderNote(from, notePath, toIndex);
+
+      let nextTabs = remapTabs(tabs, notePath, result.folderNote);
+      nextTabs = remapTabs(nextTabs, from, result.moved);
+
+      let nextExpanded = remapExpanded(expandedPaths, from, result.moved);
+      if (!nextExpanded.includes(result.folder)) {
+        nextExpanded = [...nextExpanded, result.folder];
+      }
+      set({ expandedPaths: nextExpanded });
+      if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+
+      const patch: Partial<VaultStore> = { tabs: nextTabs };
+
+      const remapActive = (path: string | null): string | null => {
+        if (!path) return null;
+        if (path === notePath) return result.folderNote;
+        if (path === from) return result.moved;
+        if (path.startsWith(`${from}/`)) {
+          return `${result.moved}${path.slice(from.length)}`;
+        }
+        return path;
+      };
+      const nextActive = remapActive(activePath);
+      if (nextActive !== activePath) {
+        patch.activePath = nextActive;
+      }
+
+      if (selectedFolderPath === from || selectedFolderPath.startsWith(`${from}/`)) {
+        if (selectedFolderPath === from) {
+          patch.selectedFolderPath = result.moved;
+        } else {
+          patch.selectedFolderPath = `${result.moved}${selectedFolderPath.slice(from.length)}`;
+        }
+      } else if (selectedFolderPath === notePath) {
+        patch.selectedFolderPath = result.folder;
+        patch.selectedFolderExplicit = true;
+      }
+
+      set(patch);
+
+      const openAfter = get().activePath;
+      if (
+        openAfter &&
+        (activePath === from ||
+          activePath === notePath ||
+          (activePath && openAfter !== activePath))
+      ) {
+        try {
+          const content = await readNote(openAfter);
+          set({
+            content,
+            dirty: false,
+            tabs: withTabBody(get().tabs, openAfter, content, false),
+          });
+        } catch {
+          /* keep previous content */
+        }
+      }
+
+      persistSession(get());
+      await get().refreshTree();
+      void get().refreshVaultTags();
+      void get().refreshDictionaryTags();
+      return result.moved;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
       return null;

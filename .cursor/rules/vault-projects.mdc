@@ -9,7 +9,7 @@ In MarkSpace, a **project** is a first-level folder directly under the vault roo
 
 - Helper: `isVaultProjectFolder(path, isDir)` in `src/lib/vaultApi.ts`.
 - Tree UI uses a package icon (`FcPackage`) for projects; nested dirs keep folder icons.
-- Language-learning projects with a set **Learning language** show that country's flag emoji instead of the package icon (tree + chat project picker).
+- Language-learning projects with a set **Learning language** show that country's flag icon (SVG; Windows has no flag emoji glyphs) instead of the package icon (tree + chat project picker).
 - Diary projects use a planner icon (`FcPlanner`) instead of the package icon (tree + chat project picker).
 - Diary projects: context menu **New daily note** (instead of New note) opens or creates today's note at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (helpers in `src/lib/diaryNotes.ts`). Toolbar create (+) is disabled when the selected folder is under a diary project. Agent tool: `open_or_create_daily_note` (date `YYYY-MM-DD`); system prompt documents the same layout.
 - Prefer the word "project" in product copy and agent language when referring to those top-level folders.

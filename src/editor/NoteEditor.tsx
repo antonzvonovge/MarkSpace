@@ -52,6 +52,8 @@ import {
 import {
   absolutePath,
   createNote,
+  ensureFolderNote,
+  folderPathFromFolderNote,
   isDrawioPath,
   joinPath,
   parentPath,
@@ -392,6 +394,11 @@ export function NoteEditor({ path, content, onChange }: Props) {
           if (!resolved) {
             resolved = await createNote(wikiTarget);
             await refreshTree();
+          } else {
+            const folder = folderPathFromFolderNote(resolved);
+            if (folder) {
+              resolved = await ensureFolderNote(folder);
+            }
           }
           await openNote(resolved);
           return;
@@ -405,7 +412,13 @@ export function NoteEditor({ path, content, onChange }: Props) {
         if (!resolved && cleanedHref.endsWith(".md")) {
           resolved = await resolveWikiTarget(cleanedHref);
         }
-        if (resolved) await openNote(resolved);
+        if (resolved) {
+          const folder = folderPathFromFolderNote(resolved);
+          if (folder) {
+            resolved = await ensureFolderNote(folder);
+          }
+          await openNote(resolved);
+        }
       })();
     },
     [openNote, refreshTree],

@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "test": "vitest run --environment jsdom",
     "drawio:download": "node scripts/download-drawio.mjs",
-    "postinstall": "node scripts/download-drawio.mjs"
+    "postinstall": "node scripts/download-drawio.mjs && node scripts/patch-dsg-row-heights.mjs && rm -rf node_modules/.vite"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.27",
@@ -40,6 +40,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "ai": "^7.0.37",
     "codemirror": "^6.0.2",
+    "country-flag-icons": "^1.6.20",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
     "graphology-layout": "^0.6.1",

@@ -5,9 +5,13 @@ import {
   createNote,
   deleteFolderIfEmpty,
   ensureFolder,
+  ensureFolderNote,
   extractPdfText,
+  folderNotePath,
+  folderPathFromFolderNote,
   getEmbeddingModelStatus,
   getFileTags,
+  isFolderNotePath,
   listNoteTags,
   listTree,
   listVaultTags,
@@ -494,12 +498,12 @@ export function buildVaultTools(
 
     open_note: tool({
       description:
-        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page.",
+        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page. For a folder path (or `{folder}/.folder.md`), opens that folder’s hidden overview note, creating it if missing.",
       inputSchema: z.object({
         path: z
           .string()
           .describe(
-            "Vault-relative path, e.g. Folder/Note.md, diagram.drawio, or report.pdf",
+            "Vault-relative path, e.g. Folder/Note.md, diagram.drawio, report.pdf, a folder, or Folder/.folder.md",
           ),
         preview: z
           .boolean()
@@ -515,14 +519,52 @@ export function buildVaultTools(
           .describe("1-based PDF page to open (ignored for non-PDF files)"),
       }),
       execute: async ({ path, preview, page }) => {
-        const rel = normalizeToolPath(path);
+        let rel = normalizeToolPath(path);
         if (!rel) {
           return { ok: false as const, error: "Path required" };
         }
         const store = useVaultStore.getState();
+        const asPreview = preview !== false;
+
+        const folderFromNote = folderPathFromFolderNote(rel);
+        if (folderFromNote) {
+          try {
+            rel = await ensureFolderNote(folderFromNote);
+          } catch (e) {
+            return {
+              ok: false as const,
+              error: e instanceof Error ? e.message : String(e),
+            };
+          }
+        } else {
+          const tree = await listTree();
+          const folderNode = findFolderNode(tree, rel);
+          if (folderNode && folderNode.isDir) {
+            await store.openOrCreateFolderNote(rel);
+            await yieldToUi();
+            const after = useVaultStore.getState();
+            const noteRel = folderNotePath(rel);
+            if (after.activePath !== noteRel) {
+              return {
+                ok: false as const,
+                error: after.error ?? `Could not open folder note for ${rel}`,
+              };
+            }
+            useSidebarUiStore.getState().revealPathInTree(rel);
+            const tab = after.tabs.find((t) => t.path === noteRel);
+            return {
+              ok: true as const,
+              path: noteRel,
+              already_open: false,
+              already_active: false,
+              preview: Boolean(tab?.preview),
+              folder_note: true,
+            };
+          }
+        }
+
         const wasOpen = store.tabs.some((t) => t.path === rel);
         const wasActive = store.activePath === rel;
-        const asPreview = preview !== false;
 
         await store.openNote(rel, {
           preview: asPreview,
@@ -537,7 +579,9 @@ export function buildVaultTools(
             error: after.error ?? `Could not open ${rel}`,
           };
         }
-        useSidebarUiStore.getState().revealPathInTree(rel);
+        useSidebarUiStore
+          .getState()
+          .revealPathInTree(isFolderNotePath(rel) ? parentPath(rel) : rel);
         const tab = after.tabs.find((t) => t.path === rel);
         return {
           ok: true as const,
@@ -545,6 +589,7 @@ export function buildVaultTools(
           already_open: wasOpen,
           already_active: wasActive,
           preview: Boolean(tab?.preview),
+          ...(isFolderNotePath(rel) ? { folder_note: true } : {}),
           ...(page != null ? { page } : {}),
         };
       },
@@ -1266,6 +1311,7 @@ export function buildSystemPrompt(opts: {
     "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
     "When the user mentions vault paths in their message (files or folders ending with /), use list_folder, read_note, and/or list_notes as needed — do not ask them to paste the contents again.",
     "Use list_folder to inspect folder contents (folders vs files; recursive optional). Prefer it over list_notes when checking whether a folder exists or listing empty folders.",
+    "Folder notes: each folder may have a hidden overview at `{folder}/.folder.md` (not listed in the tree or list_folder/list_notes). Clicking a folder in the UI opens it; you can read/edit that path directly, or pass a folder path to open_note. Wiki-links to a folder name resolve to its folder note.",
     "When the user asks to open, show, or switch to a note/diagram/PDF in the editor, call open_note (preview tab by default; for PDFs pass page from search hits). Prefer open_note to show work; still use read_note/get_active_note to read contents.",
     "MarkSpace Markdown is a dialect of standard Markdown. Follow these rules exactly; call read_format_guide when unsure or before writing non-trivial markdown:",
     ...markdownCoreRules(),

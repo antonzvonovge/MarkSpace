@@ -38,7 +38,9 @@ my-vault/
     order.json
 ```
 
-Hidden folders (names starting with `.`) are ignored by the sidebar. After you connect sync, the vault becomes a normal git repository (`.git/` stays hidden from the tree).
+Hidden folders and files (names starting with `.`) are ignored by the sidebar. After you connect sync, the vault becomes a normal git repository (`.git/` stays hidden from the tree).
+
+Each folder can have a hidden **folder note** at `{folder}/.folder.md`. It is not shown in the tree; clicking the folder in the sidebar creates it (if missing) and opens it as the folder overview. Wiki-links to a folder name (e.g. `[[projects]]`) resolve to that note.
 
 ### Custom order
 

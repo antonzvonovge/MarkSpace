@@ -659,7 +659,10 @@ fn list_indexable_files(root: &Path) -> Vec<String> {
             continue;
         }
         if path.components().any(|c| {
-            matches!(c, std::path::Component::Normal(n) if n.to_string_lossy().starts_with('.'))
+            matches!(c, std::path::Component::Normal(n) if {
+                let s = n.to_string_lossy();
+                s.starts_with('.') && !s.eq_ignore_ascii_case(".folder.md")
+            })
         }) {
             continue;
         }

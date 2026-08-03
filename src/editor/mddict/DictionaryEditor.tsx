@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -36,6 +37,7 @@ import {
   nativeLanguageLabel,
 } from "../../settings/types";
 import { useVaultStore } from "../../store/vaultStore";
+import { RefreshIcon } from "../../components/treeIcons";
 import { DictSheetContextMenu } from "./DictSheetContextMenu";
 
 type Props = {
@@ -43,6 +45,22 @@ type Props = {
   content: string;
   onChange: (next: string) => void;
 };
+
+type DictRevealMode = "all" | "translation" | "word";
+
+const REVEAL_MODES: { mode: DictRevealMode; label: string; title: string }[] = [
+  { mode: "all", label: "All", title: "Show all columns" },
+  {
+    mode: "translation",
+    label: "Translation",
+    title: "Show translation only — recall the word",
+  },
+  {
+    mode: "word",
+    label: "Word",
+    title: "Show word only — recall the translation",
+  },
+];
 
 type GridRow = {
   key: string;
@@ -133,9 +151,154 @@ function handleSingleLineArrowNav(
 
 const HEADER_ROW_HEIGHT = 34;
 const ROW_LINE_HEIGHT = 18; // ~13px * 1.35
-const ROW_LINE_HEIGHT_LG = 20; // ~15px * 1.35 (word / transcript)
+const ROW_LINE_HEIGHT_LG = 20; // ~15px * 1.35 (transcript)
+const ROW_LINE_HEIGHT_WORD = 23; // ~17px * 1.35 (word)
+const ROW_LINE_HEIGHT_TAG = 18; // same as body cells (13px * 1.35)
 const ROW_PAD = 12;
 const MIN_ROW_HEIGHT = 34;
+
+type ColWidths = {
+  word: number;
+  transcript: number;
+  translation: number;
+  examples: number;
+  tags: number;
+};
+
+/** Fallback estimate when the sheet is not laid out yet. */
+function countWrappedLines(text: string, charsPerLine: number): number {
+  const raw = text.replace(/\r\n/g, "\n");
+  if (!raw.trim()) return 1;
+  let lines = 0;
+  for (const para of raw.split("\n")) {
+    const len = Math.max(1, para.length);
+    lines += Math.ceil(len / Math.max(6, charsPerLine));
+  }
+  return Math.max(1, lines);
+}
+
+function estimateRowHeight(row: GridRow | null | undefined): number {
+  if (!row) return MIN_ROW_HEIGHT;
+  const tagsText = (Array.isArray(row.tags) ? row.tags : []).join("  ");
+  const contentPx = Math.max(
+    countWrappedLines(row.word ?? "", 12) * ROW_LINE_HEIGHT_WORD,
+    countWrappedLines(row.transcript ?? "", 10) * ROW_LINE_HEIGHT_LG,
+    countWrappedLines(row.translation ?? "", 14) * ROW_LINE_HEIGHT,
+    countWrappedLines(row.examples || " ", 36) * ROW_LINE_HEIGHT,
+    countWrappedLines(tagsText || " ", 18) * ROW_LINE_HEIGHT_TAG,
+  );
+  return Math.max(MIN_ROW_HEIGHT, Math.round(ROW_PAD + contentPx));
+}
+
+function readColWidths(sheet: HTMLElement | null): ColWidths | null {
+  if (!sheet) return null;
+  const header = sheet.querySelector(".dsg-row-header");
+  if (!header) return null;
+  const cells = [...header.querySelectorAll(":scope > .dsg-cell")].filter(
+    (el) => !el.classList.contains("dsg-cell-gutter"),
+  );
+  if (cells.length < 5) return null;
+  const rect = (el: Element) => el.getBoundingClientRect().width;
+  return {
+    word: rect(cells[0]!),
+    transcript: rect(cells[1]!),
+    translation: rect(cells[2]!),
+    examples: rect(cells[3]!),
+    tags: rect(cells[4]!),
+  };
+}
+
+/**
+ * Measure row heights with a hidden probe that mirrors cell typography/padding.
+ */
+function measureRowHeightsDom(
+  rows: GridRow[],
+  sheet: HTMLElement | null,
+): number[] {
+  const widths = readColWidths(sheet);
+  if (!widths) return rows.map((r) => estimateRowHeight(r));
+
+  const fontFamily =
+    (sheet ? getComputedStyle(sheet).fontFamily : "") || "sans-serif";
+
+  const probe = document.createElement("div");
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.cssText = [
+    "position:absolute",
+    "left:-99999px",
+    "top:0",
+    "visibility:hidden",
+    "pointer-events:none",
+    "box-sizing:border-box",
+    "padding:6px 8px",
+    "margin:0",
+    "border:0",
+    "white-space:pre-wrap",
+    "overflow-wrap:anywhere",
+    "word-break:break-word",
+    "line-height:1.35",
+  ].join(";");
+  document.body.appendChild(probe);
+
+  const measureText = (text: string, width: number, font: string) => {
+    probe.style.display = "block";
+    probe.style.flexWrap = "";
+    probe.style.gap = "";
+    probe.style.width = `${Math.max(40, Math.floor(width))}px`;
+    probe.style.font = font;
+    probe.replaceChildren();
+    probe.textContent = text.trim() ? text : "\u00a0";
+    return probe.offsetHeight;
+  };
+
+  const measureTags = (tags: string[], width: number) => {
+    probe.style.display = "flex";
+    probe.style.flexWrap = "wrap";
+    probe.style.alignContent = "flex-start";
+    probe.style.gap = "4px 10px";
+    probe.style.width = `${Math.max(40, Math.floor(width))}px`;
+    probe.style.font = `13px / 1.35 ${fontFamily}`;
+    probe.replaceChildren();
+    if (tags.length === 0) {
+      probe.textContent = "\u00a0";
+    } else {
+      for (const t of tags) {
+        const span = document.createElement("span");
+        span.textContent = t;
+        probe.appendChild(span);
+      }
+    }
+    return probe.offsetHeight;
+  };
+
+  try {
+    return rows.map((row) => {
+      const h = Math.max(
+        measureText(row.word, widths.word, `700 17px / 1.35 ${fontFamily}`),
+        measureText(
+          row.transcript,
+          widths.transcript,
+          `15px / 1.35 ${fontFamily}`,
+        ),
+        measureText(
+          row.translation,
+          widths.translation,
+          `13px / 1.35 ${fontFamily}`,
+        ),
+        measureText(
+          row.examples || "\u00a0",
+          widths.examples,
+          `13px / 1.35 ${fontFamily}`,
+        ),
+        measureTags(row.tags, widths.tags),
+      );
+      // +2px for row border/shadow so wrapped glyphs are not clipped.
+      return Math.max(MIN_ROW_HEIGHT, h + 2);
+    });
+  } finally {
+    probe.remove();
+  }
+}
 
 function newRowKey(): string {
   return crypto.randomUUID();
@@ -217,36 +380,6 @@ function rowMatchesFilter(row: GridRow, filter: string[]): boolean {
   const need = filter.map((t) => t.toLowerCase());
   const have = new Set(row.tags.map((t) => t.toLowerCase()));
   return need.every((t) => have.has(t));
-}
-
-/** Rough wrapped-line count for variable row height. */
-function countWrappedLines(text: string, charsPerLine: number): number {
-  const raw = text.replace(/\r\n/g, "\n");
-  if (!raw.trim()) return 1;
-  let lines = 0;
-  for (const para of raw.split("\n")) {
-    const len = Math.max(1, para.length);
-    lines += Math.ceil(len / Math.max(6, charsPerLine));
-  }
-  return Math.max(1, lines);
-}
-
-function estimateRowHeight(row: GridRow | null | undefined): number {
-  if (!row) return MIN_ROW_HEIGHT;
-  const word = row.word ?? "";
-  const transcript = row.transcript ?? "";
-  const translation = row.translation ?? "";
-  const examples = row.examples ?? "";
-  const tags = Array.isArray(row.tags) ? row.tags : [];
-  const contentPx = Math.max(
-    countWrappedLines(word, 14) * ROW_LINE_HEIGHT_LG,
-    countWrappedLines(transcript, 12) * ROW_LINE_HEIGHT_LG,
-    countWrappedLines(translation, 16) * ROW_LINE_HEIGHT,
-    countWrappedLines(examples || " ", 42) * ROW_LINE_HEIGHT,
-    Math.max(1, Math.ceil((tags.join(" ").length || 1) / 10)) *
-      ROW_LINE_HEIGHT,
-  );
-  return Math.max(MIN_ROW_HEIGHT, Math.round(ROW_PAD + contentPx));
 }
 
 /** DSG must never receive an empty `value` — its variable-height path crashes. */
@@ -498,14 +631,22 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [revealMode, setRevealMode] = useState<DictRevealMode>("all");
+  const [heightNonce, setHeightNonce] = useState(0);
+  const [measuredHeights, setMeasuredHeights] = useState<number[] | null>(
+    null,
+  );
   const [rows, setRows] = useState<GridRow[]>(() =>
     ensureRows(itemsToRows(doc.items)),
   );
   const lastEmitted = useRef(content);
   const hasActiveCellRef = useRef(false);
   const gridRef = useRef<DataSheetGridRef>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const heightsRef = useRef<number[]>([]);
   const pendingEditRef = useRef(false);
   const rowCountRef = useRef(0);
+  const gridRowsRef = useRef<GridRow[]>([]);
 
   const projectPath = path.split("/")[0] ?? "";
   const projectProps = projectPropertiesByPath[projectPath];
@@ -611,23 +752,65 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
   };
 
   const gridRows = filtering ? visibleRows : rows;
+  gridRowsRef.current = gridRows;
   rowCountRef.current = gridRows.length;
+
+  const recalculateRowHeights = useCallback(() => {
+    const sheet = sheetRef.current;
+    const list =
+      gridRowsRef.current.length === 0
+        ? [emptyRow()]
+        : gridRowsRef.current;
+    const heights = measureRowHeightsDom(list, sheet);
+    heightsRef.current = heights;
+    setMeasuredHeights(heights);
+    setHeightNonce((n) => n + 1);
+  }, []);
+
+  // Remeasure + remount on open / filter / row-count change (may flicker).
+  const filterKey = doc.filter.join("\0");
+  useLayoutEffect(() => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const list =
+          gridRowsRef.current.length === 0
+            ? [emptyRow()]
+            : gridRowsRef.current;
+        const heights = measureRowHeightsDom(list, sheetRef.current);
+        heightsRef.current = heights;
+        setMeasuredHeights(heights);
+        setHeightNonce((n) => n + 1);
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [path, gridRows.length, filtering, searchQuery, filterKey]);
+
   const gridHeight = useMemo(() => {
     const list = gridRows.length === 0 ? [emptyRow()] : gridRows;
-    const rowsHeight = list.reduce(
-      (sum, row) => sum + estimateRowHeight(row),
-      0,
-    );
+    const rowsHeight = list.reduce((sum, row, i) => {
+      const measured = measuredHeights?.[i] ?? heightsRef.current[i];
+      return sum + (measured ?? estimateRowHeight(row));
+    }, 0);
     const extra = filtering ? 0 : gridRows.length === 0 ? 0 : MIN_ROW_HEIGHT;
     return Math.max(
       HEADER_ROW_HEIGHT + MIN_ROW_HEIGHT + 2,
       HEADER_ROW_HEIGHT + rowsHeight + extra + 2,
     );
-  }, [filtering, gridRows]);
+  }, [filtering, gridRows, measuredHeights, heightNonce]);
 
   const measureRowHeight = useCallback(
-    ({ rowData }: { rowData: GridRow }) => estimateRowHeight(rowData),
-    [],
+    ({ rowIndex, rowData }: { rowIndex: number; rowData: GridRow }) =>
+      heightsRef.current[rowIndex] ??
+      measuredHeights?.[rowIndex] ??
+      estimateRowHeight(rowData),
+    [measuredHeights, heightNonce],
   );
 
   const onAddWord = (value: AddWordDialogValue) => {
@@ -666,27 +849,30 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
         title: "Transcript",
         minWidth: 90,
         grow: 0.85,
-        cellClassName: "dict-dsg-cell-lg",
+        cellClassName: "dict-dsg-cell-lg dict-dsg-cell-transcript",
       },
       {
         ...keyColumn<GridRow, "translation">("translation", translationColumn),
         title: "Translation",
         minWidth: 100,
         grow: 1,
+        cellClassName: "dict-dsg-cell-translation",
       },
       {
         ...keyColumn<GridRow, "examples">("examples", examplesColumn),
         title: "Examples",
         minWidth: 220,
         grow: 2.4,
+        cellClassName: "dict-dsg-cell-examples",
       },
       {
         ...keyColumn<GridRow, "tags">("tags", tagsCol),
         title: "Tags",
-        minWidth: 80,
-        maxWidth: 140,
-        grow: 0.35,
+        minWidth: 160,
+        maxWidth: 280,
+        grow: 0.7,
         shrink: 1,
+        cellClassName: "dict-dsg-cell-tags",
       },
     ];
   }, [dictionaryTags, fileTags]);
@@ -752,13 +938,47 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
               aria-label="Search dictionary"
             />
           </div>
-          <button
-            type="button"
-            className="dict-editor-add-btn"
-            onClick={() => setAddOpen(true)}
-          >
-            Add entry
-          </button>
+          <div className="dict-editor-toolbar-actions">
+            <div
+              className="dict-reveal-switch"
+              role="radiogroup"
+              aria-label="Dictionary reveal mode"
+            >
+              {REVEAL_MODES.map(({ mode, label, title }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={revealMode === mode}
+                  title={title}
+                  className={
+                    revealMode === mode
+                      ? "dict-reveal-switch-segment is-active"
+                      : "dict-reveal-switch-segment"
+                  }
+                  onClick={() => setRevealMode(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="dict-editor-icon-btn"
+              title="Recalculate row heights"
+              aria-label="Recalculate row heights"
+              onClick={() => recalculateRowHeights()}
+            >
+              <RefreshIcon />
+            </button>
+            <button
+              type="button"
+              className="dict-editor-add-btn"
+              onClick={() => setAddOpen(true)}
+            >
+              Add entry
+            </button>
+          </div>
         </div>
 
         <AddWordDialog
@@ -789,9 +1009,15 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
             </button>
           </div>
         ) : (
-          <div className="dict-editor-sheet" style={dsgVars}>
+          <div
+            className="dict-editor-sheet"
+            ref={sheetRef}
+            data-dict-reveal={revealMode}
+            style={dsgVars}
+          >
             <DictGridNavContext.Provider value={gridNav}>
               <DynamicDataSheetGrid
+                key={heightNonce}
                 ref={gridRef}
                 value={gridRows}
                 onChange={onGridChange}
@@ -808,6 +1034,7 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
                 addRowsComponent={false}
                 gutterColumn={false}
                 lockRows={filtering}
+                disableExpandSelection
                 contextMenuComponent={DictSheetContextMenu}
                 onActiveCellChange={({ cell }) => {
                   hasActiveCellRef.current = cell != null;

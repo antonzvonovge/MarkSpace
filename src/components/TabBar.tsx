@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { FcDocument, FcPlanner } from "react-icons/fc";
+import { FcDocument, FcLink, FcPlanner, FcReading } from "react-icons/fc";
 import {
   useVaultStore,
   tabLabel,
@@ -20,9 +20,7 @@ import {
 } from "./TabContextMenu";
 import {
   DiagramIcon,
-  DictionaryIcon,
   GraphIcon,
-  LinksIcon,
   PdfIcon,
 } from "./treeIcons";
 
@@ -79,9 +77,9 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
       {kind === "drawio" ? (
         <DiagramIcon />
       ) : kind === "mdlnks" ? (
-        <LinksIcon />
+        <FcLink size={14} />
       ) : kind === "mddict" ? (
-        <DictionaryIcon />
+        <FcReading size={14} />
       ) : kind === "pdf" ? (
         <PdfIcon />
       ) : (
