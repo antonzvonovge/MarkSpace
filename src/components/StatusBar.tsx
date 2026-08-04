@@ -6,6 +6,8 @@ import {
 import { usePrefsStore } from "../store/prefsStore";
 import { useSyncStore } from "../store/syncStore";
 import { useVaultStore } from "../store/vaultStore";
+import { documentKind } from "../lib/vaultApi";
+import { countWords } from "../lib/wordCount";
 
 function SyncIcon({ spinning }: { spinning?: boolean }) {
   return (
@@ -119,6 +121,82 @@ function syncLabel(opts: {
   }
   if (!lastSyncAt) return "Never synced";
   return age ? `Synced · ${age}` : "Synced";
+}
+
+function selectionWordCount(): number | null {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return null;
+  }
+  const text = selection.toString();
+  if (!text.trim()) return null;
+
+  const anchor =
+    selection.anchorNode instanceof Element
+      ? selection.anchorNode
+      : selection.anchorNode?.parentElement;
+  if (!anchor) return null;
+  const inEditor = anchor.closest(
+    ".document-instance.is-active .document-editor-slot.is-active :is(.bn-container, .cm-editor)",
+  );
+  if (!inEditor) return null;
+  return countWords(text);
+}
+
+function liveMarkdownWordCount(): number | null {
+  const activePath = useVaultStore.getState().activePath;
+  const viewMode = useVaultStore.getState().viewMode;
+  if (!activePath || documentKind(activePath) !== "markdown") return null;
+  if (viewMode !== "live") return null;
+
+  const editor = document.querySelector(
+    ".document-instance.is-active .document-editor-slot.is-active .bn-editor",
+  );
+  if (!(editor instanceof HTMLElement)) return null;
+  return countWords(editor.innerText || editor.textContent || "");
+}
+
+function WordCountItem() {
+  const activePath = useVaultStore((s) => s.activePath);
+  const viewMode = useVaultStore((s) => s.viewMode);
+  const content = useVaultStore((s) => s.content);
+  const [label, setLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let frame = 0;
+    const sync = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const selected = selectionWordCount();
+        if (selected != null) {
+          setLabel(`${selected.toLocaleString()} words`);
+          return;
+        }
+        const live = liveMarkdownWordCount();
+        if (live != null) {
+          setLabel(`${live.toLocaleString()} words`);
+          return;
+        }
+        setLabel(null);
+      });
+    };
+
+    sync();
+    document.addEventListener("selectionchange", sync);
+    document.addEventListener("input", sync, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("selectionchange", sync);
+      document.removeEventListener("input", sync, true);
+    };
+  }, [activePath, viewMode, content]);
+
+  if (!label) return null;
+  return (
+    <span className="status-bar-item status-bar-words" title={label}>
+      {label}
+    </span>
+  );
 }
 
 export function StatusBar() {
@@ -270,6 +348,7 @@ export function StatusBar() {
         })}
       </div>
       <div className="status-bar-right" ref={rootRef}>
+        <WordCountItem />
         <button
           type="button"
           className={

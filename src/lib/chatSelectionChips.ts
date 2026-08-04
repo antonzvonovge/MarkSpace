@@ -2,6 +2,9 @@
  * Selection chips: text picked up from the note editor (or chat) and dropped
  * into the composer as a compact chip. The full text only materializes when
  * the message is sent, as a quoted block that names its source file.
+ *
+ * Path / skill / tool markers from the composer are kept in stored user text
+ * so bubbles can render them as chips; the model sees unwrapped plain text.
  */
 
 /** Markers for selection chips in the chat composer draft string. */
@@ -9,6 +12,7 @@ export const SELECTION_OPEN = "⟬";
 export const SELECTION_CLOSE = "⟭";
 
 const SELECTION_MARKER_RE = /⟬([^⟭]*)⟭/g;
+const INLINE_CHIP_MARKER_RE = /⟦([^⟧]*)⟧|⦃([^⦄]*)⦄|⟪([^⟫]*)⟫/g;
 
 export const MAX_SELECTION_CHARS = 20_000;
 
@@ -121,9 +125,38 @@ export function expandSelectionMarkers(
 
 export type UserTextSegment =
   | { kind: "text"; text: string }
-  | { kind: "selection"; text: string; sourcePath: string | null };
+  | { kind: "selection"; text: string; sourcePath: string | null }
+  | { kind: "path"; path: string }
+  | { kind: "skill"; id: string }
+  | { kind: "tool"; id: string };
 
-/** Split a sent user message back into plain text and selection chips. */
+/** Split inline path/skill/tool markers inside a plain-text run. */
+function parseInlineChipSegments(text: string): UserTextSegment[] {
+  const segments: UserTextSegment[] = [];
+  INLINE_CHIP_MARKER_RE.lastIndex = 0;
+  let last = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = INLINE_CHIP_MARKER_RE.exec(text))) {
+    if (match.index > last) {
+      segments.push({ kind: "text", text: text.slice(last, match.index) });
+    }
+    if (match[1] != null) {
+      segments.push({ kind: "path", path: match[1] });
+    } else if (match[2] != null) {
+      segments.push({ kind: "skill", id: match[2] });
+    } else if (match[3] != null) {
+      segments.push({ kind: "tool", id: match[3] });
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) {
+    segments.push({ kind: "text", text: text.slice(last) });
+  }
+  return segments;
+}
+
+/** Split a sent user message back into plain text and chips. */
 export function parseUserTextSegments(text: string): UserTextSegment[] {
   const segments: UserTextSegment[] = [];
   SELECTION_BLOCK_RE.lastIndex = 0;
@@ -132,7 +165,10 @@ export function parseUserTextSegments(text: string): UserTextSegment[] {
 
   const pushText = (raw: string) => {
     const trimmed = raw.replace(/^\n+|\n+$/g, "");
-    if (trimmed) segments.push({ kind: "text", text: trimmed });
+    if (!trimmed) return;
+    for (const part of parseInlineChipSegments(trimmed)) {
+      segments.push(part);
+    }
   };
 
   while ((match = SELECTION_BLOCK_RE.exec(text))) {

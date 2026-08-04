@@ -598,7 +598,6 @@ export function NoteEditor({ path, content, onChange }: Props) {
         <DocumentToolbar />
         <div className="editor-main" onMouseDown={handleEmptyCanvasMouseDown}>
           <div className="editor-canvas-wrap">
-            <PageTags content={content} onChange={onChange} />
             <div
               className="editor-canvas"
               style={
@@ -608,6 +607,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
               }
               onContextMenu={openEditorContextMenu}
             >
+              <PageTags content={content} onChange={onChange} />
               <BlockNoteView
                 editor={editor}
                 theme={editorTheme}

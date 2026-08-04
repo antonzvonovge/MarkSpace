@@ -1302,6 +1302,16 @@ select {
   white-space: nowrap;
 }
 
+.status-bar-item.status-bar-words {
+  cursor: default;
+  color: var(--muted);
+}
+
+.status-bar-item.status-bar-words:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
 .status-bar-item:hover,
 .status-bar-item.is-open {
   background: color-mix(in srgb, var(--text) 8%, transparent);
@@ -1413,8 +1423,8 @@ select {
 .document-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   flex-shrink: 0;
   height: 38px;
   padding: 0 10px;
@@ -1423,6 +1433,30 @@ select {
   background: var(--editor-surface);
   user-select: none;
   -webkit-user-select: none;
+}
+
+.document-toolbar-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+.document-toolbar-path.is-empty {
+  visibility: hidden;
+}
+
+.document-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .document-toolbar-btn {
@@ -2048,22 +2082,21 @@ select {
   cursor: pointer;
 }
 
-/* Page tags — overlay on content perimeter (not DocumentToolbar). */
+/* Page tags — inside the note page body (top of content). */
 .page-tags {
-  position: sticky;
-  top: 6px;
-  z-index: 6;
+  position: relative;
+  z-index: 2;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   pointer-events: none;
-  padding: 0 12px;
-  margin-bottom: -4px;
+  padding: 4px 8px 8px;
+  margin: 0;
 }
 
 .page-tags-chips {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: center;
   gap: 6px;
   max-width: 100%;
@@ -2154,7 +2187,8 @@ select {
 .page-tags-popover {
   position: absolute;
   top: calc(100% + 6px);
-  right: 0;
+  left: 0;
+  right: auto;
   z-index: 20;
   width: min(240px, calc(100vw - 32px));
   padding: 6px;
@@ -2232,12 +2266,16 @@ select {
 }
 
 .source-editor-wrap > .page-tags {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  z-index: 6;
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 2;
+  flex-shrink: 0;
   margin: 0;
-  padding: 0;
+  padding: 8px 12px 4px;
+  max-width: 760px;
+  width: 100%;
+  align-self: center;
 }
 
 .source-editor-wrap > .source-editor-shell {

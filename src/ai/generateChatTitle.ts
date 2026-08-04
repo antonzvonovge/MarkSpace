@@ -1,4 +1,5 @@
 import { generateText, type UIMessage } from "ai";
+import { unwrapComposerMarkers } from "../lib/chatComposerDom";
 import {
   hasCredentialsForModel,
   resolveLanguageModel,
@@ -13,11 +14,12 @@ Reply with ONLY a short title (3–7 words). Same language as the conversation.
 No quotes, no trailing punctuation, no emoji, no "Chat about".`;
 
 function messageText(message: UIMessage): string {
-  return (message.parts ?? [])
-    .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .map((p) => p.text)
-    .join("\n")
-    .trim();
+  return unwrapComposerMarkers(
+    (message.parts ?? [])
+      .filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join("\n"),
+  ).trim();
 }
 
 function sanitizeTitle(raw: string): string | null {

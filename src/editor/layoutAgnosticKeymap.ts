@@ -1,6 +1,7 @@
 import { Extension } from "@tiptap/core";
 import { Plugin } from "prosemirror-state";
 import type { BlockNoteEditor } from "@blocknote/core";
+import { SuggestionMenu } from "@blocknote/core/extensions";
 import {
   markPasteGestureHandled,
   pasteImagesFromSystemClipboard,
@@ -52,6 +53,15 @@ export function createLayoutAgnosticKeymapExtension(
               if (code === "KeyY" && !event.shiftKey) {
                 event.preventDefault();
                 editor.redo();
+                return true;
+              }
+
+              // Same slash menu as typing `/` (Ctrl/Cmd+Space).
+              if (code === "Space" && !event.shiftKey) {
+                event.preventDefault();
+                const suggestionMenu = editor.getExtension(SuggestionMenu);
+                if (!suggestionMenu || suggestionMenu.shown()) return true;
+                suggestionMenu.openSuggestionMenu("/");
                 return true;
               }
 

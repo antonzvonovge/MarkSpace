@@ -164,6 +164,8 @@ export function ChatComposer() {
   const systemPromptPreview = useChatStore((s) => s.systemPromptPreview);
   const skillsCatalog = useChatStore((s) => s.skillsCatalog);
   const refreshSkillsCatalog = useChatStore((s) => s.refreshSkillsCatalog);
+  const activeThreadId = useChatStore((s) => s.activeThreadId);
+  const clearThreadAttention = useChatStore((s) => s.clearThreadAttention);
   const settings = useAiSettingsStore((s) => s.settings);
 
   const streaming = status === "streaming";
@@ -513,6 +515,7 @@ export function ChatComposer() {
           if (el) {
             insertPathChip(el, vaultPath, e.clientX, e.clientY);
             syncDraftFromDom();
+            focusInput();
           }
           return;
         }
@@ -585,6 +588,9 @@ export function ChatComposer() {
         contentEditable={!streaming}
         suppressContentEditableWarning
         data-placeholder={streaming ? "Streaming…" : "Message…"}
+        onFocus={() => {
+          if (activeThreadId) clearThreadAttention(activeThreadId);
+        }}
         onContextMenu={openComposerContextMenu}
         onInput={() => {
           syncDraftFromDom();

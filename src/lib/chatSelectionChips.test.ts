@@ -85,4 +85,13 @@ describe("user text segments", () => {
       { kind: "text", text: "just a question" },
     ]);
   });
+
+  it("folds vault path markers into path chips", () => {
+    expect(parseUserTextSegments("see ⟦Notes/todo.md⟧ and ⟦Projects/⟧")).toEqual([
+      { kind: "text", text: "see " },
+      { kind: "path", path: "Notes/todo.md" },
+      { kind: "text", text: " and " },
+      { kind: "path", path: "Projects/" },
+    ]);
+  });
 });

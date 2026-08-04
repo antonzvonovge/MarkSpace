@@ -11,6 +11,7 @@ import {
   deletePath,
   documentKind,
   ensureFolderNote,
+  folderPathFromFolderNote,
   importDocumentBytes,
   importPaths,
   isFolderNotePath,
@@ -320,6 +321,27 @@ function collectFilePaths(node: TreeNode, out: string[] = []): string[] {
   return out;
 }
 
+function collectDirPaths(node: TreeNode, out: string[] = []): string[] {
+  if (node.isDir && node.path) out.push(node.path);
+  for (const child of node.children ?? []) collectDirPaths(child, out);
+  return out;
+}
+
+/**
+ * Hidden folder notes (`.folder.md`) are omitted from `list_tree`, so they never
+ * appear in `collectFilePaths`. Keep their tabs while the parent folder remains.
+ */
+function tabPathExistsInTree(
+  path: string,
+  files: Set<string>,
+  dirs: Set<string>,
+): boolean {
+  if (files.has(path)) return true;
+  if (!isFolderNotePath(path)) return false;
+  const folder = folderPathFromFolderNote(path);
+  return folder != null && dirs.has(folder);
+}
+
 function persistSession(state: {
   vaultPath: string | null;
   tabs: EditorTab[];
@@ -443,9 +465,12 @@ async function pruneMissingTabs(
   get: () => VaultStore,
   tree: TreeNode,
 ): Promise<void> {
-  const existing = new Set(collectFilePaths(tree));
+  const files = new Set(collectFilePaths(tree));
+  const dirs = new Set(collectDirPaths(tree));
   const { tabs, activePath } = get();
-  const nextTabs = tabs.filter((t) => isVirtualTab(t) || existing.has(t.path));
+  const nextTabs = tabs.filter(
+    (t) => isVirtualTab(t) || tabPathExistsInTree(t.path, files, dirs),
+  );
   const activeStillOpen =
     activePath != null && nextTabs.some((t) => t.path === activePath);
   const lostActive = activePath != null && !activeStillOpen;
@@ -653,12 +678,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           loadProjectPropertiesMap(),
           loadVaultSession(path),
         ]);
-      const existing = new Set(collectFilePaths(tree));
+      const files = new Set(collectFilePaths(tree));
+      const dirs = new Set(collectDirPaths(tree));
       const restoredTabs: EditorTab[] = (session?.tabs ?? [])
         .filter(
           (t) =>
             isVirtualTab({ kind: t.kind ?? "file", path: t.path }) ||
-            existing.has(t.path),
+            tabPathExistsInTree(t.path, files, dirs),
         )
         .map((t) => ({
           path: t.path,

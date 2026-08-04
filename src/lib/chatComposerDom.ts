@@ -396,14 +396,20 @@ function insertChipNodes(
   placeCaretAfter(afterNode);
 }
 
-/** Insert a vault path chip at the caret (or drop point). */
+/** Insert a vault path chip at the caret (or drop point), always followed by a space. */
 export function insertPathChip(
   root: HTMLElement,
   path: string,
   clientX?: number,
   clientY?: number,
 ): void {
-  insertChipNodes(root, createPathChipElement(path), clientX, clientY);
+  insertChipNodes(
+    root,
+    createPathChipElement(path),
+    clientX,
+    clientY,
+    true,
+  );
 }
 
 /** Insert a skill chip at the caret, always followed by a space to type after. */

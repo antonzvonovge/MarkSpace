@@ -15,6 +15,7 @@ import {
 import type { LoadedSkill, SkillMeta } from "./skills";
 import type { ChatMode } from "./types";
 import { buildSystemPrompt, buildVaultTools } from "./vaultTools";
+import { unwrapComposerMarkers } from "../lib/chatComposerDom";
 
 export type RunChatParams = {
   messages: UIMessage[];
@@ -41,6 +42,23 @@ export type RunChatParams = {
 };
 
 type AssistantPart = UIMessage["parts"][number];
+
+/** Expand composer path/skill/tool markers so the model sees plain text. */
+function unwrapMessagesForModel(messages: UIMessage[]): UIMessage[] {
+  return messages.map((message) => {
+    if (message.role !== "user") return message;
+    const parts = message.parts ?? [];
+    let changed = false;
+    const nextParts = parts.map((part) => {
+      if (part.type !== "text") return part;
+      const text = unwrapComposerMarkers(part.text);
+      if (text === part.text) return part;
+      changed = true;
+      return { ...part, text };
+    });
+    return changed ? { ...message, parts: nextParts } : message;
+  });
+}
 
 /** Cap tool payloads in live UI state; full data stays in `parts` for the final message. */
 const UI_TOOL_STRING_CAP = 480;
@@ -278,7 +296,10 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     getMessages: () => inputMessages,
     projectPath: params.projectPath,
   });
-  const modelMessages = await convertToModelMessages(inputMessages, { tools });
+  const modelMessages = await convertToModelMessages(
+    unwrapMessagesForModel(inputMessages),
+    { tools },
+  );
 
   const result = streamText({
     model: resolved.model,

@@ -26,6 +26,7 @@ import {
   parseUserTextSegments,
   selectionChipLabel,
 } from "../../lib/chatSelectionChips";
+import { chipLabelForPath } from "../../lib/chatComposerDom";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { findModel, OPENROUTER_MODELS } from "../../ai/models";
 import { resolveModelId } from "../../ai/resolveModelId";
@@ -154,15 +155,45 @@ function WaitingIndicator() {
   );
 }
 
-/** Sent user text with selection quotes folded back into chips. */
+/** Sent user text with selection quotes and path markers folded back into chips. */
 function UserText({ text }: { text: string }) {
   const segments = parseUserTextSegments(text);
   return (
     <>
-      {segments.map((segment, i) =>
-        segment.kind === "text" ? (
-          <span key={i}>{segment.text}</span>
-        ) : (
+      {segments.map((segment, i) => {
+        if (segment.kind === "text") {
+          return <span key={i}>{segment.text}</span>;
+        }
+        if (segment.kind === "path") {
+          return (
+            <span
+              key={i}
+              className={
+                segment.path.endsWith("/")
+                  ? "chat-path-chip is-dir"
+                  : "chat-path-chip"
+              }
+              title={segment.path}
+            >
+              {chipLabelForPath(segment.path)}
+            </span>
+          );
+        }
+        if (segment.kind === "skill") {
+          return (
+            <span key={i} className="chat-path-chip chat-skill-chip" title={`/${segment.id}`}>
+              /{segment.id}
+            </span>
+          );
+        }
+        if (segment.kind === "tool") {
+          return (
+            <span key={i} className="chat-path-chip chat-tool-chip" title={`@${segment.id}`}>
+              @{segment.id}
+            </span>
+          );
+        }
+        return (
           <span
             key={i}
             className="chat-selection-chip"
@@ -174,8 +205,8 @@ function UserText({ text }: { text: string }) {
           >
             {selectionChipLabel(segment.text)}
           </span>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }

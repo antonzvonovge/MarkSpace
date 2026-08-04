@@ -51,13 +51,25 @@ export type ChatStatus = "ready" | "streaming" | "error";
 export type { ChatAttachment };
 
 function titleFromMessage(text: string): string {
-  // Prefer what the user typed; fall back to the quoted selection itself.
+  // Prefer what the user typed; fall back to chips / quoted selection.
   const segments = parseUserTextSegments(text);
   const typed = segments
     .filter((s) => s.kind === "text")
     .map((s) => s.text)
     .join(" ");
-  const source = typed || segments.map((s) => s.text).join(" ") || text;
+  const chips = segments.flatMap((s) => {
+    if (s.kind === "path") return [s.path];
+    if (s.kind === "skill") return [`/${s.id}`];
+    if (s.kind === "tool") return [`@${s.id}`];
+    return [];
+  });
+  const selections = segments
+    .filter((s) => s.kind === "selection")
+    .map((s) => s.text);
+  const source =
+    [typed, ...chips].filter(Boolean).join(" ") ||
+    selections.join(" ") ||
+    unwrapComposerMarkers(text);
   const cleaned = source.replace(/\s+/g, " ").trim();
   if (!cleaned) return "New chat";
   return cleaned.length > 48 ? `${cleaned.slice(0, 48)}…` : cleaned;
@@ -108,8 +120,8 @@ type ChatStore = {
   /** Live thinking text; updated without rewriting `messages`. */
   streamReasoningText: string | null;
   /**
-   * Thread ids where the agent finished a turn and the user has not yet
-   * acknowledged (by typing or activating the tab).
+   * Thread ids where the agent finished a turn while the user was not viewing
+   * that tab. Cleared by typing, activating the tab, or focusing the composer.
    */
   attentionThreadIds: string[];
   hydrateForVault: (vaultPath: string | null) => Promise<void>;
@@ -812,11 +824,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const rawDraft = text ?? get().draft;
     const skillIds = extractSkillIdsFromDraft(rawDraft);
     const toolIds = extractToolIdsFromDraft(rawDraft);
-    const draftText = unwrapComposerMarkers(
-      expandSelectionMarkers(rawDraft, get().draftSelections),
+    // Keep path/skill/tool markers in stored user text so bubbles render chips;
+    // runChat unwraps them for the model.
+    const draftText = expandSelectionMarkers(
+      rawDraft,
+      get().draftSelections,
     );
     const attachments = get().draftAttachments;
-    const content = draftText.trim();
+    const content = unwrapComposerMarkers(draftText).trim();
     if (!content && attachments.length === 0) return;
     const vaultPath =
       get().vaultBound ?? useVaultStore.getState().vaultPath;
@@ -936,6 +951,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           set({ streamReasoningText: text });
         },
       });
+      // Only flag attention when the user is not already watching this thread
+      // (they switched away or closed chat). Clear separately on composer focus.
+      const viewingFinished =
+        get().activeThreadId === activeThreadId;
       set({
         messages: finalMessages,
         status: "ready",
@@ -943,10 +962,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamStartedAt: null,
         streamReasoningText: null,
         error: null,
-        attentionThreadIds: withAttention(
-          get().attentionThreadIds,
-          activeThreadId,
-        ),
+        attentionThreadIds: viewingFinished
+          ? withoutAttention(get().attentionThreadIds, activeThreadId)
+          : withAttention(get().attentionThreadIds, activeThreadId),
       });
       await get().persistActive();
       await maybeRefreshTitle(activeThreadId, finalMessages, {
@@ -985,6 +1003,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           ? base.slice(0, -1)
           : base;
       const next = [...withoutEmptyAssistant, errorMsg];
+      const viewingFinished =
+        get().activeThreadId === activeThreadId;
       set({
         messages: next,
         status: "error",
@@ -992,10 +1012,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         abort: null,
         streamStartedAt: null,
         streamReasoningText: null,
-        attentionThreadIds: withAttention(
-          get().attentionThreadIds,
-          activeThreadId,
-        ),
+        attentionThreadIds: viewingFinished
+          ? withoutAttention(get().attentionThreadIds, activeThreadId)
+          : withAttention(get().attentionThreadIds, activeThreadId),
       });
       await get().persistActive();
     }
