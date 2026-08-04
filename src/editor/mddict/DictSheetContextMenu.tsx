@@ -1,11 +1,15 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type {
-  ContextMenuComponentProps,
-  ContextMenuItem,
-} from "react-datasheet-grid";
 
-function itemLabel(item: ContextMenuItem): ReactNode {
+export type DictContextMenuItem =
+  | { type: "CUT"; action: () => void }
+  | { type: "COPY"; action: () => void }
+  | { type: "PASTE"; action: () => void }
+  | { type: "DELETE_ROW"; action: () => void }
+  | { type: "INSERT_ROW_BELOW"; action: () => void }
+  | { type: "DUPLICATE_ROW"; action: () => void };
+
+function itemLabel(item: DictContextMenuItem): ReactNode {
   switch (item.type) {
     case "CUT":
       return "Cut";
@@ -15,40 +19,35 @@ function itemLabel(item: ContextMenuItem): ReactNode {
       return "Paste";
     case "DELETE_ROW":
       return "Delete row";
-    case "DELETE_ROWS":
-      return (
-        <>
-          Delete rows {item.fromRow}–{item.toRow}
-        </>
-      );
-    case "INSERT_ROW_BELLOW":
+    case "INSERT_ROW_BELOW":
       return "Insert row below";
     case "DUPLICATE_ROW":
       return "Duplicate row";
-    case "DUPLICATE_ROWS":
-      return (
-        <>
-          Duplicate rows {item.fromRow}–{item.toRow}
-        </>
-      );
   }
 }
 
-function isDangerItem(item: ContextMenuItem): boolean {
-  return item.type === "DELETE_ROW" || item.type === "DELETE_ROWS";
+function isDangerItem(item: DictContextMenuItem): boolean {
+  return item.type === "DELETE_ROW";
 }
 
-function isClipboardItem(item: ContextMenuItem): boolean {
+function isClipboardItem(item: DictContextMenuItem): boolean {
   return item.type === "CUT" || item.type === "COPY" || item.type === "PASTE";
 }
 
-/** Styled like FileTree / EditContextMenu; portaled so DSG overflow does not clip it. */
+type Props = {
+  clientX: number;
+  clientY: number;
+  items: DictContextMenuItem[];
+  close: () => void;
+};
+
+/** Styled like FileTree / EditContextMenu; portaled so overflow does not clip it. */
 export function DictSheetContextMenu({
   clientX,
   clientY,
   items,
   close,
-}: ContextMenuComponentProps) {
+}: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,7 +73,7 @@ export function DictSheetContextMenu({
   const left = Math.min(clientX, window.innerWidth - 220);
   const top = Math.min(clientY, window.innerHeight - 240);
 
-  const renderItem = (item: ContextMenuItem) => (
+  const renderItem = (item: DictContextMenuItem) => (
     <button
       key={item.type}
       type="button"
@@ -85,8 +84,6 @@ export function DictSheetContextMenu({
           : "tree-context-item"
       }
       onClick={() => {
-        // Actions already call setContextMenu(null); do not close() first —
-        // unmounting mid-click can race with deleteRows and crash the grid.
         item.action();
       }}
     >

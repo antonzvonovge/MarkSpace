@@ -57,11 +57,16 @@ export function createLayoutAgnosticKeymapExtension(
               }
 
               // Same slash menu as typing `/` (Ctrl/Cmd+Space).
+              // Insert `/` so Floating UI anchors to the caret, not the whole block
+              // (openSuggestionMenu without deleteTriggerCharacter uses a block decoration).
               if (code === "Space" && !event.shiftKey) {
                 event.preventDefault();
                 const suggestionMenu = editor.getExtension(SuggestionMenu);
                 if (!suggestionMenu || suggestionMenu.shown()) return true;
-                suggestionMenu.openSuggestionMenu("/");
+                suggestionMenu.openSuggestionMenu("/", {
+                  deleteTriggerCharacter: true,
+                  ignoreQueryLength: true,
+                });
                 return true;
               }
 

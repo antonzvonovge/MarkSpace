@@ -5966,6 +5966,10 @@ select {
   width: min(260px, calc(100vw - 32px));
 }
 
+.tag-chips-input-portal {
+  z-index: 12000 !important;
+}
+
 .app-dialog-body .tag-chips-input {
   margin-bottom: 4px;
 }
@@ -6220,8 +6224,8 @@ select {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 16px 20px 32px;
+  overflow: hidden;
+  padding: 16px 20px 0;
   box-sizing: border-box;
 }
 
@@ -6234,6 +6238,8 @@ select {
   gap: 12px 16px;
   margin-bottom: 16px;
   flex-shrink: 0;
+  background: var(--editor-surface);
+  z-index: 2;
 }
 
 .dict-editor-filter {
@@ -6412,74 +6418,114 @@ select {
 }
 
 .dict-editor-sheet {
-  flex: 0 0 auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border-radius: 8px;
-  overflow: visible;
+  overflow: hidden;
   color: var(--text);
+  margin-bottom: 32px;
 }
 
-.dict-editor-sheet .dsg-container {
+.dict-grid {
+  --dict-cols:
+    minmax(100px, 1fr)
+    minmax(90px, 0.85fr)
+    minmax(100px, 1fr)
+    minmax(220px, 2.4fr)
+    minmax(160px, 0.7fr);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border-radius: 8px;
   border: 1px solid var(--line);
   color: var(--text);
   background: var(--editor-surface);
   font-size: 13px;
-  overflow: hidden !important;
-  cursor: default;
-}
-
-.dict-editor-sheet .dsg-expand-rows-indicator {
-  display: none;
-}
-
-.dict-editor-sheet .dsg-input {
-  color: var(--text);
-  background: transparent;
-  font-size: 13px;
-}
-
-.dict-editor-sheet .dsg-cell-header,
-.dict-editor-sheet .dsg-cell-gutter,
-.dict-editor-sheet .dsg-cell-header.dsg-cell-gutter {
-  background: color-mix(in srgb, #6b7c8f 14%, var(--editor-surface)) !important;
-  color: var(--muted);
-  box-shadow: 1px 0 var(--line) !important;
-  font-size: 12px;
-  align-items: flex-start !important;
-  padding-top: 8px;
-}
-
-.dict-editor-sheet .dsg-cell-header.dsg-cell-sticky-right {
-  box-shadow: none !important;
-}
-
-.dict-editor-sheet .dsg-row-header {
-  background: color-mix(in srgb, #6b7c8f 14%, var(--editor-surface));
-}
-
-.dict-editor-sheet .dsg-cell-header-active,
-.dict-editor-sheet .dsg-cell-gutter-active {
-  color: var(--text);
-}
-
-.dict-editor-sheet .dsg-cell {
-  background: var(--editor-surface);
-  font-size: 13px;
-  align-items: flex-start !important;
   overflow: hidden;
+  cursor: default;
+  outline: none;
 }
 
-.dict-editor-sheet .dsg-add-row {
-  display: none !important;
+.dict-grid-header {
+  display: grid;
+  grid-template-columns: var(--dict-cols);
+  width: 100%;
+  flex-shrink: 0;
+  background: color-mix(in srgb, #6b7c8f 14%, var(--editor-surface));
+  border-bottom: 1px solid var(--line);
+  z-index: 1;
 }
 
-.dict-dsg-placeholder {
+.dict-grid-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+}
+
+.dict-grid-row {
+  display: grid;
+  grid-template-columns: var(--dict-cols);
+  width: 100%;
+  flex-shrink: 0;
+  min-height: 34px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dict-grid-row:last-child {
+  border-bottom: none;
+}
+
+.dict-grid-cell {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--editor-surface);
+  border-right: 1px solid var(--line);
+  font-size: 13px;
+  position: relative;
+}
+
+.dict-grid-row:nth-child(odd) .dict-grid-cell {
+  background: var(--editor-surface);
+}
+
+.dict-grid-row:nth-child(even) .dict-grid-cell {
+  background: color-mix(in srgb, #6b7c8f 10%, var(--editor-surface));
+}
+
+.dict-grid-cell:last-child {
+  border-right: none;
+}
+
+.dict-grid-cell-header {
+  background: color-mix(in srgb, #6b7c8f 14%, var(--editor-surface));
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px 8px 0;
+  user-select: none;
+}
+
+.dict-grid-cell.is-active {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--editor-surface));
+  z-index: 1;
+}
+
+.dict-grid-placeholder {
   color: color-mix(in srgb, var(--muted) 70%, transparent);
   user-select: none;
   font-size: 13px;
 }
 
-.dict-dsg-wrap-display {
+.dict-grid-wrap-display {
   width: 100%;
   padding: 6px 8px;
   font-size: 13px;
@@ -6489,15 +6535,16 @@ select {
   word-break: break-word;
 }
 
-.dict-dsg-wrap-input {
+.dict-grid-wrap-input {
   display: block;
   width: 100%;
-  height: 100%;
-  min-height: 100%;
+  height: auto;
+  min-height: calc(1.35em + 12px);
   margin: 0;
   padding: 6px 8px;
   border: none;
   resize: none;
+  overflow: hidden;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -6508,24 +6555,23 @@ select {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+  field-sizing: content;
 }
 
-/* Word + Transcript body cells only (not header). */
-.dict-editor-sheet .dsg-cell.dict-dsg-cell-lg .dict-dsg-wrap-display,
-.dict-editor-sheet .dsg-cell.dict-dsg-cell-lg .dict-dsg-wrap-input,
-.dict-editor-sheet .dsg-cell.dict-dsg-cell-lg .dict-dsg-placeholder {
+.dict-grid-cell-lg .dict-grid-wrap-display,
+.dict-grid-cell-lg .dict-grid-wrap-input,
+.dict-grid-cell-lg .dict-grid-placeholder {
   font-size: 15px;
 }
 
-/* Word column: larger + bold. */
-.dict-editor-sheet .dsg-cell.dict-dsg-cell-word .dict-dsg-wrap-display,
-.dict-editor-sheet .dsg-cell.dict-dsg-cell-word .dict-dsg-wrap-input,
-.dict-editor-sheet .dsg-cell.dict-dsg-cell-word .dict-dsg-placeholder {
+.dict-grid-cell-word .dict-grid-wrap-display,
+.dict-grid-cell-word .dict-grid-wrap-input,
+.dict-grid-cell-word .dict-grid-placeholder {
   font-size: 17px;
   font-weight: 700;
 }
 
-.dict-dsg-tags-display {
+.dict-grid-tags-display {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 10px;
@@ -6535,7 +6581,7 @@ select {
   width: 100%;
 }
 
-.dict-dsg-tag-chip {
+.dict-grid-tag-chip {
   display: inline;
   padding: 0;
   border-radius: 0;
@@ -6553,33 +6599,33 @@ select {
 
 /* Quiz / reveal modes: hide cell contents, keep layout & row height. */
 .dict-editor-sheet[data-dict-reveal="translation"]
-  .dict-dsg-cell-word
-  .dict-dsg-wrap-display,
+  .dict-grid-cell-word
+  .dict-grid-wrap-display,
 .dict-editor-sheet[data-dict-reveal="translation"]
-  .dict-dsg-cell-transcript
-  .dict-dsg-wrap-display,
+  .dict-grid-cell-transcript
+  .dict-grid-wrap-display,
 .dict-editor-sheet[data-dict-reveal="translation"]
-  .dict-dsg-cell-examples
-  .dict-dsg-wrap-display,
+  .dict-grid-cell-examples
+  .dict-grid-wrap-display,
 .dict-editor-sheet[data-dict-reveal="translation"]
-  .dict-dsg-cell-tags
-  .dict-dsg-tags-display,
+  .dict-grid-cell-tags
+  .dict-grid-tags-display,
 .dict-editor-sheet[data-dict-reveal="word"]
-  .dict-dsg-cell-transcript
-  .dict-dsg-wrap-display,
+  .dict-grid-cell-transcript
+  .dict-grid-wrap-display,
 .dict-editor-sheet[data-dict-reveal="word"]
-  .dict-dsg-cell-translation
-  .dict-dsg-wrap-display,
+  .dict-grid-cell-translation
+  .dict-grid-wrap-display,
 .dict-editor-sheet[data-dict-reveal="word"]
-  .dict-dsg-cell-examples
-  .dict-dsg-wrap-display,
+  .dict-grid-cell-examples
+  .dict-grid-wrap-display,
 .dict-editor-sheet[data-dict-reveal="word"]
-  .dict-dsg-cell-tags
-  .dict-dsg-tags-display {
+  .dict-grid-cell-tags
+  .dict-grid-tags-display {
   visibility: hidden;
 }
 
-.dict-dsg-tags-edit {
+.dict-grid-tags-edit {
   padding: 0;
   width: 100%;
   height: 100%;
@@ -6588,14 +6634,14 @@ select {
   align-self: stretch;
 }
 
-.dict-dsg-tags-input {
+.dict-grid-tags-input {
   width: 100%;
   height: 100%;
   min-height: 100%;
   font-size: 13px;
 }
 
-.dict-dsg-tags-input .tag-chips-input-box {
+.dict-grid-tags-input .tag-chips-input-box {
   border: none;
   border-radius: 0;
   background: transparent;
@@ -6607,12 +6653,12 @@ select {
   box-shadow: none;
 }
 
-.dict-dsg-tags-input .tag-chips-input-box:focus-within {
+.dict-grid-tags-input .tag-chips-input-box:focus-within {
   border: none;
   box-shadow: none;
 }
 
-.dict-dsg-tags-input .tag-chips-input-field-wrap {
+.dict-grid-tags-input .tag-chips-input-field-wrap {
   flex: 1 1 60px;
   min-width: 60px;
 }
