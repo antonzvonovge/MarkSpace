@@ -336,6 +336,143 @@ export async function setFileTags(
   return invoke("set_file_tags", { path, tags });
 }
 
+/** Text comment anchored to a quote in a markdown note. */
+export type StructuralAnchor = {
+  kind: "text" | "leaf" | "span";
+  startHash: string;
+  startType: string;
+  startOcc: number;
+  startOffset: number;
+  endHash: string;
+  endType: string;
+  endOcc: number;
+  endOffset: number;
+  leafType?: string;
+  leafKey?: string;
+};
+
+export type NoteComment = {
+  id: string;
+  quote: string;
+  prefix: string;
+  suffix: string;
+  /** Structural location in Live doc; quote is label + fallback. */
+  anchor?: StructuralAnchor | null;
+  body: string;
+  resolved: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Inbox row: comment plus its note path. */
+export type CommentRef = {
+  notePath: string;
+  comment: NoteComment;
+};
+
+export type UpsertCommentInput = {
+  id?: string;
+  quote: string;
+  prefix?: string;
+  suffix?: string;
+  anchor?: StructuralAnchor | null;
+  body: string;
+  resolved?: boolean;
+};
+
+function normalizeAnchor(raw: unknown): StructuralAnchor | null {
+  if (!raw || typeof raw !== "object") return null;
+  const a = raw as Record<string, unknown>;
+  const kind = a.kind;
+  if (kind !== "text" && kind !== "leaf" && kind !== "span") return null;
+  const num = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const opt = (v: unknown) => {
+    const s = str(v);
+    return s ? s : undefined;
+  };
+  return {
+    kind,
+    startHash: str(a.startHash),
+    startType: str(a.startType),
+    startOcc: num(a.startOcc),
+    startOffset: num(a.startOffset),
+    endHash: str(a.endHash),
+    endType: str(a.endType),
+    endOcc: num(a.endOcc),
+    endOffset: num(a.endOffset),
+    leafType: opt(a.leafType),
+    leafKey: opt(a.leafKey),
+  };
+}
+
+function normalizeComment(raw: NoteComment): NoteComment {
+  return {
+    id: raw.id,
+    quote: raw.quote ?? "",
+    prefix: raw.prefix ?? "",
+    suffix: raw.suffix ?? "",
+    anchor: normalizeAnchor(raw.anchor),
+    body: raw.body ?? "",
+    resolved: Boolean(raw.resolved),
+    createdAt: raw.createdAt ?? "",
+    updatedAt: raw.updatedAt ?? "",
+  };
+}
+
+export async function listNoteComments(path: string): Promise<NoteComment[]> {
+  const rows = await invoke<NoteComment[]>("list_note_comments", { path });
+  return rows.map(normalizeComment);
+}
+
+export async function listAllComments(): Promise<CommentRef[]> {
+  const rows = await invoke<CommentRef[]>("list_all_comments");
+  return rows.map((r) => ({
+    notePath: r.notePath,
+    comment: normalizeComment(r.comment),
+  }));
+}
+
+export async function upsertNoteComment(
+  path: string,
+  comment: UpsertCommentInput,
+): Promise<NoteComment> {
+  const raw = await invoke<NoteComment>("upsert_note_comment", {
+    path,
+    comment: {
+      id: comment.id ?? "",
+      quote: comment.quote,
+      prefix: comment.prefix ?? "",
+      suffix: comment.suffix ?? "",
+      anchor: comment.anchor ?? undefined,
+      body: comment.body,
+      resolved: comment.resolved,
+    },
+  });
+  return normalizeComment(raw);
+}
+
+export async function deleteNoteComment(
+  path: string,
+  id: string,
+): Promise<void> {
+  await invoke("delete_note_comment", { path, id });
+}
+
+export async function setCommentResolved(
+  path: string,
+  id: string,
+  resolved: boolean,
+): Promise<NoteComment> {
+  const raw = await invoke<NoteComment>("set_comment_resolved", {
+    path,
+    id,
+    resolved,
+  });
+  return normalizeComment(raw);
+}
+
 /** Vault-relative paths stored as one file each under `.markspace/favorites/`. */
 export async function listFavorites(): Promise<string[]> {
   return invoke("list_favorites");

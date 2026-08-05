@@ -8,6 +8,7 @@ import {
   createMddict,
   createMdlnks,
   createNote,
+  deleteNoteComment,
   deletePath,
   documentKind,
   ensureFolderNote,
@@ -19,8 +20,10 @@ import {
   isSkillsFolder,
   isValidSkillId,
   joinPath,
+  listAllComments,
   listDictionaryTags,
   listFavorites,
+  listNoteComments,
   listProjectProperties,
   listTree,
   listVaultTags,
@@ -32,9 +35,14 @@ import {
   reindexNoteTags as reindexNoteTagsApi,
   removeFavorite,
   renamePath,
+  setCommentResolved,
   skillPathForId,
+  upsertNoteComment,
   writeNote,
+  type CommentRef,
+  type NoteComment,
   type ProjectProperties,
+  type UpsertCommentInput,
 } from "../lib/vaultApi";
 import {
   loadExpandedPaths,
@@ -47,6 +55,10 @@ import {
   loadDocOutlineUi,
   saveDocOutlineOpen,
 } from "../lib/outlineUiState";
+import {
+  loadDocCommentsUi,
+  saveDocCommentsOpen,
+} from "../lib/commentsUiState";
 import {
   dailyNotePath,
   diaryProjectRootForPath,
@@ -119,14 +131,22 @@ type VaultStore = {
   favoritePaths: string[];
   /** Project properties keyed by project path (first-level folder). */
   projectPropertiesByPath: Record<string, ProjectProperties>;
+  /** All vault comments for the sidebar inbox (project → note tree). */
+  allComments: CommentRef[];
+  /** Comments for the active note (Live panel). */
+  activeNoteComments: NoteComment[];
+  /** Live-mode document outline (TOC) pane. */
+  showOutline: boolean;
+  /** Live-mode comments pane. */
+  showComments: boolean;
+  /** Focus a comment after openNote (from sidebar inbox). */
+  pendingCommentFocusId: string | null;
   /** Unique tags from note frontmatter and inline `#tags` across the vault. */
   vaultTags: string[];
   /** Unique tags from all `.mddict` files (separate bank; not in tag graph). */
   dictionaryTags: string[];
   content: string;
   viewMode: ViewMode;
-  /** Live-mode document outline (TOC) pane. */
-  showOutline: boolean;
   dirty: boolean;
   saving: boolean;
   loading: boolean;
@@ -161,6 +181,20 @@ type VaultStore = {
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
   toggleOutline: () => void;
+  toggleComments: () => void;
+  /** Reload vault-wide comments inbox. */
+  refreshAllComments: () => Promise<void>;
+  /** Load comments for the active note into `activeNoteComments`. */
+  loadActiveNoteComments: () => Promise<void>;
+  upsertActiveComment: (input: UpsertCommentInput) => Promise<NoteComment | null>;
+  deleteActiveComment: (id: string) => Promise<void>;
+  setActiveCommentResolved: (
+    id: string,
+    resolved: boolean,
+  ) => Promise<void>;
+  /** Open note and focus a comment in the Live panel. */
+  openComment: (notePath: string, commentId: string) => Promise<void>;
+  takePendingCommentFocus: () => string | null;
   saveActive: () => Promise<void>;
   selectFolder: (path: string) => void;
   /**
@@ -384,6 +418,7 @@ function activateLoaded(
   syncTreeSelection = true,
 ) {
   const outline = loadDocOutlineUi(vaultPath, path);
+  const commentsUi = loadDocCommentsUi(vaultPath, path);
   set({
     tabs: withTabBody(tabs, path, content, dirty),
     activePath: path,
@@ -394,6 +429,7 @@ function activateLoaded(
       ? treeSelectionForOpen(path)
       : { treeSelectionVisible: false }),
     showOutline: outline.open,
+    showComments: commentsUi.open,
   });
 }
 
@@ -413,6 +449,8 @@ function activateVirtualTab(
     selectedFolderExplicit: false,
     ...(syncTreeSelection ? { treeSelectionVisible: true } : { treeSelectionVisible: false }),
     showOutline: false,
+    showComments: false,
+    activeNoteComments: [],
   });
 }
 
@@ -426,6 +464,26 @@ async function activateTab(
     activateVirtualTab(set, tab.path, tabs);
     return;
   }
+  // Prefer disk when clean so external restores (git/sync) are not masked by
+  // a stale in-memory body. If dirty but disk is much larger, treat disk as a
+  // restore and drop the truncated buffer.
+  if (!isPdfPath(tab.path)) {
+    try {
+      const disk = await readNote(tab.path);
+      const mem = tab.body;
+      const useDisk =
+        mem === undefined ||
+        !tab.dirty ||
+        disk.length > mem.length + 200;
+      if (useDisk) {
+        activateLoaded(set, get().vaultPath, tab.path, disk, tabs, false);
+        void get().loadActiveNoteComments();
+        return;
+      }
+    } catch {
+      // Fall through to memory / error paths below.
+    }
+  }
   if (tab.body !== undefined) {
     activateLoaded(
       set,
@@ -435,12 +493,14 @@ async function activateTab(
       tabs,
       Boolean(tab.dirty),
     );
+    void get().loadActiveNoteComments();
     return;
   }
   set({ loading: true, tabs, dirty: false });
   try {
     const body = await readNote(tab.path);
     activateLoaded(set, get().vaultPath, tab.path, body, tabs);
+    void get().loadActiveNoteComments();
   } catch {
     set({
       loading: false,
@@ -448,6 +508,7 @@ async function activateTab(
       activePath: null,
       content: "",
       dirty: false,
+      activeNoteComments: [],
     });
   }
 }
@@ -623,11 +684,15 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   expandedPaths: [],
   favoritePaths: [],
   projectPropertiesByPath: {},
+  allComments: [],
+  activeNoteComments: [],
   vaultTags: [],
   dictionaryTags: [],
   content: "",
   viewMode: "live",
   showOutline: false,
+  showComments: false,
+  pendingCommentFocusId: null,
   dirty: false,
   saving: false,
   loading: false,
@@ -727,10 +792,14 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         projectPropertiesByPath,
         vaultTags: [],
         dictionaryTags: [],
+        allComments: [],
+        activeNoteComments: [],
+        pendingCommentFocusId: null,
         tabs: restoredTabs,
       });
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
+      void get().refreshAllComments();
 
       if (restoredTabs.length > 0) {
         const active =
@@ -783,6 +852,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
             ]);
           set({ favoritePaths, projectPropertiesByPath });
           await pruneMissingTabs(set, get, tree);
+          void get().refreshAllComments();
+          void get().loadActiveNoteComments();
         } catch (e) {
           set({ error: e instanceof Error ? e.message : String(e) });
         }
@@ -821,7 +892,26 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     {
       const active = get().tabs.find((t) => t.path === get().activePath);
       if (get().dirty && active && isFileTab(active)) {
-        await get().saveActive();
+        // Never flush a truncated in-memory buffer over a fuller disk restore
+        // (e.g. git checkout while the wiped note is still open/dirty).
+        let skipSave = false;
+        if (!isPdfPath(active.path)) {
+          try {
+            const disk = await readNote(active.path);
+            const mem = get().content;
+            if (disk.length > mem.length + 200) {
+              skipSave = true;
+              set({
+                dirty: false,
+                content: disk,
+                tabs: withTabBody(get().tabs, active.path, disk, false),
+              });
+            }
+          } catch {
+            // Fall through to normal save.
+          }
+        }
+        if (!skipSave) await get().saveActive();
       }
     }
 
@@ -830,7 +920,25 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       return readNote(path);
     };
 
-    const { tabs, activePath } = get();
+    /**
+     * Prefer on-disk content when the tab is clean, or when disk is clearly a
+     * fuller restore over a truncated in-memory buffer (git checkout / sync).
+     */
+    const resolveOpenContent = async (
+      tab: EditorTab,
+    ): Promise<{ content: string; dirty: boolean }> => {
+      if (isPdfPath(path)) return { content: "", dirty: false };
+      const disk = await loadContent();
+      const mem = tab.body;
+      if (mem === undefined) return { content: disk, dirty: false };
+      if (!tab.dirty) return { content: disk, dirty: false };
+      if (disk.length > mem.length + 200) {
+        return { content: disk, dirty: false };
+      }
+      return { content: mem, dirty: true };
+    };
+
+    const { tabs } = get();
     const existing = tabs.find((t) => t.path === path && isFileTab(t));
     if (existing) {
       // Already open: activate; if requesting permanent, pin it
@@ -838,56 +946,22 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         !asPreview && existing.preview
           ? tabs.map((t) => (t.path === path ? { ...t, preview: false } : t))
           : tabs;
-      if (activePath === path) {
-        if (nextTabs !== tabs) {
-          set({
-            tabs: nextTabs,
-            ...(pdfPage != null ? { pendingPdfPage: pdfPage } : {}),
-            ...(syncTreeSelection
-              ? treeSelectionForOpen(path)
-              : { treeSelectionVisible: false }),
-          });
-          persistSession(get());
-        } else {
-          set({
-            ...(pdfPage != null ? { pendingPdfPage: pdfPage } : {}),
-            ...(syncTreeSelection
-              ? treeSelectionForOpen(path)
-              : { treeSelectionVisible: false }),
-          });
-        }
-        return;
-      }
-
-      if (existing.body !== undefined) {
-        activateLoaded(
-          set,
-          get().vaultPath,
-          path,
-          existing.body,
-          nextTabs,
-          Boolean(existing.dirty),
-          syncTreeSelection,
-        );
-        if (pdfPage != null) set({ pendingPdfPage: pdfPage });
-        persistSession(get());
-        return;
-      }
 
       set({ loading: true, error: null });
       try {
-        const content = await loadContent();
+        const { content, dirty } = await resolveOpenContent(existing);
         activateLoaded(
           set,
           get().vaultPath,
           path,
           content,
           nextTabs,
-          false,
+          dirty,
           syncTreeSelection,
         );
         if (pdfPage != null) set({ pendingPdfPage: pdfPage });
         persistSession(get());
+        void get().loadActiveNoteComments();
       } catch (e) {
         set({
           loading: false,
@@ -937,6 +1011,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       );
       if (pdfPage != null) set({ pendingPdfPage: pdfPage });
       persistSession(get());
+      void get().loadActiveNoteComments();
     } catch (e) {
       set({
         loading: false,
@@ -1066,6 +1141,102 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const next = !showOutline;
     set({ showOutline: next });
     if (activePath) saveDocOutlineOpen(vaultPath, activePath, next);
+  },
+
+  toggleComments: () => {
+    const { showComments, activePath, vaultPath } = get();
+    const next = !showComments;
+    set({ showComments: next });
+    if (activePath) saveDocCommentsOpen(vaultPath, activePath, next);
+  },
+
+  refreshAllComments: async () => {
+    try {
+      const allComments = await listAllComments();
+      set({ allComments });
+    } catch {
+      set({ allComments: [] });
+    }
+  },
+
+  loadActiveNoteComments: async () => {
+    const { activePath } = get();
+    if (!activePath || !activePath.toLowerCase().endsWith(".md")) {
+      set({ activeNoteComments: [] });
+      return;
+    }
+    try {
+      const activeNoteComments = await listNoteComments(activePath);
+      if (get().activePath !== activePath) return;
+      set({ activeNoteComments });
+    } catch {
+      if (get().activePath === activePath) set({ activeNoteComments: [] });
+    }
+  },
+
+  upsertActiveComment: async (input) => {
+    const { activePath, activeNoteComments: prev } = get();
+    if (!activePath || !activePath.toLowerCase().endsWith(".md")) return null;
+    try {
+      set({ suppressWatchUntil: Date.now() + 800 });
+      const wasCreate =
+        !input.id || !prev.some((c) => c.id === input.id);
+      const created = await upsertNoteComment(activePath, input);
+      const activeNoteComments = await listNoteComments(activePath);
+      if (wasCreate) {
+        set({ activeNoteComments, showComments: true });
+        saveDocCommentsOpen(get().vaultPath, activePath, true);
+      } else {
+        set({ activeNoteComments });
+      }
+      void get().refreshAllComments();
+      return created;
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  },
+
+  deleteActiveComment: async (id) => {
+    const { activePath } = get();
+    if (!activePath || !id) return;
+    try {
+      set({ suppressWatchUntil: Date.now() + 800 });
+      await deleteNoteComment(activePath, id);
+      const activeNoteComments = await listNoteComments(activePath);
+      set({ activeNoteComments });
+      void get().refreshAllComments();
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  setActiveCommentResolved: async (id, resolved) => {
+    const { activePath } = get();
+    if (!activePath || !id) return;
+    try {
+      set({ suppressWatchUntil: Date.now() + 800 });
+      await setCommentResolved(activePath, id, resolved);
+      const activeNoteComments = await listNoteComments(activePath);
+      set({ activeNoteComments });
+      void get().refreshAllComments();
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  openComment: async (notePath, commentId) => {
+    if (!notePath || !commentId) return;
+    set({ pendingCommentFocusId: commentId, showComments: true });
+    saveDocCommentsOpen(get().vaultPath, notePath, true);
+    await get().openNote(notePath, { preview: false });
+    void get().loadActiveNoteComments();
+  },
+
+  takePendingCommentFocus: () => {
+    const id = get().pendingCommentFocusId;
+    if (id != null) set({ pendingCommentFocusId: null });
+    return id;
   },
 
   saveActive: async () => {

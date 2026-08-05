@@ -22,22 +22,55 @@ function OutlineIcon() {
   );
 }
 
+function CommentsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.5 3.25h9A1.25 1.25 0 0 1 13.75 4.5v5A1.25 1.25 0 0 1 12.5 10.75H7.1L4.4 13.1a.4.4 0 0 1-.65-.31V10.75H3.5A1.25 1.25 0 0 1 2.25 9.5v-5A1.25 1.25 0 0 1 3.5 3.25Z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 type Props = {
   /** Show outline toggle in Live mode (markdown only). Default true. */
   showOutlineToggle?: boolean;
+  /** Show comments toggle in Live mode (markdown only). Default true. */
+  showCommentsToggle?: boolean;
 };
 
-export function DocumentToolbar({ showOutlineToggle = true }: Props) {
+export function DocumentToolbar({
+  showOutlineToggle = true,
+  showCommentsToggle = true,
+}: Props) {
   const activePath = useVaultStore((s) => s.activePath);
   const viewMode = useVaultStore((s) => s.viewMode);
   const setViewMode = useVaultStore((s) => s.setViewMode);
   const showOutline = useVaultStore((s) => s.showOutline);
   const toggleOutline = useVaultStore((s) => s.toggleOutline);
+  const showComments = useVaultStore((s) => s.showComments);
+  const toggleComments = useVaultStore((s) => s.toggleComments);
+  const unresolvedCommentCount = useVaultStore(
+    (s) => s.activeNoteComments.filter((c) => !c.resolved).length,
+  );
 
   const pathLabel =
     activePath && !activePath.startsWith("markspace:")
       ? formatToolbarPath(activePath)
       : null;
+
+  const showPaneToggles =
+    viewMode === "live" && (showOutlineToggle || showCommentsToggle);
+
+  const commentsBadge =
+    unresolvedCommentCount > 99
+      ? "99+"
+      : unresolvedCommentCount > 0
+        ? String(unresolvedCommentCount)
+        : null;
 
   return (
     <div className="document-toolbar">
@@ -49,19 +82,60 @@ export function DocumentToolbar({ showOutlineToggle = true }: Props) {
         <div className="document-toolbar-path is-empty" />
       )}
       <div className="document-toolbar-actions">
-        {showOutlineToggle && viewMode === "live" ? (
-          <button
-            type="button"
-            className={
-              showOutline ? "document-toolbar-btn is-active" : "document-toolbar-btn"
-            }
-            title="Outline"
-            aria-label="Toggle outline"
-            aria-pressed={showOutline}
-            onClick={() => toggleOutline()}
+        {showPaneToggles ? (
+          <div
+            className="document-toolbar-pane-toggles"
+            role="group"
+            aria-label="Document panes"
           >
-            <OutlineIcon />
-          </button>
+            {showOutlineToggle ? (
+              <button
+                type="button"
+                className={
+                  showOutline
+                    ? "document-toolbar-btn is-active"
+                    : "document-toolbar-btn"
+                }
+                title="Outline"
+                aria-label="Toggle outline"
+                aria-pressed={showOutline}
+                onClick={() => toggleOutline()}
+              >
+                <OutlineIcon />
+              </button>
+            ) : null}
+            {showCommentsToggle ? (
+              <button
+                type="button"
+                className={
+                  showComments
+                    ? "document-toolbar-btn is-active has-badge"
+                    : commentsBadge
+                      ? "document-toolbar-btn has-badge"
+                      : "document-toolbar-btn"
+                }
+                title={
+                  commentsBadge
+                    ? `Comments (${unresolvedCommentCount} open)`
+                    : "Comments"
+                }
+                aria-label={
+                  commentsBadge
+                    ? `Toggle comments, ${unresolvedCommentCount} open`
+                    : "Toggle comments"
+                }
+                aria-pressed={showComments}
+                onClick={() => toggleComments()}
+              >
+                <CommentsIcon />
+                {commentsBadge ? (
+                  <span className="document-toolbar-badge" aria-hidden="true">
+                    {commentsBadge}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
+          </div>
         ) : null}
         <div
           className="view-mode-switch"

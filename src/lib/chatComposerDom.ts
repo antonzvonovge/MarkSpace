@@ -1,4 +1,9 @@
-import { selectionChipLabel, wrapSelectionMarker } from "./chatSelectionChips";
+import {
+  commentChipLabel,
+  selectionChipLabel,
+  wrapSelectionMarker,
+} from "./chatSelectionChips";
+import type { ChatSelectionRef } from "./chatSelectionChips";
 
 /** Markers for vault path chips in the chat composer draft string. */
 export const VAULT_PATH_OPEN = "⟦";
@@ -19,7 +24,12 @@ const TOOL_MARKER_RE = /⟪([^⟫]*)⟫/g;
 const ANY_MARKER_RE = /⟦([^⟧]*)⟧|⦃([^⦄]*)⦄|⟬([^⟭]*)⟭|⟪([^⟫]*)⟫/g;
 
 /** Resolves a selection chip id to the text it stands for. */
-export type SelectionTextResolver = (id: string) => string | undefined;
+export type SelectionTextResolver = (
+  id: string,
+) =>
+  | string
+  | Pick<ChatSelectionRef, "text" | "kind" | "quote" | "sourcePath">
+  | undefined;
 
 export function wrapVaultPathMarker(path: string): string {
   const safe = path.replace(/⟧/g, "");
@@ -144,14 +154,29 @@ export function createToolChipElement(id: string): HTMLSpanElement {
 
 export function createSelectionChipElement(
   id: string,
-  text: string,
+  refOrText: string | Pick<ChatSelectionRef, "text" | "kind" | "quote" | "sourcePath">,
 ): HTMLSpanElement {
   const span = document.createElement("span");
-  span.className = "chat-path-chip chat-selection-chip";
+  const isComment =
+    typeof refOrText === "object" && refOrText.kind === "comment";
+  span.className = isComment
+    ? "chat-path-chip chat-selection-chip chat-comment-chip"
+    : "chat-path-chip chat-selection-chip";
   span.contentEditable = "false";
   span.dataset.selectionId = id;
-  span.textContent = selectionChipLabel(text);
-  span.title = text;
+  if (typeof refOrText === "string") {
+    span.textContent = selectionChipLabel(refOrText);
+    span.title = refOrText;
+  } else if (isComment) {
+    span.textContent = commentChipLabel(refOrText);
+    const path = refOrText.sourcePath?.trim();
+    const quote = (refOrText.quote ?? "").trim();
+    const body = refOrText.text.trim();
+    span.title = [path, quote && `“${quote}”`, body].filter(Boolean).join("\n\n");
+  } else {
+    span.textContent = selectionChipLabel(refOrText.text);
+    span.title = refOrText.text;
+  }
   return span;
 }
 
@@ -266,9 +291,9 @@ export function renderComposerFromDraft(
     } else if (match[2] != null) {
       frag.appendChild(createSkillChipElement(match[2]));
     } else if (match[3] != null) {
-      const text = resolveSelectionText?.(match[3]);
-      if (text != null) {
-        frag.appendChild(createSelectionChipElement(match[3], text));
+      const resolved = resolveSelectionText?.(match[3]);
+      if (resolved != null) {
+        frag.appendChild(createSelectionChipElement(match[3], resolved));
       }
     } else if (match[4] != null) {
       frag.appendChild(createToolChipElement(match[4]));

@@ -203,7 +203,7 @@ export function LinksEditor({ path: _path, content, onChange }: Props) {
   if (error) {
     return (
       <div className="links-editor-column">
-        <DocumentToolbar showOutlineToggle={false} />
+        <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
         <div className="links-editor">
           <div className="links-editor-error">
             <h2>Invalid links file</h2>
@@ -220,7 +220,7 @@ export function LinksEditor({ path: _path, content, onChange }: Props) {
 
   return (
     <div className="links-editor-column">
-      <DocumentToolbar showOutlineToggle={false} />
+      <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
       <div className="links-editor">
         <div className="links-editor-toolbar">
           <div className="links-editor-filter">

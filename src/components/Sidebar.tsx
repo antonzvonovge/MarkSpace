@@ -6,7 +6,6 @@ import {
   CalendarCheckIcon,
   SidebarCalendar,
 } from "./SidebarCalendar";
-import { TreeToolbar } from "./TreeToolbar";
 import { loadLastVault, saveLastVault } from "../lib/settingsStore";
 import { usePrefsStore, useSettingsTabActive } from "../store/prefsStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
@@ -85,10 +84,6 @@ export function Sidebar() {
             <img className="brand-logo" src={brandLogo} alt="" />
             MarkSpace
           </div>
-          <TreeToolbar
-            onCreate={(kind) => fileTreeRef.current?.startCreate(kind)}
-            onLocateActive={() => fileTreeRef.current?.revealActive()}
-          />
         </div>
 
         <FileTree ref={fileTreeRef} />

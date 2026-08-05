@@ -40,4 +40,24 @@ describe("math BlockNote round-trip", () => {
     expect(md).toContain("$Cl^-$");
     expect(md).toContain("$$E = mc^2$$");
   });
+
+  it("keeps sibling list items when one contains inline $math$", () => {
+    editor = BlockNoteEditor.create({ schema: noteEditorSchema });
+    const source = [
+      "## Features",
+      "",
+      "* [ ] before",
+      "* [ ] ion ($Cl^-$), after",
+      "* [ ] sibling",
+    ].join("\n");
+    const blocks = editor.tryParseMarkdownToBlocks(
+      mathToEditorMarkdown(source),
+    );
+    editor.replaceBlocks(editor.document, blocks);
+    const md = editorMarkdownToMath(editor.blocksToMarkdownLossy());
+    expect(md).toContain("before");
+    expect(md).toContain("sibling");
+    expect(md).toMatch(/\$Cl\^-\$/);
+    expect(md).not.toBe("## Features\n\n$Cl^-$\n");
+  });
 });

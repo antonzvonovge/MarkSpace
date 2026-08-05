@@ -50,6 +50,12 @@ import {
   ConfirmDialog,
   ProjectPropertiesDialog,
 } from "./AppDialog";
+import { CommentsInboxSection } from "./CommentsInboxSection";
+import { buildUnresolvedCommentCounts } from "../lib/commentCounts";
+import {
+  loadFavoritesSectionCollapsed,
+  saveFavoritesSectionCollapsed,
+} from "../lib/favoritesUiState";
 import {
   FcDocument,
   FcFolder,
@@ -58,7 +64,6 @@ import {
   FcPackage,
   FcPlanner,
   FcReading,
-  FcSafe,
   FcWorkflow,
 } from "react-icons/fc";
 import {
@@ -80,11 +85,17 @@ import {
   CollectionPlusIcon,
   DiagramIcon,
   DictionaryIcon,
+  FavoritesSectionIcon,
   LinksIcon,
   PdfIcon,
   PlusIcon,
+  VaultSectionIcon,
 } from "./treeIcons";
 import type { TreeCreateKind } from "./TreeToolbar";
+import {
+  SectionCollapseButton,
+  WorkspaceHeaderActions,
+} from "./TreeToolbar";
 
 const TREE_ROOT = "__tree_root__";
 const VAULT_ID = "__vault__";
@@ -956,6 +967,15 @@ function InlineRenameInput({
   );
 }
 
+function TreeCommentCount({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="tree-comment-count" title={`${count} open comments`}>
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 function FavoritesTreeRows({
   nodes,
   depth,
@@ -967,6 +987,7 @@ function FavoritesTreeRows({
   renamingPath,
   favoriteSet,
   projectPropertiesByPath,
+  unresolvedCounts,
   onOpenContextMenu,
   onSelectFolder,
   onOpenFolder,
@@ -985,6 +1006,7 @@ function FavoritesTreeRows({
   renamingPath: string | null;
   favoriteSet: Set<string>;
   projectPropertiesByPath: Record<string, ProjectProperties>;
+  unresolvedCounts: Map<string, number>;
   onOpenContextMenu: (menu: ContextMenuState) => void;
   onSelectFolder: (path: string) => void;
   onOpenFolder: (path: string) => void;
@@ -1018,6 +1040,7 @@ function FavoritesTreeRows({
           !selectedFolderExplicit &&
           activePath === path;
         const renaming = renamingPath === path;
+        const openComments = unresolvedCounts.get(path) ?? 0;
 
         return (
           <div key={`fav:${path}`} className="favorites-node">
@@ -1033,7 +1056,8 @@ function FavoritesTreeRows({
                 .filter(Boolean)
                 .join(" ")}
               style={{
-                paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
+                // +1 — align with first branch under vault root.
+                paddingLeft: `calc(var(--tree-pad-x) + ${depth + 1} * var(--tree-indent))`,
                 paddingRight: "var(--tree-pad-x)",
               }}
               data-vault-path={path || undefined}
@@ -1150,6 +1174,7 @@ function FavoritesTreeRows({
               ) : (
                 <TreeNodeLabel text={node.name} isDir={isDir} />
               )}
+              <TreeCommentCount count={openComments} />
             </div>
 
             {isDir && isOpen && hasChildren ? (
@@ -1164,6 +1189,7 @@ function FavoritesTreeRows({
                 renamingPath={renamingPath}
                 favoriteSet={favoriteSet}
                 projectPropertiesByPath={projectPropertiesByPath}
+                unresolvedCounts={unresolvedCounts}
                 onOpenContextMenu={onOpenContextMenu}
                 onSelectFolder={onSelectFolder}
                 onOpenFolder={onOpenFolder}
@@ -1213,6 +1239,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const toggleExpanded = useVaultStore((s) => s.toggleExpanded);
   const addToFavorites = useVaultStore((s) => s.addToFavorites);
   const removeFromFavorites = useVaultStore((s) => s.removeFromFavorites);
+  const allComments = useVaultStore((s) => s.allComments);
 
   const treeRef = useRef<TreeMethods>(null);
   const treeFocusRef = useRef<HTMLDivElement | null>(null);
@@ -1226,6 +1253,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     useState<ProjectProperties | null>(null);
   const [projectPropsLoading, setProjectPropsLoading] = useState(false);
   const [projectPropsSaving, setProjectPropsSaving] = useState(false);
+  const [favoritesCollapsed, setFavoritesCollapsed] = useState(
+    () => loadFavoritesSectionCollapsed(),
+  );
   const nativeLanguage = usePrefsStore((s) => s.prefs.nativeLanguage);
 
   const openProjectProperties = useCallback(async (path: string) => {
@@ -1326,6 +1356,30 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     });
     revealPathInTree(path);
   }, [revealPathInTree]);
+
+  /** Vault root stays open; all nested folders close (first level only). */
+  const collapseAllInTree = useCallback(() => {
+    const { expandedPaths } = useVaultStore.getState();
+    if (expandedPaths.length === 0) return;
+    // Close all nested folders in one call (looped close() hits stale openIds).
+    treeRef.current?.close(expandedPaths.map(toNodeId));
+    useVaultStore.getState().collapseAllFolders();
+  }, []);
+
+  /** Favorites list only: close nested folders under favorite roots. */
+  const collapseFavoritesToTopLevel = useCallback(() => {
+    const { expandedPaths, vaultPath: vp } = useVaultStore.getState();
+    if (expandedPaths.length === 0 || favoritePaths.length === 0) return;
+    const toClose = expandedPaths.filter((p) =>
+      favoritePaths.some((fav) => p === fav || p.startsWith(`${fav}/`)),
+    );
+    if (toClose.length === 0) return;
+    const closeIds = toClose.map(toNodeId);
+    treeRef.current?.close(closeIds);
+    const next = expandedPaths.filter((p) => !toClose.includes(p));
+    useVaultStore.setState({ expandedPaths: next });
+    if (vp) void saveExpandedPaths(vp, next);
+  }, [favoritePaths]);
 
   useEffect(() => {
     if (!treeRevealRequest) return;
@@ -1573,6 +1627,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
 
   const favoriteSet = useMemo(() => new Set(favoritePaths), [favoritePaths]);
 
+  const unresolvedCounts = useMemo(
+    () => buildUnresolvedCommentCounts(allComments),
+    [allComments],
+  );
+
   const favoriteNodes = useMemo(() => {
     if (!tree) return [] as TreeNode[];
     const nodes: TreeNode[] = [];
@@ -1582,6 +1641,22 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     }
     return nodes;
   }, [tree, favoritePaths]);
+
+  const favoritesCanCollapse = useMemo(
+    () =>
+      expandedPaths.some((p) =>
+        favoritePaths.some((fav) => p === fav || p.startsWith(`${fav}/`)),
+      ),
+    [expandedPaths, favoritePaths],
+  );
+
+  const toggleFavoritesCollapsed = useCallback(() => {
+    setFavoritesCollapsed((prev) => {
+      const next = !prev;
+      saveFavoritesSectionCollapsed(next);
+      return next;
+    });
+  }, []);
 
   const initialOpen = useMemo(
     () => [VAULT_ID, ...expandedPaths.map(toNodeId)],
@@ -1876,38 +1951,80 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         {favoriteNodes.length > 0 ? (
           <div className="favorites-section">
             <div className="favorites-header">
-              <StarIcon filled />
-              <span>Favorites</span>
+              <span
+                role="button"
+                tabIndex={0}
+                className="tree-chevron-btn"
+                aria-label={
+                  favoritesCollapsed ? "Expand favorites" : "Collapse favorites"
+                }
+                aria-expanded={!favoritesCollapsed}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavoritesCollapsed();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleFavoritesCollapsed();
+                  }
+                }}
+              >
+                <ChevronIcon open={!favoritesCollapsed} />
+              </span>
+              <span className="favorites-header-icon" aria-hidden>
+                <FavoritesSectionIcon />
+              </span>
+              <button
+                type="button"
+                className="favorites-title-btn"
+                onClick={toggleFavoritesCollapsed}
+              >
+                <span>Favorites</span>
+              </button>
+              <div className="section-header-actions">
+                <SectionCollapseButton
+                  onCollapse={collapseFavoritesToTopLevel}
+                  disabled={!favoritesCanCollapse}
+                  title="Collapse to top level"
+                />
+              </div>
             </div>
-            <FavoritesTreeRows
-              nodes={favoriteNodes}
-              depth={0}
-              expandedPaths={expandedPaths}
-              activePath={activePath}
-              selectedFolderPath={selectedFolderPath}
-              selectedFolderExplicit={selectedFolderExplicit}
-              treeSelectionVisible={treeSelectionVisible}
-              renamingPath={renamingPath}
-              favoriteSet={favoriteSet}
-              projectPropertiesByPath={projectPropertiesByPath}
-              onOpenContextMenu={setContextMenu}
-              onSelectFolder={selectFolder}
-              onOpenFolder={(path) => {
-                void openOrCreateFolderNote(path);
-              }}
-              onOpenNote={(path, options) => {
-                void openNote(path, options);
-              }}
-              onToggleExpanded={toggleExpanded}
-              onRenameCommit={(path, nextName) => {
-                setRenamingPath(null);
-                void renameTreeEntry(path, nextName);
-              }}
-              onRenameCancel={() => setRenamingPath(null)}
-            />
+            {!favoritesCollapsed ? (
+              <FavoritesTreeRows
+                nodes={favoriteNodes}
+                depth={0}
+                expandedPaths={expandedPaths}
+                activePath={activePath}
+                selectedFolderPath={selectedFolderPath}
+                selectedFolderExplicit={selectedFolderExplicit}
+                treeSelectionVisible={treeSelectionVisible}
+                renamingPath={renamingPath}
+                favoriteSet={favoriteSet}
+                projectPropertiesByPath={projectPropertiesByPath}
+                unresolvedCounts={unresolvedCounts}
+                onOpenContextMenu={setContextMenu}
+                onSelectFolder={selectFolder}
+                onOpenFolder={(path) => {
+                  void openOrCreateFolderNote(path);
+                }}
+                onOpenNote={(path, options) => {
+                  void openNote(path, options);
+                }}
+                onToggleExpanded={toggleExpanded}
+                onRenameCommit={(path, nextName) => {
+                  setRenamingPath(null);
+                  void renameTreeEntry(path, nextName);
+                }}
+                onRenameCancel={() => setRenamingPath(null)}
+              />
+            ) : null}
           </div>
         ) : null}
-        {backendOptions ? (
+        <CommentsInboxSection />
+        <div className="workspace-section">
+          {backendOptions ? (
           <DndProvider backend={HTML5Backend} options={backendOptions}>
             <Tree
               ref={treeRef}
@@ -2023,6 +2140,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   !selectedFolderExplicit &&
                   activePath === path;
                 const renaming = renamingPath === path;
+                const openComments = unresolvedCounts.get(path) ?? 0;
 
                 // No <button>/<a> inside the row: Chromium (WebView2) refuses to
                 // start an HTML5 drag from form controls, which killed row drags
@@ -2135,7 +2253,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                     <span className="tree-node-icon" aria-hidden>
                       {isDir ? (
                         isVault ? (
-                          <FcSafe size={20} />
+                          <VaultSectionIcon />
                         ) : (
                           <FolderTreeIcon
                             path={path}
@@ -2182,12 +2300,21 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                     ) : (
                       <TreeNodeLabel text={node.text} isDir={isDir} />
                     )}
+                    <TreeCommentCount count={openComments} />
+                    {isVault ? (
+                      <WorkspaceHeaderActions
+                        onCreate={(kind) => setPromptKind(kind)}
+                        onLocateActive={revealActiveInTree}
+                        onCollapseAll={collapseAllInTree}
+                      />
+                    ) : null}
                   </div>
                 );
               }}
             />
           </DndProvider>
         ) : null}
+        </div>
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { CommentsPanel } from "../components/CommentsPanel";
 import { DocumentOutline } from "../components/DocumentOutline";
 import { DocumentToolbar } from "../components/DocumentToolbar";
 import {
@@ -90,6 +91,11 @@ import {
   drawioPathFromDrop,
   getActiveDrawioTreeDrag,
 } from "./drawio/treeDrag";
+import {
+  createCommentDecorationExtension,
+  scrollToCommentRange,
+  setCommentDecorationsMeta,
+} from "./comment/commentDecorations";
 import { createHashtagDecorationExtension } from "./tag/tagDecorations";
 import { getTagMenuItems, shouldOpenTagMenu } from "./tag/tagSuggestion";
 import { TagSuggestionMenu } from "./tag/TagSuggestionMenu";
@@ -101,6 +107,18 @@ import {
   OUTLINE_WIDTH_MIN,
   OUTLINE_WIDTH_MAX,
 } from "../lib/outlineUiState";
+import {
+  clampCommentsWidth,
+  loadDocCommentsUi,
+  saveDocCommentsWidth,
+  COMMENTS_WIDTH_MIN,
+  COMMENTS_WIDTH_MAX,
+} from "../lib/commentsUiState";
+import type { CommentAnchor } from "../lib/commentAnchors";
+import {
+  captureCommentAnchor,
+  type StructuralAnchor,
+} from "../lib/commentAnchors";
 
 function buildEditorTheme(
   theme: ThemeId,
@@ -180,6 +198,16 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const showOutline = useVaultStore((s) => s.showOutline);
+  const showComments = useVaultStore((s) => s.showComments);
+  const activeNoteComments = useVaultStore((s) => s.activeNoteComments);
+  const upsertActiveComment = useVaultStore((s) => s.upsertActiveComment);
+  const deleteActiveComment = useVaultStore((s) => s.deleteActiveComment);
+  const setActiveCommentResolved = useVaultStore(
+    (s) => s.setActiveCommentResolved,
+  );
+  const takePendingCommentFocus = useVaultStore(
+    (s) => s.takePendingCommentFocus,
+  );
   const theme = usePrefsStore((s) => s.prefs.theme);
   const liveFontFamily = usePrefsStore((s) => s.prefs.liveFontFamily);
   const liveFontSize = usePrefsStore((s) => s.prefs.liveFontSize);
@@ -207,10 +235,28 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const [outlineWidth, setOutlineWidth] = useState(
     () => loadDocOutlineUi(vaultPath, path).width,
   );
+  const [commentsWidth, setCommentsWidth] = useState(
+    () => loadDocCommentsUi(vaultPath, path).width,
+  );
+  const [showResolvedComments, setShowResolvedComments] = useState(false);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{
+    quote: string;
+    prefix: string;
+    suffix: string;
+    anchor: StructuralAnchor;
+  } | null>(null);
 
   const persistOutlineWidth = useCallback(
     (width: number) => {
       saveDocOutlineWidth(vaultPath, path, width);
+    },
+    [vaultPath, path],
+  );
+
+  const persistCommentsWidth = useCallback(
+    (width: number) => {
+      saveDocCommentsWidth(vaultPath, path, width);
     },
     [vaultPath, path],
   );
@@ -242,6 +288,38 @@ export function NoteEditor({ path, content, onChange }: Props) {
       window.addEventListener("pointerup", onUp);
     },
     [outlineWidth, persistOutlineWidth],
+  );
+
+  const onCommentsSplitterPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = commentsWidth;
+      const target = event.currentTarget;
+      target.setPointerCapture(event.pointerId);
+      target.classList.add("is-active");
+
+      const onMove = (ev: PointerEvent) => {
+        // Dragging left grows the panel (splitter is on the left edge).
+        setCommentsWidth(
+          clampCommentsWidth(startWidth - (ev.clientX - startX)),
+        );
+      };
+      const onUp = (ev: PointerEvent) => {
+        target.releasePointerCapture(ev.pointerId);
+        target.classList.remove("is-active");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        setCommentsWidth((w) => {
+          persistCommentsWidth(w);
+          return w;
+        });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [commentsWidth, persistCommentsWidth],
   );
 
   const editorTheme = useMemo(
@@ -289,6 +367,16 @@ export function NoteEditor({ path, content, onChange }: Props) {
     () => createHashtagDecorationExtension(),
     [],
   );
+  const onAnchorsChangedRef = useRef<
+    ((updates: import("../lib/commentAnchors").CommentAnchorUpdate[]) => void) | undefined
+  >(undefined);
+  const commentDecorations = useMemo(
+    () =>
+      createCommentDecorationExtension({
+        getOnAnchorsChanged: () => onAnchorsChangedRef.current,
+      }),
+    [],
+  );
 
   const editor = useCreateBlockNote(
     {
@@ -304,7 +392,12 @@ export function NoteEditor({ path, content, onChange }: Props) {
       resolveFileUrl: (url) => resolveFileUrlRef.current(url),
       pasteHandler: (ctx) => pasteHandlerRef.current(ctx),
       _tiptapOptions: {
-        extensions: [layoutKeymap, selectAtomAfterDrop, hashtagDecorations],
+        extensions: [
+          layoutKeymap,
+          selectAtomAfterDrop,
+          hashtagDecorations,
+          commentDecorations,
+        ],
       },
     },
     [path],
@@ -459,15 +552,194 @@ export function NoteEditor({ path, content, onChange }: Props) {
       e.preventDefault();
       e.stopPropagation();
       const selected = editor.getSelectedText();
+      const sel = editor._tiptapEditor?.state.selection;
       setContextMenu({
         x: e.clientX,
         y: e.clientY,
         canCut: selected.length > 0,
         canCopy: selected.length > 0,
         canPaste: true,
+        showComment: !!sel && !sel.empty,
       });
     },
     [editor],
+  );
+
+  const startCommentFromSelection = useCallback(() => {
+    const tiptap = editor._tiptapEditor;
+    const { from, to } = tiptap.state.selection;
+    if (from === to) return;
+    const captured = captureCommentAnchor(tiptap.state.doc, from, to);
+    if (!captured) return;
+    setDraft(captured);
+    if (!useVaultStore.getState().showComments) {
+      useVaultStore.getState().toggleComments();
+    }
+  }, [editor]);
+
+  const commentAnchors: CommentAnchor[] = useMemo(
+    () =>
+      activeNoteComments.map((c) => ({
+        id: c.id,
+        quote: c.quote,
+        prefix: c.prefix,
+        suffix: c.suffix,
+        resolved: c.resolved,
+        anchor: c.anchor ?? null,
+      })),
+    [activeNoteComments],
+  );
+
+  const anchorPersistTimerRef = useRef<number | null>(null);
+  const pendingAnchorUpdatesRef = useRef<
+    Map<string, import("../lib/commentAnchors").CommentAnchorUpdate>
+  >(new Map());
+
+  useEffect(() => {
+    onAnchorsChangedRef.current = (updates) => {
+      for (const u of updates) {
+        pendingAnchorUpdatesRef.current.set(u.id, u);
+      }
+      if (anchorPersistTimerRef.current != null) {
+        window.clearTimeout(anchorPersistTimerRef.current);
+      }
+      anchorPersistTimerRef.current = window.setTimeout(() => {
+        anchorPersistTimerRef.current = null;
+        const batch = [...pendingAnchorUpdatesRef.current.values()];
+        pendingAnchorUpdatesRef.current.clear();
+        const comments = useVaultStore.getState().activeNoteComments;
+        for (const u of batch) {
+          const existing = comments.find((c) => c.id === u.id);
+          if (!existing) continue;
+          if (
+            existing.quote === u.quote &&
+            existing.prefix === u.prefix &&
+            existing.suffix === u.suffix &&
+            JSON.stringify(existing.anchor ?? null) ===
+              JSON.stringify(u.anchor)
+          ) {
+            continue;
+          }
+          void useVaultStore.getState().upsertActiveComment({
+            id: existing.id,
+            quote: u.quote,
+            prefix: u.prefix,
+            suffix: u.suffix,
+            anchor: u.anchor,
+            body: existing.body,
+            resolved: existing.resolved,
+          });
+        }
+      }, 450);
+    };
+    return () => {
+      onAnchorsChangedRef.current = undefined;
+      if (anchorPersistTimerRef.current != null) {
+        window.clearTimeout(anchorPersistTimerRef.current);
+        anchorPersistTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const view = editor._tiptapEditor?.view;
+    if (!view) return;
+    setCommentDecorationsMeta(view, {
+      comments: commentAnchors,
+      showResolved: showResolvedComments,
+      activeId: activeCommentId,
+    });
+  }, [editor, commentAnchors, showResolvedComments, activeCommentId]);
+
+  useEffect(() => {
+    setOutlineWidth(loadDocOutlineUi(vaultPath, path).width);
+    setCommentsWidth(loadDocCommentsUi(vaultPath, path).width);
+    setDraft(null);
+    setActiveCommentId(null);
+    pendingAnchorUpdatesRef.current.clear();
+    const view = editor._tiptapEditor?.view;
+    if (view) {
+      // Re-resolve quotes after switching notes / external load.
+      setCommentDecorationsMeta(view, {
+        comments: useVaultStore.getState().activeNoteComments.map((c) => ({
+          id: c.id,
+          quote: c.quote,
+          prefix: c.prefix,
+          suffix: c.suffix,
+          resolved: c.resolved,
+          anchor: c.anchor ?? null,
+        })),
+        resetRanges: true,
+      });
+    }
+  }, [vaultPath, path, editor]);
+
+  useEffect(() => {
+    const pending = useVaultStore.getState().pendingCommentFocusId;
+    if (!pending) return;
+    if (!commentAnchors.some((c) => c.id === pending)) return;
+    const id = takePendingCommentFocus();
+    if (!id) return;
+    setActiveCommentId(id);
+    if (!useVaultStore.getState().showComments) {
+      useVaultStore.getState().toggleComments();
+    }
+    const view = editor._tiptapEditor?.view;
+    if (!view) return;
+    const tryScroll = (attempt: number) => {
+      if (scrollToCommentRange(view, commentAnchors, id)) return;
+      if (attempt >= 8) return;
+      window.setTimeout(() => tryScroll(attempt + 1), 50 * (attempt + 1));
+    };
+    requestAnimationFrame(() => tryScroll(0));
+  }, [path, editor, takePendingCommentFocus, commentAnchors]);
+
+  const onSelectComment = useCallback(
+    (id: string) => {
+      setActiveCommentId(id);
+      const view = editor._tiptapEditor?.view;
+      if (!view) return;
+      const tryScroll = (attempt: number) => {
+        if (scrollToCommentRange(view, commentAnchors, id)) return;
+        if (attempt >= 6) return;
+        window.setTimeout(() => tryScroll(attempt + 1), 40 * (attempt + 1));
+      };
+      tryScroll(0);
+    },
+    [editor, commentAnchors],
+  );
+
+  const onDraftSubmit = useCallback(
+    async (body: string) => {
+      if (!draft) return;
+      const created = await upsertActiveComment({
+        quote: draft.quote,
+        prefix: draft.prefix,
+        suffix: draft.suffix,
+        anchor: draft.anchor,
+        body,
+      });
+      setDraft(null);
+      if (created) setActiveCommentId(created.id);
+    },
+    [draft, upsertActiveComment],
+  );
+
+  const onCommentBodyChange = useCallback(
+    async (id: string, body: string) => {
+      const existing = activeNoteComments.find((c) => c.id === id);
+      if (!existing) return;
+      await upsertActiveComment({
+        id: existing.id,
+        quote: existing.quote,
+        prefix: existing.prefix,
+        suffix: existing.suffix,
+        anchor: existing.anchor,
+        body,
+        resolved: existing.resolved,
+      });
+    },
+    [activeNoteComments, upsertActiveComment],
   );
 
   const handleEmptyCanvasMouseDown = useCallback(
@@ -565,9 +837,13 @@ export function NoteEditor({ path, content, onChange }: Props) {
   return (
     <div
       ref={shellRef}
-      className={
-        showOutline ? "editor-shell editor-shell--with-outline" : "editor-shell"
-      }
+      className={[
+        "editor-shell",
+        showOutline ? "editor-shell--with-outline" : "",
+        showComments ? "editor-shell--with-comments" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       onClick={handleLinkClick}
       onDoubleClick={handleImageDoubleClick}
     >
@@ -640,6 +916,56 @@ export function NoteEditor({ path, content, onChange }: Props) {
           </div>
         </div>
       </div>
+      {showComments ? (
+        <>
+          <div
+            className="app-splitter comments-splitter"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize comments"
+            aria-valuenow={commentsWidth}
+            aria-valuemin={COMMENTS_WIDTH_MIN}
+            aria-valuemax={COMMENTS_WIDTH_MAX}
+            tabIndex={0}
+            onPointerDown={onCommentsSplitterPointerDown}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              const delta = e.key === "ArrowLeft" ? 16 : -16;
+              setCommentsWidth((w) => {
+                const next = clampCommentsWidth(w + delta);
+                persistCommentsWidth(next);
+                return next;
+              });
+            }}
+          />
+          <CommentsPanel
+            width={commentsWidth}
+            notePath={path}
+            comments={activeNoteComments}
+            activeId={activeCommentId}
+            showResolved={showResolvedComments}
+            drafting={draft != null}
+            draftQuote={draft?.quote ?? ""}
+            onShowResolvedChange={setShowResolvedComments}
+            onSelect={onSelectComment}
+            onResolve={(id, resolved) => {
+              void setActiveCommentResolved(id, resolved);
+            }}
+            onDelete={(id) => {
+              void deleteActiveComment(id);
+              if (activeCommentId === id) setActiveCommentId(null);
+            }}
+            onBodyChange={(id, body) => {
+              void onCommentBodyChange(id, body);
+            }}
+            onDraftSubmit={(body) => {
+              void onDraftSubmit(body);
+            }}
+            onDraftCancel={() => setDraft(null)}
+          />
+        </>
+      ) : null}
       {viewedImage ? (
         <ImageLightbox
           src={viewedImage.src}
@@ -654,6 +980,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
           onCut={() => void cutSelection()}
           onCopy={() => void copySelection()}
           onPaste={() => void pasteAtCursor()}
+          onComment={startCommentFromSelection}
         />
       ) : null}
     </div>

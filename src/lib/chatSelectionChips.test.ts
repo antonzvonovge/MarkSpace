@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  commentChipLabel,
   expandSelectionMarkers,
   extractSelectionIds,
+  formatSelectionBlock,
   parseUserTextSegments,
   selectionChipLabel,
   wrapSelectionMarker,
@@ -16,6 +18,15 @@ function ref(
   return { id, text, sourcePath };
 }
 
+function commentRef(
+  id: string,
+  quote: string,
+  body: string,
+  sourcePath: string | null = "Notes/a.md",
+): ChatSelectionRef {
+  return { id, kind: "comment", text: body, quote, sourcePath };
+}
+
 describe("selection chip labels", () => {
   it("collapses whitespace and ellipsizes long text", () => {
     expect(selectionChipLabel("  hello\n  world  ")).toBe("hello world");
@@ -26,6 +37,21 @@ describe("selection chip labels", () => {
 
   it("falls back for whitespace-only selections", () => {
     expect(selectionChipLabel("   \n ")).toBe("Selection…");
+  });
+});
+
+describe("comment chip labels", () => {
+  it("prefers body over quote", () => {
+    expect(commentChipLabel({ text: "fix this", quote: "long quote" })).toBe(
+      "fix this",
+    );
+  });
+
+  it("falls back to quote then Comment…", () => {
+    expect(commentChipLabel({ text: "", quote: "quoted span" })).toBe(
+      "quoted span",
+    );
+    expect(commentChipLabel({ text: "  ", quote: "  " })).toBe("Comment…");
   });
 });
 
@@ -56,6 +82,31 @@ describe("selection markers", () => {
       "a  b",
     );
   });
+
+  it("expands a comment chip with path, quote, and body", () => {
+    const draft = wrapSelectionMarker("c1");
+    expect(
+      expandSelectionMarkers(draft, {
+        c1: commentRef("c1", "quoted", "please fix"),
+      }),
+    ).toBe(
+      [
+        "Comment from Notes/a.md:",
+        "Quote:",
+        "> quoted",
+        "Body:",
+        "> please fix",
+      ].join("\n"),
+    );
+  });
+});
+
+describe("formatSelectionBlock", () => {
+  it("keeps quote-only comments usable", () => {
+    expect(
+      formatSelectionBlock(commentRef("c1", "only quote", "", "Proj/n.md")),
+    ).toBe("Comment from Proj/n.md:\nQuote:\n> only quote");
+  });
 });
 
 describe("user text segments", () => {
@@ -77,6 +128,20 @@ describe("user text segments", () => {
     });
     expect(parseUserTextSegments(text)).toEqual([
       { kind: "selection", text: selection, sourcePath: "Notes/a.md" },
+    ]);
+  });
+
+  it("folds an expanded comment back into a comment segment", () => {
+    const text = expandSelectionMarkers(wrapSelectionMarker("c1"), {
+      c1: commentRef("c1", "span text", "needs work"),
+    });
+    expect(parseUserTextSegments(text)).toEqual([
+      {
+        kind: "comment",
+        quote: "span text",
+        text: "needs work",
+        sourcePath: "Notes/a.md",
+      },
     ]);
   });
 

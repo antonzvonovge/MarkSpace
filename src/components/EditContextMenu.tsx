@@ -11,6 +11,8 @@ export type EditContextMenuState = {
   canCut?: boolean;
   canCopy?: boolean;
   canPaste?: boolean;
+  /** When true, show Comment (needs non-empty selection). */
+  showComment?: boolean;
 };
 
 type Props = {
@@ -19,6 +21,7 @@ type Props = {
   onCut?: () => void;
   onCopy: () => void;
   onPaste?: () => void;
+  onComment?: () => void;
 };
 
 export function EditContextMenu({
@@ -27,10 +30,12 @@ export function EditContextMenu({
   onCut,
   onCopy,
   onPaste,
+  onComment,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const showCut = menu.showCut !== false && onCut != null;
   const showPaste = menu.showPaste !== false && onPaste != null;
+  const showComment = menu.showComment === true && onComment != null;
   const canCut = menu.canCut !== false;
   const canCopy = menu.canCopy !== false;
   const canPaste = menu.canPaste !== false;
@@ -54,7 +59,7 @@ export function EditContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 180);
-  const top = Math.min(menu.y, window.innerHeight - 140);
+  const top = Math.min(menu.y, window.innerHeight - 180);
 
   return createPortal(
     <div
@@ -104,6 +109,19 @@ export function EditContextMenu({
           }}
         >
           <span>Paste</span>
+        </button>
+      ) : null}
+      {showComment ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={() => {
+            onClose();
+            onComment();
+          }}
+        >
+          <span>Comment</span>
         </button>
       ) : null}
     </div>,

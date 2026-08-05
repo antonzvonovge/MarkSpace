@@ -140,11 +140,10 @@ export const latexInlineContent = createReactInlineContentSpec(
       );
     },
     parse: (element) => {
-      const latexElement = element.matches("[data-latex]")
-        ? element
-        : element.querySelector("[data-latex]");
-      const latex = latexElement?.getAttribute("data-latex");
-      if (latex === null || latex === undefined) return undefined;
+      // Only match the element itself. BlockNote registers custom parse as
+      // tag:"*"; querySelector on ancestors would claim <ul>/<li>/<p> that
+      // merely contain a math span and wipe the rest of the list.
+      if (!element.matches("[data-latex]")) return undefined;
       // Do not claim equation block HTML / math fences.
       if (element.tagName === "DIV" || element.tagName === "PRE") {
         return undefined;
@@ -155,6 +154,8 @@ export const latexInlineContent = createReactInlineContentSpec(
       ) {
         return undefined;
       }
+      const latex = element.getAttribute("data-latex");
+      if (latex === null || latex === undefined) return undefined;
       return {
         latex,
         displayMode: false,

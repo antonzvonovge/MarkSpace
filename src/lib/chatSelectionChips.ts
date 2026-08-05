@@ -1,7 +1,7 @@
 /**
- * Selection chips: text picked up from the note editor (or chat) and dropped
- * into the composer as a compact chip. The full text only materializes when
- * the message is sent, as a quoted block that names its source file.
+ * Selection / comment chips: text (or a note comment) dropped into the
+ * composer as a compact chip. The full payload materializes when the message
+ * is sent, as a quoted block that names its source file.
  *
  * Path / skill / tool markers from the composer are kept in stored user text
  * so bubbles can render them as chips; the model sees unwrapped plain text.
@@ -16,12 +16,21 @@ const INLINE_CHIP_MARKER_RE = /⟦([^⟧]*)⟧|⦃([^⦄]*)⦄|⟪([^⟫]*)⟫/g
 
 export const MAX_SELECTION_CHARS = 20_000;
 
+export type ChatChipKind = "selection" | "comment";
+
 export type ChatSelectionRef = {
   id: string;
-  /** Selected text, verbatim (may be multi-line). */
+  /**
+   * Selection text, or comment body when kind is "comment".
+   * May be multi-line.
+   */
   text: string;
-  /** Vault-relative path the selection came from, or null. */
+  /** Vault-relative path the selection/comment came from, or null. */
   sourcePath: string | null;
+  /** Defaults to "selection". */
+  kind?: ChatChipKind;
+  /** Quoted note span for comment chips. */
+  quote?: string;
 };
 
 export function wrapSelectionMarker(id: string): string {
@@ -57,6 +66,24 @@ export function selectionChipLabel(text: string): string {
   return `${cut.trimEnd()}…`;
 }
 
+/** Composer / bubble chip label for a comment (prefers body, else quote). */
+export function commentChipLabel(ref: {
+  text: string;
+  quote?: string;
+}): string {
+  const body = ref.text.replace(/\s+/g, " ").trim();
+  if (body) {
+    const label = selectionChipLabel(body);
+    return label === "Selection…" ? "Comment…" : label;
+  }
+  const quote = (ref.quote ?? "").replace(/\s+/g, " ").trim();
+  if (quote) {
+    const label = selectionChipLabel(quote);
+    return label === "Selection…" ? "Comment…" : label;
+  }
+  return "Comment…";
+}
+
 export function truncateSelection(text: string): string {
   if (text.length <= MAX_SELECTION_CHARS) return text;
   return `${text.slice(0, MAX_SELECTION_CHARS)}\n…[truncated]`;
@@ -78,18 +105,41 @@ function unquoteLines(block: string): string {
     .join("\n");
 }
 
-const HEADER_PREFIX = "Selection";
+const SELECTION_HEADER = "Selection";
+const COMMENT_HEADER = "Comment";
 
 /** Quoted block sent to the model in place of a chip. */
 export function formatSelectionBlock(ref: ChatSelectionRef): string {
+  if (ref.kind === "comment") {
+    const header = ref.sourcePath
+      ? `${COMMENT_HEADER} from ${ref.sourcePath}:`
+      : `${COMMENT_HEADER}:`;
+    const quote = truncateSelection((ref.quote ?? "").trim());
+    const body = truncateSelection(ref.text.trim());
+    const parts = [header];
+    if (quote) {
+      parts.push("Quote:", quoteLines(quote));
+    }
+    if (body) {
+      parts.push("Body:", quoteLines(body));
+    }
+    return parts.join("\n");
+  }
   const header = ref.sourcePath
-    ? `${HEADER_PREFIX} from ${ref.sourcePath}:`
-    : `${HEADER_PREFIX}:`;
+    ? `${SELECTION_HEADER} from ${ref.sourcePath}:`
+    : `${SELECTION_HEADER}:`;
   return `${header}\n${quoteLines(truncateSelection(ref.text))}`;
 }
 
 const SELECTION_BLOCK_RE =
   /(?:^|\n)Selection(?: from ([^\n]*?))?:\n((?:>[^\n]*(?:\n|$))+)/g;
+
+/**
+ * Comment blocks include optional Quote/Body sections so the bubble can
+ * restore quote + body and the model always sees the note path.
+ */
+const COMMENT_BLOCK_RE =
+  /(?:^|\n)Comment(?: from ([^\n]*?))?:\n(?:Quote:\n((?:>[^\n]*(?:\n|$))+))?(?:\n?Body:\n((?:>[^\n]*(?:\n|$))+))?/g;
 
 /** Replace chip markers with their quoted blocks (unknown ids are dropped). */
 export function expandSelectionMarkers(
@@ -126,6 +176,12 @@ export function expandSelectionMarkers(
 export type UserTextSegment =
   | { kind: "text"; text: string }
   | { kind: "selection"; text: string; sourcePath: string | null }
+  | {
+      kind: "comment";
+      text: string;
+      quote: string;
+      sourcePath: string | null;
+    }
   | { kind: "path"; path: string }
   | { kind: "skill"; id: string }
   | { kind: "tool"; id: string };
@@ -156,12 +212,64 @@ function parseInlineChipSegments(text: string): UserTextSegment[] {
   return segments;
 }
 
+type BlockHit = {
+  index: number;
+  length: number;
+  segment: UserTextSegment;
+};
+
+function collectBlockHits(text: string): BlockHit[] {
+  const hits: BlockHit[] = [];
+
+  SELECTION_BLOCK_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SELECTION_BLOCK_RE.exec(text))) {
+    hits.push({
+      index: match.index,
+      length: match[0].length,
+      segment: {
+        kind: "selection",
+        text: unquoteLines(match[2] ?? ""),
+        sourcePath: match[1]?.trim() || null,
+      },
+    });
+  }
+
+  COMMENT_BLOCK_RE.lastIndex = 0;
+  while ((match = COMMENT_BLOCK_RE.exec(text))) {
+    const quoteRaw = match[2] ?? "";
+    const bodyRaw = match[3] ?? "";
+    // Skip empty matches (header alone with no Quote/Body).
+    if (!quoteRaw && !bodyRaw) continue;
+    hits.push({
+      index: match.index,
+      length: match[0].length,
+      segment: {
+        kind: "comment",
+        quote: quoteRaw ? unquoteLines(quoteRaw) : "",
+        text: bodyRaw ? unquoteLines(bodyRaw) : "",
+        sourcePath: match[1]?.trim() || null,
+      },
+    });
+  }
+
+  hits.sort((a, b) => a.index - b.index || b.length - a.length);
+  // Drop overlaps (keep earlier / longer).
+  const out: BlockHit[] = [];
+  let end = 0;
+  for (const hit of hits) {
+    if (hit.index < end) continue;
+    out.push(hit);
+    end = hit.index + hit.length;
+  }
+  return out;
+}
+
 /** Split a sent user message back into plain text and chips. */
 export function parseUserTextSegments(text: string): UserTextSegment[] {
   const segments: UserTextSegment[] = [];
-  SELECTION_BLOCK_RE.lastIndex = 0;
+  const hits = collectBlockHits(text);
   let last = 0;
-  let match: RegExpExecArray | null;
 
   const pushText = (raw: string) => {
     const trimmed = raw.replace(/^\n+|\n+$/g, "");
@@ -171,14 +279,10 @@ export function parseUserTextSegments(text: string): UserTextSegment[] {
     }
   };
 
-  while ((match = SELECTION_BLOCK_RE.exec(text))) {
-    pushText(text.slice(last, match.index));
-    segments.push({
-      kind: "selection",
-      text: unquoteLines(match[2] ?? ""),
-      sourcePath: match[1]?.trim() || null,
-    });
-    last = match.index + match[0].length;
+  for (const hit of hits) {
+    pushText(text.slice(last, hit.index));
+    segments.push(hit.segment);
+    last = hit.index + hit.length;
   }
   pushText(text.slice(last));
 

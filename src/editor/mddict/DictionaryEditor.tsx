@@ -185,7 +185,7 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
   if (error) {
     return (
       <div className="dict-editor-column">
-        <DocumentToolbar showOutlineToggle={false} />
+        <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
         <div className="dict-editor">
           <div className="dict-editor-error">
             <h2>Invalid dictionary file</h2>
@@ -202,7 +202,7 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
 
   return (
     <div className="dict-editor-column">
-      <DocumentToolbar showOutlineToggle={false} />
+      <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
       <div className="dict-editor">
         <div className="dict-editor-toolbar">
           <div className="dict-editor-filter">

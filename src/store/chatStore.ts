@@ -128,6 +128,12 @@ type ChatStore = {
   setDraft: (draft: string) => void;
   /** Append a selection chip to the draft; returns its chip id. */
   addSelectionToDraft: (text: string, sourcePath: string | null) => string;
+  /** Add a note comment as a chat chip (quote + body + note path). */
+  addCommentToDraft: (input: {
+    quote: string;
+    body: string;
+    sourcePath: string;
+  }) => string;
   clearThreadAttention: (threadId: string) => void;
   addAttachments: (files: File[]) => Promise<string[]>;
   removeAttachment: (id: string) => void;
@@ -501,6 +507,30 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       draftSelections: {
         ...get().draftSelections,
         [id]: { id, text: truncateSelection(clean), sourcePath },
+      },
+    });
+    return id;
+  },
+
+  addCommentToDraft: ({ quote, body, sourcePath }) => {
+    const cleanQuote = quote.trim();
+    const cleanBody = body.trim();
+    const path = sourcePath.trim();
+    if ((!cleanQuote && !cleanBody) || !path) return "";
+    const id = crypto.randomUUID().slice(0, 8);
+    const draft = get().draft;
+    const gap = draft.length > 0 && !/\s$/.test(draft) ? " " : "";
+    set({
+      draft: `${draft}${gap}${wrapSelectionMarker(id)} `,
+      draftSelections: {
+        ...get().draftSelections,
+        [id]: {
+          id,
+          kind: "comment",
+          text: truncateSelection(cleanBody),
+          quote: truncateSelection(cleanQuote),
+          sourcePath: path,
+        },
       },
     });
     return id;

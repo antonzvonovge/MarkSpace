@@ -14,6 +14,7 @@ import {
   type FileUIPart,
   type UIMessage,
 } from "ai";
+import { FcComments } from "react-icons/fc";
 import {
   attachedDocNamesFromUserMessage,
   displayTextFromUserMessage,
@@ -23,10 +24,12 @@ import {
   planModelRoute,
 } from "../../ai/languageModel";
 import {
+  commentChipLabel,
   parseUserTextSegments,
   selectionChipLabel,
 } from "../../lib/chatSelectionChips";
 import { chipLabelForPath } from "../../lib/chatComposerDom";
+import { commentQuoteLabel } from "../../lib/commentAnchors";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { findModel, OPENROUTER_MODELS } from "../../ai/models";
 import { resolveModelId } from "../../ai/resolveModelId";
@@ -193,6 +196,16 @@ function UserText({ text }: { text: string }) {
             </span>
           );
         }
+        if (segment.kind === "comment") {
+          return (
+            <CommentChip
+              key={i}
+              quote={segment.quote}
+              body={segment.text}
+              sourcePath={segment.sourcePath}
+            />
+          );
+        }
         return (
           <span
             key={i}
@@ -208,6 +221,75 @@ function UserText({ text }: { text: string }) {
         );
       })}
     </>
+  );
+}
+
+function CommentChip({
+  quote,
+  body,
+  sourcePath,
+}: {
+  quote: string;
+  body: string;
+  sourcePath: string | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const quoteLabel = commentQuoteLabel(quote);
+  const label = commentChipLabel({ text: body, quote });
+  const pathLabel = sourcePath ? chipLabelForPath(sourcePath) : null;
+
+  return (
+    <span
+      className={
+        expanded
+          ? "chat-comment-chip-card is-expanded"
+          : "chat-comment-chip-card"
+      }
+    >
+      <button
+        type="button"
+        className="chat-comment-chip"
+        title={
+          expanded
+            ? "Collapse comment"
+            : [sourcePath, quoteLabel && `“${quoteLabel}”`, body]
+                .filter(Boolean)
+                .join("\n\n")
+        }
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+      >
+        <span className="chat-comment-chip-mark" aria-hidden>
+          <FcComments size={12} />
+        </span>
+        <span className="chat-comment-chip-label">{label}</span>
+        {pathLabel ? (
+          <span className="chat-comment-chip-path">{pathLabel}</span>
+        ) : null}
+        <span className="chat-comment-chip-chevron" aria-hidden>
+          {expanded ? "▾" : "▸"}
+        </span>
+      </button>
+      {expanded ? (
+        <span className="chat-comment-chip-body">
+          {sourcePath ? (
+            <span className="chat-comment-chip-meta" title={sourcePath}>
+              {sourcePath}
+            </span>
+          ) : null}
+          {quoteLabel ? (
+            <blockquote className="chat-comment-chip-quote">
+              {quoteLabel}
+            </blockquote>
+          ) : null}
+          {body.trim() ? (
+            <span className="chat-comment-chip-text">{body}</span>
+          ) : null}
+        </span>
+      ) : null}
+    </span>
   );
 }
 

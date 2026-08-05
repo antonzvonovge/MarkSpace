@@ -1624,6 +1624,7 @@ pub fn delete_folder_if_empty(
             let _ = crate::favorites::remap_favorites(&root, &rel, None);
             let _ = crate::projects::remap_project_properties(&root, &rel, None);
             let _ = crate::filemeta::remap_filemeta(&root, &rel, None);
+            let _ = crate::comments::remap_comments(&root, &rel, None);
             Ok(DeleteFolderIfEmptyResult {
                 path: rel,
                 deleted: true,
@@ -1700,6 +1701,7 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     let _ = crate::favorites::remap_favorites(&root, &from_rel, Some(&to_rel));
     let _ = crate::projects::remap_project_properties(&root, &from_rel, Some(&to_rel));
     let _ = crate::filemeta::remap_filemeta(&root, &from_rel, Some(&to_rel));
+    let _ = crate::comments::remap_comments(&root, &from_rel, Some(&to_rel));
     remap_tag_index_path(&state, &from_rel, Some(&to_rel));
     crate::embeddings::notify_file_renamed(&from_rel, &to_rel);
 
@@ -1782,6 +1784,7 @@ pub fn move_entry(
         let _ = crate::favorites::remap_favorites(&root, &from, Some(&new_rel));
         let _ = crate::projects::remap_project_properties(&root, &from, Some(&new_rel));
         let _ = crate::filemeta::remap_filemeta(&root, &from, Some(&new_rel));
+        let _ = crate::comments::remap_comments(&root, &from, Some(&new_rel));
         remap_tag_index_path(&state, &from, Some(&new_rel));
         crate::embeddings::notify_file_renamed(&from, &new_rel);
     }
@@ -1888,6 +1891,7 @@ pub fn nest_under_note(
     crate::embeddings::notify_file_renamed(&note, &folder_note_path);
     let _ = crate::favorites::remap_favorites(&root, &note, Some(&folder_note_path));
     let _ = crate::filemeta::remap_filemeta(&root, &note, Some(&folder_note_path));
+    let _ = crate::comments::remap_comments(&root, &note, Some(&folder_note_path));
     // Project properties key off folder paths; a note was never a project root.
 
     let moved = move_entry(from, folder_rel.clone(), to_index, state)?;
@@ -1933,6 +1937,7 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     let _ = crate::favorites::remap_favorites(&root, &rel, None);
     let _ = crate::projects::remap_project_properties(&root, &rel, None);
     let _ = crate::filemeta::remap_filemeta(&root, &rel, None);
+    let _ = crate::comments::remap_comments(&root, &rel, None);
     remove_tag_index_path(&state, &rel);
     crate::embeddings::notify_file_removed(&rel);
     Ok(())

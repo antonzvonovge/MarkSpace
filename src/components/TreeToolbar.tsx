@@ -5,12 +5,12 @@ import {
   CollapseAllIcon,
   CollectionPlusIcon,
   DiagramIcon,
+  DictionaryIcon,
   GraphIcon,
   LinksIcon,
   LocateIcon,
   PlusIcon,
   RefreshIcon,
-  DictionaryIcon,
 } from "./treeIcons";
 import { GRAPH_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
 
@@ -126,14 +126,88 @@ function TreeCreateMenu({
   );
 }
 
-export function TreeToolbar({
+/** Collapse tree to top level (does not hide the section). */
+export function SectionCollapseButton({
+  onCollapse,
+  disabled,
+  title = "Collapse to top level",
+}: {
+  onCollapse: () => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="tree-toolbar-btn"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        onCollapse();
+      }}
+    >
+      <CollapseAllIcon />
+    </button>
+  );
+}
+
+/** Sticky “show resolved” toggle for the Comments section header. */
+export function CommentsResolvedSticky({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={active ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
+      title={active ? "Hide resolved comments" : "Show resolved comments"}
+      aria-label={active ? "Hide resolved comments" : "Show resolved comments"}
+      aria-pressed={active}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      <ShowResolvedIcon active={active} />
+    </button>
+  );
+}
+
+function ShowResolvedIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      {active ? (
+        <path
+          fill="currentColor"
+          d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm3.1 4.4-3.6 3.7a.75.75 0 0 1-1.08 0L4.9 8.05a.75.75 0 1 1 1.08-1.04l1.08 1.12 3.06-3.15a.75.75 0 1 1 1.08 1.02z"
+        />
+      ) : (
+        <path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          d="M8 2.25a5.75 5.75 0 1 1 0 11.5 5.75 5.75 0 0 1 0-11.5Z"
+        />
+      )}
+    </svg>
+  );
+}
+
+/** Workspace actions; collapse stays last (right edge). */
+export function WorkspaceHeaderActions({
   onCreate,
   onLocateActive,
+  onCollapseAll,
 }: {
   onCreate: (kind: TreeCreateKind) => void;
   onLocateActive: () => void;
+  onCollapseAll: () => void;
 }) {
-  const vaultPath = useVaultStore((s) => s.vaultPath);
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
@@ -141,7 +215,6 @@ export function TreeToolbar({
     (s) => s.projectPropertiesByPath,
   );
   const refreshTree = useVaultStore((s) => s.refreshTree);
-  const collapseAllFolders = useVaultStore((s) => s.collapseAllFolders);
   const openGraphTab = useVaultStore((s) => s.openGraphTab);
   const [refreshing, setRefreshing] = useState(false);
   const graphOpen = activePath === GRAPH_TAB_PATH;
@@ -154,17 +227,16 @@ export function TreeToolbar({
     projectPropertiesByPath,
   );
 
-  if (!vaultPath) return null;
-
   return (
-    <div className="tree-toolbar-actions">
+    <div className="section-header-actions">
       <button
         type="button"
         className="tree-toolbar-btn"
         title="Refresh"
         aria-label="Refresh file tree"
         disabled={refreshing}
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation();
           if (refreshing) return;
           setRefreshing(true);
           void refreshTree().finally(() => setRefreshing(false));
@@ -175,36 +247,55 @@ export function TreeToolbar({
       <button
         type="button"
         className="tree-toolbar-btn"
-        title="Collapse all"
-        aria-label="Collapse all folders"
-        disabled={expandedPaths.length === 0}
-        onClick={collapseAllFolders}
-      >
-        <CollapseAllIcon />
-      </button>
-      <button
-        type="button"
-        className="tree-toolbar-btn"
         title="Reveal active file"
         aria-label="Reveal active file in tree"
         disabled={!canLocate}
-        onClick={onLocateActive}
+        onClick={(e) => {
+          e.stopPropagation();
+          onLocateActive();
+        }}
       >
         <LocateIcon />
       </button>
       <button
         type="button"
-        className={
-          graphOpen ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"
-        }
+        className={graphOpen ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
         title="Tag graph"
         aria-label="Open tag graph"
         aria-pressed={graphOpen}
-        onClick={() => void openGraphTab()}
+        onClick={(e) => {
+          e.stopPropagation();
+          void openGraphTab();
+        }}
       >
         <GraphIcon />
       </button>
       <TreeCreateMenu onCreate={onCreate} disabled={createDisabled} />
+      <SectionCollapseButton
+        onCollapse={onCollapseAll}
+        disabled={expandedPaths.length === 0}
+        title="Collapse to top level"
+      />
     </div>
+  );
+}
+
+/** @deprecated Prefer section header actions; kept for any stray imports. */
+export function TreeToolbar({
+  onCreate,
+  onLocateActive,
+  onCollapseAll,
+}: {
+  onCreate: (kind: TreeCreateKind) => void;
+  onLocateActive: () => void;
+  onCollapseAll?: () => void;
+}) {
+  const collapseAllFolders = useVaultStore((s) => s.collapseAllFolders);
+  return (
+    <WorkspaceHeaderActions
+      onCreate={onCreate}
+      onLocateActive={onLocateActive}
+      onCollapseAll={onCollapseAll ?? collapseAllFolders}
+    />
   );
 }

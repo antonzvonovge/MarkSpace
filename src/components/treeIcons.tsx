@@ -214,3 +214,62 @@ export function GraphIcon() {
     </svg>
   );
 }
+
+/** Vault root — outline safe, matches Favorites/Comments section icons. */
+export function VaultSectionIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="3.25"
+        width="11"
+        height="9.5"
+        rx="1.4"
+        stroke="currentColor"
+        strokeWidth="1.35"
+      />
+      <circle cx="8" cy="8" r="2.15" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="8" cy="8" r="0.65" fill="currentColor" />
+      <path
+        d="M4.35 12.75v1M11.65 12.75v1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** Sidebar Favorites section — outline star, same weight as vault/comments. */
+export function FavoritesSectionIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 2.35 9.72 5.9l3.9.42-2.95 2.7.88 3.8L8 10.95l-3.55 1.87.88-3.8-2.95-2.7 3.9-.42L8 2.35Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Sidebar Comments section — quiet outline bubble. */
+export function CommentsSectionIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.25 3.5h9.5a1.25 1.25 0 0 1 1.25 1.25v5a1.25 1.25 0 0 1-1.25 1.25H7.4L4.6 13.2V11H3.25A1.25 1.25 0 0 1 2 9.75v-5A1.25 1.25 0 0 1 3.25 3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.25 6.75h5.5M5.25 9h3.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}

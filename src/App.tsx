@@ -413,6 +413,7 @@ function App() {
                               showOutlineToggle={
                                 documentKind(activePath) === "markdown"
                               }
+                              showCommentsToggle={false}
                             />
                           ) : null
                         );

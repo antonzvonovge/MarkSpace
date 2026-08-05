@@ -1,4 +1,5 @@
 mod chat_history;
+mod comments;
 mod embeddings;
 mod favorites;
 mod filemeta;
@@ -172,6 +173,11 @@ pub fn run() {
             favorites::remove_favorite,
             filemeta::get_file_tags,
             filemeta::set_file_tags,
+            comments::list_note_comments,
+            comments::list_all_comments,
+            comments::upsert_note_comment,
+            comments::delete_note_comment,
+            comments::set_comment_resolved,
             projects::get_project_properties,
             projects::set_project_properties,
             projects::list_project_properties,

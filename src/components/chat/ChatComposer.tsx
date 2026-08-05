@@ -451,7 +451,7 @@ export function ChatComposer() {
     if (!el) return;
     const current = serializeComposer(el);
     if (current !== draft) {
-      renderComposerFromDraft(el, draft, (id) => draftSelections[id]?.text);
+      renderComposerFromDraft(el, draft, (id) => draftSelections[id]);
     }
     el.classList.toggle("is-empty", draft.trim().length === 0);
     syncComposerInputHeight(el);
