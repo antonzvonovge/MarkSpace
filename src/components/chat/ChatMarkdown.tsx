@@ -1,7 +1,10 @@
 import { Children, isValidElement, memo, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { FcDocument } from "react-icons/fc";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 import { ensureFolderNote, folderPathFromFolderNote, resolveWikiTarget } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatDiagram, diagramEngineForLang } from "./ChatDiagram";
@@ -120,7 +123,8 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
   return (
     <div className={rootClass}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkChatNoteLinks]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkChatNoteLinks]}
+        rehypePlugins={[rehypeKatex]}
         urlTransform={(url) =>
           url.startsWith(CHAT_NOTE_SCHEME) ? url : defaultUrlTransform(url)
         }

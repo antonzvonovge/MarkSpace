@@ -2608,6 +2608,50 @@ select {
   white-space: pre-wrap;
 }
 
+.math-equation-block__preview {
+  padding: 12px 10px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.math-equation-block__preview .katex-display {
+  margin: 0;
+}
+
+.bn-latex {
+  display: inline;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 0.1em;
+}
+
+.bn-latex:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.bn-latex-placeholder {
+  opacity: 0.55;
+  font-weight: 600;
+}
+
+.bn-latex-input {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  min-width: 8em;
+  max-width: 24em;
+  padding: 0.15em 0.4em;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 4px;
+  background: var(--bg, #fff);
+  color: inherit;
+  outline: none;
+}
+
+.bn-latex-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
 .drawio-editor {
   flex: 1;
   width: 100%;
@@ -4088,6 +4132,16 @@ select {
   font-size: 0.78rem;
   line-height: 1.45;
   white-space: pre;
+}
+
+.chat-md .katex {
+  font-size: 1.05em;
+}
+
+.chat-md .katex-display {
+  margin: 0.65em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .chat-md-diagram {

@@ -103,4 +103,13 @@ describe("ChatMarkdown note references", () => {
     expect(screen.getByText("![[Sources/example.md]]")).toBeTruthy();
     expect(screen.getByText("[[Inline]]")).toBeTruthy();
   });
+
+  it("renders KaTeX for inline and display math", () => {
+    const { container } = render(
+      <ChatMarkdown text={"Chloride $Cl^-$ and\n\n$$\nE = mc^2\n$$"} />,
+    );
+    expect(container.querySelector(".katex")).not.toBeNull();
+    expect(container.querySelector(".katex-display")).not.toBeNull();
+    expect(container.textContent).not.toContain("$Cl^-$");
+  });
 });

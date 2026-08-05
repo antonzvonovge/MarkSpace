@@ -171,7 +171,7 @@ export function SidebarCalendar() {
       });
       return;
     }
-    void openOrCreateDailyNote(diaryRoot, date);
+    void openOrCreateDailyNote(diaryRoot, date, { preview: true });
   };
 
   return (

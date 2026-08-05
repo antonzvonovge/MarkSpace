@@ -26,10 +26,21 @@ describe("markdownFormat", () => {
     expect(guide).toContain("data-background-color");
     expect(guide).toContain("#multi-agent");
     expect(guide).toMatch(/##\s+Inline tags/i);
+    expect(guide).toMatch(/##\s+Math/i);
+    expect(guide).toContain("$Cl^-$");
   });
 
   it("has a Not supported section", () => {
     expect(MARKDOWN_FORMAT_GUIDE).toMatch(/##\s+Not supported/i);
+    expect(MARKDOWN_FORMAT_GUIDE).not.toMatch(
+      /##\s+Not supported[\s\S]*Math \(`\$…\$`/,
+    );
+  });
+
+  it("allows math in core rules", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/\$Cl\^-\$|Math:/i);
+    expect(rules).not.toMatch(/unsupported syntax \(callouts, math/);
   });
 
   it("allows inline hashtags in core rules", () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Group,
   Panel,
@@ -43,6 +44,9 @@ import { isFileTab, isSettingsTab, useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import { getEmbeddingsIndexStatus } from "./lib/vaultApi";
 import "./App.css";
+
+/** Idle time before writing the active note to disk (and kicking off index work). */
+const AUTOSAVE_MS = 5_000;
 
 function App() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
@@ -118,6 +122,10 @@ function App() {
       const code = e.code;
       if (code === "KeyS") {
         e.preventDefault();
+        if (timer.current) {
+          window.clearTimeout(timer.current);
+          timer.current = null;
+        }
         void saveActive();
       }
       if (code === "KeyE") {
@@ -251,6 +259,42 @@ function App() {
     };
   }, [refreshTree, refreshSyncStatus]);
 
+  // Flush a pending autosave when the window is hidden or closed so a longer
+  // debounce does not leave dirty content only in memory.
+  useEffect(() => {
+    const clearTimer = () => {
+      if (timer.current) {
+        window.clearTimeout(timer.current);
+        timer.current = null;
+      }
+    };
+    const flush = () => {
+      clearTimer();
+      return saveActive();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") void flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    let unlistenClose: (() => void) | undefined;
+    void getCurrentWindow()
+      .onCloseRequested(async () => {
+        await flush();
+      })
+      .then((fn) => {
+        unlistenClose = fn;
+      })
+      .catch(() => {
+        /* non-Tauri / missing window permission — visibility flush remains */
+      });
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      unlistenClose?.();
+    };
+  }, [saveActive]);
+
   const onEditorChange = (path: string, nextContent: string) => {
     // Each tab keeps its own mounted editor instance; accept input only
     // from the currently active tab to avoid cross-tab writes.
@@ -258,8 +302,9 @@ function App() {
     setContent(nextContent);
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
+      timer.current = null;
       void saveActive();
-    }, 500);
+    }, AUTOSAVE_MS);
   };
 
   const panelClass = [

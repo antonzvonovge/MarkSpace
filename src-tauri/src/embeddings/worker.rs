@@ -20,7 +20,8 @@ use super::model::{Embedder, MODEL_ID};
 
 const JOB_ID: &str = "embeddings-index";
 const EVENT_NAME: &str = "background-job://update";
-const DEBOUNCE: Duration = Duration::from_millis(400);
+/// Wait for typing/saves to settle before re-embedding a path.
+const DEBOUNCE: Duration = Duration::from_secs(5);
 const MAX_EMBED_BATCH: usize = 8;
 /// One file per tick keeps search and status replies close behind indexing.
 const FILES_PER_TICK: usize = 1;

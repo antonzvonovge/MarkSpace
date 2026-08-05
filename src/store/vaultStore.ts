@@ -53,6 +53,20 @@ import {
 } from "../lib/diaryNotes";
 import { getNoteTags, setNoteTags } from "../lib/noteFrontmatter";
 
+/** Coalesce UI tag-catalog refreshes after rapid saves. */
+const TAG_CATALOG_REFRESH_MS = 1_500;
+let tagCatalogRefreshTimer: number | null = null;
+
+function scheduleTagCatalogRefresh(refresh: () => Promise<void>) {
+  if (tagCatalogRefreshTimer != null) {
+    window.clearTimeout(tagCatalogRefreshTimer);
+  }
+  tagCatalogRefreshTimer = window.setTimeout(() => {
+    tagCatalogRefreshTimer = null;
+    void refresh();
+  }, TAG_CATALOG_REFRESH_MS);
+}
+
 export type TabKind = "file" | "graph" | "settings";
 
 /** Singleton virtual path for the tag graph tab (never a vault-relative file). */
@@ -171,10 +185,12 @@ type VaultStore = {
    * `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` when missing.
    * `fromPath` may be the project root or any path under it.
    * Defaults to today when `date` is omitted.
+   * Pass `{ preview: true }` for VS Code-style preview tabs (e.g. calendar browse).
    */
   openOrCreateDailyNote: (
     fromPath: string,
     date?: Date,
+    options?: { preview?: boolean },
   ) => Promise<{ path: string; created: boolean } | null>;
   /** Create Skills/<id>.md with skill frontmatter template. */
   createSkill: (id: string) => Promise<void>;
@@ -1058,7 +1074,9 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     if (isPdfPath(activePath)) return;
     const active = tabs.find((t) => t.path === activePath);
     if (active && isVirtualTab(active)) return;
-    set({ saving: true, suppressWatchUntil: Date.now() + 1200 });
+    // Cover watcher poll + embeddings debounce so our own write does not
+    // thrash tree refresh / tag reindex while the user is still editing.
+    set({ saving: true, suppressWatchUntil: Date.now() + 6_000 });
     try {
       const savedContent = await writeNote(activePath, content);
       const current = get();
@@ -1075,8 +1093,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         saving: false,
         tabs: withTabBody(current.tabs, activePath, savedContent, false),
       });
-      void get().refreshVaultTags();
-      void get().refreshDictionaryTags();
+      // Tag index was already patched in write_note; refresh UI catalogs after
+      // a short settle so rapid saves do not spam listVaultTags IPC.
+      scheduleTagCatalogRefresh(() => get().refreshVaultTags());
+      if (activePath.toLowerCase().endsWith(".mddict")) {
+        void get().refreshDictionaryTags();
+      }
     } catch (e) {
       set({
         saving: false,
@@ -1172,7 +1194,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
-  openOrCreateDailyNote: async (fromPath, date) => {
+  openOrCreateDailyNote: async (fromPath, date, options) => {
     const { projectPropertiesByPath } = get();
     const projectRoot = diaryProjectRootForPath(
       fromPath,
@@ -1184,11 +1206,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     const day = date ?? new Date();
     const rel = dailyNotePath(projectRoot, day);
+    const asPreview = options?.preview === true;
     try {
       try {
         await readNote(rel);
         await get().openNote(rel, {
-          preview: false,
+          preview: asPreview,
           syncTreeSelection: false,
         });
         return { path: rel, created: false };
@@ -1208,7 +1231,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       await get().refreshTree();
       void get().refreshVaultTags();
       await get().openNote(createdPath, {
-        preview: false,
+        preview: asPreview,
         syncTreeSelection: false,
       });
       return { path: createdPath, created: true };

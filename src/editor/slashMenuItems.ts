@@ -6,6 +6,10 @@ import {
   insertExistingDrawioItem,
   insertNewDrawioItem,
 } from "./drawio/slashItem";
+import {
+  insertInlineMathItem,
+  insertMathEquationItem,
+} from "./math/slashItem";
 import { insertMermaidItem } from "./mermaid/slashItem";
 import { insertPlantUmlItem } from "./plantuml/slashItem";
 import type { NoteEditor } from "./schema";
@@ -33,6 +37,8 @@ export function getNoteSlashMenuItems(
     insertPlantUmlItem(editor),
     insertNewDrawioItem(editor, notePath),
     insertExistingDrawioItem(editor, notePath),
+    insertMathEquationItem(editor),
+    insertInlineMathItem(editor),
   ];
 
   const q = query.trim().toLowerCase();

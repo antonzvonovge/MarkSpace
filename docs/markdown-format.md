@@ -13,9 +13,10 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Tables: use GFM pipe tables. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
 - Diagrams in notes: fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml `. Chat replies may use the same fences (rendered inline).
+- Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
-- Do **not** emit unsupported syntax (callouts, math, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
+- Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
 
 ## Front-matter, timestamps, and page tags
@@ -159,14 +160,32 @@ Supported via the editor (typical on-disk forms):
 | Code blocks | `` ```lang `` |
 | Divider | `---` |
 | Images / links / tables | as above |
+| Math | `$inline$` / `$$display$$` (KaTeX) |
 
 Slash menu hides video/audio/file blocks; do not invent those block types in markdown.
+
+## Math
+
+Inline and display TeX, rendered with KaTeX in Live and in chat:
+
+```md
+Ethanol opens GABA-A channels; more $Cl^-$ enters the neuron.
+
+$$
+E = mc^2
+$$
+```
+
+- Inline: `$…$` — no space right after the opening `$` or before the closing `$`; single line.
+- Display: `$$…$$` — may span lines; Live also inserts via slash menu **Block equation** / **Inline equation**.
+- Skipped inside fenced/inline code. A lone `$5` (no closing `$`) stays plain text.
 
 ## Round-trip caveats
 
 - **Underline and text/background colors** applied in the live UI are stripped on Markdown export — they are not a durable on-disk format (except table cell colors via HTML tables).
 - **CRLF** is normalized to LF on load; trailing `\` hard-breaks inside fenced code that came from CRLF corruption are healed. Prefer LF and do not add stray `\` at ends of fence lines.
 - Wiki-links and Draw.io embeds are rewritten through intermediate forms in the editor; always write the on-disk forms documented here when using `edit_note` / `write_note`.
+- Math round-trips through inline `data-latex` spans and temporary ` ```math ` fences in the Live editor; on disk always use `$` / `$$`.
 
 ## Not supported
 
@@ -174,7 +193,6 @@ Do **not** generate any of the following — the editor will treat them as plain
 
 - TOML front-matter (`+++` blocks) — only YAML `---` front-matter is read, and only `tags` is managed
 - Callouts / admonitions (`> [!note]`, `::: tip`, etc.)
-- Math (`$…$`, `$$…$$`, KaTeX/MathJax)
 - `==highlight==` syntax
 - Comments (`%%…%%`)
 - Footnotes (`[^1]`)

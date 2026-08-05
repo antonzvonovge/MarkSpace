@@ -1,4 +1,5 @@
 import "@blocknote/mantine/style.css";
+import "katex/dist/katex.min.css";
 
 import { VALID_LINK_PROTOCOLS } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
@@ -36,6 +37,10 @@ import {
   collectImageSizeRefs,
   restoreImagePreviewWidthsFromAlt,
 } from "../lib/imageMarkdown";
+import {
+  editorMarkdownToMath,
+  mathToEditorMarkdown,
+} from "../lib/mathMarkdown";
 import { noteBody, withNoteBody } from "../lib/noteFrontmatter";
 import { normalizeMarkdown } from "../lib/normalizeMarkdown";
 import {
@@ -317,7 +322,9 @@ export function NoteEditor({ path, content, onChange }: Props) {
         ed.blocksToHTMLLossy(blocks as typeof ed.document),
       ),
     );
-    const wikiMd = markdownToWiki(editorMarkdownToHashtags(md));
+    const wikiMd = markdownToWiki(
+      editorMarkdownToMath(editorMarkdownToHashtags(md)),
+    );
     const full = withNoteBody(frontmatterBaseRef.current, wikiMd);
     // External loads / round-trips: adopt serialization, do not pin preview.
     if (applyingRef.current || adoptNextChangeRef.current) {
@@ -362,9 +369,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
 
     applyingRef.current = true;
     // Strip any leftover Live HTML tag spans from older builds; keep `#tag` as text.
+    // Project `$…$` / `$$…$$` into BlockNote math HTML before parse.
     const blocks = restoreImagePreviewWidthsFromAlt(
       editor.tryParseMarkdownToBlocks(
-        editorMarkdownToHashtags(wikiToMarkdown(body)),
+        mathToEditorMarkdown(editorMarkdownToHashtags(wikiToMarkdown(body))),
       ),
     );
     editor.replaceBlocks(editor.document, blocks);
