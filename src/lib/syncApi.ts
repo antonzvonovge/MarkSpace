@@ -57,7 +57,7 @@ export async function syncNow(token: string | null): Promise<SyncResult> {
 
 export async function syncResolveConflict(
   path: string,
-  choice: "ours" | "theirs",
+  choice: "ours" | "theirs" | "both",
 ): Promise<SyncStatus> {
   return invoke("sync_resolve_conflict", { path, choice });
 }

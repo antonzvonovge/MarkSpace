@@ -288,8 +288,10 @@ export function SyncSettingsPanel() {
             <section className="sync-block sync-conflicts">
               <h3 className="sync-block-title">Conflicts</h3>
               <p className="sync-block-desc">
-                Choose which version to keep, or open the file and edit markers
-                manually, then Sync again.
+                Markdown conflicts are resolved automatically (both sides kept).
+                For remaining conflicts choose Keep both, Keep mine / Keep
+                theirs, or open the file and edit markers manually, then Sync
+                again.
               </p>
               <ul className="sync-conflict-list">
                 {status.conflicted.map((path) => (
@@ -302,6 +304,21 @@ export function SyncSettingsPanel() {
                       {path}
                     </button>
                     <div className="sync-actions">
+                      <button
+                        type="button"
+                        className="sync-btn sync-btn-primary"
+                        disabled={busy}
+                        onClick={() =>
+                          void (async () => {
+                            await resolveConflict(path, "both");
+                            markExternalWrite();
+                            await refreshTree();
+                            await openNote(path, { preview: false });
+                          })()
+                        }
+                      >
+                        Keep both
+                      </button>
                       <button
                         type="button"
                         className="sync-btn"

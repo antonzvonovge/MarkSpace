@@ -55,7 +55,7 @@ type SyncStore = {
   cancelDeviceFlow: () => void;
   resolveConflict: (
     path: string,
-    choice: "ours" | "theirs",
+    choice: "ours" | "theirs" | "both",
   ) => Promise<void>;
 };
 

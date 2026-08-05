@@ -1,6 +1,7 @@
 use git2::{
-    AnnotatedCommit, Cred, ErrorCode, FetchOptions, IndexAddOption, PushOptions, RemoteCallbacks,
-    Repository, Signature, StatusOptions, build::CheckoutBuilder,
+    AnnotatedCommit, Cred, ErrorCode, FetchOptions, FileFavor, IndexAddOption, IndexEntry,
+    IndexTime, MergeFileOptions, PushOptions, RemoteCallbacks, Repository, Signature,
+    StatusOptions, build::CheckoutBuilder,
 };
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -363,11 +364,12 @@ fn do_merge(repo: &Repository, fetch_commit: &AnnotatedCommit<'_>) -> Result<Vec
         return Ok(Vec::new());
     }
 
-    // Normal merge
+    // Normal merge — `.md` conflicts are Accept-Both'd automatically below.
     repo.merge(&[fetch_commit], None, None)
         .map_err(|e| format!("Merge failed: {e}"))?;
 
     let _ = auto_resolve_order_conflict(repo)?;
+    let _ = auto_resolve_md_both_conflicts(repo)?;
     let conflicts = conflicted_paths(repo);
     if !conflicts.is_empty() {
         return Ok(conflicts);
@@ -395,14 +397,19 @@ fn blob_text_at_stage(
         .map_err(|e| format!("order.json is not UTF-8: {e}"))
 }
 
+fn is_order_rel(rel: &str) -> bool {
+    rel == ORDER_REL || rel.replace('\\', "/") == ORDER_REL
+}
+
+fn looks_binary(bytes: &[u8]) -> bool {
+    bytes.contains(&0)
+}
+
 /// If `.markspace/order.json` is conflicted, merge it semantically and stage the result.
 /// Returns true when a conflict was resolved.
 fn auto_resolve_order_conflict(repo: &Repository) -> Result<bool, String> {
     let conflicts = conflicted_paths(repo);
-    let order_conflicted = conflicts.iter().any(|p| {
-        p == ORDER_REL || p.replace('\\', "/") == ORDER_REL
-    });
-    if !order_conflicted {
+    if !conflicts.iter().any(|p| is_order_rel(p)) {
         return Ok(false);
     }
 
@@ -416,25 +423,176 @@ fn auto_resolve_order_conflict(repo: &Repository) -> Result<bool, String> {
     let merged = order_merge::merge_order_maps(&base, &ours, &theirs);
     let content = order_merge::serialize_order(&merged);
 
+    write_and_stage(repo, ORDER_REL, content.as_bytes())?;
+    Ok(true)
+}
+
+/// For conflicted `.md` notes, keep both sides immediately (Accept Both).
+/// Skips `order.json` (semantic merge), binaries, and non-markdown files.
+fn auto_resolve_md_both_conflicts(repo: &Repository) -> Result<usize, String> {
+    let conflicts = conflicted_paths(repo);
+    let mut n = 0;
+    for rel in conflicts {
+        if !is_markdown_rel(&rel) || is_order_rel(&rel) {
+            continue;
+        }
+        if resolve_md_both(repo, &rel)? {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+fn is_markdown_rel(rel: &str) -> bool {
+    rel.to_ascii_lowercase().ends_with(".md")
+}
+
+fn write_and_stage(repo: &Repository, rel: &str, content: &[u8]) -> Result<(), String> {
     let workdir = repo
         .workdir()
         .ok_or_else(|| "Repository has no working directory".to_string())?;
-    let abs = workdir.join(ORDER_REL);
+    let abs = workdir.join(rel);
     if let Some(parent) = abs.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir .markspace: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     }
-    std::fs::write(&abs, content).map_err(|e| format!("write order.json: {e}"))?;
+    std::fs::write(&abs, content).map_err(|e| format!("write {rel}: {e}"))?;
 
     let mut index = repo
         .index()
         .map_err(|e| format!("Cannot read index: {e}"))?;
     index
-        .add_path(Path::new(ORDER_REL))
-        .map_err(|e| format!("Cannot stage merged order.json: {e}"))?;
+        .add_path(Path::new(rel))
+        .map_err(|e| format!("Cannot stage {rel}: {e}"))?;
     index
         .write()
         .map_err(|e| format!("Cannot write index: {e}"))?;
+    Ok(())
+}
 
+fn empty_ancestor_entry(repo: &Repository, template: &IndexEntry) -> Result<IndexEntry, String> {
+    let oid = repo
+        .blob(&[])
+        .map_err(|e| format!("Cannot create empty blob: {e}"))?;
+    Ok(IndexEntry {
+        ctime: IndexTime::new(0, 0),
+        mtime: IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        mode: template.mode,
+        uid: 0,
+        gid: 0,
+        file_size: 0,
+        id: oid,
+        flags: template.flags & 0x0FFF, // clear stage bits; path length kept
+        flags_extended: 0,
+        path: template.path.clone(),
+    })
+}
+
+/// Strip git conflict markers, keeping both sides of each hunk (VS Code "Accept Both").
+fn accept_both_from_markers(text: &str) -> Option<String> {
+    if !text.contains("<<<<<<<") {
+        return None;
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut in_conflict = false;
+    let mut saw_marker = false;
+    for line in text.lines() {
+        if line.starts_with("<<<<<<<") {
+            in_conflict = true;
+            saw_marker = true;
+            continue;
+        }
+        if in_conflict && line.starts_with("=======") {
+            continue;
+        }
+        if in_conflict && line.starts_with(">>>>>>>") {
+            in_conflict = false;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    // Preserve final newline presence roughly; ensure we only claim success with markers.
+    if !saw_marker {
+        return None;
+    }
+    Some(out)
+}
+
+/// Resolve a conflicted `.md` by keeping both sides.
+fn resolve_md_both(repo: &Repository, rel: &str) -> Result<bool, String> {
+    let index = repo
+        .index()
+        .map_err(|e| format!("Cannot read index: {e}"))?;
+    let Some(ours) = index.get_path(Path::new(rel), 2) else {
+        return Ok(false);
+    };
+    let Some(theirs) = index.get_path(Path::new(rel), 3) else {
+        return Ok(false);
+    };
+
+    let ours_blob = repo
+        .find_blob(ours.id)
+        .map_err(|e| format!("Cannot read ours blob for {rel}: {e}"))?;
+    let theirs_blob = repo
+        .find_blob(theirs.id)
+        .map_err(|e| format!("Cannot read theirs blob for {rel}: {e}"))?;
+    if looks_binary(ours_blob.content()) || looks_binary(theirs_blob.content()) {
+        return Ok(false);
+    }
+
+    // Prefer workdir conflict markers → Accept Both (ours hunk then theirs hunk).
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| "Repository has no working directory".to_string())?;
+    let abs = workdir.join(rel);
+    if let Ok(raw) = std::fs::read_to_string(&abs) {
+        if let Some(merged) = accept_both_from_markers(&raw) {
+            write_and_stage(repo, rel, merged.as_bytes())?;
+            return Ok(true);
+        }
+    }
+
+    // Fallback: libgit2 union (unique lines from both sides).
+    resolve_path_union(repo, rel)
+}
+
+/// Union-merge a single conflicted path (keep both sides' unique lines).
+/// Returns false when the conflict cannot be union-resolved (modify/delete, binary).
+fn resolve_path_union(repo: &Repository, rel: &str) -> Result<bool, String> {
+    let index = repo
+        .index()
+        .map_err(|e| format!("Cannot read index: {e}"))?;
+    let Some(ours) = index.get_path(Path::new(rel), 2) else {
+        return Ok(false);
+    };
+    let Some(theirs) = index.get_path(Path::new(rel), 3) else {
+        return Ok(false);
+    };
+
+    let ours_blob = repo
+        .find_blob(ours.id)
+        .map_err(|e| format!("Cannot read ours blob for {rel}: {e}"))?;
+    let theirs_blob = repo
+        .find_blob(theirs.id)
+        .map_err(|e| format!("Cannot read theirs blob for {rel}: {e}"))?;
+    if looks_binary(ours_blob.content()) || looks_binary(theirs_blob.content()) {
+        return Ok(false);
+    }
+
+    let ancestor = match index.get_path(Path::new(rel), 1) {
+        Some(entry) => entry,
+        None => empty_ancestor_entry(repo, &ours)?,
+    };
+
+    let mut opts = MergeFileOptions::new();
+    opts.favor(FileFavor::Union);
+    let result = repo
+        .merge_file_from_index(&ancestor, &ours, &theirs, Some(&mut opts))
+        .map_err(|e| format!("Union merge failed for {rel}: {e}"))?;
+
+    write_and_stage(repo, rel, result.content())?;
     Ok(true)
 }
 
@@ -630,6 +788,7 @@ pub fn sync_now(
     let existing_conflicts = conflicted_paths(&repo);
     if !existing_conflicts.is_empty() {
         let _ = auto_resolve_order_conflict(&repo)?;
+        let _ = auto_resolve_md_both_conflicts(&repo)?;
         let remaining = conflicted_paths(&repo);
         if remaining.is_empty() {
             finalize_merge_commit(&repo)?;
@@ -685,41 +844,46 @@ pub fn sync_resolve_conflict(
     let repo = open_repo(&root)?;
     let rel = path.trim().trim_start_matches('/');
 
-    let index = repo
-        .index()
-        .map_err(|e| format!("Cannot read index: {e}"))?;
-
-    // Find conflict stages: 1=base, 2=ours, 3=theirs
-    let stage = match choice.as_str() {
-        "ours" => 2,
-        "theirs" => 3,
-        _ => return Err("choice must be 'ours' or 'theirs'".into()),
-    };
-
-    let entry = index
-        .get_path(Path::new(rel), stage)
-        .ok_or_else(|| format!("No conflict stage {stage} for {rel}"))?;
-
-    let blob = repo
-        .find_blob(entry.id)
-        .map_err(|e| format!("Cannot read blob: {e}"))?;
-    let abs = root.join(rel);
-    if let Some(parent) = abs.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+    match choice.as_str() {
+        "ours" | "theirs" => {
+            let index = repo
+                .index()
+                .map_err(|e| format!("Cannot read index: {e}"))?;
+            let stage = if choice == "ours" { 2 } else { 3 };
+            let entry = index
+                .get_path(Path::new(rel), stage)
+                .ok_or_else(|| format!("No conflict stage {stage} for {rel}"))?;
+            let blob = repo
+                .find_blob(entry.id)
+                .map_err(|e| format!("Cannot read blob: {e}"))?;
+            write_and_stage(&repo, rel, blob.content())?;
+        }
+        "both" => {
+            if is_order_rel(rel) {
+                let _ = auto_resolve_order_conflict(&repo)?;
+                if conflicted_paths(&repo)
+                    .iter()
+                    .any(|p| is_order_rel(p))
+                {
+                    return Err("Could not merge order.json".into());
+                }
+            } else if is_markdown_rel(rel) {
+                if !resolve_md_both(&repo, rel)? {
+                    return Err(format!(
+                        "Cannot keep both for {rel} (binary or delete/modify conflict)"
+                    ));
+                }
+            } else if !resolve_path_union(&repo, rel)? {
+                return Err(format!(
+                    "Cannot keep both for {rel} (binary or delete/modify conflict)"
+                ));
+            }
+        }
+        _ => return Err("choice must be 'ours', 'theirs', or 'both'".into()),
     }
-    std::fs::write(&abs, blob.content()).map_err(|e| format!("write: {e}"))?;
-
-    let mut index = repo
-        .index()
-        .map_err(|e| format!("Cannot read index: {e}"))?;
-    index
-        .add_path(Path::new(rel))
-        .map_err(|e| format!("Cannot stage resolved file: {e}"))?;
-    index
-        .write()
-        .map_err(|e| format!("Cannot write index: {e}"))?;
 
     let _ = auto_resolve_order_conflict(&repo)?;
+    let _ = auto_resolve_md_both_conflicts(&repo)?;
     if conflicted_paths(&repo).is_empty() {
         finalize_merge_commit(&repo)?;
     }
@@ -821,4 +985,29 @@ pub fn sync_device_flow_poll(
         error: body.error,
         error_description: body.error_description,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::accept_both_from_markers;
+
+    #[test]
+    fn accept_both_keeps_both_hunks() {
+        let raw = "\
+before
+<<<<<<< ours
+mine line
+=======
+theirs line
+>>>>>>> theirs
+after
+";
+        let merged = accept_both_from_markers(raw).expect("markers");
+        assert_eq!(merged, "before\nmine line\ntheirs line\nafter\n");
+    }
+
+    #[test]
+    fn accept_both_none_without_markers() {
+        assert!(accept_both_from_markers("plain note\n").is_none());
+    }
 }
