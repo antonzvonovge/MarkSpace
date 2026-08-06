@@ -1,3 +1,4 @@
+mod agent_memory;
 mod chat_history;
 mod comments;
 mod embeddings;
@@ -181,6 +182,12 @@ pub fn run() {
             projects::get_project_properties,
             projects::set_project_properties,
             projects::list_project_properties,
+            agent_memory::get_agent_memory,
+            agent_memory::set_agent_memory_enabled,
+            agent_memory::add_agent_memory,
+            agent_memory::update_agent_memory,
+            agent_memory::delete_agent_memory,
+            agent_memory::clear_agent_memory,
             http_fetch::http_fetch,
             http_fetch::http_fetch_bytes,
             chat_history::list_chat_threads,

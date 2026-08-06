@@ -207,6 +207,90 @@ describe("vault agent tools", () => {
     }
   });
 
+  it("injects global and active-project memories into the system prompt", async () => {
+    const { useAgentMemoryStore } = await import("../store/agentMemoryStore");
+    const prev = useAgentMemoryStore.getState().doc;
+    useAgentMemoryStore.setState({
+      doc: {
+        version: 1,
+        enabled: true,
+        entries: [
+          {
+            id: "m1",
+            text: "Prefers concise Russian replies",
+            projectPath: null,
+            createdAt: "1",
+            updatedAt: "1",
+          },
+          {
+            id: "m2",
+            text: "FluentMe posts for teachers",
+            projectPath: "FluentMe",
+            createdAt: "1",
+            updatedAt: "1",
+          },
+          {
+            id: "m3",
+            text: "Other project fact",
+            projectPath: "Other",
+            createdAt: "1",
+            updatedAt: "1",
+          },
+        ],
+      },
+      hydrated: true,
+    });
+    try {
+      const withProject = buildSystemPrompt({
+        mode: "ask",
+        vaultPath: "/vault",
+        activePath: null,
+        activeExcerpt: null,
+        projectPath: "FluentMe",
+      });
+      expect(withProject).toContain("Saved memories (global):");
+      expect(withProject).toContain("[m1] Prefers concise Russian replies");
+      expect(withProject).toContain("Saved memories (project FluentMe):");
+      expect(withProject).toContain("[m2] FluentMe posts for teachers");
+      expect(withProject).not.toContain("Other project fact");
+
+      const noProject = buildSystemPrompt({
+        mode: "ask",
+        vaultPath: "/vault",
+        activePath: null,
+        activeExcerpt: null,
+      });
+      expect(noProject).toContain("[m1] Prefers concise Russian replies");
+      expect(noProject).not.toContain("Saved memories (project");
+      expect(noProject).not.toContain("FluentMe posts for teachers");
+
+      useAgentMemoryStore.setState({
+        doc: { ...useAgentMemoryStore.getState().doc, enabled: false },
+      });
+      const disabled = buildSystemPrompt({
+        mode: "ask",
+        vaultPath: "/vault",
+        activePath: null,
+        activeExcerpt: null,
+        projectPath: "FluentMe",
+      });
+      expect(disabled).not.toContain("Saved memories");
+    } finally {
+      useAgentMemoryStore.setState({ doc: prev });
+    }
+  });
+
+  it("exposes remember/forget/list_memories in ask and agent modes", () => {
+    const ask = buildVaultTools("ask");
+    const agent = buildVaultTools("agent");
+    expect(ask).toHaveProperty("remember");
+    expect(ask).toHaveProperty("forget");
+    expect(ask).toHaveProperty("list_memories");
+    expect(agent).toHaveProperty("remember");
+    expect(agent).toHaveProperty("forget");
+    expect(agent).toHaveProperty("list_memories");
+  });
+
   it("matches paths inside the active project only", () => {
     const none = _test.makeInProject(null);
     expect(none("Anywhere/Note.md")).toBe(true);

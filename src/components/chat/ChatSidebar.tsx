@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { hasAnyLlmCredentials } from "../../ai/languageModel";
+import { useAgentMemoryStore } from "../../store/agentMemoryStore";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { usePrefsStore } from "../../store/prefsStore";
@@ -11,6 +12,7 @@ import { ChatTabBar } from "./ChatTabBar";
 export function ChatSidebar() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const hydrateForVault = useChatStore((s) => s.hydrateForVault);
+  const hydrateMemory = useAgentMemoryStore((s) => s.hydrateForVault);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const openTabIds = useChatStore((s) => s.openTabIds);
   const messages = useChatStore((s) => s.messages);
@@ -23,7 +25,8 @@ export function ChatSidebar() {
 
   useEffect(() => {
     void hydrateForVault(vaultPath);
-  }, [vaultPath, hydrateForVault]);
+    void hydrateMemory(vaultPath);
+  }, [vaultPath, hydrateForVault, hydrateMemory]);
 
   const hasOpenTabs = openTabIds.length > 0 && !!activeThreadId;
 

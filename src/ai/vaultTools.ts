@@ -1,14 +1,17 @@
 import { tool, type UIMessage } from "ai";
 import { z } from "zod";
 import {
+  addAgentMemory,
   createFolder,
   createNote,
+  deleteAgentMemory,
   deleteFolderIfEmpty,
   ensureFolder,
   ensureFolderNote,
   extractPdfText,
   folderNotePath,
   folderPathFromFolderNote,
+  getAgentMemory,
   getEmbeddingModelStatus,
   getFileTags,
   isFolderNotePath,
@@ -23,6 +26,7 @@ import {
   setFileTags,
   writeAsset,
   writeNote,
+  type AgentMemoryEntry,
   type TreeNode,
 } from "../lib/vaultApi";
 import {
@@ -65,6 +69,7 @@ import {
   NATIVE_LANGUAGE_OPTIONS,
 } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { useAgentMemoryStore } from "../store/agentMemoryStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { translateNoteInPlaceWithJob } from "./translateNote";
 
@@ -74,6 +79,38 @@ const TRANSLATE_LANGUAGE_ENUM = z.enum(
     ...(typeof NATIVE_LANGUAGE_OPTIONS)[number]["value"][],
   ],
 );
+
+const MAX_MEMORY_PROMPT_CHARS = 4000;
+
+function formatMemoryLines(
+  entries: AgentMemoryEntry[],
+  budget: number,
+): { lines: string[]; used: number } {
+  const lines: string[] = [];
+  let used = 0;
+  for (const entry of entries) {
+    const line = `- [${entry.id}] ${entry.text}`;
+    const next = used + line.length + 1;
+    if (next > budget && lines.length > 0) {
+      lines.push("- … (more memories omitted; call list_memories)");
+      break;
+    }
+    lines.push(line);
+    used = next;
+  }
+  return { lines, used };
+}
+
+function memoryDisabledError() {
+  return {
+    ok: false as const,
+    error: "Memory is disabled in Settings → Memory",
+  };
+}
+
+async function refreshMemoryStore() {
+  await useAgentMemoryStore.getState().refresh();
+}
 
 const MAX_WRITE_ASSET_BYTES = 10 * 1024 * 1024;
 
@@ -628,6 +665,143 @@ export function buildVaultTools(
           path: loaded.meta.path,
           description: loaded.meta.description,
           instructions: loaded.body.slice(0, 20_000),
+        };
+      },
+    }),
+
+    remember: tool({
+      description:
+        "Save a durable memory fact for future chats in this vault. Use when the user asks to remember something. Pass project for project-scoped memory (first-level folder name); omit or null for global. Prefer project scope when the fact is about the active project.",
+      inputSchema: z.object({
+        text: z
+          .string()
+          .min(1)
+          .max(500)
+          .describe("Short durable fact to remember"),
+        project: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(
+            "Project folder name for project-scoped memory; omit/null for global",
+          ),
+      }),
+      execute: async ({ text, project }) => {
+        const doc = await getAgentMemory();
+        if (!doc.enabled) return memoryDisabledError();
+        try {
+          const scope =
+            project == null || String(project).trim() === ""
+              ? null
+              : String(project).trim();
+          const entry = await addAgentMemory(text, scope);
+          await refreshMemoryStore();
+          await yieldToUi();
+          return {
+            ok: true as const,
+            entry: {
+              id: entry.id,
+              text: entry.text,
+              projectPath: entry.projectPath,
+            },
+          };
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      },
+    }),
+
+    forget: tool({
+      description:
+        "Delete a saved memory. Prefer id from the Saved memories list or list_memories. Alternatively pass exact text to match one entry.",
+      inputSchema: z.object({
+        id: z.string().optional().describe("Memory id (preferred)"),
+        text: z
+          .string()
+          .optional()
+          .describe("Exact memory text if id is unknown"),
+      }),
+      execute: async ({ id, text }) => {
+        const doc = await getAgentMemory();
+        if (!doc.enabled) return memoryDisabledError();
+        try {
+          let targetId = id?.trim() || "";
+          if (!targetId && text?.trim()) {
+            const needle = text.trim();
+            const match = doc.entries.find((e) => e.text === needle);
+            if (!match) {
+              return {
+                ok: false as const,
+                error: `No memory with exact text: ${needle}`,
+              };
+            }
+            targetId = match.id;
+          }
+          if (!targetId) {
+            return {
+              ok: false as const,
+              error: "Provide id or exact text to forget",
+            };
+          }
+          await deleteAgentMemory(targetId);
+          await refreshMemoryStore();
+          await yieldToUi();
+          return { ok: true as const, id: targetId };
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      },
+    }),
+
+    list_memories: tool({
+      description:
+        "List saved agent memories. scope=all (default), global, or project (active chat project, or pass project name).",
+      inputSchema: z.object({
+        scope: z
+          .enum(["all", "global", "project"])
+          .optional()
+          .describe("Which memories to list (default all)"),
+        project: z
+          .string()
+          .optional()
+          .describe(
+            "Project name when scope=project; defaults to the active chat project",
+          ),
+      }),
+      execute: async ({ scope, project }) => {
+        const doc = await getAgentMemory();
+        if (!doc.enabled) return memoryDisabledError();
+        const want = scope ?? "all";
+        let entries = doc.entries;
+        if (want === "global") {
+          entries = entries.filter((e) => !e.projectPath);
+        } else if (want === "project") {
+          const p = (project?.trim() || projectPath || "").trim();
+          if (!p) {
+            return {
+              ok: false as const,
+              error:
+                "No project specified and no active project in this chat",
+            };
+          }
+          entries = entries.filter((e) => e.projectPath === p);
+        }
+        await yieldToUi();
+        return {
+          ok: true as const,
+          enabled: doc.enabled,
+          count: entries.length,
+          memories: entries.map((e) => ({
+            id: e.id,
+            text: e.text,
+            projectPath: e.projectPath,
+          })),
         };
       },
     }),
@@ -1350,6 +1524,35 @@ export function buildSystemPrompt(opts: {
   lines.push(
     `User's native language: ${nativeLanguageLabel(prefs.nativeLanguage)} (${prefs.nativeLanguage}). Prefer this language when the user writes in it or asks for a translation.`,
   );
+
+  const memoryDoc = useAgentMemoryStore.getState().doc;
+  if (memoryDoc.enabled) {
+    const globalEntries = memoryDoc.entries.filter((e) => !e.projectPath);
+    const projectEntries = opts.projectPath
+      ? memoryDoc.entries.filter((e) => e.projectPath === opts.projectPath)
+      : [];
+    let budget = MAX_MEMORY_PROMPT_CHARS;
+    if (globalEntries.length > 0 || projectEntries.length > 0) {
+      lines.push(
+        "Saved memories are durable facts across chats in this vault. Use them. When the user asks to remember or forget something, call remember / forget (do not only acknowledge). Prefer project scope when the fact is about the active project; otherwise global. Do not duplicate Profile or project description. Do not store secrets unless the user explicitly asks.",
+      );
+    }
+    if (globalEntries.length > 0) {
+      lines.push("Saved memories (global):");
+      const { lines: memLines, used } = formatMemoryLines(
+        globalEntries,
+        budget,
+      );
+      lines.push(...memLines);
+      budget = Math.max(0, budget - used);
+    }
+    if (opts.projectPath && projectEntries.length > 0) {
+      lines.push(`Saved memories (project ${opts.projectPath}):`);
+      const { lines: memLines } = formatMemoryLines(projectEntries, budget);
+      lines.push(...memLines);
+    }
+  }
+
   const catalogLines = formatSkillsCatalogLines(opts.skills ?? []);
   if (catalogLines.length > 0) {
     lines.push(...catalogLines);

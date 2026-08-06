@@ -9,6 +9,7 @@ export type SettingCategory =
   | "appearance"
   | "editor"
   | "ai"
+  | "memory"
   | "sync";
 
 export type SettingControl =
@@ -51,6 +52,7 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "appearance", label: "Appearance", scope: "app" },
   { id: "editor", label: "Editor", scope: "app" },
   { id: "ai", label: "AI", scope: "app", separatorBefore: true },
+  { id: "memory", label: "Memory", scope: "vault" },
   { id: "sync", label: "Sync", scope: "vault", separatorBefore: true },
 ];
 

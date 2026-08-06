@@ -595,6 +595,98 @@ export async function listProjectProperties(): Promise<ProjectProperties[]> {
   }));
 }
 
+/** Durable agent memory entry (global or project-scoped). */
+export type AgentMemoryEntry = {
+  id: string;
+  text: string;
+  /** `null` / omitted = global; otherwise first-level project folder. */
+  projectPath: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentMemoryDoc = {
+  version: number;
+  enabled: boolean;
+  entries: AgentMemoryEntry[];
+};
+
+function normalizeAgentMemoryEntry(raw: AgentMemoryEntry): AgentMemoryEntry {
+  const projectPath = raw.projectPath?.trim() || null;
+  return {
+    id: raw.id,
+    text: raw.text ?? "",
+    projectPath,
+    createdAt: raw.createdAt ?? "",
+    updatedAt: raw.updatedAt ?? "",
+  };
+}
+
+function normalizeAgentMemoryDoc(raw: AgentMemoryDoc): AgentMemoryDoc {
+  return {
+    version: raw.version ?? 1,
+    enabled: raw.enabled !== false,
+    entries: (raw.entries ?? []).map(normalizeAgentMemoryEntry),
+  };
+}
+
+export async function getAgentMemory(): Promise<AgentMemoryDoc> {
+  const raw = await invoke<AgentMemoryDoc>("get_agent_memory");
+  return normalizeAgentMemoryDoc(raw);
+}
+
+export async function setAgentMemoryEnabled(
+  enabled: boolean,
+): Promise<AgentMemoryDoc> {
+  const raw = await invoke<AgentMemoryDoc>("set_agent_memory_enabled", {
+    enabled,
+  });
+  return normalizeAgentMemoryDoc(raw);
+}
+
+export async function addAgentMemory(
+  text: string,
+  projectPath?: string | null,
+): Promise<AgentMemoryEntry> {
+  const raw = await invoke<AgentMemoryEntry>("add_agent_memory", {
+    text,
+    projectPath: projectPath?.trim() || null,
+  });
+  return normalizeAgentMemoryEntry(raw);
+}
+
+export async function updateAgentMemory(
+  id: string,
+  text: string,
+  projectPath?: string | null,
+): Promise<AgentMemoryEntry> {
+  const raw = await invoke<AgentMemoryEntry>("update_agent_memory", {
+    id,
+    text,
+    projectPath: projectPath?.trim() || null,
+  });
+  return normalizeAgentMemoryEntry(raw);
+}
+
+export async function deleteAgentMemory(id: string): Promise<void> {
+  await invoke("delete_agent_memory", { id });
+}
+
+export type ClearAgentMemoryKind = "all" | "global" | "project";
+
+export async function clearAgentMemory(
+  kind: ClearAgentMemoryKind,
+  project?: string | null,
+): Promise<AgentMemoryDoc> {
+  const raw = await invoke<AgentMemoryDoc>("clear_agent_memory", {
+    args: {
+      kind,
+      project: project?.trim() || null,
+    },
+  });
+  return normalizeAgentMemoryDoc(raw);
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000;
   let binary = "";
