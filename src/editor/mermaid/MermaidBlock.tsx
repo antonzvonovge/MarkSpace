@@ -1,6 +1,10 @@
 import { createExtension } from "@blocknote/core";
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useRef, useState } from "react";
+import {
+  DiagramExpandIcon,
+  DiagramLightbox,
+} from "../../components/DiagramLightbox";
 import { usePrefsStore } from "../../store/prefsStore";
 import { scheduleDiagramPreview } from "../scheduleDiagramPreview";
 import { selectAtomBlockOnMouseDown } from "../selectAtomBlock";
@@ -67,6 +71,8 @@ function MermaidBlockView(props: {
   const dark = theme === "dark";
   const [mode, setMode] = useState<ViewMode>("preview");
   const [draft, setDraft] = useState(block.props.code);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const canExpand = Boolean(block.props.code.trim());
 
   useEffect(() => {
     setDraft(block.props.code);
@@ -89,34 +95,46 @@ function MermaidBlockView(props: {
     >
       <div className="diagram-block__toolbar">
         <span className="diagram-block__label">Mermaid</span>
-        <div className="diagram-block__modes" role="tablist">
+        <div className="diagram-block__toolbar-end">
           <button
             type="button"
-            role="tab"
-            aria-selected={mode === "preview"}
-            className={
-              mode === "preview"
-                ? "diagram-block__mode is-active"
-                : "diagram-block__mode"
-            }
-            onClick={() => setMode("preview")}
+            className="diagram-block__expand"
+            aria-label="Open diagram fullscreen"
+            title="Open fullscreen"
+            disabled={!canExpand}
+            onClick={() => setLightboxOpen(true)}
           >
-            Preview
+            <DiagramExpandIcon />
           </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "edit"}
-            className={
-              mode === "edit"
-                ? "diagram-block__mode is-active"
-                : "diagram-block__mode"
-            }
-            onClick={() => setMode("edit")}
-            disabled={!editor.isEditable}
-          >
-            Edit
-          </button>
+          <div className="diagram-block__modes" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "preview"}
+              className={
+                mode === "preview"
+                  ? "diagram-block__mode is-active"
+                  : "diagram-block__mode"
+              }
+              onClick={() => setMode("preview")}
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "edit"}
+              className={
+                mode === "edit"
+                  ? "diagram-block__mode is-active"
+                  : "diagram-block__mode"
+              }
+              onClick={() => setMode("edit")}
+              disabled={!editor.isEditable}
+            >
+              Edit
+            </button>
+          </div>
         </div>
       </div>
       {mode === "edit" ? (
@@ -134,6 +152,13 @@ function MermaidBlockView(props: {
       ) : (
         <MermaidPreview code={block.props.code} dark={dark} />
       )}
+      <DiagramLightbox
+        open={lightboxOpen}
+        engine="mermaid"
+        code={block.props.code}
+        title="Mermaid"
+        onClose={() => setLightboxOpen(false)}
+      />
     </div>
   );
 }

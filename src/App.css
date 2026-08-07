@@ -3191,6 +3191,42 @@ select {
   text-transform: uppercase;
 }
 
+.diagram-block__toolbar-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.diagram-block__expand {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.diagram-block__expand:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(28, 36, 40, 0.08);
+}
+
+:root[data-theme="dark"] .diagram-block__expand:hover:not(:disabled) {
+  background: rgba(231, 238, 242, 0.1);
+}
+
+.diagram-block__expand:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .diagram-block__modes {
   display: inline-flex;
   gap: 2px;
@@ -4949,138 +4985,209 @@ select {
   white-space: pre-wrap;
 }
 
-/* —— Chat diagram lightbox —— */
+/* —— Diagram lightbox (editor + chat; full-window like ImageLightbox) —— */
 
-.chat-diagram-lightbox-root {
+.diagram-lightbox-root {
   position: fixed;
   inset: 0;
-  z-index: 1100;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-}
-
-.chat-diagram-lightbox-backdrop {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  background: rgba(20, 30, 34, 0.48);
-  cursor: default;
+  z-index: 1200;
+  padding: 14px;
+  background: rgba(8, 10, 12, 0.72);
+  backdrop-filter: blur(3px);
   animation: app-dialog-fade 0.16s ease;
 }
 
-.chat-diagram-lightbox {
-  position: relative;
-  z-index: 1;
+.diagram-lightbox {
   display: flex;
   flex-direction: column;
-  width: min(100%, 920px);
-  max-height: min(90vh, 860px);
-  border: 1px solid var(--line);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid rgba(231, 238, 242, 0.1);
   border-radius: 14px;
-  background: #ffffff;
-  color: #18181b;
-  box-shadow: 0 18px 48px rgba(20, 30, 34, 0.28);
-  animation: app-dialog-pop 0.18s ease;
   overflow: hidden;
+  background: #14171b;
+  color: #e7eef2;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  animation: app-dialog-pop 0.18s ease;
 }
 
-.chat-diagram-lightbox__header {
+.diagram-lightbox__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid #e4e4e7;
-  background: #fafafa;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(231, 238, 242, 0.08);
+  background: rgba(231, 238, 242, 0.03);
   flex-shrink: 0;
 }
 
-.chat-diagram-lightbox__title {
+.diagram-lightbox__title {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  color: #3f3f46;
+  overflow: hidden;
+  color: rgba(231, 238, 242, 0.6);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.chat-diagram-lightbox__actions {
+.diagram-lightbox__actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.chat-diagram-lightbox__zoom {
+.diagram-lightbox__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(231, 238, 242, 0.08);
+  color: #dbe4e9;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 560;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.diagram-lightbox__btn:hover:not(:disabled) {
+  background: rgba(231, 238, 242, 0.16);
+  color: #ffffff;
+}
+
+.diagram-lightbox__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.diagram-lightbox__btn.is-copied {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: #ffffff;
+}
+
+.diagram-lightbox__zoom {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border-radius: 8px;
-  background: color-mix(in srgb, #18181b 5%, transparent);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.32);
 }
 
-.chat-diagram-lightbox__zoom-btn {
-  min-width: 32px;
+.diagram-lightbox__zoom .diagram-lightbox__btn {
+  background: transparent;
+}
+
+.diagram-lightbox__zoom .diagram-lightbox__btn:hover:not(:disabled) {
+  background: rgba(231, 238, 242, 0.12);
+}
+
+.diagram-lightbox__zoom-btn {
+  min-width: 30px;
   padding-inline: 8px;
-  font-size: 1.05rem;
-  line-height: 1;
+  font-size: 1rem;
 }
 
-.chat-diagram-lightbox__zoom-label {
-  min-width: 52px;
+.diagram-lightbox__zoom-label {
+  min-width: 56px;
   padding-inline: 6px;
   font-variant-numeric: tabular-nums;
-  font-size: 0.8125rem;
 }
 
-.chat-diagram-lightbox__icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid #e4e4e7;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #52525b;
-  cursor: pointer;
+.diagram-lightbox__icon-btn,
+.diagram-lightbox__close {
+  width: 30px;
+  padding: 0;
 }
 
-.chat-diagram-lightbox__icon-btn:hover:not(:disabled) {
-  background: #f4f4f5;
-  color: #18181b;
-}
-
-.chat-diagram-lightbox__icon-btn.is-copied {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 35%, #e4e4e7);
-}
-
-.chat-diagram-lightbox__icon-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.chat-diagram-lightbox__body {
+.diagram-lightbox__viewport {
+  position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 20px 24px;
+  overscroll-behavior: contain;
   background: #ffffff;
+  cursor: grab;
+  touch-action: none;
 }
 
-.chat-diagram-lightbox__svg {
+.diagram-lightbox__viewport.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.diagram-lightbox__viewport::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.diagram-lightbox__viewport::-webkit-scrollbar-thumb {
+  background-color: rgba(28, 36, 40, 0.28);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+.diagram-lightbox__viewport::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(28, 36, 40, 0.45);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .diagram-lightbox__viewport {
+    scrollbar-width: auto;
+    scrollbar-color: rgba(28, 36, 40, 0.35) transparent;
+  }
+}
+
+.diagram-lightbox__pending,
+.diagram-lightbox__error {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #3f3f46;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 16px rgba(20, 30, 34, 0.12);
+}
+
+.diagram-lightbox__error {
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+
+.diagram-lightbox__stage {
+  display: grid;
+  place-items: center;
   width: max-content;
   min-width: 100%;
+  height: max-content;
+  min-height: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.diagram-lightbox__svg {
   line-height: 0;
   display: flex;
   justify-content: center;
 }
 
-.chat-diagram-lightbox__svg svg {
+.diagram-lightbox__svg svg {
   max-width: none !important;
   height: auto !important;
   display: block;
