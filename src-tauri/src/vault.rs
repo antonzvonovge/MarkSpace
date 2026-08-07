@@ -2238,6 +2238,10 @@ fn normalize_tag_name(raw: &str) -> Option<String> {
     if t.is_empty() {
         return None;
     }
+    // Pure digit sequences (`#5`, `#42`) are not tags.
+    if t.chars().all(|c| c.is_numeric()) {
+        return None;
+    }
     Some(t.to_string())
 }
 

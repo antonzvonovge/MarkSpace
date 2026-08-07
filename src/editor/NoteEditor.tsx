@@ -97,6 +97,7 @@ import {
   setCommentDecorationsMeta,
 } from "./comment/commentDecorations";
 import { createHashtagDecorationExtension } from "./tag/tagDecorations";
+import { createCodeBlockCopyExtension } from "./codeBlockCopy";
 import { getTagMenuItems, shouldOpenTagMenu } from "./tag/tagSuggestion";
 import { TagSuggestionMenu } from "./tag/TagSuggestionMenu";
 import { focusLiveEditorFromEmptyClick } from "./focusLiveEditor";
@@ -367,6 +368,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
     () => createHashtagDecorationExtension(),
     [],
   );
+  const codeBlockCopy = useMemo(() => createCodeBlockCopyExtension(), []);
   const onAnchorsChangedRef = useRef<
     ((updates: import("../lib/commentAnchors").CommentAnchorUpdate[]) => void) | undefined
   >(undefined);
@@ -396,6 +398,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
           layoutKeymap,
           selectAtomAfterDrop,
           hashtagDecorations,
+          codeBlockCopy,
           commentDecorations,
         ],
       },
@@ -487,8 +490,15 @@ export function NoteEditor({ path, content, onChange }: Props) {
       const href = anchor.getAttribute("href");
       if (!href) return;
       event.preventDefault();
+      // Ctrl/Cmd+click → permanent tab (like VS Code / browsers “open in new tab”).
+      const openPinned = event.ctrlKey || event.metaKey;
 
       void (async () => {
+        const go = (path: string) =>
+          openPinned
+            ? openNote(path, { preview: false })
+            : openNote(path);
+
         if (isWikiHref(href)) {
           const wikiTarget = wikiTargetFromHref(href);
           let resolved = await resolveWikiTarget(wikiTarget);
@@ -501,7 +511,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
               resolved = await ensureFolderNote(folder);
             }
           }
-          await openNote(resolved);
+          await go(resolved);
           return;
         }
         if (isExternalHref(href)) {
@@ -518,7 +528,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
           if (folder) {
             resolved = await ensureFolderNote(folder);
           }
-          await openNote(resolved);
+          await go(resolved);
         }
       })();
     },

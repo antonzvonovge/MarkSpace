@@ -94,6 +94,30 @@ describe("ChatMarkdown note references", () => {
     });
   });
 
+  it("renders wiki links whose path contains a literal #", async () => {
+    const openNote = vi.fn().mockResolvedValue(undefined);
+    useVaultStore.setState({ openNote });
+    const path =
+      "Клуб Синдикат ИИ/Встречи клуба/#5 Agentic Loops/План презентации - Agentic Loops.md";
+    resolveWikiTargetMock.mockResolvedValue(path);
+
+    render(
+      <ChatMarkdown
+        text={`См. [[${path}|План презентации - Agentic Loops]]`}
+      />,
+    );
+
+    const link = screen.getByRole("link", {
+      name: "План презентации - Agentic Loops",
+    });
+    fireEvent.click(link);
+
+    await waitFor(() => {
+      expect(resolveWikiTargetMock).toHaveBeenCalledWith(path);
+      expect(openNote).toHaveBeenCalledWith(path);
+    });
+  });
+
   it("leaves note-reference examples inside code untouched", () => {
     render(
       <ChatMarkdown text={"```\n![[Sources/example.md]]\n```\n\n`[[Inline]]`"} />,

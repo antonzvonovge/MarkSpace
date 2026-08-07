@@ -1,13 +1,24 @@
-import { Children, isValidElement, memo, type ReactNode } from "react";
+import {
+  Children,
+  isValidElement,
+  memo,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { FcDocument } from "react-icons/fc";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
+import { highlightCodeToHtml } from "../../lib/codeHighlight";
+import { writeClipboardText } from "../../lib/clipboardText";
 import { ensureFolderNote, folderPathFromFolderNote, resolveWikiTarget } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatDiagram, diagramEngineForLang } from "./ChatDiagram";
+
+
 
 type Props = {
   text: string;
@@ -28,8 +39,8 @@ type MarkdownNode = {
   children?: MarkdownNode[];
 };
 
-/** Both `[[target]]` and `![[target]]`, with an optional `|label`. */
-const CHAT_NOTE_LINK_RE = /!?\[\[([^\]|#]+)(?:\|([^\]]+))?\]\]/g;
+/** Both `[[target]]` and `![[target]]`, with an optional `|label`. `#` is allowed in paths. */
+const CHAT_NOTE_LINK_RE = /!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 const CHAT_NOTE_SCHEME = "markspace-note:";
 
 function noteLinkNodes(value: string): MarkdownNode[] | null {
@@ -92,6 +103,85 @@ function codeText(children: ReactNode): string {
   return String(children ?? "").replace(/\n$/, "");
 }
 
+function ChatCodeCopyButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const id = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(id);
+  }, [copied]);
+
+  return (
+    <button
+      type="button"
+      className={
+        copied ? "code-block-copy-btn is-copied" : "code-block-copy-btn"
+      }
+      aria-label={copied ? "Copied" : "Copy code"}
+      title={copied ? "Copied" : "Copy code"}
+      onClick={() => {
+        if (!code) return;
+        void writeClipboardText(code).then(() => setCopied(true));
+      }}
+    >
+      {copied ? (
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M6.5 11.2L3.3 8l1.06-1.06L6.5 9.08l5.14-5.14L12.7 5 6.5 11.2z"
+          />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M5.5 2A1.5 1.5 0 004 3.5V4h-.5A1.5 1.5 0 002 5.5v7A1.5 1.5 0 003.5 14h6a1.5 1.5 0 001.5-1.5V12h.5A1.5 1.5 0 0013 10.5v-7A1.5 1.5 0 0011.5 2h-6zM5 3.5a.5.5 0 01.5-.5h6a.5.5 0 01.5.5v7a.5.5 0 01-.5.5H11V5.5A1.5 1.5 0 009.5 4H5v-.5zM3.5 5H9.5a.5.5 0 01.5.5v7a.5.5 0 01-.5.5h-6a.5.5 0 01-.5-.5v-7a.5.5 0 01.5-.5z"
+          />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function ChatHighlightedPre({
+  lang,
+  code,
+}: {
+  lang: string | undefined;
+  code: string;
+}) {
+  const [html, setHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void highlightCodeToHtml(code, lang).then((next) => {
+      if (!cancelled) setHtml(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [code, lang]);
+
+  return (
+    <div className="chat-md-code">
+      {lang ? <span className="chat-md-code__lang">{lang}</span> : null}
+      <ChatCodeCopyButton code={code} />
+      {html ? (
+        <div
+          className="chat-md-code__body"
+          // Shiki returns a trusted <pre class="shiki"> tree from our own highlighter.
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ) : (
+        <pre className="chat-md-code__body is-pending">
+          <code className={lang ? `language-${lang}` : undefined}>{code}</code>
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function ChatPre({ children }: { children?: ReactNode }) {
   const only = Children.toArray(children)[0];
   if (!isValidElement<{ className?: string; children?: ReactNode }>(only)) {
@@ -99,12 +189,13 @@ function ChatPre({ children }: { children?: ReactNode }) {
   }
 
   const lang = languageFromClassName(only.props.className);
+  const code = codeText(only.props.children);
   const engine = diagramEngineForLang(lang);
   if (engine) {
-    return <ChatDiagram engine={engine} code={codeText(only.props.children)} />;
+    return <ChatDiagram engine={engine} code={code} />;
   }
 
-  return <pre>{children}</pre>;
+  return <ChatHighlightedPre lang={lang} code={code} />;
 }
 
 function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
@@ -145,6 +236,11 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
                   title={path}
                   onClick={(event) => {
                     event.preventDefault();
+                    const openPinned = event.ctrlKey || event.metaKey;
+                    const go = (notePath: string) =>
+                      openPinned
+                        ? openNote(notePath, { preview: false })
+                        : openNote(notePath);
                     void (async () => {
                       const resolved = await resolveWikiTarget(path);
                       if (resolved) {
@@ -152,16 +248,16 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
                         const notePath = folder
                           ? await ensureFolderNote(folder)
                           : resolved;
-                        await openNote(notePath);
+                        await go(notePath);
                         return;
                       }
                       // Exact vault-relative .md path from the model.
                       const folder = folderPathFromFolderNote(path);
                       if (folder) {
-                        await openNote(await ensureFolderNote(folder));
+                        await go(await ensureFolderNote(folder));
                         return;
                       }
-                      await openNote(path);
+                      await go(path);
                     })();
                   }}
                 >

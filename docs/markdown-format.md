@@ -15,7 +15,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Diagrams in notes: fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml `. Chat replies may use the same fences (rendered inline).
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
-- Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
+- Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
 - Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
 
@@ -54,9 +54,9 @@ In the note body, hashtags are styled inline tags (editable text in Live mode):
 | `#multi-agent` | Inline tag `multi-agent` |
 | `#project/markspace` | Nested-style name (`/` inside the tag) |
 
-- Valid name after `#`: Unicode letters/digits, then letters/digits/`_`/`-`/`/`.
+- Valid name after `#`: Unicode letters/digits, then letters/digits/`_`/`-`/`/`. Pure digit names (`#5`, `#42`) are **not** tags.
 - Must be bounded (start of text or after whitespace/punctuation). `word#tag` is not a tag.
-- Not tags: ATX headings (`# Title`, `## H2`), content inside inline/fenced code, URL fragments (`https://ex.com/a#frag`), wiki targets (`[[Note#heading]]` remains unsupported).
+- Not tags: ATX headings (`# Title`, `## H2`), content inside inline/fenced code, URL fragments (`https://ex.com/a#frag`). Heading-style wiki anchors (`[[Note#heading]]`) are unsupported as jumps (the `#…` is part of the path).
 - Trailing punctuation (`.`, `,`, `!`, `)`) stays outside the tag: `#work.` → tag `work` + `.`.
 - Inline tags remain ordinary markdown text — you can place the caret inside and edit them. Live mode only highlights matching `#tags`.
 - Inline tags and front-matter `tags` share one vault catalog for suggestions; writing `#work` does **not** add `work` to YAML front-matter.
@@ -71,7 +71,7 @@ In the note body, hashtags are styled inline tags (editable text in Live mode):
 | `[Site](https://example.com)` | External URL (system browser) |
 | `[Local](./Welcome.md)` | Relative file link when possible |
 
-Wiki targets must not contain `#` or `|` inside the target segment. Heading anchors like `[[Note#Section]]` are **not** supported.
+Wiki targets must not contain `|` inside the target segment. A literal `#` in a path (e.g. folder `#5 …`) is allowed. Heading anchors like `[[Note#Section]]` are **not** supported — the `#…` part is treated as part of the path, not a jump to a heading.
 
 Each vault folder may have a hidden **folder note** at `{folder}/.folder.md` (not shown in the sidebar tree). Clicking the folder creates it if missing and opens it. A wiki target that matches an existing folder resolves to that path; the note is created on open when absent.
 
@@ -90,7 +90,7 @@ link text. Clicking opens the note or activates its existing editor tab.
 | `![[vault/path/Note.md]]` | Same as the plain `[[…]]` form (not an embed) |
 
 Use this whenever you create, open, or cite a note, so the user can jump to it.
-Targets are vault-relative and must not contain `#` or `|` in the path segment.
+Targets are vault-relative and must not contain `|` in the path segment. A literal `#` in a folder or file name is allowed.
 
 ## Embeds (Draw.io only)
 

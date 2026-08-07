@@ -1,7 +1,7 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { TAG_NAME_PATTERN } from "../../lib/hashtagMarkdown";
+import { isValidTagName, TAG_NAME_PATTERN } from "../../lib/hashtagMarkdown";
 
 const pluginKey = new PluginKey("hashtagDecorations");
 
@@ -23,9 +23,11 @@ function decorationsForDoc(doc: import("@tiptap/pm/model").Node): DecorationSet 
     FIND_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = FIND_RE.exec(node.text)) !== null) {
+      const name = m[2]!;
+      if (!isValidTagName(name)) continue;
       const hashOffset = m.index + m[1]!.length;
       const from = pos + hashOffset;
-      const to = from + 1 + m[2]!.length;
+      const to = from + 1 + name.length;
       out.push(
         Decoration.inline(from, to, {
           class: "note-inline-tag",

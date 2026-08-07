@@ -16,6 +16,7 @@
     "@ai-sdk/anthropic": "^4.0.27",
     "@ai-sdk/google": "^4.0.31",
     "@ai-sdk/openai": "^4.0.20",
+    "@blocknote/code-block": "^0.52.1",
     "@blocknote/core": "^0.52.1",
     "@blocknote/mantine": "^0.52.1",
     "@blocknote/react": "^0.52.1",

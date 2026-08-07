@@ -3080,6 +3080,107 @@ select {
   color: var(--muted);
 }
 
+/* Light syntax-highlighted code blocks (override BlockNote’s #161616 chrome). */
+.editor-canvas .bn-block-content[data-content-type="codeBlock"] {
+  color: #24292f;
+  background: #f6f8fa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.editor-canvas .bn-block-content[data-content-type="codeBlock"] > pre {
+  /* Room under the language select + copy button row. */
+  padding: 48px 14px 14px;
+  font-family: var(
+    --font-mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.editor-canvas .bn-block-content[data-content-type="codeBlock"] > div > select {
+  color: #57606a;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 8px;
+  top: 8px;
+  left: 10px;
+  opacity: 1;
+  transition: none;
+}
+
+.editor-canvas
+  .bn-block-content[data-content-type="codeBlock"]:hover
+  > div
+  > select,
+.editor-canvas
+  .bn-block-content[data-content-type="codeBlock"]
+  > div
+  > select:focus {
+  opacity: 1;
+}
+
+.editor-canvas .bn-block-content[data-content-type="codeBlock"] code,
+.editor-canvas .bn-block-content[data-content-type="codeBlock"] .shiki {
+  font-family: inherit;
+}
+
+.editor-canvas .bn-block-content[data-content-type="codeBlock"] .code-block-copy-btn,
+.chat-md .code-block-copy-btn {
+  appearance: none;
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #57606a;
+  cursor: pointer;
+  opacity: 1;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.editor-canvas
+  .bn-block-content[data-content-type="codeBlock"]:hover
+  .code-block-copy-btn,
+.editor-canvas
+  .bn-block-content[data-content-type="codeBlock"]
+  .code-block-copy-btn:focus-visible,
+.chat-md .chat-md-code:hover .code-block-copy-btn,
+.chat-md .chat-md-code .code-block-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.editor-canvas
+  .bn-block-content[data-content-type="codeBlock"]
+  .code-block-copy-btn:hover,
+.chat-md .code-block-copy-btn:hover {
+  color: #24292f;
+  background: #eef1f4;
+}
+
+.editor-canvas
+  .bn-block-content[data-content-type="codeBlock"]
+  .code-block-copy-btn.is-copied,
+.chat-md .code-block-copy-btn.is-copied {
+  opacity: 1;
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
 /* Drop BlockNote's nesting guide line left of indented blocks. */
 .editor-canvas
   .bn-block-group
@@ -4908,21 +5009,75 @@ select {
   background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
-.chat-md pre {
+.chat-md .chat-md-code {
+  position: relative;
   margin: 0.5em 0;
-  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
   border-radius: 8px;
-  overflow: auto;
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-  max-height: 280px;
+  background: #f6f8fa;
+  color: #24292f;
+  overflow: hidden;
 }
 
-.chat-md pre code {
+.chat-md .chat-md-code__lang {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 2;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #57606a;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.chat-md .chat-md-code pre,
+.chat-md .chat-md-code pre.shiki,
+.chat-md .chat-md-code__body.is-pending {
+  margin: 0;
+  padding: 48px 12px 12px;
+  border: 0;
+  border-radius: 0;
+  overflow: auto;
+  max-height: 280px;
+  background: transparent;
+  color: inherit;
+}
+
+.chat-md .chat-md-code__body {
+  margin: 0;
+}
+
+.chat-md pre:not(.chat-md-code__body):not(.shiki) {
+  margin: 0.5em 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 280px;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  background: #f6f8fa;
+  color: #24292f;
+}
+
+.chat-md pre code,
+.chat-md .chat-md-code pre.shiki code,
+.chat-md .chat-md-code__body.is-pending code {
   padding: 0;
   background: transparent;
   font-size: 0.78rem;
   line-height: 1.45;
   white-space: pre;
+  color: inherit;
+}
+
+.chat-md .chat-md-code pre.shiki span {
+  font-family: var(--font-mono);
 }
 
 .chat-md .katex {

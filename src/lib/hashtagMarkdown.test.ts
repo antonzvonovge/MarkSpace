@@ -14,8 +14,20 @@ describe("hashtagMarkdown", () => {
     expect(isValidTagName("project/markspace")).toBe(true);
     expect(isValidTagName("работа")).toBe(true);
     expect(isValidTagName("tag_1")).toBe(true);
+    expect(isValidTagName("5th")).toBe(true);
     expect(isValidTagName("")).toBe(false);
     expect(isValidTagName("-bad")).toBe(false);
+    expect(isValidTagName("5")).toBe(false);
+    expect(isValidTagName("42")).toBe(false);
+  });
+
+  it("does not treat pure digit hashtags as tags", () => {
+    const src = "Folder #5 Agentic Loops and #real-tag";
+    expect(extractInlineTags(src)).toEqual(["real-tag"]);
+    const projected = hashtagsToEditorMarkdown(src);
+    expect(projected).toContain("#5");
+    expect(projected).not.toContain(tagToEditorHtml("5"));
+    expect(projected).toContain(tagToEditorHtml("real-tag"));
   });
 
   it("normalizes leading hash", () => {

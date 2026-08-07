@@ -2,7 +2,8 @@
 export function wikiToMarkdown(source: string): string {
   // Draw.io file embeds → fenced code (survives BlockNote html↔md; bare <div> does not).
   let next = source.replace(
-    /!\[\[([^\]|#]+\.drawio)(?:\|([^\]]+))?\]\]/gi,
+    // Allow `#` in paths (e.g. folder `#5 …`); `|` still ends the target.
+    /!\[\[([^\]|]+\.drawio)(?:\|([^\]]+))?\]\]/gi,
     (_match, target: string, width?: string) => {
       const src = target.trim();
       const w = width?.trim() ?? "";
@@ -12,7 +13,7 @@ export function wikiToMarkdown(source: string): string {
   );
 
   return next.replace(
-    /\[\[([^\]|#]+)(?:\|([^\]]+))?\]\]/g,
+    /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
     (_match, target: string, alias?: string) => {
       const trimmed = target.trim();
       const text = (alias ?? trimmed).trim();

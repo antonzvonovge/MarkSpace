@@ -10,6 +10,8 @@
 export const TAG_NAME_PATTERN = String.raw`[\p{L}\p{N}_][\p{L}\p{N}_/-]*`;
 
 const TAG_NAME_RE = new RegExp(`^${TAG_NAME_PATTERN}$`, "u");
+/** Pure digit sequences (`#5`, `#42`) are not tags — common in folder names like `#5 …`. */
+const DIGITS_ONLY_RE = /^\p{N}+$/u;
 
 /** Match a hashtag candidate with a single-char lookbehind consumed in the match. */
 const HASHTAG_FIND_RE = new RegExp(
@@ -24,7 +26,7 @@ const TAG_SPAN_SELF_RE =
   /<span\b([^>]*\bdata-inline-content-type=["']tag["'][^>]*)\s*\/>/gi;
 
 export function isValidTagName(name: string): boolean {
-  return TAG_NAME_RE.test(name);
+  return TAG_NAME_RE.test(name) && !DIGITS_ONLY_RE.test(name);
 }
 
 export function normalizeInlineTagName(raw: string): string | null {
@@ -190,7 +192,9 @@ function segmentMarkdown(source: string): Segment[] {
 
 function rewriteHashtagsInText(text: string): string {
   // ATX `# Title` / `## H2` and `##foo` do not match TAG_NAME_PATTERN.
+  // Pure digits (`#5`) match the pattern but are rejected by isValidTagName.
   return text.replace(HASHTAG_FIND_RE, (_full, prefix: string, name: string) => {
+    if (!isValidTagName(name)) return `${prefix}#${name}`;
     return `${prefix}${tagToEditorHtml(name)}`;
   });
 }
@@ -241,6 +245,7 @@ export function extractInlineTags(source: string): string[] {
     let m: RegExpExecArray | null;
     while ((m = HASHTAG_FIND_RE.exec(seg.text)) !== null) {
       const name = m[2]!;
+      if (!isValidTagName(name)) continue;
       const key = name.toLowerCase();
       if (!seen.has(key)) seen.set(key, name);
     }

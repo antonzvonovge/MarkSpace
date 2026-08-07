@@ -1,17 +1,26 @@
 import {
   BlockNoteSchema,
+  createCodeBlockSpec,
   defaultBlockSpecs,
   defaultInlineContentSpecs,
 } from "@blocknote/core";
+import { markspaceCodeBlockOptions } from "../lib/codeHighlight";
 import { createDrawioBlock } from "./drawio/DrawioEmbedBlock";
 import { latexInlineContentSpecs } from "./math/LatexInline";
 import { createMathEquationBlock } from "./math/MathEquationBlock";
 import { createMermaidBlock } from "./mermaid/MermaidBlock";
 import { createPlantUmlBlock } from "./plantuml/PlantUMLBlock";
 
+const { codeBlock: _unusedDefaultCodeBlock, ...restDefaultBlocks } =
+  defaultBlockSpecs;
+void _unusedDefaultCodeBlock;
+
 export const noteEditorSchema = BlockNoteSchema.create({
   blockSpecs: {
-    ...defaultBlockSpecs,
+    ...restDefaultBlocks,
+    // Syntax highlighting via Shiki (light theme); mermaid/plantuml/drawio/math
+    // keep their own blocks via runsBefore: ["codeBlock"].
+    codeBlock: createCodeBlockSpec(markspaceCodeBlockOptions),
     mermaid: createMermaidBlock(),
     plantuml: createPlantUmlBlock(),
     drawio: createDrawioBlock(),
