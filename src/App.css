@@ -2220,6 +2220,7 @@ select {
 }
 
 .editor-shell {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -2319,6 +2320,32 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.comments-scroll.is-anchored {
+  display: block;
+  position: relative;
+  padding: 0 8px 8px;
+}
+
+.comments-stack {
+  position: relative;
+  width: 100%;
+  min-height: 40px;
+}
+
+.comments-stack > .comment-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: 0;
+}
+
+.comment-card.is-sticky-draft {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin-bottom: 8px;
 }
 
 .comments-empty {
@@ -2554,6 +2581,32 @@ select {
 .note-comment-mark.note-comment-node.is-active {
   background: rgba(203, 17, 171, 0.16);
   border-color: var(--accent);
+}
+
+/* Word-style connectors from highlights → comment cards */
+.comment-connectors {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+  overflow: hidden;
+}
+
+.comment-connector-path {
+  stroke: color-mix(in srgb, var(--accent) 50%, transparent);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.comment-connector-path.is-active {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.comment-connector-path.is-resolved {
+  stroke: color-mix(in srgb, var(--muted) 45%, transparent);
 }
 
 .outline-toolbar {

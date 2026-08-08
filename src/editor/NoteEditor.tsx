@@ -93,6 +93,7 @@ import {
 } from "./drawio/treeDrag";
 import {
   createCommentDecorationExtension,
+  getCommentRanges,
   scrollToCommentRange,
   setCommentDecorationsMeta,
 } from "./comment/commentDecorations";
@@ -118,8 +119,11 @@ import {
 import type { CommentAnchor } from "../lib/commentAnchors";
 import {
   captureCommentAnchor,
+  findCommentRanges,
+  sortCommentsByDocumentOrder,
   type StructuralAnchor,
 } from "../lib/commentAnchors";
+import { CommentConnectors } from "../components/CommentConnectors";
 
 function buildEditorTheme(
   theme: ThemeId,
@@ -661,6 +665,44 @@ export function NoteEditor({ path, content, onChange }: Props) {
     });
   }, [editor, commentAnchors, showResolvedComments, activeCommentId]);
 
+  const [commentLayoutTick, setCommentLayoutTick] = useState(0);
+  useEffect(() => {
+    if (!showComments) return;
+    const tip = editor._tiptapEditor;
+    if (!tip) return;
+    const bump = () => setCommentLayoutTick((n) => n + 1);
+    tip.on("transaction", bump);
+    // After decorations meta applies, remount measures need a frame.
+    requestAnimationFrame(bump);
+    return () => {
+      tip.off("transaction", bump);
+    };
+  }, [editor, showComments, path, commentAnchors, showResolvedComments]);
+
+  const commentsInDocOrder = useMemo(() => {
+    const view = editor._tiptapEditor?.view;
+    let ranges = view ? getCommentRanges(view) : [];
+    if (ranges.length === 0 && commentAnchors.length > 0 && view) {
+      ranges = findCommentRanges(view.state.doc, commentAnchors);
+    }
+    return sortCommentsByDocumentOrder(activeNoteComments, ranges);
+  }, [activeNoteComments, commentAnchors, editor, commentLayoutTick]);
+
+  const visibleConnectorIds = useMemo(
+    () =>
+      (showResolvedComments
+        ? commentsInDocOrder
+        : commentsInDocOrder.filter((c) => !c.resolved)
+      ).map((c) => c.id),
+    [commentsInDocOrder, showResolvedComments],
+  );
+
+  const resolvedById = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const c of activeNoteComments) m.set(c.id, c.resolved);
+    return m;
+  }, [activeNoteComments]);
+
   useEffect(() => {
     setOutlineWidth(loadDocOutlineUi(vaultPath, path).width);
     setCommentsWidth(loadDocCommentsUi(vaultPath, path).width);
@@ -952,11 +994,13 @@ export function NoteEditor({ path, content, onChange }: Props) {
           <CommentsPanel
             width={commentsWidth}
             notePath={path}
-            comments={activeNoteComments}
+            comments={commentsInDocOrder}
             activeId={activeCommentId}
             showResolved={showResolvedComments}
             drafting={draft != null}
             draftQuote={draft?.quote ?? ""}
+            shellRef={shellRef}
+            layoutTick={commentLayoutTick + commentsWidth}
             onShowResolvedChange={setShowResolvedComments}
             onSelect={onSelectComment}
             onResolve={(id, resolved) => {
@@ -975,6 +1019,15 @@ export function NoteEditor({ path, content, onChange }: Props) {
             onDraftCancel={() => setDraft(null)}
           />
         </>
+      ) : null}
+      {showComments && visibleConnectorIds.length > 0 ? (
+        <CommentConnectors
+          shellRef={shellRef}
+          commentIds={visibleConnectorIds}
+          activeId={activeCommentId}
+          resolvedById={resolvedById}
+          layoutTick={commentLayoutTick + commentsWidth}
+        />
       ) : null}
       {viewedImage ? (
         <ImageLightbox

@@ -41,6 +41,21 @@ export type CommentRange = {
   resolved: boolean;
 };
 
+/** Sort comments by ProseMirror document position (`from`), then `createdAt`. */
+export function sortCommentsByDocumentOrder<
+  T extends { id: string; createdAt?: string },
+>(comments: T[], ranges: ReadonlyArray<Pick<CommentRange, "id" | "from">>): T[] {
+  const fromById = new Map(ranges.map((r) => [r.id, r.from]));
+  return [...comments].sort((a, b) => {
+    const fa = fromById.get(a.id);
+    const fb = fromById.get(b.id);
+    if (fa != null && fb != null && fa !== fb) return fa - fb;
+    if (fa != null && fb == null) return -1;
+    if (fa == null && fb != null) return 1;
+    return String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? ""));
+  });
+}
+
 /** Anchor that drifted from stored sidecar fields (needs persist). */
 export type CommentAnchorUpdate = {
   id: string;

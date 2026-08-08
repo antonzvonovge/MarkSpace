@@ -1,12 +1,16 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
 } from "react";
 import type { NoteComment } from "../lib/vaultApi";
 import { commentQuoteLabel } from "../lib/commentAnchors";
+import { computeCommentCardLayout } from "../lib/commentLayout";
 import { useChatStore } from "../store/chatStore";
 import { useChatUiStore } from "../store/chatUiStore";
 
@@ -19,6 +23,10 @@ type Props = {
   showResolved: boolean;
   drafting: boolean;
   draftQuote: string;
+  /** Editor shell — used to align cards to text anchors. */
+  shellRef?: RefObject<HTMLElement | null>;
+  /** Bumps when editor scroll/content needs card re-layout. */
+  layoutTick?: number;
   onShowResolvedChange: (show: boolean) => void;
   onSelect: (id: string) => void;
   onResolve: (id: string, resolved: boolean) => void;
@@ -36,6 +44,8 @@ export function CommentsPanel({
   showResolved,
   drafting,
   draftQuote,
+  shellRef,
+  layoutTick = 0,
   onShowResolvedChange,
   onSelect,
   onResolve,
@@ -45,10 +55,16 @@ export function CommentsPanel({
   onDraftCancel,
 }: Props) {
   const draftRef = useRef<HTMLTextAreaElement>(null);
+  const draftCardRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [draftBody, setDraftBody] = useState("");
-  const visible = showResolved
-    ? comments
-    : comments.filter((c) => !c.resolved);
+  const [cardTops, setCardTops] = useState<Map<string, number>>(() => new Map());
+  const [stackHeight, setStackHeight] = useState(0);
+  const visible = useMemo(
+    () => (showResolved ? comments : comments.filter((c) => !c.resolved)),
+    [comments, showResolved],
+  );
+  const visibleIds = useMemo(() => visible.map((c) => c.id), [visible]);
 
   useEffect(() => {
     if (drafting) {
@@ -56,6 +72,54 @@ export function CommentsPanel({
       requestAnimationFrame(() => draftRef.current?.focus());
     }
   }, [drafting, draftQuote]);
+
+  // Align cards to highlights; keep comments scroll in sync with the editor.
+  useEffect(() => {
+    const shell = shellRef?.current;
+    const scrollEl = scrollRef.current;
+    if (!shell || !scrollEl || visibleIds.length === 0) {
+      setCardTops(new Map());
+      setStackHeight(0);
+      return;
+    }
+
+    let raf = 0;
+    const relayout = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        // Second frame: cards have absolute tops so offsetHeight is real.
+        const layout = computeCommentCardLayout(shell, visibleIds);
+        setCardTops(layout.tops);
+        setStackHeight(layout.stackHeight);
+        requestAnimationFrame(() => {
+          const again = computeCommentCardLayout(shell, visibleIds);
+          setCardTops(again.tops);
+          setStackHeight(again.stackHeight);
+        });
+      });
+    };
+
+    const editorMain = shell.querySelector(".editor-main");
+    const syncFromEditor = () => {
+      if (!editorMain) return;
+      scrollEl.scrollTop = editorMain.scrollTop;
+      relayout();
+    };
+
+    relayout();
+    editorMain?.addEventListener("scroll", syncFromEditor, { passive: true });
+    window.addEventListener("resize", relayout);
+    const ro = new ResizeObserver(relayout);
+    ro.observe(scrollEl);
+    if (editorMain) ro.observe(editorMain);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      editorMain?.removeEventListener("scroll", syncFromEditor);
+      window.removeEventListener("resize", relayout);
+      ro.disconnect();
+    };
+  }, [shellRef, visibleIds, layoutTick]);
 
   const submitDraft = useCallback(() => {
     const body = draftBody.trim();
@@ -96,9 +160,17 @@ export function CommentsPanel({
           <span>Show resolved</span>
         </label>
       </div>
-      <div className="comments-scroll">
+      <div
+        ref={scrollRef}
+        className={
+          visible.length > 0 ? "comments-scroll is-anchored" : "comments-scroll"
+        }
+      >
         {drafting ? (
-          <div className="comment-card is-draft">
+          <div
+            ref={draftCardRef}
+            className="comment-card is-draft is-sticky-draft"
+          >
             <CommentQuote text={draftQuote} />
             <textarea
               ref={draftRef}
@@ -130,20 +202,26 @@ export function CommentsPanel({
         ) : null}
         {visible.length === 0 && !drafting ? (
           <p className="comments-empty">No comments</p>
-        ) : (
-          visible.map((c) => (
-            <CommentCard
-              key={c.id}
-              comment={c}
-              notePath={notePath}
-              active={activeId === c.id}
-              onSelect={() => onSelect(c.id)}
-              onResolve={(resolved) => onResolve(c.id, resolved)}
-              onDelete={() => onDelete(c.id)}
-              onBodyChange={(body) => onBodyChange(c.id, body)}
-            />
-          ))
-        )}
+        ) : visible.length > 0 ? (
+          <div
+            className="comments-stack"
+            style={{ height: Math.max(stackHeight, 1) }}
+          >
+            {visible.map((c, i) => (
+              <CommentCard
+                key={c.id}
+                comment={c}
+                notePath={notePath}
+                active={activeId === c.id}
+                style={{ top: cardTops.get(c.id) ?? i * 112 }}
+                onSelect={() => onSelect(c.id)}
+                onResolve={(resolved) => onResolve(c.id, resolved)}
+                onDelete={() => onDelete(c.id)}
+                onBodyChange={(body) => onBodyChange(c.id, body)}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     </aside>
   );
@@ -206,6 +284,7 @@ function CommentCard({
   comment,
   notePath,
   active,
+  style,
   onSelect,
   onResolve,
   onDelete,
@@ -214,6 +293,7 @@ function CommentCard({
   comment: NoteComment;
   notePath: string;
   active: boolean;
+  style?: CSSProperties;
   onSelect: () => void;
   onResolve: (resolved: boolean) => void;
   onDelete: () => void;
@@ -260,6 +340,8 @@ function CommentCard({
             ? "comment-card is-resolved"
             : "comment-card"
       }
+      data-comment-card-id={comment.id}
+      style={style}
       role="button"
       tabIndex={0}
       onClick={onSelect}

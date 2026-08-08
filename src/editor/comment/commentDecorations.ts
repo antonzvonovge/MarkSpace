@@ -206,6 +206,14 @@ export function setCommentDecorationsMeta(
   view.dispatch(tr);
 }
 
+/** Live resolved ranges from the decorations plugin (empty if plugin absent). */
+export function getCommentRanges(
+  view: { state: import("@tiptap/pm/state").EditorState },
+): CommentRange[] {
+  const st = pluginKey.getState(view.state) as PluginState | undefined;
+  return st?.ranges ? [...st.ranges] : [];
+}
+
 export function scrollToCommentRange(
   view: {
     state: import("@tiptap/pm/state").EditorState;

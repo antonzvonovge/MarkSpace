@@ -3,6 +3,7 @@ import {
   commentQuoteLabel,
   LEAF_PLACEHOLDER,
   leafIdentity,
+  sortCommentsByDocumentOrder,
 } from "./commentAnchors";
 import { Node, Schema } from "@tiptap/pm/model";
 
@@ -34,6 +35,25 @@ describe("commentQuoteLabel", () => {
 
   it("shows box for mixed text+leaf", () => {
     expect(commentQuoteLabel(`hi${LEAF_PLACEHOLDER}lo`)).toBe("hi▢lo");
+  });
+});
+
+describe("sortCommentsByDocumentOrder", () => {
+  it("orders by range from, then createdAt", () => {
+    const comments = [
+      { id: "b", createdAt: "2" },
+      { id: "a", createdAt: "1" },
+      { id: "c", createdAt: "3" },
+      { id: "orphan", createdAt: "0" },
+    ];
+    const ranges = [
+      { id: "b", from: 40 },
+      { id: "a", from: 10 },
+      { id: "c", from: 40 },
+    ];
+    expect(
+      sortCommentsByDocumentOrder(comments, ranges).map((c) => c.id),
+    ).toEqual(["a", "b", "c", "orphan"]);
   });
 });
 
