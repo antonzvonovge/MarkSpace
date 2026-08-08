@@ -42,6 +42,10 @@ import {
   editorMarkdownToMath,
   mathToEditorMarkdown,
 } from "../lib/mathMarkdown";
+import {
+  markdownToNestedBlocks,
+  nestedHtmlToMarkdown,
+} from "../lib/nestedListMarkdown";
 import { noteBody, withNoteBody } from "../lib/noteFrontmatter";
 import { normalizeMarkdown } from "../lib/normalizeMarkdown";
 import {
@@ -72,6 +76,7 @@ import type { ThemeId } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
 import { createLayoutAgnosticKeymapExtension } from "./layoutAgnosticKeymap";
+import { createListOnlyNestingExtension } from "./listOnlyNesting";
 import { NoteSlashSuggestionMenu } from "./NoteSlashSuggestionMenu";
 import {
   createImagePasteHandler,
@@ -364,6 +369,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
     () => createLayoutAgnosticKeymapExtension(() => editorRef.current),
     [],
   );
+  const listOnlyNesting = useMemo(
+    () => createListOnlyNestingExtension(() => editorRef.current),
+    [],
+  );
   const selectAtomAfterDrop = useMemo(
     () => createSelectAtomBlockAfterDropExtension(),
     [],
@@ -404,6 +413,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
       _tiptapOptions: {
         extensions: [
           layoutKeymap,
+          listOnlyNesting,
           selectAtomAfterDrop,
           hashtagDecorations,
           codeBlockCopy,
@@ -417,7 +427,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
 
   useEditorChange((ed) => {
     let md = applyImagePreviewWidths(
-      ed.blocksToMarkdownLossy(),
+      nestedHtmlToMarkdown(ed.blocksToHTMLLossy(ed.document)),
       collectImageSizeRefs(ed.document),
     );
     md = applyColoredTableHtml(
@@ -467,15 +477,27 @@ export function NoteEditor({ path, content, onChange }: Props) {
     lastExternalRef.current = content;
     lastPathRef.current = path;
 
+    // Compare normalized bodies: autosave stamps frontmatter and may heal lists
+    // via normalizeMarkdown. Live's lastBodyRef is the raw editor serialization,
+    // so an un-normalized compare falsely rebuilds the doc (scroll jumps to top).
     const body = noteBody(normalizeMarkdown(content));
-    const bodyChanged = pathChanged || body !== lastBodyRef.current;
-    if (!bodyChanged) return;
+    const prevBody = normalizeMarkdown(lastBodyRef.current);
+    const bodyChanged = pathChanged || body !== prevBody;
+    if (!bodyChanged) {
+      lastBodyRef.current = body;
+      return;
+    }
+
+    const scroller =
+      (editor.domElement?.closest(".editor-main") as HTMLElement | null) ?? null;
+    const scrollTop = scroller?.scrollTop ?? 0;
 
     applyingRef.current = true;
     // Strip any leftover Live HTML tag spans from older builds; keep `#tag` as text.
     // Project `$…$` / `$$…$$` into BlockNote math HTML before parse.
     const blocks = restoreImagePreviewWidthsFromAlt(
-      editor.tryParseMarkdownToBlocks(
+      markdownToNestedBlocks(
+        editor,
         mathToEditorMarkdown(editorMarkdownToHashtags(wikiToMarkdown(body))),
       ),
     );
@@ -485,8 +507,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
     // replaceBlocks may notify listeners after this tick.
     queueMicrotask(() => {
       applyingRef.current = false;
+      if (scroller) scroller.scrollTop = scrollTop;
       queueMicrotask(() => {
         adoptNextChangeRef.current = false;
+        if (scroller) scroller.scrollTop = scrollTop;
       });
     });
   }, [editor, path, content]);

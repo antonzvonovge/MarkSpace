@@ -338,7 +338,7 @@ export async function translateNoteInPlace(
     window.setTimeout(() => {
       const latest = useVaultStore.getState();
       if (latest.activePath !== sourcePath) return;
-      latest.applyExternalContent(sourcePath, saved);
+      latest.applyExternalContent(sourcePath, saved, { force: true });
       latest.markExternalWrite();
     }, 0);
   }

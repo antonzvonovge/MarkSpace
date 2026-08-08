@@ -484,7 +484,11 @@ function App() {
       if (!hit) return;
       try {
         const next = await readNote(current);
-        useVaultStore.getState().applyExternalContent(current, next);
+        // Re-check after await: typing during readNote must win over disk echo.
+        const latest = useVaultStore.getState();
+        if (latest.activePath !== current || latest.dirty) return;
+        if (latest.content === next) return;
+        latest.applyExternalContent(current, next);
       } catch {
         // file may have been deleted
       }

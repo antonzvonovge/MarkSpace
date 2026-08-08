@@ -211,6 +211,7 @@ Indentation is **relative to the parent item, not to the left margin**, so it gr
 - Do not mix 4-space / tab indents for nesting; derive the indent from the parent’s text column as above.
 - When editing an existing note, keep its markers (`*` vs `-`) and indent depths; do not “normalize” nested lists into flat ones.
 - On note read/write, MarkSpace may auto-indent a flush (or under-indented) continuation paragraph that sits between two same-level list siblings — that is the case that otherwise exits the list and restarts numbering at `1.`. It never decreases indent, never rewrites markers, and leaves regions alone if a code fence or ATX heading sits between the siblings.
+- The Live editor writes this layout itself: indenting a block with **Tab** puts it inside the item above, and saving emits it at that item’s text column (paragraphs, code fences, tables, images alike). Tab does nothing when the block above is not a list item, because Markdown has no way to store that indent.
 
 ```md
 * **Short topic:** body stays on the same line.

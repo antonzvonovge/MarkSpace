@@ -291,8 +291,16 @@ type VaultStore = {
    * Used after sync so intentional reloads are not followed by a long quiet period.
    */
   settleExternalWrite: (ms?: number) => void;
-  /** Apply disk/tool content to an open tab (and the editor if active). */
-  applyExternalContent: (path: string, content: string) => void;
+  /**
+   * Apply disk/tool content to an open tab (and the editor if active).
+   * By default skips dirty buffers so a late vault-change cannot rewind typing.
+   * Pass `{ force: true }` for intentional tool/agent writes.
+   */
+  applyExternalContent: (
+    path: string,
+    content: string,
+    opts?: { force?: boolean },
+  ) => void;
   /**
    * Re-read clean open file tabs from disk (e.g. after git sync).
    * Skips dirty tabs and PDFs; no-ops when content is unchanged.
@@ -2239,12 +2247,19 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   settleExternalWrite: (ms = 1200) =>
     set({ suppressWatchUntil: Date.now() + ms }),
 
-  applyExternalContent: (path, content) => {
+  applyExternalContent: (path, content, opts) => {
     const state = get();
     const { activePath, tabs } = state;
     const tab = tabs.find((t) => t.path === path);
     const hasTab = Boolean(tab);
     if (!hasTab && activePath !== path) return;
+
+    // Watcher / sync reloads must never clobber in-progress edits. Tools that
+    // intentionally wrote the file pass `{ force: true }`.
+    if (!opts?.force) {
+      if (tab?.dirty) return;
+      if (activePath === path && state.dirty) return;
+    }
 
     const tabUnchanged = !hasTab || (tab!.body === content && !tab!.dirty);
     const activeUnchanged =

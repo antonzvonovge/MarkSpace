@@ -67,7 +67,7 @@ export function correctCountFor(
 function syncOpenEditor(path: string, content: string) {
   window.setTimeout(() => {
     const latest = useVaultStore.getState();
-    latest.applyExternalContent(path, content);
+    latest.applyExternalContent(path, content, { force: true });
     if (latest.activePath === path || latest.tabs.some((t) => t.path === path)) {
       latest.markExternalWrite();
     }
