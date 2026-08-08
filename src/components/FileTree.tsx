@@ -522,6 +522,7 @@ function TreeContextMenu({
   onNewLinks,
   onNewDictionary,
   onNewFolder,
+  onTurnIntoFolder,
   onNewSkill,
   onDownloadArticle,
   onTranslate,
@@ -545,6 +546,7 @@ function TreeContextMenu({
   onNewLinks: () => void;
   onNewDictionary: () => void;
   onNewFolder: () => void;
+  onTurnIntoFolder: () => void;
   onNewSkill: () => void;
   onDownloadArticle: () => void;
   onTranslate: () => void;
@@ -578,6 +580,12 @@ function TreeContextMenu({
     !menu.isDir &&
     !isSkills &&
     menu.path.toLowerCase().endsWith(".md");
+  const showTurnIntoFolder =
+    !menu.createOnly &&
+    !menu.isDir &&
+    !isSkills &&
+    menu.path.toLowerCase().endsWith(".md");
+  const showNewFolder = showStandardCreate && !showTurnIntoFolder;
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -746,18 +754,34 @@ function TreeContextMenu({
               <DictionaryIcon />
               <span>New dictionary</span>
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="tree-context-item"
-              onClick={() => {
-                onClose();
-                onNewFolder();
-              }}
-            >
-              <CollectionPlusIcon />
-              <span>New folder</span>
-            </button>
+            {showNewFolder ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-context-item"
+                onClick={() => {
+                  onClose();
+                  onNewFolder();
+                }}
+              >
+                <CollectionPlusIcon />
+                <span>New folder</span>
+              </button>
+            ) : null}
+            {showTurnIntoFolder ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-context-item"
+                onClick={() => {
+                  onClose();
+                  onTurnIntoFolder();
+                }}
+              >
+                <CollectionPlusIcon />
+                <span>Turn into folder</span>
+              </button>
+            ) : null}
           </>
         ) : null}
       </div>,
@@ -1837,6 +1861,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
             );
             setPromptKind("folder");
+          }}
+          onTurnIntoFolder={() => {
+            void useVaultStore.getState().promoteNoteToFolder(contextMenu.path);
           }}
           onNewSkill={() => {
             selectFolder("Skills");

@@ -31,6 +31,7 @@ import {
   nestUnderNote,
   openVault,
   parentPath,
+  promoteNoteToFolder as promoteNoteToFolderApi,
   readNote,
   reindexNoteTags as reindexNoteTagsApi,
   removeFavorite,
@@ -242,6 +243,8 @@ type VaultStore = {
     notePath: string,
     toIndex?: number,
   ) => Promise<string | null>;
+  /** Turn a markdown note into a folder with `{stem}/.folder.md`. */
+  promoteNoteToFolder: (notePath: string) => Promise<string | null>;
   renameTreeEntry: (from: string, nextName: string) => Promise<void>;
   removePath: (path: string) => Promise<boolean>;
   /** Import OS paths / file blobs into the selected folder. */
@@ -1666,6 +1669,66 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
       return result.moved;
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  },
+
+  promoteNoteToFolder: async (notePath) => {
+    if (!notePath || !notePath.toLowerCase().endsWith(".md")) {
+      set({ error: "Only a markdown note can be turned into a folder" });
+      return null;
+    }
+    if (isSkillsFolder(notePath) || notePath.startsWith("Skills/")) {
+      set({ error: "Cannot promote a Skills note to a folder" });
+      return null;
+    }
+    const { activePath, dirty, saveActive, vaultPath, expandedPaths, tabs } =
+      get();
+    try {
+      if (dirty && activePath) {
+        await saveActive();
+      }
+      set({ suppressWatchUntil: Date.now() + 1500 });
+      const result = await promoteNoteToFolderApi(notePath);
+
+      const nextTabs = remapTabs(tabs, notePath, result.folderNote);
+      const nextExpanded = expandedPaths.includes(result.folder)
+        ? expandedPaths
+        : [...expandedPaths, result.folder];
+      set({ expandedPaths: nextExpanded });
+      if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+
+      const patch: Partial<VaultStore> = {
+        tabs: nextTabs,
+        selectedFolderPath: result.folder,
+        selectedFolderExplicit: true,
+      };
+      if (activePath === notePath) {
+        patch.activePath = result.folderNote;
+      }
+      set(patch);
+
+      const openAfter = get().activePath;
+      if (openAfter && (activePath === notePath || openAfter !== activePath)) {
+        try {
+          const content = await readNote(openAfter);
+          set({
+            content,
+            dirty: false,
+            tabs: withTabBody(get().tabs, openAfter, content, false),
+          });
+        } catch {
+          /* keep previous content */
+        }
+      }
+
+      persistSession(get());
+      await get().refreshTree();
+      void get().refreshVaultTags();
+      void get().refreshDictionaryTags();
+      return result.folder;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
       return null;

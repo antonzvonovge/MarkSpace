@@ -123,12 +123,25 @@ export async function moveEntry(
   return invoke("move_entry", { from, toParent, toIndex });
 }
 
+export type PromoteNoteToFolderResult = {
+  folder: string;
+  folderNote: string;
+  formerNote: string;
+};
+
 export type NestUnderNoteResult = {
   folder: string;
   folderNote: string;
   moved: string;
   formerNote: string;
 };
+
+/** Turn `note` (.md) into a folder with `{stem}/.folder.md` as the overview. */
+export async function promoteNoteToFolder(
+  note: string,
+): Promise<PromoteNoteToFolderResult> {
+  return invoke("promote_note_to_folder", { note });
+}
 
 /** Promote `note` (.md) to a folder with `.folder.md`, then move `from` into it. */
 export async function nestUnderNote(

@@ -1797,6 +1797,17 @@ pub fn move_entry(
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct PromoteNoteToFolderResult {
+    /// New folder created from the note stem (`Note.md` → `Note/`).
+    pub folder: String,
+    /// Former note path now living at `{folder}/.folder.md`.
+    pub folder_note: String,
+    /// Original note path (before promotion).
+    pub former_note: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct NestUnderNoteResult {
     /// New folder created from the target note stem.
     pub folder: String,
@@ -1806,6 +1817,89 @@ pub struct NestUnderNoteResult {
     pub moved: String,
     /// Original target note path (before promotion).
     pub former_note: String,
+}
+
+/// Promote a markdown note to a folder with a hidden overview note
+/// (`Note.md` → `Note/.folder.md`). Shared by the context-menu action and DnD nest.
+fn promote_note_to_folder_inner(
+    root: &Path,
+    state: &VaultState,
+    note: &str,
+) -> Result<PromoteNoteToFolderResult, String> {
+    let note = note.trim().trim_start_matches('/').to_string();
+    if note.is_empty() {
+        return Err("Note path required".into());
+    }
+    if note == SKILLS_FOLDER || note.starts_with(&format!("{SKILLS_FOLDER}/")) {
+        return Err("Cannot promote a Skills note to a folder".into());
+    }
+
+    let note_name = entry_name(&note);
+    if !is_markdown(&note_name) || is_folder_note_name(&note_name) {
+        return Err("Only a markdown note can be turned into a folder".into());
+    }
+
+    let note_full = ensure_inside(root, Path::new(&note))?;
+    if !note_full.is_file() {
+        return Err("Path is not a note file".into());
+    }
+
+    let stem = note_full
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Invalid note name".to_string())?;
+    if stem.starts_with('.') {
+        return Err("Cannot promote a hidden note to a folder".into());
+    }
+
+    let note_parent = parent_rel(&note);
+    let folder_rel = join_parent(&note_parent, &stem);
+    let folder_full = ensure_inside(root, Path::new(&folder_rel))?;
+    if folder_full.exists() {
+        return Err(format!("Folder already exists: {folder_rel}"));
+    }
+
+    fs::create_dir_all(&folder_full).map_err(|e| format!("Cannot create folder: {e}"))?;
+
+    let folder_note_path = folder_note_rel(&folder_rel);
+    let folder_note_full = ensure_inside(root, Path::new(&folder_note_path))?;
+    fs::rename(&note_full, &folder_note_full)
+        .map_err(|e| format!("Cannot promote note to folder note: {e}"))?;
+    maybe_migrate_moved_note(root, &note, &folder_note_path, true)?;
+
+    let mut order = read_order(root);
+    materialize_parent_order(root, &mut order, &note_parent)?;
+    let list = order.entry(note_parent.clone()).or_default();
+    let insert_at = list.iter().position(|n| n == &note_name).unwrap_or(list.len());
+    list.retain(|n| n != &note_name);
+    let idx = insert_at.min(list.len());
+    list.insert(idx, stem.clone());
+    // Folder note is hidden — keep it out of order.json.
+    write_order(root, &order)?;
+
+    remap_tag_index_path(state, &note, Some(&folder_note_path));
+    crate::embeddings::notify_file_renamed(&note, &folder_note_path);
+    let _ = crate::favorites::remap_favorites(root, &note, Some(&folder_note_path));
+    let _ = crate::filemeta::remap_filemeta(root, &note, Some(&folder_note_path));
+    let _ = crate::comments::remap_comments(root, &note, Some(&folder_note_path));
+    // Project properties key off folder paths; a note was never a project root.
+
+    Ok(PromoteNoteToFolderResult {
+        folder: folder_rel,
+        folder_note: folder_note_path,
+        former_note: note,
+    })
+}
+
+/// Turn a markdown note into a folder (`Note.md` → `Note/.folder.md`).
+#[tauri::command(async)]
+pub fn promote_note_to_folder(
+    note: String,
+    state: State<VaultState>,
+) -> Result<PromoteNoteToFolderResult, String> {
+    let root = get_root(&state)?;
+    promote_note_to_folder_inner(&root, &state, &note)
 }
 
 /// Drop a vault entry onto a markdown note: the note becomes a folder
@@ -1836,74 +1930,33 @@ pub fn nest_under_note(
     if is_skills_folder(&from) {
         return Err("Cannot move the Skills folder".into());
     }
-    if note == SKILLS_FOLDER
-        || note.starts_with(&format!("{SKILLS_FOLDER}/"))
-    {
-        return Err("Cannot nest under a Skills note".into());
-    }
 
+    // Pre-check folder destination vs `from` before promoting (promotion is not reversible).
     let note_name = entry_name(&note);
-    if !is_markdown(&note_name) || is_folder_note_name(&note_name) {
-        return Err("Drop target must be a markdown note".into());
+    if is_markdown(&note_name) && !is_folder_note_name(&note_name) {
+        let note_full = ensure_inside(&root, Path::new(&note))?;
+        if note_full.is_file() {
+            if let Some(stem) = note_full
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .filter(|s| !s.is_empty())
+            {
+                let folder_rel = join_parent(&parent_rel(&note), &stem);
+                if is_descendant_or_same(&from, &folder_rel) {
+                    return Err("Cannot move a folder into itself".into());
+                }
+            }
+        }
     }
 
-    let note_full = ensure_inside(&root, Path::new(&note))?;
-    if !note_full.is_file() {
-        return Err("Drop target is not a note file".into());
-    }
-
-    let stem = note_full
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "Invalid note name".to_string())?;
-    if stem.starts_with('.') {
-        return Err("Cannot promote a hidden note to a folder".into());
-    }
-
-    let note_parent = parent_rel(&note);
-    let folder_rel = join_parent(&note_parent, &stem);
-    if is_descendant_or_same(&from, &folder_rel) {
-        return Err("Cannot move a folder into itself".into());
-    }
-
-    let folder_full = ensure_inside(&root, Path::new(&folder_rel))?;
-    if folder_full.exists() {
-        return Err(format!("Folder already exists: {folder_rel}"));
-    }
-
-    fs::create_dir_all(&folder_full).map_err(|e| format!("Cannot create folder: {e}"))?;
-
-    let folder_note_path = folder_note_rel(&folder_rel);
-    let folder_note_full = ensure_inside(&root, Path::new(&folder_note_path))?;
-    fs::rename(&note_full, &folder_note_full)
-        .map_err(|e| format!("Cannot promote note to folder note: {e}"))?;
-    maybe_migrate_moved_note(&root, &note, &folder_note_path, true)?;
-
-    let mut order = read_order(&root);
-    materialize_parent_order(&root, &mut order, &note_parent)?;
-    let list = order.entry(note_parent.clone()).or_default();
-    let insert_at = list.iter().position(|n| n == &note_name).unwrap_or(list.len());
-    list.retain(|n| n != &note_name);
-    let idx = insert_at.min(list.len());
-    list.insert(idx, stem.clone());
-    // Folder note is hidden — keep it out of order.json.
-    write_order(&root, &order)?;
-
-    remap_tag_index_path(&state, &note, Some(&folder_note_path));
-    crate::embeddings::notify_file_renamed(&note, &folder_note_path);
-    let _ = crate::favorites::remap_favorites(&root, &note, Some(&folder_note_path));
-    let _ = crate::filemeta::remap_filemeta(&root, &note, Some(&folder_note_path));
-    let _ = crate::comments::remap_comments(&root, &note, Some(&folder_note_path));
-    // Project properties key off folder paths; a note was never a project root.
-
-    let moved = move_entry(from, folder_rel.clone(), to_index, state)?;
+    let promoted = promote_note_to_folder_inner(&root, &state, &note)?;
+    let moved = move_entry(from, promoted.folder.clone(), to_index, state)?;
 
     Ok(NestUnderNoteResult {
-        folder: folder_rel,
-        folder_note: folder_note_path,
+        folder: promoted.folder,
+        folder_note: promoted.folder_note,
         moved,
-        former_note: note,
+        former_note: promoted.former_note,
     })
 }
 

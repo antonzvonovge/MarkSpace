@@ -150,6 +150,7 @@ pub fn run() {
             vault::ensure_folder_note,
             vault::rename_path,
             vault::move_entry,
+            vault::promote_note_to_folder,
             vault::nest_under_note,
             vault::delete_path,
             vault::delete_folder_if_empty,
