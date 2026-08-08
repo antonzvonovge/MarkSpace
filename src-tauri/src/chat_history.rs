@@ -28,6 +28,12 @@ pub struct ChatThreadFile {
     /// Optional vault project (first-level folder) for this thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_path: Option<String>,
+    /// Measured context baseline (next prompt, empty draft).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_anchor_tokens: Option<i64>,
+    /// `messages.len` when `context_anchor_tokens` was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_anchor_message_count: Option<i64>,
     pub messages: Value,
 }
 

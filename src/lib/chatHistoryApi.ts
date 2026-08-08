@@ -20,6 +20,13 @@ export type ChatThreadFile = {
   modelId: string;
   /** Vault project path (first-level folder), or omit/null for none. */
   projectPath?: string | null;
+  /**
+   * Measured context baseline for the next prompt with an empty draft
+   * (last API input tokens + trailing assistant text).
+   */
+  contextAnchorTokens?: number | null;
+  /** `messages.length` when `contextAnchorTokens` was recorded. */
+  contextAnchorMessageCount?: number | null;
   messages: UIMessage[];
 };
 

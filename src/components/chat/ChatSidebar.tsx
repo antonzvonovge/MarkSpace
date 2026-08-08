@@ -64,7 +64,8 @@ export function ChatSidebar() {
         <>
           <ChatMessages
             messages={messages}
-            streaming={status === "streaming"}
+            streaming={status === "streaming" || status === "compacting"}
+            compacting={status === "compacting"}
           />
           {error && (
             <div className="chat-error" role="alert">

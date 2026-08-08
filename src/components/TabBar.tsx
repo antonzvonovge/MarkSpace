@@ -13,12 +13,14 @@ import { isUnderDiaryProject } from "../lib/diaryNotes";
 import { useChatUiStore } from "../store/chatUiStore";
 import { useFocusUiStore } from "../store/focusUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
+import { useHorizontalWheelScroll } from "../hooks/useHorizontalWheelScroll";
 import { useTabReorder } from "../hooks/useTabReorder";
 import {
   TabContextMenu,
   type TabContextMenuState,
 } from "./TabContextMenu";
 import {
+  CloseIcon,
   DiagramIcon,
   GraphIcon,
   PdfIcon,
@@ -183,12 +185,7 @@ function TabItem({
           void closeTab(tab.path);
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M8 8.707l3.646 3.647.708-.708L8.707 8l3.647-3.646-.708-.708L8 7.293 4.354 3.646-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z"
-          />
-        </svg>
+        <CloseIcon />
       </button>
     </div>
   );
@@ -217,6 +214,7 @@ export function EditorChrome() {
     [reorderTabs],
   );
   const bindReorder = useTabReorder(tabs.length, onReorder);
+  const tabbarRef = useHorizontalWheelScroll<HTMLDivElement>();
 
   return (
     <div className="editor-chrome">
@@ -246,7 +244,7 @@ export function EditorChrome() {
           )}
         </svg>
       </button>
-      <div className="editor-tabbar" role="tablist">
+      <div ref={tabbarRef} className="editor-tabbar" role="tablist">
         {tabs.map((tab, index) => (
           <TabItem
             key={tab.path}

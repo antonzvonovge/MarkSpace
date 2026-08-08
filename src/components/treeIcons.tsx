@@ -11,6 +11,25 @@ export function PlusIcon() {
   );
 }
 
+export function CloseIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M4.25 4.25l7.5 7.5M11.75 4.25l-7.5 7.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function RefreshIcon({ spinning }: { spinning?: boolean }) {
   return (
     <svg

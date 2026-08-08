@@ -56,6 +56,8 @@ function selectionTextIn(el: HTMLElement): string {
 type Props = {
   messages: UIMessage[];
   streaming: boolean;
+  /** True while older turns are being summarized before the new reply. */
+  compacting?: boolean;
 };
 
 function textFrom(message: UIMessage): string {
@@ -132,7 +134,7 @@ function streamTargetLabel(
   }
 }
 
-function WaitingIndicator() {
+function WaitingIndicator({ compacting }: { compacting?: boolean }) {
   const startedAt = useChatStore((s) => s.streamStartedAt);
   const modelId = useChatStore((s) => s.modelId);
   const settings = useAiSettingsStore((s) => s.settings);
@@ -145,9 +147,11 @@ function WaitingIndicator() {
 
   const elapsed = startedAt ? Math.max(0, now - startedAt) : 0;
   const target = streamTargetLabel(modelId, settings);
-  const label = target
-    ? `Requesting ${target.model} (${target.via})…`
-    : "Requesting…";
+  const label = compacting
+    ? "Compacting older messages…"
+    : target
+      ? `Requesting ${target.model} (${target.via})…`
+      : "Requesting…";
 
   return (
     <div className="chat-waiting" aria-live="polite" aria-busy="true">
@@ -484,7 +488,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   );
 });
 
-export function ChatMessages({ messages, streaming }: Props) {
+export function ChatMessages({ messages, streaming, compacting }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const pinnedUserIdRef = useRef<string | null>(null);
@@ -508,10 +512,11 @@ export function ChatMessages({ messages, streaming }: Props) {
   const stickyId = stickyIdx >= 0 ? messages[stickyIdx]!.id : null;
   const last = messages[messages.length - 1];
   const showWaiting =
-    streaming &&
-    (!last ||
-      last.role === "user" ||
-      (last.role === "assistant" && !assistantHasVisibleContent(last)));
+    !!compacting ||
+    (streaming &&
+      (!last ||
+        last.role === "user" ||
+        (last.role === "assistant" && !assistantHasVisibleContent(last))));
 
   const scrollToBottom = () => {
     const scroller = scrollerRef.current;
@@ -621,7 +626,7 @@ export function ChatMessages({ messages, streaming }: Props) {
       })}
       {showWaiting && (
         <div className="chat-msg chat-msg-assistant">
-          <WaitingIndicator />
+          <WaitingIndicator compacting={compacting} />
         </div>
       )}
       {copyMenu ? (

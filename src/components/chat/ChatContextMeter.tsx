@@ -1,31 +1,43 @@
+import {
+  contextSafetyMargin,
+  formatTokenCount,
+  wouldExceedContext,
+} from "../../ai/estimateTokens";
+
 type Props = {
   used: number;
   limit: number;
+  /** When true, Send will compact older turns before the new message. */
+  willCompactOnSend?: boolean;
 };
 
 function formatK(n: number): string {
-  if (n >= 1000) {
-    const k = n / 1000;
-    return k >= 100
-      ? `${Math.round(k)}k`
-      : `${k.toFixed(1).replace(/\.0$/, "")}k`;
-  }
-  return String(Math.round(n));
+  return formatTokenCount(Math.round(n));
 }
 
-export function ChatContextMeter({ used, limit }: Props) {
+export function ChatContextMeter({
+  used,
+  limit,
+  willCompactOnSend = false,
+}: Props) {
   const safeLimit = Math.max(1, limit);
+  const margin = contextSafetyMargin(safeLimit);
+  const remaining = Math.max(0, safeLimit - used);
   const ratio = Math.min(1, used / safeLimit);
-  const pct = Math.round(ratio * 100);
+  const blocked = wouldExceedContext(used, safeLimit);
   const r = 7;
   const c = 2 * Math.PI * r;
   const offset = c * (1 - ratio);
 
   let tone: "ok" | "warn" | "danger" = "ok";
-  if (ratio >= 0.9) tone = "danger";
-  else if (ratio >= 0.7) tone = "warn";
+  if (blocked || remaining <= margin) tone = "danger";
+  else if (remaining <= margin * 2) tone = "warn";
 
-  const title = `~${formatK(used)} / ${formatK(safeLimit)} · ${pct}%`;
+  const title = blocked
+    ? willCompactOnSend
+      ? `~${formatK(used)} / ${formatK(safeLimit)} · Send will compact older messages (keep last 2)`
+      : `~${formatK(used)} / ${formatK(safeLimit)} · context full`
+    : `~${formatK(used)} / ${formatK(safeLimit)} · ~${formatK(remaining)} left`;
 
   return (
     <span

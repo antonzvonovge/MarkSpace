@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatStore } from "../../store/chatStore";
 import { useVaultStore } from "../../store/vaultStore";
+import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
 import { useTabReorder } from "../../hooks/useTabReorder";
 import {
   TabContextMenu,
   type TabContextMenuState,
 } from "../TabContextMenu";
+import { CloseIcon } from "../treeIcons";
 import { ChatHistoryMenu } from "./ChatHistoryMenu";
 
 export function ChatTabBar() {
@@ -25,6 +27,7 @@ export function ChatTabBar() {
     null,
   );
   const activeRef = useRef<HTMLDivElement>(null);
+  const tabbarRef = useHorizontalWheelScroll<HTMLDivElement>();
 
   const tabs = useMemo(() => {
     const byId = new Map(threads.map((t) => [t.id, t]));
@@ -56,7 +59,11 @@ export function ChatTabBar() {
 
   return (
     <div className="chat-chrome">
-      <div className="editor-tabbar chat-tabbar" role="tablist">
+      <div
+        ref={tabbarRef}
+        className="editor-tabbar chat-tabbar"
+        role="tablist"
+      >
         {tabs.map((tab, index) => {
           const active = tab.id === activeThreadId;
           const attention = attentionSet.has(tab.id);
@@ -130,17 +137,7 @@ export function ChatTabBar() {
                   void closeTab(tab.id);
                 }}
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 16 16"
-                  aria-hidden="true"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M8 8.707l3.646 3.647.708-.708L8.707 8l3.647-3.646-.708-.708L8 7.293 4.354 3.646-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z"
-                  />
-                </svg>
+                <CloseIcon />
               </button>
             </div>
           );

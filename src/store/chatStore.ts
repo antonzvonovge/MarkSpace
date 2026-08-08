@@ -9,6 +9,15 @@ import {
 import { generateChatTitle } from "../ai/generateChatTitle";
 import { cancelAllPendingAskUser } from "../ai/askUser";
 import {
+  buildContextAnchor,
+  estimateUsedContext,
+  wouldExceedContext,
+} from "../ai/estimateTokens";
+import {
+  compactChatHistory,
+  splitForCompaction,
+} from "../ai/compactChatHistory";
+import {
   credentialsFromSettings,
   hasCredentialsForModel,
   missingCredentialsMessage,
@@ -47,8 +56,12 @@ import {
 import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
-export type ChatStatus = "ready" | "streaming" | "error";
+export type ChatStatus = "ready" | "streaming" | "compacting" | "error";
 export type { ChatAttachment };
+
+export function isChatBusy(status: ChatStatus): boolean {
+  return status === "streaming" || status === "compacting";
+}
 
 function titleFromMessage(text: string): string {
   // Prefer what the user typed; fall back to chips / quoted selection.
@@ -108,6 +121,13 @@ type ChatStore = {
   projectLearningLanguage: string;
   /** Cached Skills/ catalog for system prompt preview / context meter. */
   skillsCatalog: SkillMeta[];
+  /**
+   * Measured next-prompt baseline (empty draft) from the last API usage.
+   * Null until a turn reports inputTokens (or heuristic fallback).
+   */
+  contextAnchorTokens: number | null;
+  /** `messages.length` when `contextAnchorTokens` was set. */
+  contextAnchorMessageCount: number | null;
   status: ChatStatus;
   error: string | null;
   draft: string;
@@ -190,6 +210,8 @@ function emptySession(vaultBound: string | null = null) {
     projectType: "" as ProjectTypeId,
     projectLearningLanguage: "",
     skillsCatalog: [] as SkillMeta[],
+    contextAnchorTokens: null as number | null,
+    contextAnchorMessageCount: null as number | null,
     ...defaultsFromSettings(),
   };
 }
@@ -259,6 +281,16 @@ async function loadThreadIntoState(
   const thread = await getChatThread(vaultPath, threadId);
   const projectPath = thread.projectPath?.trim() || null;
   const project = await loadProjectContext(projectPath);
+  const anchorTokens =
+    typeof thread.contextAnchorTokens === "number" &&
+    thread.contextAnchorTokens > 0
+      ? thread.contextAnchorTokens
+      : null;
+  const anchorCount =
+    typeof thread.contextAnchorMessageCount === "number" &&
+    thread.contextAnchorMessageCount >= 0
+      ? thread.contextAnchorMessageCount
+      : null;
   return {
     vaultBound: vaultPath,
     threads,
@@ -271,6 +303,9 @@ async function loadThreadIntoState(
     projectAbout: project.about,
     projectType: project.projectType,
     projectLearningLanguage: project.learningLanguage,
+    contextAnchorTokens: anchorTokens,
+    contextAnchorMessageCount:
+      anchorTokens != null ? anchorCount : null,
     status: "ready" as const,
     error: null,
     abort: null,
@@ -300,7 +335,7 @@ async function closeChatTabsKeeping(
   const closingActive =
     currentActive != null && !keepIds.has(currentActive);
 
-  if (closingActive && get().status === "streaming") {
+  if (closingActive && isChatBusy(get().status)) {
     get().stop();
   }
 
@@ -424,6 +459,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   projectType: "",
   projectLearningLanguage: "",
   skillsCatalog: [],
+  contextAnchorTokens: null,
+  contextAnchorMessageCount: null,
   status: "ready",
   error: null,
   draft: "",
@@ -562,14 +599,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   clearAttachments: () => set({ draftAttachments: [] }),
 
   setMode: (mode) => {
-    set({ mode });
+    set({
+      mode,
+      contextAnchorTokens: null,
+      contextAnchorMessageCount: null,
+    });
     void get().persistActive();
   },
 
   setModelId: (modelId) => {
     const settings = useAiSettingsStore.getState().settings;
     const resolved = resolveModelId(settings.baseUrl, modelId);
-    set({ modelId: resolved });
+    set({
+      modelId: resolved,
+      contextAnchorTokens: null,
+      contextAnchorMessageCount: null,
+    });
     void get().persistActive();
   },
 
@@ -581,6 +626,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       projectAbout: project.about,
       projectType: project.projectType,
       projectLearningLanguage: project.learningLanguage,
+      contextAnchorTokens: null,
+      contextAnchorMessageCount: null,
     });
     void get().persistActive();
   },
@@ -590,7 +637,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   newThread: async () => {
     const vaultPath = get().vaultBound ?? useVaultStore.getState().vaultPath;
     if (!vaultPath) return;
-    if (get().status === "streaming") get().stop();
+    if (isChatBusy(get().status)) get().stop();
     const { mode, modelId } = defaultsFromSettings();
     const now = Date.now();
     const id = crypto.randomUUID();
@@ -623,6 +670,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       projectAbout: "",
       projectType: "",
       projectLearningLanguage: "",
+      contextAnchorTokens: null,
+      contextAnchorMessageCount: null,
       status: "ready",
       error: null,
       draft: "",
@@ -635,7 +684,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const vaultPath = get().vaultBound;
     if (!vaultPath) return;
     if (threadId === get().activeThreadId) return;
-    if (get().status === "streaming") get().stop();
+    if (isChatBusy(get().status)) get().stop();
 
     let openTabIds = get().openTabIds;
     if (!openTabIds.includes(threadId)) {
@@ -661,7 +710,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   closeTab: async (threadId) => {
     const vaultPath = get().vaultBound;
     if (!vaultPath) return;
-    if (get().activeThreadId === threadId && get().status === "streaming") {
+    if (get().activeThreadId === threadId && isChatBusy(get().status)) {
       get().stop();
     }
 
@@ -761,7 +810,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   deleteThread: async (threadId) => {
     const vaultPath = get().vaultBound;
     if (!vaultPath) return;
-    if (get().activeThreadId === threadId && get().status === "streaming") {
+    if (get().activeThreadId === threadId && isChatBusy(get().status)) {
       get().stop();
     }
     await deleteChatThread(vaultPath, threadId);
@@ -815,6 +864,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       mode,
       modelId,
       projectPath,
+      contextAnchorTokens,
+      contextAnchorMessageCount,
       threads,
     } = get();
     if (!vaultBound || !activeThreadId) return;
@@ -839,6 +890,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       mode,
       modelId,
       projectPath,
+      contextAnchorTokens,
+      contextAnchorMessageCount,
       messages,
     };
     const updated = await upsertChatThread(vaultBound, file);
@@ -884,7 +937,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return;
     }
 
-    if (get().status === "streaming") return;
+    if (isChatBusy(get().status)) return;
 
     let activeThreadId = get().activeThreadId;
     if (!activeThreadId) {
@@ -892,44 +945,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       activeThreadId = get().activeThreadId;
     }
     if (!activeThreadId) return;
-
-    const { parts, titleHint } = prepareUserMessageParts(
-      draftText,
-      attachments,
-    );
-    if (parts.length === 0) return;
-
-    const userMessage: UIMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      parts,
-    };
-    const messages = [...get().messages, userMessage];
-    const prevMeta = get().threads.find((t) => t.id === activeThreadId);
-    const provisional = isProvisionalTitle(prevMeta?.title, messages);
-    const firstUser = messages.find((m) => m.role === "user");
-    const title = provisional
-      ? firstUser
-        ? titleFromMessage(userText(firstUser) || titleHint)
-        : "New chat"
-      : (prevMeta?.title ?? "New chat");
-
-    set({
-      messages,
-      draft: "",
-      draftAttachments: [],
-      draftSelections: {},
-      status: "streaming",
-      error: null,
-      streamStartedAt: Date.now(),
-      streamReasoningText: null,
-      threads: get().threads.map((t) =>
-        t.id === activeThreadId ? { ...t, title, updatedAt: Date.now() } : t,
-      ),
-    });
-
-    const controller = new AbortController();
-    set({ abort: controller });
 
     const vault = useVaultStore.getState();
     const excerpt =
@@ -954,11 +969,172 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       ? await loadSkills(skillIds)
       : [];
     const forcedTools = toolIds.length ? toolIds : [];
+    const mode = get().mode;
+    const limit = contextWindowForModel(settings, modelId);
+    const system = buildSystemPrompt({
+      mode,
+      vaultPath,
+      activePath: vault.activePath,
+      activeExcerpt: excerpt,
+      projectPath,
+      projectAbout: project.about,
+      projectType: project.projectType,
+      projectLearningLanguage: project.learningLanguage,
+      skills,
+      forcedSkills,
+      forcedTools,
+    });
+    const anchorTokens = get().contextAnchorTokens;
+    const anchorCount = get().contextAnchorMessageCount;
+
+    let history = get().messages;
+    let usedBeforeSend = estimateUsedContext({
+      system,
+      messages: history,
+      draft: draftText,
+      draftAttachments: attachments,
+      mode,
+      anchor:
+        anchorTokens != null && anchorCount != null
+          ? { tokens: anchorTokens, messageCount: anchorCount }
+          : null,
+    });
+
+    const controller = new AbortController();
+
+    if (wouldExceedContext(usedBeforeSend, limit)) {
+      const { older } = splitForCompaction(history);
+      if (older.length === 0) {
+        set({
+          error:
+            "Context window is full and there is nothing older to compact. Start a new chat.",
+          status: "error",
+        });
+        return;
+      }
+
+      set({
+        abort: controller,
+        status: "compacting",
+        error: null,
+        streamStartedAt: Date.now(),
+        streamReasoningText: null,
+      });
+
+      try {
+        const { messages: compacted, compacted: didCompact } =
+          await compactChatHistory({
+            messages: history,
+            keys,
+            fallbackModelId: modelId,
+            abortSignal: controller.signal,
+          });
+        if (!didCompact) {
+          set({
+            abort: null,
+            status: "error",
+            streamStartedAt: null,
+            error:
+              "Context window is full and there is nothing older to compact. Start a new chat.",
+          });
+          return;
+        }
+        history = compacted;
+        set({
+          messages: history,
+          contextAnchorTokens: null,
+          contextAnchorMessageCount: null,
+        });
+        usedBeforeSend = estimateUsedContext({
+          system,
+          messages: history,
+          draft: draftText,
+          draftAttachments: attachments,
+          mode,
+          anchor: null,
+        });
+        if (wouldExceedContext(usedBeforeSend, limit)) {
+          set({
+            abort: null,
+            status: "error",
+            streamStartedAt: null,
+            error:
+              "Context is still full after compaction. Start a new chat or shorten your message.",
+          });
+          await get().persistActive();
+          return;
+        }
+        await get().persistActive();
+      } catch (e) {
+        const aborted =
+          controller.signal.aborted ||
+          (e instanceof Error && e.name === "AbortError");
+        if (aborted) {
+          set({
+            status: "ready",
+            abort: null,
+            streamStartedAt: null,
+            streamReasoningText: null,
+          });
+          return;
+        }
+        set({
+          abort: null,
+          status: "error",
+          streamStartedAt: null,
+          error: formatAiError(e),
+        });
+        return;
+      }
+    }
+
+    const { parts, titleHint } = prepareUserMessageParts(
+      draftText,
+      attachments,
+    );
+    if (parts.length === 0) {
+      set({
+        abort: null,
+        status: "ready",
+        streamStartedAt: null,
+      });
+      return;
+    }
+
+    const userMessage: UIMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      parts,
+    };
+    const messages = [...history, userMessage];
+    const prevMeta = get().threads.find((t) => t.id === activeThreadId);
+    const provisional = isProvisionalTitle(prevMeta?.title, messages);
+    const firstUser = messages.find((m) => m.role === "user");
+    const title = provisional
+      ? firstUser
+        ? titleFromMessage(userText(firstUser) || titleHint)
+        : "New chat"
+      : (prevMeta?.title ?? "New chat");
+
+    set({
+      messages,
+      draft: "",
+      draftAttachments: [],
+      draftSelections: {},
+      status: "streaming",
+      error: null,
+      streamStartedAt: Date.now(),
+      streamReasoningText: null,
+      abort: controller,
+      threads: get().threads.map((t) =>
+        t.id === activeThreadId ? { ...t, title, updatedAt: Date.now() } : t,
+      ),
+    });
 
     try {
-      const finalMessages = await runChat({
+      const { messages: finalMessages, lastStepInputTokens } = await runChat({
         messages,
-        mode: get().mode,
+        mode,
         modelId,
         keys,
         vaultPath,
@@ -971,6 +1147,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         skills,
         forcedSkills,
         forcedTools,
+        contextWindow: limit,
         abortSignal: controller.signal,
         onMessages: (next) => {
           if (get().abort !== controller) return;
@@ -981,12 +1158,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           set({ streamReasoningText: text });
         },
       });
+      const anchor = buildContextAnchor({
+        lastStepInputTokens,
+        messages: finalMessages,
+        system,
+        mode,
+      });
       // Only flag attention when the user is not already watching this thread
       // (they switched away or closed chat). Clear separately on composer focus.
       const viewingFinished =
         get().activeThreadId === activeThreadId;
       set({
         messages: finalMessages,
+        contextAnchorTokens: anchor.tokens,
+        contextAnchorMessageCount: anchor.messageCount,
         status: "ready",
         abort: null,
         streamStartedAt: null,

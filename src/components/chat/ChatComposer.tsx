@@ -11,7 +11,7 @@ import {
   formatAttachmentSize,
   type ChatAttachment,
 } from "../../ai/chatAttachments";
-import { estimateContextTokens } from "../../ai/estimateTokens";
+import { estimateUsedContext, wouldExceedContext } from "../../ai/estimateTokens";
 import { listChatTools } from "../../ai/toolCatalog";
 import { contextWindowForModel, type AiModelOption } from "../../ai/types";
 import {
@@ -166,11 +166,13 @@ export function ChatComposer() {
   const refreshSkillsCatalog = useChatStore((s) => s.refreshSkillsCatalog);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const clearThreadAttention = useChatStore((s) => s.clearThreadAttention);
+  const contextAnchorTokens = useChatStore((s) => s.contextAnchorTokens);
+  const contextAnchorMessageCount = useChatStore(
+    (s) => s.contextAnchorMessageCount,
+  );
   const settings = useAiSettingsStore((s) => s.settings);
 
-  const streaming = status === "streaming";
-  const canSend =
-    !streaming && (draft.trim().length > 0 || draftAttachments.length > 0);
+  const streaming = status === "streaming" || status === "compacting";
   const models: AiModelOption[] = settings.models.length
     ? settings.models
     : [];
@@ -193,12 +195,19 @@ export function ChatComposer() {
   const used = useMemo(() => {
     if (streaming && wasStreamingRef.current) return usedFrozenRef.current;
     wasStreamingRef.current = streaming;
-    const next = estimateContextTokens({
+    const next = estimateUsedContext({
       system: systemPromptPreview(),
       messages,
       draft: streaming ? "" : expandSelectionMarkers(draft, draftSelections),
       draftAttachments: streaming ? [] : draftAttachments,
-      toolOverhead: mode === "agent" ? 1200 : 900,
+      mode,
+      anchor:
+        contextAnchorTokens != null && contextAnchorMessageCount != null
+          ? {
+              tokens: contextAnchorTokens,
+              messageCount: contextAnchorMessageCount,
+            }
+          : null,
     });
     usedFrozenRef.current = next;
     return next;
@@ -215,9 +224,15 @@ export function ChatComposer() {
     skillsCatalog,
     systemPromptPreview,
     streaming,
+    contextAnchorTokens,
+    contextAnchorMessageCount,
   ]);
 
   const limit = contextWindowForModel(settings, modelId || settings.modelId);
+  const contextBlocked = wouldExceedContext(used, limit);
+  const canSend =
+    !streaming &&
+    (draft.trim().length > 0 || draftAttachments.length > 0);
 
   const skillMenuOpen =
     slashMenu != null || skillPickerRect != null || atMenu != null;
@@ -719,7 +734,11 @@ export function ChatComposer() {
           onChange={setModelId}
         />
 
-        <ChatContextMeter used={used} limit={limit} />
+        <ChatContextMeter
+          used={used}
+          limit={limit}
+          willCompactOnSend={contextBlocked && !streaming}
+        />
 
         <div className="chat-composer-spacer" />
 
@@ -802,8 +821,16 @@ export function ChatComposer() {
             className="chat-send-btn"
             onClick={handleSend}
             disabled={!canSend}
-            title="Send"
-            aria-label="Send"
+            title={
+              contextBlocked
+                ? "Send (will compact older messages first)"
+                : "Send"
+            }
+            aria-label={
+              contextBlocked
+                ? "Send (will compact older messages first)"
+                : "Send"
+            }
           >
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
               <path

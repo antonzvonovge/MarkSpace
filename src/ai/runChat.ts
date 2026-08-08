@@ -9,6 +9,12 @@ import {
   type UIMessage,
 } from "ai";
 import {
+  estimateModelMessagesTokens,
+  estimateTokensFromText,
+  estimateToolSchemaTokens,
+  wouldExceedContext,
+} from "./estimateTokens";
+import {
   resolveLanguageModel,
   type AiProviderCredentials,
 } from "./languageModel";
@@ -16,6 +22,12 @@ import type { LoadedSkill, SkillMeta } from "./skills";
 import type { ChatMode } from "./types";
 import { buildSystemPrompt, buildVaultTools } from "./vaultTools";
 import { unwrapComposerMarkers } from "../lib/chatComposerDom";
+
+export type RunChatResult = {
+  messages: UIMessage[];
+  /** Final step prompt size from the provider, when reported. */
+  lastStepInputTokens: number | null;
+};
 
 export type RunChatParams = {
   messages: UIMessage[];
@@ -32,6 +44,8 @@ export type RunChatParams = {
   skills?: SkillMeta[] | null;
   forcedSkills?: LoadedSkill[] | null;
   forcedTools?: string[] | null;
+  /** Model context window — used to abort mid-loop before a hard provider error. */
+  contextWindow?: number;
   abortSignal?: AbortSignal;
   onMessages: (messages: UIMessage[]) => void;
   /**
@@ -166,7 +180,7 @@ function isAbortError(error: unknown, signal?: AbortSignal): boolean {
   return error.name === "AbortError" || /abort/i.test(error.message);
 }
 
-export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
+export async function runChat(params: RunChatParams): Promise<RunChatResult> {
   const inputMessages = params.messages;
   const assistantId = crypto.randomUUID();
   const parts: AssistantPart[] = [];
@@ -301,6 +315,10 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     { tools },
   );
 
+  const contextWindow = params.contextWindow;
+  const toolSchemaTokens = estimateToolSchemaTokens(params.mode);
+  const systemTokens = estimateTokensFromText(system);
+
   const result = streamText({
     model: resolved.model,
     system,
@@ -308,10 +326,39 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
     tools,
     stopWhen: stepCountIs(12),
     abortSignal: params.abortSignal,
+    prepareStep: ({ messages, stepNumber, steps }) => {
+      if (contextWindow == null || contextWindow <= 0 || stepNumber === 0) {
+        return {};
+      }
+      let used = systemTokens + toolSchemaTokens + estimateModelMessagesTokens(messages);
+      const prev = steps.length > 0 ? steps[steps.length - 1] : undefined;
+      const prevIn = prev?.usage?.inputTokens;
+      const prevOut = prev?.usage?.outputTokens;
+      if (prevIn != null && prevIn > 0) {
+        used = Math.max(used, prevIn + (prevOut ?? 0));
+      }
+      if (wouldExceedContext(used, contextWindow)) {
+        throw new Error(
+          "Context window is full (during tool use). Start a new chat or shorten the conversation.",
+        );
+      }
+      return {};
+    },
     ...(resolved.providerOptions
       ? { providerOptions: resolved.providerOptions }
       : {}),
   });
+
+  const readLastStepInputTokens = async (): Promise<number | null> => {
+    try {
+      const steps = await result.steps;
+      const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
+      const n = last?.usage?.inputTokens;
+      return n != null && n > 0 ? n : null;
+    } catch {
+      return null;
+    }
+  };
 
   try {
     for await (const part of result.fullStream) {
@@ -475,10 +522,13 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
       }
       clearReasoningPreview();
       emit(true);
-      return [
-        ...inputMessages,
-        { id: assistantId, role: "assistant", parts: [...parts] },
-      ];
+      return {
+        messages: [
+          ...inputMessages,
+          { id: assistantId, role: "assistant", parts: [...parts] },
+        ],
+        lastStepInputTokens: await readLastStepInputTokens(),
+      };
     }
     clearReasoningPreview();
     throw error instanceof Error ? error : new Error(formatAiError(error));
@@ -516,5 +566,8 @@ export async function runChat(params: RunChatParams): Promise<UIMessage[]> {
   }
   clearReasoningPreview();
   params.onMessages(finalMessages);
-  return finalMessages;
+  return {
+    messages: finalMessages,
+    lastStepInputTokens: await readLastStepInputTokens(),
+  };
 }
