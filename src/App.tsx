@@ -10,6 +10,11 @@ import {
 import { Sidebar, loadLastVault } from "./components/Sidebar";
 import { ChatSidebar } from "./components/chat/ChatSidebar";
 import { SelectionToChatButton } from "./components/chat/SelectionToChatButton";
+import {
+  CommandPalette,
+  type CommandPaletteMode,
+} from "./components/CommandPalette";
+import { ConfirmDialog } from "./components/AppDialog";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { StatusBar } from "./components/StatusBar";
@@ -24,6 +29,7 @@ import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
 import { DictionaryEditor } from "./editor/mddict/DictionaryEditor";
+import { DictPracticeDialog } from "./editor/mddict/DictPracticeDialog";
 import { PdfViewer } from "./editor/pdf/PdfViewer";
 import type { VaultChange } from "./lib/vaultApi";
 import { documentKind, readNote } from "./lib/vaultApi";
@@ -44,6 +50,37 @@ import { isFileTab, isSettingsTab, useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import { getEmbeddingsIndexStatus } from "./lib/vaultApi";
 import "./App.css";
+
+const PALETTE_COMMANDS = [
+  {
+    id: "open-word-trainer",
+    label: "Open word trainer",
+    keywords: "practice dictionary words mddict",
+  },
+];
+
+function resolvePracticeProjectPath(
+  activePath: string | null,
+  projectPropertiesByPath: Record<
+    string,
+    { projectType?: string }
+  >,
+): string | null {
+  if (activePath) {
+    const project = activePath.split("/")[0] ?? "";
+    if (
+      project &&
+      projectPropertiesByPath[project]?.projectType === "languageLearning"
+    ) {
+      return project;
+    }
+  }
+  const learning = Object.entries(projectPropertiesByPath)
+    .filter(([, p]) => p.projectType === "languageLearning")
+    .map(([path]) => path)
+    .sort();
+  return learning[0] ?? null;
+}
 
 /** Idle time before writing the active note to disk (and kicking off index work). */
 const AUTOSAVE_MS = 5_000;
@@ -66,6 +103,7 @@ function shouldKeepShellPeek(side: ShellPeekSide, x: number, y: number): boolean
   if (el.closest(`[data-shell-peek="${side}"]`)) return true;
   if (el.closest(".tree-context-menu")) return true;
   if (el.closest('[role="dialog"]')) return true;
+  if (el.closest(".command-palette-root")) return true;
   if (el.closest(".ms-select-menu")) return true;
   return false;
 }
@@ -92,6 +130,15 @@ function App() {
   const toggleChat = useChatUiStore((s) => s.toggle);
   const sidebarSizePercent = useSidebarUiStore((s) => s.lastSizePercent);
   const chatSizePercent = useChatUiStore((s) => s.lastSizePercent);
+  const tree = useVaultStore((s) => s.tree);
+  const recentPaths = useVaultStore((s) => s.recentPaths);
+  const openNote = useVaultStore((s) => s.openNote);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteMode, setPaletteMode] =
+    useState<CommandPaletteMode>("files");
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const [practiceProjectPath, setPracticeProjectPath] = useState("");
+  const [practiceBlockedOpen, setPracticeBlockedOpen] = useState(false);
   const timer = useRef<number | null>(null);
   const groupRef = useGroupRef();
   const applyingRef = useRef(false);
@@ -270,6 +317,20 @@ function App() {
       if (!mod) return;
 
       const code = e.code;
+      if (code === "KeyP") {
+        if (!vaultPath) return;
+        e.preventDefault();
+        setPaletteMode(e.shiftKey ? "commands" : "files");
+        setPaletteOpen(true);
+        return;
+      }
+      if (code === "KeyW" && !e.shiftKey) {
+        const path = useVaultStore.getState().activePath;
+        if (!path) return;
+        e.preventDefault();
+        void useVaultStore.getState().closeTab(path);
+        return;
+      }
       if (code === "KeyS") {
         e.preventDefault();
         if (timer.current) {
@@ -305,7 +366,24 @@ function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [saveActive, toggleViewMode, toggleSettings, toggleChat]);
+  }, [saveActive, toggleViewMode, toggleSettings, toggleChat, vaultPath]);
+
+  const runPaletteCommand = useCallback(
+    (id: string) => {
+      if (id !== "open-word-trainer") return;
+      const project = resolvePracticeProjectPath(
+        useVaultStore.getState().activePath,
+        useVaultStore.getState().projectPropertiesByPath,
+      );
+      if (!project) {
+        setPracticeBlockedOpen(true);
+        return;
+      }
+      setPracticeProjectPath(project);
+      setPracticeOpen(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     let unlistenJobs: (() => void) | undefined;
@@ -814,6 +892,33 @@ function App() {
         </Group>
       </div>
       <SelectionToChatButton />
+      <CommandPalette
+        open={paletteOpen}
+        mode={paletteMode}
+        tree={tree}
+        recentPaths={recentPaths}
+        commands={PALETTE_COMMANDS}
+        onClose={() => setPaletteOpen(false)}
+        onOpenFile={(path) => {
+          void openNote(path, { preview: true });
+        }}
+        onRunCommand={runPaletteCommand}
+      />
+      <DictPracticeDialog
+        open={practiceOpen}
+        projectPath={practiceProjectPath}
+        tree={tree}
+        onClose={() => setPracticeOpen(false)}
+      />
+      <ConfirmDialog
+        open={practiceBlockedOpen}
+        title="Word trainer"
+        description="Practice is available in language-learning projects. Set a project type to Foreign language learning in Project properties."
+        confirmLabel="OK"
+        danger={false}
+        onCancel={() => setPracticeBlockedOpen(false)}
+        onConfirm={() => setPracticeBlockedOpen(false)}
+      />
     </div>
   );
 }

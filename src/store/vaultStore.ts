@@ -47,8 +47,12 @@ import {
 } from "../lib/vaultApi";
 import {
   loadExpandedPaths,
-  saveExpandedPaths,
+  loadRecentFiles,
   loadVaultSession,
+  pushRecentPath,
+  remapRecentPathList,
+  saveExpandedPaths,
+  saveRecentFiles,
   saveVaultSession,
 } from "../lib/settingsStore";
 import { arrayMove } from "../lib/arrayMove";
@@ -130,6 +134,8 @@ type VaultStore = {
   expandedPaths: string[];
   /** Vault-relative favorite paths (pages and folders), sorted. */
   favoritePaths: string[];
+  /** Most recently opened vault-relative file paths (MRU, capped). */
+  recentPaths: string[];
   /** Project properties keyed by project path (first-level folder). */
   projectPropertiesByPath: Record<string, ProjectProperties>;
   /** All vault comments for the sidebar inbox (project → note tree). */
@@ -421,6 +427,48 @@ function persistSession(state: {
   });
 }
 
+function persistRecent(
+  vaultPath: string | null,
+  recentPaths: string[],
+) {
+  if (!vaultPath) return;
+  void saveRecentFiles(vaultPath, recentPaths);
+}
+
+function recordRecentFile(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  path: string,
+) {
+  if (!path || path === GRAPH_TAB_PATH || path === SETTINGS_TAB_PATH) return;
+  const vaultPath = get().vaultPath;
+  if (!vaultPath) return;
+  const recentPaths = pushRecentPath(get().recentPaths, path);
+  set({ recentPaths });
+  persistRecent(vaultPath, recentPaths);
+}
+
+function applyRecentRemap(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  from: string,
+  to: string | null,
+) {
+  const vaultPath = get().vaultPath;
+  const recentPaths = remapRecentPathList(get().recentPaths, from, to);
+  if (recentPaths === get().recentPaths) return;
+  // remapRecentPathList always returns a new array; compare contents
+  const prev = get().recentPaths;
+  if (
+    recentPaths.length === prev.length &&
+    recentPaths.every((p, i) => p === prev[i])
+  ) {
+    return;
+  }
+  set({ recentPaths });
+  persistRecent(vaultPath, recentPaths);
+}
+
 function activateLoaded(
   set: (partial: Partial<VaultStore>) => void,
   vaultPath: string | null,
@@ -696,6 +744,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   treeSelectionVisible: false,
   expandedPaths: [],
   favoritePaths: [],
+  recentPaths: [],
   projectPropertiesByPath: {},
   allComments: [],
   activeNoteComments: [],
@@ -765,13 +814,19 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const tree = await openVault(path);
-      const [expandedPaths, favoritePaths, projectPropertiesByPath, session] =
-        await Promise.all([
-          loadExpandedPaths(path),
-          loadFavoritePaths(),
-          loadProjectPropertiesMap(),
-          loadVaultSession(path),
-        ]);
+      const [
+        expandedPaths,
+        favoritePaths,
+        projectPropertiesByPath,
+        session,
+        recentPaths,
+      ] = await Promise.all([
+        loadExpandedPaths(path),
+        loadFavoritePaths(),
+        loadProjectPropertiesMap(),
+        loadVaultSession(path),
+        loadRecentFiles(path),
+      ]);
       const files = new Set(collectFilePaths(tree));
       const dirs = new Set(collectDirPaths(tree));
       const restoredTabs: EditorTab[] = (session?.tabs ?? [])
@@ -802,6 +857,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         treeSelectionVisible: false,
         expandedPaths,
         favoritePaths,
+        recentPaths,
         projectPropertiesByPath,
         vaultTags: [],
         dictionaryTags: [],
@@ -974,6 +1030,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         );
         if (pdfPage != null) set({ pendingPdfPage: pdfPage });
         persistSession(get());
+        recordRecentFile(set, get, path);
         void get().loadActiveNoteComments();
       } catch (e) {
         set({
@@ -1024,6 +1081,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       );
       if (pdfPage != null) set({ pendingPdfPage: pdfPage });
       persistSession(get());
+      recordRecentFile(set, get, path);
       void get().loadActiveNoteComments();
     } catch (e) {
       set({
@@ -1581,6 +1639,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
+      if (from !== nextPath) applyRecentRemap(set, get, from, nextPath);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
@@ -1664,6 +1723,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
+      if (from !== result.moved) applyRecentRemap(set, get, from, result.moved);
+      applyRecentRemap(set, get, notePath, result.folderNote);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
@@ -1724,6 +1785,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
+      applyRecentRemap(set, get, notePath, result.folderNote);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
@@ -1808,6 +1870,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
+      if (from !== nextPath) applyRecentRemap(set, get, from, nextPath);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
@@ -1860,6 +1923,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       );
       set({ expandedPaths: nextExpanded });
       if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+      applyRecentRemap(set, get, path, null);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();

@@ -305,6 +305,70 @@ export async function saveVaultSession(
   await store.save();
 }
 
+/** Max recent files shown in Quick Open when the query is empty. */
+export const RECENT_FILES_LIMIT = 10;
+
+const VAULT_RECENT_FILES_KEY = "vaultRecentFiles";
+
+function normalizeRecentPaths(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string" || !item || seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+    if (out.length >= RECENT_FILES_LIMIT) break;
+  }
+  return out;
+}
+
+/** Remap or drop recent paths after move/rename/delete (`to` null = delete). */
+export function remapRecentPathList(
+  paths: string[],
+  from: string,
+  to: string | null,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of paths) {
+    let next = p;
+    if (p === from || p.startsWith(`${from}/`)) {
+      if (to == null) continue;
+      next = p === from ? to : `${to}${p.slice(from.length)}`;
+    }
+    if (seen.has(next)) continue;
+    seen.add(next);
+    out.push(next);
+    if (out.length >= RECENT_FILES_LIMIT) break;
+  }
+  return out;
+}
+
+export async function loadRecentFiles(vaultPath: string): Promise<string[]> {
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, string[]>>(VAULT_RECENT_FILES_KEY)) ?? {};
+  return normalizeRecentPaths(map[vaultPath]);
+}
+
+export async function saveRecentFiles(
+  vaultPath: string,
+  paths: string[],
+): Promise<void> {
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, string[]>>(VAULT_RECENT_FILES_KEY)) ?? {};
+  map[vaultPath] = normalizeRecentPaths(paths);
+  await store.set(VAULT_RECENT_FILES_KEY, map);
+  await store.save();
+}
+
+/** Move `path` to the front of the vault MRU list (deduped, capped). */
+export function pushRecentPath(paths: string[], path: string): string[] {
+  return normalizeRecentPaths([path, ...paths.filter((p) => p !== path)]);
+}
+
 export type AutoSyncMinutes = 0 | 5 | 15 | 30 | 60;
 
 export type VaultSyncMeta = {
