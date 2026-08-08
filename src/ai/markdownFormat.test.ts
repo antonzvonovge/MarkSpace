@@ -48,4 +48,14 @@ describe("markdownFormat", () => {
     expect(rules).toMatch(/inline tags/i);
     expect(rules).not.toMatch(/do \*\*not\*\* emit[\s\S]*inline `#tags`/i);
   });
+
+  it("documents nested list indent rules in core and guide", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/Nested lists/i);
+    expect(rules).toMatch(/2 spaces/i);
+    expect(rules).toMatch(/3 spaces/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/##\s+Lists/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toContain("  * nested");
+    expect(MARKDOWN_FORMAT_GUIDE).toContain("   * nested");
+  });
 });

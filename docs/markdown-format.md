@@ -12,6 +12,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
 - Tables: use GFM pipe tables. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
+- Nested lists: use `*` bullets (preferred over `-`). Indent children with **2 spaces** under a `*` parent (`  * child`) and **3 spaces** under a numbered item (`   * child`). Never put a blank line between a parent item and its nested children — that breaks nesting. A blank line is only for a list item followed by a paragraph. When editing, preserve the note’s existing list markers and indent depth.
 - Diagrams in notes: fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml `. Chat replies may use the same fences (rendered inline).
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
@@ -154,7 +155,7 @@ Supported via the editor (typical on-disk forms):
 | Paragraphs | blank-line separated |
 | Bold / italic / strike / inline code | `**` `*` `~~` `` ` `` |
 | Blockquote | `> …` |
-| Bullet / numbered lists | `- ` / `1. ` |
+| Bullet / numbered lists | `* ` (preferred) or `- ` / `1. ` — see Lists |
 | Task lists | `- [ ]` / `- [x]` |
 | Toggle lists | HTML `<details>` / `<summary>` (structure may flatten on export) |
 | Code blocks | `` ```lang `` |
@@ -163,6 +164,37 @@ Supported via the editor (typical on-disk forms):
 | Math | `$inline$` / `$$display$$` (KaTeX) |
 
 Slash menu hides video/audio/file blocks; do not invent those block types in markdown.
+
+## Lists
+
+Prefer `*` for unordered lists (CommonMark treats `*` and `-` the same; MarkSpace notes conventionally use `*`). Numbered lists use `1. `, `2. `, …
+
+**Nesting (critical for `edit_note` / `write_note`):**
+
+| Parent | Child indent | Example |
+|---|---|---|
+| `* item` | 2 spaces | `  * nested` |
+| `1. item` | 3 spaces | `   * nested` |
+
+- Do **not** insert a blank line between a parent and its nested children — parsers treat that as ending the list / flattening hierarchy.
+- A blank line **after** a list item is correct when the next block is a paragraph (not a child bullet).
+- Do not mix 4-space / tab indents for nesting; stick to the 2-space / 3-space pattern above.
+- When editing an existing note, keep its markers (`*` vs `-`) and indent depths; do not “normalize” nested lists into flat ones.
+
+```md
+* **Topic label:**
+  * Nested detail under the topic.
+  * Another nested detail.
+
+1. First numbered step with nested bullets under it:
+   * Condition A.
+   * Condition B.
+2. Second numbered step (sibling of 1, not nested).
+
+* **Next topic:** followed by a paragraph after a blank line.
+
+Paragraph that continues under the previous bullet’s topic — not a nested list item.
+```
 
 ## Math
 

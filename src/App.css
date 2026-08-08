@@ -2629,7 +2629,7 @@ select {
 
 .outline-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0;
   min-width: 0;
   border-radius: 4px;
@@ -2675,9 +2675,9 @@ select {
   flex: 1;
   min-width: 0;
   padding: 3px 6px 3px 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
   font-size: 0.8rem;
   line-height: 1.35;
   color: var(--text);
