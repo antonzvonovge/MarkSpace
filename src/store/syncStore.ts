@@ -245,6 +245,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
           autoSyncMinutes: get().autoSyncMinutes,
         });
       }
+      // Pull/merge may have changed files; refresh clean open editors now
+      // (vault-change is suppressed during sync).
+      await useVaultStore.getState().reloadOpenTabsFromDisk();
       set({
         status: result.status,
         message: result.message,
@@ -260,7 +263,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         error: e instanceof Error ? e.message : String(e),
       });
     } finally {
-      useVaultStore.getState().markExternalWrite(SYNC_WATCH_SETTLE_MS);
+      useVaultStore.getState().settleExternalWrite(SYNC_WATCH_SETTLE_MS);
     }
   },
 
@@ -338,6 +341,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
     useVaultStore.getState().markExternalWrite(SYNC_WATCH_SUPPRESS_MS);
     try {
       const status = await syncResolveConflict(path, choice);
+      await useVaultStore.getState().reloadOpenTabsFromDisk();
       set({
         status,
         busy: false,
@@ -352,7 +356,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         error: e instanceof Error ? e.message : String(e),
       });
     } finally {
-      useVaultStore.getState().markExternalWrite(SYNC_WATCH_SETTLE_MS);
+      useVaultStore.getState().settleExternalWrite(SYNC_WATCH_SETTLE_MS);
     }
   },
 }));

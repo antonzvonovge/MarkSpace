@@ -251,8 +251,18 @@ type VaultStore = {
   ) => Promise<string[]>;
   /** Suppress vault-change handling for `ms` (default 1200). */
   markExternalWrite: (ms?: number) => void;
+  /**
+   * Replace the suppress window with exactly `now + ms` (does not extend via max).
+   * Used after sync so intentional reloads are not followed by a long quiet period.
+   */
+  settleExternalWrite: (ms?: number) => void;
   /** Apply disk/tool content to an open tab (and the editor if active). */
   applyExternalContent: (path: string, content: string) => void;
+  /**
+   * Re-read clean open file tabs from disk (e.g. after git sync).
+   * Skips dirty tabs and PDFs; no-ops when content is unchanged.
+   */
+  reloadOpenTabsFromDisk: () => Promise<void>;
 };
 
 export function isGraphTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
@@ -1830,10 +1840,21 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       suppressWatchUntil: Math.max(s.suppressWatchUntil, Date.now() + ms),
     })),
 
+  settleExternalWrite: (ms = 1200) =>
+    set({ suppressWatchUntil: Date.now() + ms }),
+
   applyExternalContent: (path, content) => {
-    const { activePath, tabs } = get();
-    const hasTab = tabs.some((t) => t.path === path);
+    const state = get();
+    const { activePath, tabs } = state;
+    const tab = tabs.find((t) => t.path === path);
+    const hasTab = Boolean(tab);
     if (!hasTab && activePath !== path) return;
+
+    const tabUnchanged = !hasTab || (tab!.body === content && !tab!.dirty);
+    const activeUnchanged =
+      activePath !== path || (state.content === content && !state.dirty);
+    if (tabUnchanged && activeUnchanged) return;
+
     const patch: Partial<VaultStore> = {};
     if (hasTab) {
       patch.tabs = withTabBody(tabs, path, content, false);
@@ -1843,6 +1864,22 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       patch.dirty = false;
     }
     set(patch);
+  },
+
+  reloadOpenTabsFromDisk: async () => {
+    const { tabs, activePath, dirty } = get();
+    const targets = tabs.filter(
+      (t) => isFileTab(t) && !isPdfPath(t.path) && !t.dirty,
+    );
+    for (const tab of targets) {
+      if (tab.path === activePath && dirty) continue;
+      try {
+        const next = await readNote(tab.path);
+        get().applyExternalContent(tab.path, next);
+      } catch {
+        // Missing files are closed by pruneMissingTabs via refreshTree.
+      }
+    }
   },
 }));
 

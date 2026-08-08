@@ -71,7 +71,7 @@ MarkSpace can sync the open vault with a GitHub repository using an embedded git
 6. Use **Sync Now** (or the status bar menu → Synchronize) to commit local changes, pull, and push.
 7. Optionally enable **Auto-sync** (5 / 15 / 30 / 60 minutes). While the app is open it syncs on that interval and when you return to the window.
 
-Conflicts appear in Settings → Sync and as a banner in the editor. Markdown (`.md`) conflicts are resolved automatically by keeping both sides. For remaining conflicts choose **Keep both**, **Keep mine** / **Keep theirs**, or open the file and edit conflict markers manually, then sync again.
+Conflicts appear in Settings → Sync and as a banner in the editor. Markdown (`.md`) conflicts are resolved automatically by keeping both sides. Draw.io (`.drawio`) diagrams are never auto-merged — choose **Keep mine** or **Keep theirs**. For other remaining conflicts choose **Keep both**, **Keep mine** / **Keep theirs**, or open the file and edit conflict markers manually, then sync again.
 
 App UI prefs (theme, fonts, last vault path, tree expand state) stay on the device and are not synced. Sync connection (remote URL, auto-sync interval) is stored per vault in the app settings file (`githubSync.byVault`); the GitHub token is machine-local and shared across vaults.
 

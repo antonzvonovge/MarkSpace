@@ -428,7 +428,7 @@ fn auto_resolve_order_conflict(repo: &Repository) -> Result<bool, String> {
 }
 
 /// For conflicted `.md` notes, keep both sides immediately (Accept Both).
-/// Skips `order.json` (semantic merge), binaries, and non-markdown files.
+/// Skips `order.json` (semantic merge), binaries, `.drawio`, and other non-markdown.
 fn auto_resolve_md_both_conflicts(repo: &Repository) -> Result<usize, String> {
     let conflicts = conflicted_paths(repo);
     let mut n = 0;
@@ -445,6 +445,10 @@ fn auto_resolve_md_both_conflicts(repo: &Repository) -> Result<usize, String> {
 
 fn is_markdown_rel(rel: &str) -> bool {
     rel.to_ascii_lowercase().ends_with(".md")
+}
+
+fn is_drawio_rel(rel: &str) -> bool {
+    rel.to_ascii_lowercase().ends_with(".drawio")
 }
 
 fn write_and_stage(repo: &Repository, rel: &str, content: &[u8]) -> Result<(), String> {
@@ -867,6 +871,10 @@ pub fn sync_resolve_conflict(
                 {
                     return Err("Could not merge order.json".into());
                 }
+            } else if is_drawio_rel(rel) {
+                return Err(format!(
+                    "Cannot keep both for {rel} — Draw.io diagrams must be resolved with Keep mine or Keep theirs"
+                ));
             } else if is_markdown_rel(rel) {
                 if !resolve_md_both(&repo, rel)? {
                     return Err(format!(
@@ -989,7 +997,10 @@ pub fn sync_device_flow_poll(
 
 #[cfg(test)]
 mod tests {
-    use super::accept_both_from_markers;
+    use super::*;
+    use git2::Signature;
+    use std::fs;
+    use std::path::PathBuf;
 
     #[test]
     fn accept_both_keeps_both_hunks() {
@@ -1009,5 +1020,135 @@ after
     #[test]
     fn accept_both_none_without_markers() {
         assert!(accept_both_from_markers("plain note\n").is_none());
+    }
+
+    #[test]
+    fn markdown_rel_and_drawio_rel() {
+        assert!(is_markdown_rel("Note.md"));
+        assert!(is_markdown_rel("folder/Note.MD"));
+        assert!(!is_markdown_rel("diagram.drawio"));
+        assert!(is_drawio_rel("diagram.drawio"));
+        assert!(is_drawio_rel("a/b.DRAWIO"));
+        assert!(!is_drawio_rel("note.md"));
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!(
+            "markspace-git-sync-{name}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn sig() -> Signature<'static> {
+        Signature::now("Test", "test@example.com").unwrap()
+    }
+
+    fn commit_all(repo: &Repository, message: &str) {
+        let mut index = repo.index().unwrap();
+        index
+            .add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = sig();
+        let parents: Vec<git2::Commit<'_>> = match repo.head() {
+            Ok(head) => vec![head.peel_to_commit().unwrap()],
+            Err(_) => vec![],
+        };
+        let parent_refs: Vec<&git2::Commit<'_>> = parents.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
+            .unwrap();
+    }
+
+    /// Auto Accept-Both must apply to `.md` only — never to `.drawio`.
+    #[test]
+    fn auto_resolve_skips_drawio_keeps_md() {
+        let dir = temp_dir("drawio-skip");
+        let repo = Repository::init(&dir).unwrap();
+        {
+            let mut cfg = repo.config().unwrap();
+            cfg.set_str("user.name", "Test").unwrap();
+            cfg.set_str("user.email", "test@example.com").unwrap();
+        }
+
+        fs::write(dir.join("note.md"), "base note\n").unwrap();
+        fs::write(
+            dir.join("diagram.drawio"),
+            "<mxfile><diagram id=\"base\">base</diagram></mxfile>\n",
+        )
+        .unwrap();
+        commit_all(&repo, "base");
+
+        // Branch "theirs": edit both files
+        repo.branch("theirs", &repo.head().unwrap().peel_to_commit().unwrap(), false)
+            .unwrap();
+        repo.set_head("refs/heads/theirs").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::default().force()))
+            .unwrap();
+        fs::write(dir.join("note.md"), "theirs note\n").unwrap();
+        fs::write(
+            dir.join("diagram.drawio"),
+            "<mxfile><diagram id=\"theirs\">theirs</diagram></mxfile>\n",
+        )
+        .unwrap();
+        commit_all(&repo, "theirs edits");
+
+        // Back to main / master as "ours"
+        let main_name = if repo.find_branch("main", git2::BranchType::Local).is_ok() {
+            "main"
+        } else {
+            "master"
+        };
+        repo.set_head(&format!("refs/heads/{main_name}")).unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::default().force()))
+            .unwrap();
+        fs::write(dir.join("note.md"), "ours note\n").unwrap();
+        fs::write(
+            dir.join("diagram.drawio"),
+            "<mxfile><diagram id=\"ours\">ours</diagram></mxfile>\n",
+        )
+        .unwrap();
+        commit_all(&repo, "ours edits");
+
+        let theirs = repo
+            .find_branch("theirs", git2::BranchType::Local)
+            .unwrap()
+            .into_reference()
+            .peel_to_commit()
+            .unwrap();
+        let annotated = repo.find_annotated_commit(theirs.id()).unwrap();
+        repo.merge(&[&annotated], None, None).unwrap();
+
+        let before = conflicted_paths(&repo);
+        assert!(
+            before.iter().any(|p| p == "note.md"),
+            "expected note.md conflict, got {before:?}"
+        );
+        assert!(
+            before.iter().any(|p| p == "diagram.drawio"),
+            "expected diagram.drawio conflict, got {before:?}"
+        );
+
+        let n = auto_resolve_md_both_conflicts(&repo).unwrap();
+        assert!(n >= 1, "expected markdown auto-resolve");
+
+        let after = conflicted_paths(&repo);
+        assert!(
+            !after.iter().any(|p| p == "note.md"),
+            "note.md should be auto-resolved, still conflicted: {after:?}"
+        );
+        assert!(
+            after.iter().any(|p| p == "diagram.drawio"),
+            "diagram.drawio must remain conflicted (not auto-merged), got {after:?}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
