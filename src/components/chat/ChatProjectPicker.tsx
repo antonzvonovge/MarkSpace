@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { createPortal } from "react-dom";
 import { FcPackage, FcPlanner } from "react-icons/fc";
 import { LearningLanguageFlag } from "../LearningLanguageFlag";
@@ -38,8 +45,17 @@ function ProjectIcon({
   return <FcPackage size={size} />;
 }
 
+function useProjectColor(path: string | null | undefined): string {
+  return useVaultStore((s) =>
+    path ? (s.projectPropertiesByPath[path]?.color ?? "") : "",
+  );
+}
+
 export function ChatProjectPicker({ value, disabled, onChange }: Props) {
   const tree = useVaultStore((s) => s.tree);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<MenuPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -52,6 +68,7 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
     [projects, value],
   );
   const label = selected?.name ?? (value ? value : "Project");
+  const triggerColor = useProjectColor(value);
 
   const updatePos = () => {
     const el = triggerRef.current;
@@ -122,8 +139,8 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
               aria-selected={value == null}
               className={
                 value == null
-                  ? "chat-project-option is-active"
-                  : "chat-project-option"
+                  ? "chat-project-option is-none is-active"
+                  : "chat-project-option is-none"
               }
               onClick={() => {
                 onChange(null);
@@ -137,28 +154,40 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
             {projects.length === 0 ? (
               <div className="chat-project-empty">No projects in vault</div>
             ) : (
-              projects.map((p) => (
-                <button
-                  key={p.path}
-                  type="button"
-                  role="option"
-                  aria-selected={p.path === value}
-                  className={
-                    p.path === value
-                      ? "chat-project-option is-active"
-                      : "chat-project-option"
-                  }
-                  onClick={() => {
-                    onChange(p.path);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="chat-project-option-icon" aria-hidden>
-                    <ProjectIcon path={p.path} size={14} />
-                  </span>
-                  <span className="chat-project-option-name">{p.name}</span>
-                </button>
-              ))
+              projects.map((p) => {
+                const color = projectPropertiesByPath[p.path]?.color ?? "";
+                return (
+                  <button
+                    key={p.path}
+                    type="button"
+                    role="option"
+                    aria-selected={p.path === value}
+                    className={[
+                      "chat-project-option",
+                      p.path === value ? "is-active" : "",
+                      color ? "has-project-color" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    style={
+                      color
+                        ? ({
+                            ["--project-color"]: color,
+                          } as CSSProperties)
+                        : undefined
+                    }
+                    onClick={() => {
+                      onChange(p.path);
+                      setOpen(false);
+                    }}
+                  >
+                    <span className="chat-project-option-icon" aria-hidden>
+                      <ProjectIcon path={p.path} size={14} />
+                    </span>
+                    <span className="chat-project-option-name">{p.name}</span>
+                  </button>
+                );
+              })
             )}
           </div>,
           document.body,
@@ -170,10 +199,17 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
       <button
         ref={triggerRef}
         type="button"
-        className={
-          value
-            ? "chat-project-trigger is-selected"
-            : "chat-project-trigger"
+        className={[
+          "chat-project-trigger",
+          value ? "is-selected" : "",
+          triggerColor ? "has-project-color" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        style={
+          triggerColor
+            ? ({ ["--project-color"]: triggerColor } as CSSProperties)
+            : undefined
         }
         disabled={disabled}
         aria-haspopup="listbox"

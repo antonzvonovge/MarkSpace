@@ -14,6 +14,9 @@ pub struct ChatThreadMeta {
     pub updated_at: i64,
     pub mode: String,
     pub model_id: String,
+    /// Optional vault project (first-level folder) for this thread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -186,6 +189,7 @@ pub fn upsert_chat_thread(
         updated_at: thread.updated_at,
         mode: thread.mode.clone(),
         model_id: thread.model_id.clone(),
+        project_path: thread.project_path.clone(),
     };
 
     let mut index = read_index(&dir)?;

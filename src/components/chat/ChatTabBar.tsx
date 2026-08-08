@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useChatStore } from "../../store/chatStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
@@ -12,9 +12,13 @@ import { ChatHistoryMenu } from "./ChatHistoryMenu";
 
 export function ChatTabBar() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
   const threads = useChatStore((s) => s.threads);
   const openTabIds = useChatStore((s) => s.openTabIds);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
+  const activeProjectPath = useChatStore((s) => s.projectPath);
   const attentionThreadIds = useChatStore((s) => s.attentionThreadIds);
   const selectThread = useChatStore((s) => s.selectThread);
   const closeTab = useChatStore((s) => s.closeTab);
@@ -68,6 +72,15 @@ export function ChatTabBar() {
           const active = tab.id === activeThreadId;
           const attention = attentionSet.has(tab.id);
           const reorder = bindReorder(index);
+          const projectPath =
+            (
+              (active ? activeProjectPath : null) ||
+              tab.projectPath ||
+              ""
+            ).trim() || "";
+          const projectColor = projectPath
+            ? (projectPropertiesByPath[projectPath]?.color ?? "")
+            : "";
           return (
             <div
               key={tab.id}
@@ -76,10 +89,18 @@ export function ChatTabBar() {
                 "editor-tab",
                 active ? "is-active" : "",
                 attention ? "has-attention" : "",
+                projectColor ? "has-project-color" : "",
                 reorder.className,
               ]
                 .filter(Boolean)
                 .join(" ")}
+              style={
+                projectColor
+                  ? ({
+                      ["--tab-project-color"]: projectColor,
+                    } as CSSProperties)
+                  : undefined
+              }
               title={tab.title}
               role="tab"
               aria-selected={active}

@@ -1155,6 +1155,19 @@ select {
   border-radius: 0;
   padding-right: 0;
   box-sizing: border-box;
+  position: relative;
+}
+
+.tree-row.has-project-color::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0;
+  background: var(--project-color);
+  pointer-events: none;
 }
 
 .tree-folder-row.is-vault-root {
@@ -2088,6 +2101,16 @@ select {
   right: 0;
   height: 2px;
   background: var(--accent-wb);
+}
+
+.editor-tab.has-project-color::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--tab-project-color);
 }
 
 .editor-tab.is-active:hover {
@@ -4607,6 +4630,70 @@ select {
   font-weight: 600;
 }
 
+.project-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.project-color-swatch {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.project-color-swatch:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+
+.project-color-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.project-color-swatch.is-selected {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.12),
+    0 0 0 2px var(--editor-surface),
+    0 0 0 4px var(--text);
+}
+
+.project-color-swatch.is-none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--editor-surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.project-color-swatch.is-none.is-selected {
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    0 0 0 2px var(--editor-surface),
+    0 0 0 4px var(--text);
+}
+
+.project-color-swatch:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.project-color-swatch-none-x {
+  display: block;
+  margin-top: -1px;
+}
+
 .app-dialog-input {
   width: 100%;
   border: 1px solid var(--line);
@@ -6607,6 +6694,23 @@ select {
   border-radius: 6px;
   cursor: pointer;
   min-width: 0;
+  position: relative;
+}
+
+.chat-project-trigger.has-project-color {
+  padding-left: 8px;
+}
+
+.chat-project-trigger.has-project-color::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--project-color);
+  pointer-events: none;
 }
 
 .chat-project-trigger.is-selected {
@@ -6667,9 +6771,22 @@ select {
   font: inherit;
   font-size: 0.75rem;
   text-align: left;
-  padding: 6px 8px;
+  padding: 6px 8px 6px 10px;
   border-radius: 7px;
   cursor: pointer;
+  position: relative;
+}
+
+.chat-project-option.has-project-color::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--project-color);
+  pointer-events: none;
 }
 
 .chat-project-option-icon {
@@ -6680,6 +6797,14 @@ select {
   width: 14px;
   height: 14px;
   line-height: 0;
+}
+
+.chat-project-option.is-none {
+  padding-left: 10px;
+}
+
+.chat-project-option.is-none .chat-project-option-name {
+  padding-left: 20px; /* 14px icon + 6px gap — align with project names */
 }
 
 .chat-project-option:hover {
@@ -7915,7 +8040,8 @@ select {
 
 .app-dialog-body .app-dialog-label + .app-dialog-input,
 .app-dialog-body .app-dialog-label + .ms-select,
-.app-dialog-body .app-dialog-label + .link-dialog-tags {
+.app-dialog-body .app-dialog-label + .link-dialog-tags,
+.app-dialog-body .app-dialog-label + .project-color-picker {
   margin-bottom: 12px;
 }
 

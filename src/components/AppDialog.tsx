@@ -7,6 +7,7 @@ import {
   PROJECT_TYPE_OPTIONS,
   type ProjectTypeId,
 } from "../lib/vaultApi";
+import { PROJECT_COLOR_SWATCHES } from "../lib/projectColors";
 import {
   NATIVE_LANGUAGE_OPTIONS,
   nativeLanguageLabel,
@@ -228,6 +229,7 @@ export type ProjectPropertiesDialogValue = {
   about: string;
   projectType: ProjectTypeId;
   learningLanguage: string;
+  color: string;
 };
 
 type ProjectPropertiesDialogProps = {
@@ -236,6 +238,7 @@ type ProjectPropertiesDialogProps = {
   about: string;
   projectType?: ProjectTypeId;
   learningLanguage?: string;
+  color?: string;
   saving?: boolean;
   onCancel: () => void;
   onSave: (value: ProjectPropertiesDialogValue) => void;
@@ -623,26 +626,30 @@ export function ProjectPropertiesDialog({
   about,
   projectType = "",
   learningLanguage = "",
+  color: initialColor = "",
   saving = false,
   onCancel,
   onSave,
 }: ProjectPropertiesDialogProps) {
   const aboutId = useId();
+  const colorGroupId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState(about);
   const [type, setType] = useState<ProjectTypeId>(projectType);
   const [language, setLanguage] = useState(learningLanguage);
+  const [color, setColor] = useState(initialColor);
 
   useEffect(() => {
     if (!open) return;
     setValue(about);
     setType(projectType);
     setLanguage(learningLanguage);
+    setColor(initialColor);
     const id = window.requestAnimationFrame(() => {
       textareaRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(id);
-  }, [open, about, projectType, learningLanguage]);
+  }, [open, about, projectType, learningLanguage, initialColor]);
 
   const submit = () => {
     if (saving) return;
@@ -650,6 +657,7 @@ export function ProjectPropertiesDialog({
       about: value,
       projectType: type,
       learningLanguage: type === "languageLearning" ? language : "",
+      color,
     });
   };
 
@@ -711,6 +719,48 @@ export function ProjectPropertiesDialog({
             />
           </>
         ) : null}
+
+        <div
+          className="app-dialog-label"
+          id={colorGroupId}
+          role="presentation"
+        >
+          Color
+        </div>
+        <div
+          className="project-color-picker"
+          role="radiogroup"
+          aria-labelledby={colorGroupId}
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={color === ""}
+            aria-label="None"
+            title="None"
+            className={`project-color-swatch is-none${color === "" ? " is-selected" : ""}`}
+            disabled={saving}
+            onClick={() => setColor("")}
+          >
+            <span className="project-color-swatch-none-x" aria-hidden>
+              ×
+            </span>
+          </button>
+          {PROJECT_COLOR_SWATCHES.map((swatch) => (
+            <button
+              key={swatch.id}
+              type="button"
+              role="radio"
+              aria-checked={color === swatch.hex}
+              aria-label={swatch.label}
+              title={swatch.label}
+              className={`project-color-swatch${color === swatch.hex ? " is-selected" : ""}`}
+              style={{ background: swatch.hex }}
+              disabled={saving}
+              onClick={() => setColor(swatch.hex)}
+            />
+          ))}
+        </div>
 
         <label className="app-dialog-label" htmlFor={aboutId}>
           What is this project about

@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -31,7 +32,7 @@ import {
   setProjectProperties,
   type ProjectProperties,
 } from "../lib/vaultApi";
-import { diaryProjectRootForPath } from "../lib/diaryNotes";
+import { diaryProjectRootForPath, vaultProjectRootOf } from "../lib/diaryNotes";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
@@ -1065,6 +1066,11 @@ function FavoritesTreeRows({
           activePath === path;
         const renaming = renamingPath === path;
         const openComments = unresolvedCounts.get(path) ?? 0;
+        const projectRoot = vaultProjectRootOf(path);
+        const projectColor =
+          projectRoot && projectPropertiesByPath[projectRoot]?.color
+            ? projectPropertiesByPath[projectRoot]!.color
+            : "";
 
         return (
           <div key={`fav:${path}`} className="favorites-node">
@@ -1074,6 +1080,7 @@ function FavoritesTreeRows({
                 isDir ? "tree-folder-row" : "tree-file",
                 isProject ? "is-project" : "",
                 isSkills ? "is-skills" : "",
+                projectColor ? "has-project-color" : "",
                 selected || active ? "is-selected" : "",
                 renaming ? "is-renaming" : "",
               ]
@@ -1083,6 +1090,9 @@ function FavoritesTreeRows({
                 // +1 — align with first branch under vault root.
                 paddingLeft: `calc(var(--tree-pad-x) + ${depth + 1} * var(--tree-indent))`,
                 paddingRight: "var(--tree-pad-x)",
+                ...(projectColor
+                  ? ({ ["--project-color"]: projectColor } as CSSProperties)
+                  : null),
               }}
               data-vault-path={path || undefined}
               data-vault-isdir={isDir && path ? "1" : undefined}
@@ -1300,6 +1310,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       about: string;
       projectType: ProjectProperties["projectType"];
       learningLanguage: string;
+      color: string;
     }) => {
       if (!projectPropsTarget) return;
       setProjectPropsSaving(true);
@@ -1920,6 +1931,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         about={projectPropsTarget?.about ?? ""}
         projectType={projectPropsTarget?.projectType ?? ""}
         learningLanguage={projectPropsTarget?.learningLanguage ?? ""}
+        color={projectPropsTarget?.color ?? ""}
         saving={projectPropsSaving}
         onCancel={() => {
           if (projectPropsSaving) return;
@@ -2168,6 +2180,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   activePath === path;
                 const renaming = renamingPath === path;
                 const openComments = unresolvedCounts.get(path) ?? 0;
+                const projectRoot = vaultProjectRootOf(path);
+                const projectColor =
+                  projectRoot && projectPropertiesByPath[projectRoot]?.color
+                    ? projectPropertiesByPath[projectRoot]!.color
+                    : "";
 
                 // No <button>/<a> inside the row: Chromium (WebView2) refuses to
                 // start an HTML5 drag from form controls, which killed row drags
@@ -2194,6 +2211,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       isVault ? "is-vault-root" : "",
                       isProject ? "is-project" : "",
                       isSkills ? "is-skills" : "",
+                      projectColor ? "has-project-color" : "",
                       selected || active ? "is-selected" : "",
                       isDropTarget && treeDragging ? "is-drop-target" : "",
                       isDragging ? "is-dragging" : "",
@@ -2204,6 +2222,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                     style={{
                       paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
                       paddingRight: "var(--tree-pad-x)",
+                      ...(projectColor
+                        ? ({ ["--project-color"]: projectColor } as CSSProperties)
+                        : null),
                     }}
                     data-vault-path={path || undefined}
                     data-vault-isdir={isDir && path ? "1" : undefined}

@@ -621,6 +621,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setProjectPath: async (projectPath) => {
     const next = projectPath?.trim() || null;
     const project = await loadProjectContext(next);
+    const activeThreadId = get().activeThreadId;
     set({
       projectPath: next,
       projectAbout: project.about,
@@ -628,6 +629,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       projectLearningLanguage: project.learningLanguage,
       contextAnchorTokens: null,
       contextAnchorMessageCount: null,
+      threads: activeThreadId
+        ? get().threads.map((t) =>
+            t.id === activeThreadId ? { ...t, projectPath: next } : t,
+          )
+        : get().threads,
     });
     void get().persistActive();
   },

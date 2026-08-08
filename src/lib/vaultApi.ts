@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { normalizeMarkdown } from "./normalizeMarkdown";
 import { stampNoteTimestamps } from "./noteFrontmatter";
+import { normalizeProjectColor } from "./projectColors";
 
 export type TreeNode = {
   name: string;
@@ -537,6 +538,8 @@ export type ProjectProperties = {
   projectType: ProjectTypeId;
   /** ISO 639-1 code when type is language learning; otherwise empty. */
   learningLanguage: string;
+  /** Material swatch hex (`#rrggbb`); empty = unset. */
+  color: string;
 };
 
 export function emptyProjectProperties(path: string): ProjectProperties {
@@ -545,6 +548,23 @@ export function emptyProjectProperties(path: string): ProjectProperties {
     about: "",
     projectType: "",
     learningLanguage: "",
+    color: "",
+  };
+}
+
+function normalizeLoadedProjectProperties(
+  raw: ProjectProperties,
+): ProjectProperties {
+  const projectType = isProjectTypeId(raw.projectType) ? raw.projectType : "";
+  return {
+    path: raw.path,
+    about: raw.about ?? "",
+    projectType,
+    learningLanguage:
+      projectType === "languageLearning"
+        ? (raw.learningLanguage ?? "").trim()
+        : "",
+    color: normalizeProjectColor(raw.color),
   };
 }
 
@@ -554,15 +574,7 @@ export async function getProjectProperties(
   const raw = await invoke<ProjectProperties>("get_project_properties", {
     path,
   });
-  return {
-    path: raw.path,
-    about: raw.about ?? "",
-    projectType: isProjectTypeId(raw.projectType) ? raw.projectType : "",
-    learningLanguage:
-      raw.projectType === "languageLearning"
-        ? (raw.learningLanguage ?? "").trim()
-        : "",
-  };
+  return normalizeLoadedProjectProperties(raw);
 }
 
 export async function setProjectProperties(
@@ -571,6 +583,7 @@ export async function setProjectProperties(
     about: string;
     projectType: ProjectTypeId;
     learningLanguage: string;
+    color: string;
   },
 ): Promise<ProjectProperties> {
   const projectType = isProjectTypeId(props.projectType) ? props.projectType : "";
@@ -578,34 +591,20 @@ export async function setProjectProperties(
     projectType === "languageLearning"
       ? props.learningLanguage.trim()
       : "";
+  const color = normalizeProjectColor(props.color);
   const raw = await invoke<ProjectProperties>("set_project_properties", {
     path,
     about: props.about,
     projectType,
     learningLanguage,
+    color,
   });
-  return {
-    path: raw.path,
-    about: raw.about ?? "",
-    projectType: isProjectTypeId(raw.projectType) ? raw.projectType : "",
-    learningLanguage:
-      raw.projectType === "languageLearning"
-        ? (raw.learningLanguage ?? "").trim()
-        : "",
-  };
+  return normalizeLoadedProjectProperties(raw);
 }
 
 export async function listProjectProperties(): Promise<ProjectProperties[]> {
   const raw = await invoke<ProjectProperties[]>("list_project_properties");
-  return (raw ?? []).map((item) => ({
-    path: item.path,
-    about: item.about ?? "",
-    projectType: isProjectTypeId(item.projectType) ? item.projectType : "",
-    learningLanguage:
-      item.projectType === "languageLearning"
-        ? (item.learningLanguage ?? "").trim()
-        : "",
-  }));
+  return (raw ?? []).map(normalizeLoadedProjectProperties);
 }
 
 /** Durable agent memory entry (global or project-scoped). */

@@ -20,12 +20,14 @@ const diaryProps: Record<string, ProjectProperties> = {
     about: "",
     projectType: "diary",
     learningLanguage: "",
+    color: "",
   },
   Work: {
     path: "Work",
     about: "",
     projectType: "knowledgeBase",
     learningLanguage: "",
+    color: "",
   },
 };
 
@@ -175,6 +177,7 @@ describe("resolveDiaryProjectRoot", () => {
         about: "",
         projectType: "diary" as const,
         learningLanguage: "",
+        color: "",
       },
     };
     expect(

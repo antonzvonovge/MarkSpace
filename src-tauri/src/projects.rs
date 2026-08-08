@@ -16,6 +16,27 @@ const PROJECT_TYPE_KNOWLEDGE_BASE: &str = "knowledgeBase";
 const PROJECT_TYPE_LANGUAGE_LEARNING: &str = "languageLearning";
 const PROJECT_TYPE_DIARY: &str = "diary";
 
+/// Material Design 500 swatches (lowercase `#rrggbb`). Empty = unset.
+const PROJECT_COLORS: &[&str] = &[
+    "#f44336", // Red
+    "#e91e63", // Pink
+    "#9c27b0", // Purple
+    "#673ab7", // Deep purple
+    "#3f51b5", // Indigo
+    "#2196f3", // Blue
+    "#03a9f4", // Light blue
+    "#00bcd4", // Cyan
+    "#009688", // Teal
+    "#4caf50", // Green
+    "#8bc34a", // Light green
+    "#cddc39", // Lime
+    "#ffc107", // Amber
+    "#ff9800", // Orange
+    "#ff5722", // Deep orange
+    "#795548", // Brown
+    "#607d8b", // Blue grey
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectProperties {
@@ -29,6 +50,9 @@ pub struct ProjectProperties {
     /// ISO 639-1 code when `project_type` is `languageLearning`; otherwise empty.
     #[serde(default)]
     pub learning_language: String,
+    /// Optional Material swatch hex (`#rrggbb`); empty = unset.
+    #[serde(default)]
+    pub color: String,
 }
 
 fn normalize_project_type(raw: &str) -> String {
@@ -45,6 +69,18 @@ fn normalize_learning_language(project_type: &str, raw: &str) -> String {
         return String::new();
     }
     raw.trim().to_string()
+}
+
+fn normalize_project_color(raw: &str) -> String {
+    let trimmed = raw.trim().to_lowercase();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if PROJECT_COLORS.iter().any(|c| *c == trimmed) {
+        trimmed
+    } else {
+        String::new()
+    }
 }
 
 fn normalize_project_path(path: &str) -> Result<String, String> {
@@ -120,11 +156,15 @@ fn read_project_file(path: &Path) -> Option<ProjectProperties> {
             .and_then(|v| v.as_str())
             .unwrap_or(""),
     );
+    let color = normalize_project_color(
+        value.get("color").and_then(|v| v.as_str()).unwrap_or(""),
+    );
     Some(ProjectProperties {
         path: rel,
         about,
         project_type,
         learning_language,
+        color,
     })
 }
 
@@ -137,6 +177,7 @@ fn write_project_file(root: &Path, props: &ProjectProperties) -> Result<(), Stri
         "about": props.about,
         "projectType": props.project_type,
         "learningLanguage": props.learning_language,
+        "color": props.color,
     }))
     .map_err(|e| format!("Cannot serialize project properties: {e}"))?;
     fs::write(&file, format!("{body}\n"))
@@ -195,6 +236,7 @@ fn empty_props(path: String) -> ProjectProperties {
         about: String::new(),
         project_type: String::new(),
         learning_language: String::new(),
+        color: String::new(),
     }
 }
 
@@ -226,6 +268,7 @@ pub fn get_project_properties(
                 about: props.about,
                 project_type: props.project_type,
                 learning_language: props.learning_language,
+                color: props.color,
             };
             write_project_file(&root, &healed)?;
             return Ok(healed);
@@ -265,6 +308,7 @@ pub fn set_project_properties(
     about: String,
     project_type: String,
     learning_language: String,
+    color: String,
     state: State<VaultState>,
 ) -> Result<ProjectProperties, String> {
     let root = get_root(&state)?;
@@ -275,11 +319,13 @@ pub fn set_project_properties(
 
     let project_type = normalize_project_type(&project_type);
     let learning_language = normalize_learning_language(&project_type, &learning_language);
+    let color = normalize_project_color(&color);
     let props = ProjectProperties {
         path: rel,
         about: about.trim().to_string(),
         project_type,
         learning_language,
+        color,
     };
 
     // Drop any stale markers for this path (wrong hash filename).
@@ -321,6 +367,7 @@ pub fn remap_project_properties(root: &Path, from: &str, to: Option<&str>) -> Re
                     about: props.about,
                     project_type: props.project_type,
                     learning_language: props.learning_language,
+                    color: props.color,
                 };
                 let _ = write_project_file(root, &next);
             }
@@ -357,6 +404,7 @@ mod tests {
             about: "Notes about Alpha".into(),
             project_type: String::new(),
             learning_language: String::new(),
+            color: String::new(),
         };
         write_project_file(&root, &props).unwrap();
         let file = project_file_path(&root, "Alpha");
@@ -364,6 +412,45 @@ mod tests {
         assert_eq!(loaded.about, "Notes about Alpha");
         assert_eq!(loaded.project_type, "");
         assert_eq!(loaded.learning_language, "");
+        assert_eq!(loaded.color, "");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_and_read_color() {
+        let root = temp_vault();
+        let props = ProjectProperties {
+            path: "Alpha".into(),
+            about: String::new(),
+            project_type: String::new(),
+            learning_language: String::new(),
+            color: "#e91e63".into(),
+        };
+        write_project_file(&root, &props).unwrap();
+        let loaded = read_project_file(&project_file_path(&root, "Alpha")).unwrap();
+        assert_eq!(loaded.color, "#e91e63");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn invalid_color_cleared_on_read() {
+        let root = temp_vault();
+        let file = project_file_path(&root, "Alpha");
+        fs::create_dir_all(projects_dir(&root)).unwrap();
+        fs::write(
+            &file,
+            r##"{
+  "path": "Alpha",
+  "about": "",
+  "projectType": "",
+  "learningLanguage": "",
+  "color": "#ff00ff"
+}
+"##,
+        )
+        .unwrap();
+        let loaded = read_project_file(&file).unwrap();
+        assert_eq!(loaded.color, "");
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -375,6 +462,7 @@ mod tests {
             about: "Spanish notes".into(),
             project_type: PROJECT_TYPE_LANGUAGE_LEARNING.into(),
             learning_language: "es".into(),
+            color: String::new(),
         };
         write_project_file(&root, &props).unwrap();
         let loaded = read_project_file(&project_file_path(&root, "Alpha")).unwrap();
@@ -391,6 +479,7 @@ mod tests {
             about: "Personal diary".into(),
             project_type: PROJECT_TYPE_DIARY.into(),
             learning_language: "es".into(),
+            color: String::new(),
         };
         write_project_file(&root, &props).unwrap();
         let loaded = read_project_file(&project_file_path(&root, "Journal")).unwrap();
@@ -439,6 +528,7 @@ mod tests {
                 about: "A".into(),
                 project_type: PROJECT_TYPE_KNOWLEDGE_BASE.into(),
                 learning_language: String::new(),
+                color: "#2196f3".into(),
             },
         )
         .unwrap();
@@ -451,6 +541,7 @@ mod tests {
         assert_eq!(loaded.path, "Gamma");
         assert_eq!(loaded.about, "A");
         assert_eq!(loaded.project_type, PROJECT_TYPE_KNOWLEDGE_BASE);
+        assert_eq!(loaded.color, "#2196f3");
         assert!(!project_file_path(&root, "Alpha").exists());
 
         fs::remove_dir_all(root.join("Gamma")).unwrap();
@@ -469,6 +560,7 @@ mod tests {
                 about: "A".into(),
                 project_type: String::new(),
                 learning_language: String::new(),
+                color: String::new(),
             },
         )
         .unwrap();

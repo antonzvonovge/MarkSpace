@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type CSSProperties } from "react";
 import { FcDocument, FcLink, FcPlanner, FcReading } from "react-icons/fc";
 import {
   useVaultStore,
@@ -9,7 +9,7 @@ import {
   type EditorTab,
 } from "../store/vaultStore";
 import { documentKind } from "../lib/vaultApi";
-import { isUnderDiaryProject } from "../lib/diaryNotes";
+import { isUnderDiaryProject, vaultProjectRootOf } from "../lib/diaryNotes";
 import { useChatUiStore } from "../store/chatUiStore";
 import { useFocusUiStore } from "../store/focusUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
@@ -108,10 +108,18 @@ function TabItem({
   const openNote = useVaultStore((s) => s.openNote);
   const pinTab = useVaultStore((s) => s.pinTab);
   const closeTab = useVaultStore((s) => s.closeTab);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
   const reorder = bindReorder(index);
 
   const active = activePath === tab.path;
   const virtual = isVirtualTab(tab);
+  const projectRoot = virtual ? null : vaultProjectRootOf(tab.path);
+  const projectColor =
+    projectRoot && projectPropertiesByPath[projectRoot]?.color
+      ? projectPropertiesByPath[projectRoot]!.color
+      : "";
   const tabTitle = isGraphTab(tab)
     ? "Tag graph"
     : isSettingsTab(tab)
@@ -124,10 +132,16 @@ function TabItem({
         "editor-tab",
         active ? "is-active" : "",
         tab.preview ? "is-preview" : "",
+        projectColor ? "has-project-color" : "",
         reorder.className,
       ]
         .filter(Boolean)
         .join(" ")}
+      style={
+        projectColor
+          ? ({ ["--tab-project-color"]: projectColor } as CSSProperties)
+          : undefined
+      }
       title={tabTitle}
       draggable={reorder.draggable}
       onDragStart={reorder.onDragStart}

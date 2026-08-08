@@ -9,6 +9,8 @@ export type ChatThreadMeta = {
   updatedAt: number;
   mode: ChatMode;
   modelId: string;
+  /** Vault project path (first-level folder), or omit/null for none. */
+  projectPath?: string | null;
 };
 
 export type ChatThreadFile = {

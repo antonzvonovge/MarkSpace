@@ -18,10 +18,11 @@ In MarkSpace, a **project** is a first-level folder directly under the vault roo
 
 Editable via tree context menu **Project properties…** → dialog.
 
-- Stored in `.markspace/projects/<sha256(path)>.json` (`path`, `about`, `projectType`, `learningLanguage`).
+- Stored in `.markspace/projects/<sha256(path)>.json` (`path`, `about`, `projectType`, `learningLanguage`, `color`).
 - **`about`** — UI label **What is this project about**.
 - **`projectType`** — `""` (None) | `knowledgeBase` | `languageLearning` | `diary`. Default empty.
 - **`learningLanguage`** — ISO 639-1 code (same catalog as native language prefs); only meaningful when `projectType` is `languageLearning` (cleared otherwise). UI label **Learning language**.
+- **`color`** — optional Material 500 hex from a fixed palette (`""` = unset). Used for graph note nodes, document tab strips, tree/chat accents. Catalog: `src/lib/projectColors.ts`.
 - APIs: `get_project_properties` / `set_project_properties` (Rust `projects.rs`); TS `getProjectProperties` / `setProjectProperties`.
 - Remapped on rename/move/delete like favorites.
 

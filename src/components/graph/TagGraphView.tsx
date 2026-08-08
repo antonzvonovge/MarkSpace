@@ -18,6 +18,7 @@ import {
 } from "../../lib/settingsStore";
 import type { TagGraphData, TagGraphNode } from "../../lib/tagGraph";
 import { listVaultProjects } from "../../lib/vaultApi";
+import { vaultProjectRootOf } from "../../lib/diaryNotes";
 import { useVaultStore } from "../../store/vaultStore";
 import { GraphControls } from "./GraphControls";
 import {
@@ -135,17 +136,37 @@ function nodeSize(node: TagGraphNode): number {
   return Math.min(17, 6 + Math.sqrt(Math.max(1, node.degree)) * 1.8);
 }
 
+/** Non-empty project path → Material hex. */
+type ProjectColorMap = Record<string, string>;
+
+function resolveNoteColor(
+  key: string,
+  untagged: boolean | undefined,
+  theme: GraphTheme,
+  projectColors: ProjectColorMap,
+): string {
+  const root = vaultProjectRootOf(key);
+  const projectColor = root ? projectColors[root] : undefined;
+  if (projectColor) {
+    return untagged ? mixColors(projectColor, theme.muted, 0.62) : projectColor;
+  }
+  return untagged ? theme.noteQuiet : theme.note;
+}
+
 function applyThemeColors(
   graph: Graph<NodeAttrs, EdgeAttrs>,
   theme: GraphTheme,
+  projectColors: ProjectColorMap,
 ): void {
   graph.forEachNode((id, attrs) => {
     if (attrs.kind === "tag") {
       graph.setNodeAttribute(id, "color", theme.tag);
-    } else if (attrs.untagged) {
-      graph.setNodeAttribute(id, "color", theme.noteQuiet);
     } else {
-      graph.setNodeAttribute(id, "color", theme.note);
+      graph.setNodeAttribute(
+        id,
+        "color",
+        resolveNoteColor(attrs.key, attrs.untagged, theme, projectColors),
+      );
     }
   });
   graph.forEachEdge((id) => {
@@ -163,6 +184,7 @@ function syncGraphology(
   data: TagGraphData,
   theme: GraphTheme,
   previousPositions: Map<string, { x: number; y: number }>,
+  projectColors: ProjectColorMap,
 ): void {
   const nextIds = new Set(data.nodes.map((n) => n.id));
   const nextEdgeIds = new Set(data.edges.map((e) => e.id));
@@ -194,7 +216,15 @@ function syncGraphology(
       graph.addNode(node.id, {
         label: node.label,
         size: nodeSize(node),
-        color: theme.note,
+        color:
+          node.kind === "tag"
+            ? theme.tag
+            : resolveNoteColor(
+                node.key,
+                node.untagged,
+                theme,
+                projectColors,
+              ),
         kind: node.kind,
         key: node.key,
         type,
@@ -237,7 +267,7 @@ function syncGraphology(
   } catch {
     /* tiny / empty graphs */
   }
-  applyThemeColors(graph, theme);
+  applyThemeColors(graph, theme, projectColors);
 }
 
 /**
@@ -392,6 +422,9 @@ export function TagGraphView() {
   const openNote = useVaultStore((s) => s.openNote);
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const tree = useVaultStore((s) => s.tree);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<Graph<NodeAttrs, EdgeAttrs> | null>(null);
   const sigmaRef = useRef<Sigma<NodeAttrs, EdgeAttrs> | null>(null);
@@ -450,6 +483,13 @@ export function TagGraphView() {
   const [themeTick, setThemeTick] = useState(0);
 
   const projects = useMemo(() => listVaultProjects(tree), [tree]);
+  const projectColors = useMemo(() => {
+    const map: ProjectColorMap = {};
+    for (const [path, props] of Object.entries(projectPropertiesByPath)) {
+      if (props.color) map[path] = props.color;
+    }
+    return map;
+  }, [projectPropertiesByPath]);
   const graphSettings = useMemo<GraphUiSettings>(
     () => ({
       tagsOnly,
@@ -965,7 +1005,7 @@ export function TagGraphView() {
     const nextIds = new Set(data.nodes.map((n) => n.id));
 
     const apply = () => {
-      syncGraphology(graph, data, theme, positionsRef.current);
+      syncGraphology(graph, data, theme, positionsRef.current, projectColors);
 
       const signature = `${graph.order}:${graph.size}`;
       const structureChanged = signature !== signatureRef.current;
@@ -1000,7 +1040,7 @@ export function TagGraphView() {
         color: theme.label,
       });
       sigma.setSetting("labelRenderedSizeThreshold", labelThreshold);
-      applyThemeColors(graph, theme);
+      applyThemeColors(graph, theme, projectColors);
       sigma.refresh();
     };
 
@@ -1027,7 +1067,15 @@ export function TagGraphView() {
     apply();
     // labelThreshold / spread have dedicated effects; keep this tied to data/theme.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, theme, glOk, settingsReady, rebuildWorker, settleLayout]);
+  }, [
+    data,
+    theme,
+    projectColors,
+    glOk,
+    settingsReady,
+    rebuildWorker,
+    settleLayout,
+  ]);
 
   // Live control updates.
   useEffect(() => {
@@ -1052,13 +1100,13 @@ export function TagGraphView() {
     themeRef.current = theme;
     const graph = graphRef.current;
     if (!graph) return;
-    applyThemeColors(graph, theme);
+    applyThemeColors(graph, theme, projectColors);
     sigmaRef.current?.setSetting("labelColor", {
       attribute: "labelColor",
       color: theme.label,
     });
     sigmaRef.current?.refresh();
-  }, [theme]);
+  }, [theme, projectColors]);
 
   const onToggleLayout = () => {
     if (running) stopLayout();
