@@ -295,7 +295,11 @@ function App() {
       }
       if (e.shiftKey && code === "KeyL") {
         e.preventDefault();
-        if (useFocusUiStore.getState().active) return;
+        if (useFocusUiStore.getState().active) {
+          useFocusUiStore.getState().deactivate();
+          useChatUiStore.getState().setOpen(true);
+          return;
+        }
         toggleChat();
       }
     };

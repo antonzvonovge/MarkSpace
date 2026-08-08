@@ -153,16 +153,18 @@ function TabItem({
         if (e.button !== 0) return;
         if ((e.target as HTMLElement).closest(".editor-tab-close")) return;
         // Activate on press (VS Code-style) so HTML5 DnD does not eat the click.
-        if (e.detail > 1) e.preventDefault();
+        // Pin preview tabs on the second press of a double-click here — not in
+        // onDoubleClick — because preventDefault() cancels the dblclick event.
+        if (e.detail > 1) {
+          e.preventDefault();
+          if (!virtual) pinTab(tab.path);
+          return;
+        }
         void openNote(tab.path, { preview: tab.preview });
       }}
       onClick={() => {
         // Swallow only the spurious post-drop click; activation is on mousedown.
         reorder.shouldIgnoreClick();
-      }}
-      onDoubleClick={(e) => {
-        e.preventDefault();
-        if (!virtual) pinTab(tab.path);
       }}
       onAuxClick={(e) => {
         if (e.button === 1) {
@@ -212,11 +214,14 @@ export function EditorChrome() {
   const closeOtherTabs = useVaultStore((s) => s.closeOtherTabs);
   const closeTabsToTheRight = useVaultStore((s) => s.closeTabsToTheRight);
   const sidebarOpen = useSidebarUiStore((s) => s.open);
+  const setSidebarOpen = useSidebarUiStore((s) => s.setOpen);
   const toggleSidebar = useSidebarUiStore((s) => s.toggle);
   const chatOpen = useChatUiStore((s) => s.open);
+  const setChatOpen = useChatUiStore((s) => s.setOpen);
   const toggleChat = useChatUiStore((s) => s.toggle);
   const focusActive = useFocusUiStore((s) => s.active);
   const toggleFocus = useFocusUiStore((s) => s.toggle);
+  const deactivateFocus = useFocusUiStore((s) => s.deactivate);
   const [contextMenu, setContextMenu] = useState<TabContextMenuState | null>(
     null,
   );
@@ -240,8 +245,14 @@ export function EditorChrome() {
         title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
         aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
         aria-pressed={sidebarOpen}
-        disabled={focusActive}
-        onClick={() => toggleSidebar()}
+        onClick={() => {
+          if (focusActive) {
+            deactivateFocus();
+            setSidebarOpen(true);
+            return;
+          }
+          toggleSidebar();
+        }}
       >
         {/* vscode-codicons: layout-sidebar-left / layout-sidebar-left-off */}
         <svg
@@ -301,8 +312,14 @@ export function EditorChrome() {
         title={chatOpen ? "Hide chat" : "Show chat"}
         aria-label={chatOpen ? "Hide chat" : "Show chat"}
         aria-pressed={chatOpen}
-        disabled={focusActive}
-        onClick={() => toggleChat()}
+        onClick={() => {
+          if (focusActive) {
+            deactivateFocus();
+            setChatOpen(true);
+            return;
+          }
+          toggleChat();
+        }}
       >
         {/* vscode-codicons: layout-sidebar-right / layout-sidebar-right-off */}
         <svg

@@ -4,6 +4,7 @@
   --editor-surface: #ffffff;
   --editor-gutter: #fafafa;
   --chrome-muted: #ececec;
+  --editor-chrome-height: 35px;
   --sidebar: #f8f8f8;
   --sidebar-muted: #6e6e6e;
   --sidebar-text: #333333;
@@ -306,7 +307,8 @@ select {
 
 .shell-edge-hit {
   position: absolute;
-  top: 0;
+  /* Below editor chrome so sidebar/chat toggles do not trigger peek. */
+  top: var(--editor-chrome-height, 35px);
   bottom: 0;
   width: 20px;
   z-index: 40;
@@ -1976,11 +1978,14 @@ select {
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
-  height: 35px;
+  height: var(--editor-chrome-height, 35px);
   background: var(--chrome-muted);
   border-bottom: 1px solid var(--line);
   user-select: none;
   -webkit-user-select: none;
+  /* Above shell edge peek hits so panel toggles stay clickable/hoverable. */
+  position: relative;
+  z-index: 41;
 }
 
 .editor-chrome .editor-tabbar {
@@ -3068,6 +3073,25 @@ select {
   /* font-size x line-height stays ~1.65em so a bigger dot keeps the line height. */
   font-size: 1.5em;
   line-height: 1.1;
+}
+
+/* Larger checkboxes in Live (BlockNote default is 12×24px). Size in em
+   tracks --live-font-size like headings and list markers. */
+.editor-canvas .bn-block-content[data-content-type="checkListItem"] > div:has(> input) {
+  display: flex;
+  align-items: center;
+  height: 1.65em;
+}
+
+.editor-canvas .bn-block-content[data-content-type="checkListItem"] > div > input {
+  width: 1.25em;
+  height: 1.25em;
+  margin-left: 0.15em;
+  margin-right: 0.5em;
+  margin-block: 0;
+  /* Soft dusty magenta — full --accent is too loud as a solid fill. */
+  accent-color: color-mix(in srgb, var(--accent) 42%, var(--muted));
+  cursor: pointer;
 }
 
 /* Sizes are in em so headings scale with the live editor font setting,
