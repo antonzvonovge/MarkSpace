@@ -54,8 +54,31 @@ describe("markdownFormat", () => {
     expect(rules).toMatch(/Nested lists/i);
     expect(rules).toMatch(/2 spaces/i);
     expect(rules).toMatch(/3 spaces/i);
+    expect(rules).toMatch(/indented/i);
+    expect(rules).toMatch(/flush-left|flush left/i);
     expect(MARKDOWN_FORMAT_GUIDE).toMatch(/##\s+Lists/i);
     expect(MARKDOWN_FORMAT_GUIDE).toContain("  * nested");
     expect(MARKDOWN_FORMAT_GUIDE).toContain("   * nested");
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/Bold labels in bullets/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toContain(
+      "Indented paragraph — still part of this bullet",
+    );
+  });
+
+  it("forbids ASCII box tables in favor of GFM pipes", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/GFM pipe tables/i);
+    expect(rules).toMatch(/ASCII|box-drawing/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/##\s+Tables/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/Do \*\*not\*\* draw tables with ASCII/i);
+  });
+
+  it("prefers mermaid/plantuml/drawio over ASCII diagrams", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/mermaid/i);
+    expect(rules).toMatch(/plantuml/i);
+    expect(rules).toMatch(/\.drawio/i);
+    expect(rules).toMatch(/ASCII|box-drawing/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/Do \*\*not\*\* draw diagrams with ASCII/i);
   });
 });

@@ -10,10 +10,10 @@ guide. Call `read_format_guide` for the full text when unsure.
 - In **chat replies**, reference vault notes with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — all render as a clickable file link that opens the note. Mention a note this way whenever you create, open, or cite one.
 - Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
-- Tables: use GFM pipe tables. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
+- Tables: use GFM pipe tables (`| col |`). Never draw ASCII / box-drawing tables (`+---`, `│`, monospace grids) and never put a table inside a plain-text / untitled code fence — those stay unrendered junk. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
-- Nested lists: use `*` bullets (preferred over `-`). Indent children with **2 spaces** under a `*` parent (`  * child`) and **3 spaces** under a numbered item (`   * child`). Never put a blank line between a parent item and its nested children — that breaks nesting. A blank line is only for a list item followed by a paragraph. When editing, preserve the note’s existing list markers and indent depth.
-- Diagrams in notes: fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml `. Chat replies may use the same fences (rendered inline).
+- Nested lists: use `*` bullets (preferred over `-`). Indent children with **2 spaces** under a `*` parent (`  * child`) and **3 spaces** under a numbered item (`   * child`). Never put a blank line between a parent item and its nested children — that breaks nesting. Bold labels (`* **Label:** …`): put a **short** body on the same line; for a longer explanation after the label, put it in a **indented** continuation paragraph (2 spaces under `*`, 3 under `1.`) so it stays inside the list item — never a flush-left paragraph (that exits the list). When editing, preserve the note’s existing list markers and indent depth.
+- Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. In chat and notes use fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml ` for quick sketches. For richer architecture (colors, swimlanes, ArchiMate, free layout) create or edit a `.drawio` and embed with `![[path/diagram.drawio]]`.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
@@ -116,7 +116,7 @@ Legacy HTML `<div data-drawio-src="…">` may still round-trip to `![[…]]`; pr
 
 ## Tables
 
-- Uncolored tables: GFM pipe tables
+- Uncolored tables: **GFM pipe tables** only (rendered in Live and in chat).
 
 ```md
 | A | B |
@@ -124,6 +124,7 @@ Legacy HTML `<div data-drawio-src="…">` may still round-trip to `![[…]]`; pr
 | 1 | 2 |
 ```
 
+- Do **not** draw tables with ASCII / box-drawing characters (`+---+`, `│`, spaced columns in a monospace block) and do **not** wrap a table in a plain / untitled fenced code block — it will show as a “Plain Text” code card instead of a table.
 - When any cell has a non-default background or text color, the note stores a full HTML `<table>` with `data-background-color` and/or `data-text-color` on cells. Do not convert those back to GFM pipes or you will lose colors.
 
 ## Diagrams
@@ -143,7 +144,11 @@ A -> B
 ```
 ````
 
-Language tags: `mermaid`, `plantuml`, or `puml`. Prefer these for sketches in chat; use Draw.io tools only for `.drawio` vault files.
+Language tags: `mermaid`, `plantuml`, or `puml`.
+
+- Use Mermaid / PlantUML for **quick** flowcharts, sequences, and sketches (rendered inline in chat and Live).
+- For **richer** diagrams (colors, groups/swimlanes, ArchiMate, labels, free layout) use a vault **Draw.io** file (`.drawio`) via diagram tools, then embed `![[path/diagram.drawio]]` (optional width `|480`).
+- Do **not** draw diagrams with ASCII / box-drawing characters in a plain / untitled code fence — same problem as ASCII tables: they stay a “Plain Text” card.
 
 ## Standard blocks
 
@@ -177,12 +182,19 @@ Prefer `*` for unordered lists (CommonMark treats `*` and `-` the same; MarkSpac
 | `1. item` | 3 spaces | `   * nested` |
 
 - Do **not** insert a blank line between a parent and its nested children — parsers treat that as ending the list / flattening hierarchy.
-- A blank line **after** a list item is correct when the next block is a paragraph (not a child bullet).
+- **Bold labels in bullets:**
+  - Short body → same line: `* **Label:** short explanation.`
+  - Longer body after the label → blank line, then an **indented** continuation (2 spaces under `*`, 3 under `1.`) so the text stays in the list item.
+  - Never put a flush-left paragraph under the label — Markdown treats that as outside the list.
+- A blank line **after the whole list** is correct before a following top-level paragraph.
 - Do not mix 4-space / tab indents for nesting; stick to the 2-space / 3-space pattern above.
 - When editing an existing note, keep its markers (`*` vs `-`) and indent depths; do not “normalize” nested lists into flat ones.
 
 ```md
-* **Topic label:**
+* **Short topic:** body stays on the same line.
+* **Longer topic:**
+
+  Indented paragraph — still part of this bullet, not a top-level block.
   * Nested detail under the topic.
   * Another nested detail.
 
@@ -191,9 +203,17 @@ Prefer `*` for unordered lists (CommonMark treats `*` and `-` the same; MarkSpac
    * Condition B.
 2. Second numbered step (sibling of 1, not nested).
 
-* **Next topic:** followed by a paragraph after a blank line.
+* **Multi-paragraph item:** first paragraph on this line.
 
-Paragraph that continues under the previous bullet’s topic — not a nested list item.
+  Indented second paragraph still belongs to this bullet.
+```
+
+Wrong (body drops out of the list):
+
+```md
+* **Topic label:**
+
+Flush-left paragraph — looks nested, but Markdown treats it as outside the list.
 ```
 
 ## Math

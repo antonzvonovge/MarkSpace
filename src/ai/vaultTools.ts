@@ -860,7 +860,7 @@ export function buildVaultTools(
     }),
     edit_note: tool({
       description:
-        "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note. When inserting or rewriting lists, keep nested `*` / `1.` indentation (2 spaces under `*`, 3 under numbered) and never insert a blank line between a parent and its nested children.",
+        "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note. When inserting or rewriting lists, keep nested `*` / `1.` indentation (2 spaces under `*`, 3 under numbered) and never insert a blank line between a parent and its nested children. For `* **Label:** …`, short body on the same line; longer body after a blank line must be indented (continuation), never flush left.",
       inputSchema: z.object({
         path: z.string().describe("Vault-relative path"),
         old_string: z
@@ -1489,7 +1489,7 @@ export function buildSystemPrompt(opts: {
     "When the user asks to open, show, or switch to a note/diagram/PDF in the editor, call open_note (preview tab by default; for PDFs pass page from search hits). Prefer open_note to show work; still use read_note/get_active_note to read contents.",
     "MarkSpace Markdown is a dialect of standard Markdown. Follow these rules exactly; call read_format_guide when unsure or before writing non-trivial markdown:",
     ...markdownCoreRules(),
-    "In chat replies you may include diagrams as fenced code blocks: ```mermaid for Mermaid, or ```plantuml / ```puml for PlantUML. The UI renders them inline. Prefer these for architecture/flow sketches in answers; use Draw.io tools only for .drawio vault files.",
+    "In chat replies you may include diagrams as fenced ```mermaid or ```plantuml / ```puml (rendered inline). Prefer those over ASCII art. For richer architecture diagrams in the vault, create/edit a .drawio (mutate_diagram / create_diagram) and embed ![[path.drawio]] — not a monospace box drawing.",
   ];
   if (opts.mode === "agent") {
     lines.push(
@@ -1499,7 +1499,7 @@ export function buildSystemPrompt(opts: {
       "Move files or folders between vault folders with move_path. Markdown note assets referenced from .assets are migrated automatically.",
       "Delete files or folders with delete_path only when the user clearly asks to delete/remove them (folders are recursive). Use delete_folder_if_empty to remove a folder only if it is vacant.",
       "When reading long notes: use read_note/get_active_note with start_line and end_line instead of loading the whole file.",
-      "Preserve existing Markdown structure; keep one empty line between paragraphs in any text you insert or rewrite. Nested lists: prefer `*`, indent children with 2 spaces under `*` and 3 under `1.`; never blank-line between parent and nested children; do not flatten multilevel lists.",
+      "Preserve existing Markdown structure; keep one empty line between paragraphs in any text you insert or rewrite. Nested lists: prefer `*`, indent children with 2 spaces under `*` and 3 under `1.`; never blank-line between parent and nested children; do not flatten multilevel lists. Bold list labels: short body on the same line; longer body after the label must be an indented continuation, never a flush-left paragraph. Tables: GFM pipe tables only — never ASCII/box-drawing tables in code fences.",
       "For .drawio files: use mutate_diagram for batch edits (never many parallel single updates — they race). Use temp_id on new nodes and reference them from add_edges / child parent in the same call. Never raw edit_note on XML.",
       "For .pdf files: use set_file_tags / get_file_tags for document tags (sidecar in .markspace/filemeta). Never edit_note/write_note on PDFs.",
       "For .mdlnks files: use add_link / update_link / remove_link / reorder_links / set_links_filter (never raw edit_note on the links text format).",

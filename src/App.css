@@ -1786,6 +1786,9 @@ select {
   background: var(--editor-surface);
   user-select: none;
   -webkit-user-select: none;
+  /* Above shell edge peek hits so outline/comments toggles stay clickable. */
+  position: relative;
+  z-index: 41;
 }
 
 .document-toolbar-path {
@@ -3655,6 +3658,12 @@ select {
   padding: 0.4rem 0.65rem;
   border-bottom: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.08));
   background: var(--panel-bg, var(--editor-surface));
+}
+
+/* Same stacking as .document-toolbar / .editor-chrome vs shell edge peek. */
+.pdf-viewer__toolbar {
+  position: relative;
+  z-index: 41;
 }
 
 /* Only direct toolbar controls — not tag chips / add / remove inside __tags. */
