@@ -62,8 +62,9 @@ export function DocumentToolbar({
       ? formatToolbarPath(activePath)
       : null;
 
-  const showPaneToggles =
-    viewMode === "live" && (showOutlineToggle || showCommentsToggle);
+  const liveMode = viewMode === "live";
+  const showOutlineBtn = liveMode && showOutlineToggle;
+  const showCommentsBtn = liveMode && showCommentsToggle;
 
   const commentsBadge =
     unresolvedCommentCount > 99
@@ -74,6 +75,22 @@ export function DocumentToolbar({
 
   return (
     <div className="document-toolbar">
+      {showOutlineBtn ? (
+        <button
+          type="button"
+          className={
+            showOutline
+              ? "document-toolbar-btn is-outline is-active"
+              : "document-toolbar-btn is-outline"
+          }
+          title="Outline"
+          aria-label="Toggle outline"
+          aria-pressed={showOutline}
+          onClick={() => toggleOutline()}
+        >
+          <OutlineIcon />
+        </button>
+      ) : null}
       {pathLabel ? (
         <div className="document-toolbar-path" title={activePath ?? undefined}>
           {pathLabel}
@@ -82,61 +99,6 @@ export function DocumentToolbar({
         <div className="document-toolbar-path is-empty" />
       )}
       <div className="document-toolbar-actions">
-        {showPaneToggles ? (
-          <div
-            className="document-toolbar-pane-toggles"
-            role="group"
-            aria-label="Document panes"
-          >
-            {showOutlineToggle ? (
-              <button
-                type="button"
-                className={
-                  showOutline
-                    ? "document-toolbar-btn is-active"
-                    : "document-toolbar-btn"
-                }
-                title="Outline"
-                aria-label="Toggle outline"
-                aria-pressed={showOutline}
-                onClick={() => toggleOutline()}
-              >
-                <OutlineIcon />
-              </button>
-            ) : null}
-            {showCommentsToggle ? (
-              <button
-                type="button"
-                className={
-                  showComments
-                    ? "document-toolbar-btn is-active has-badge"
-                    : commentsBadge
-                      ? "document-toolbar-btn has-badge"
-                      : "document-toolbar-btn"
-                }
-                title={
-                  commentsBadge
-                    ? `Comments (${unresolvedCommentCount} open)`
-                    : "Comments"
-                }
-                aria-label={
-                  commentsBadge
-                    ? `Toggle comments, ${unresolvedCommentCount} open`
-                    : "Toggle comments"
-                }
-                aria-pressed={showComments}
-                onClick={() => toggleComments()}
-              >
-                <CommentsIcon />
-                {commentsBadge ? (
-                  <span className="document-toolbar-badge" aria-hidden="true">
-                    {commentsBadge}
-                  </span>
-                ) : null}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
         <div
           className="view-mode-switch"
           role="radiogroup"
@@ -161,6 +123,37 @@ export function DocumentToolbar({
           ))}
         </div>
       </div>
+      {showCommentsBtn ? (
+        <button
+          type="button"
+          className={
+            showComments
+              ? "document-toolbar-btn is-comments is-active has-badge"
+              : commentsBadge
+                ? "document-toolbar-btn is-comments has-badge"
+                : "document-toolbar-btn is-comments"
+          }
+          title={
+            commentsBadge
+              ? `Comments (${unresolvedCommentCount} open)`
+              : "Comments"
+          }
+          aria-label={
+            commentsBadge
+              ? `Toggle comments, ${unresolvedCommentCount} open`
+              : "Toggle comments"
+          }
+          aria-pressed={showComments}
+          onClick={() => toggleComments()}
+        >
+          <CommentsIcon />
+          {commentsBadge ? (
+            <span className="document-toolbar-badge" aria-hidden="true">
+              {commentsBadge}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
     </div>
   );
 }

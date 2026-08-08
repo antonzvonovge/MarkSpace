@@ -1760,12 +1760,12 @@ select {
 
 .document-toolbar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
   height: 38px;
-  padding: 0 10px;
+  padding: 0;
   border-top: 0;
   border-bottom: 1px solid var(--line);
   background: var(--editor-surface);
@@ -1776,13 +1776,19 @@ select {
 .document-toolbar-path {
   flex: 1;
   min-width: 0;
+  align-self: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding-left: 10px;
   font-size: 0.92rem;
   font-weight: 500;
   color: var(--muted);
   letter-spacing: 0.01em;
+}
+
+.document-toolbar:has(.document-toolbar-btn.is-outline) .document-toolbar-path {
+  padding-left: 8px;
 }
 
 .document-toolbar-path.is-empty {
@@ -1795,49 +1801,56 @@ select {
   justify-content: flex-end;
   gap: 8px;
   flex-shrink: 0;
+  padding-right: 10px;
 }
 
-.document-toolbar-pane-toggles {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: rgba(28, 36, 40, 0.05);
-}
-
-:root[data-theme="dark"] .document-toolbar-pane-toggles {
-  background: rgba(231, 238, 242, 0.06);
+.document-toolbar:has(.document-toolbar-btn.is-comments) .document-toolbar-actions {
+  padding-right: 8px;
 }
 
 .document-toolbar-btn {
   position: relative;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
 }
 
+.document-toolbar-btn.is-outline {
+  border-right: 1px solid var(--line);
+}
+
+.document-toolbar-btn.is-comments {
+  border-left: 1px solid var(--line);
+}
+
 .document-toolbar-btn:hover {
-  background: var(--sidebar-hover);
+  background: rgba(0, 0, 0, 0.06);
   color: var(--text);
+}
+
+:root[data-theme="dark"] .document-toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .document-toolbar-btn.is-active {
   color: var(--accent);
-  background: rgba(203, 17, 171, 0.14);
+  background: var(--sidebar-active);
 }
 
 .document-toolbar-badge {
   position: absolute;
-  top: -3px;
-  right: -3px;
+  top: 4px;
+  right: 4px;
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
