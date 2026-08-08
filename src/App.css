@@ -3106,49 +3106,82 @@ select {
   cursor: pointer;
 }
 
-/* Sizes are in em so headings scale with the live editor font setting,
-   not with the UI font size. */
+/* BlockNote sizes headings via --level / --prev-level (defaults 3em / 2em / …),
+   not plain font-size. Override those vars so sizes stick. */
 .editor-canvas [data-content-type="heading"] {
   letter-spacing: -0.015em;
   line-height: 1.3;
+  --level: 2.2em;
+  padding-bottom: 0.55em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="1"] {
   color: var(--heading-1);
-  font-size: 1.35em;
+  --level: 2.2em;
   font-weight: 700;
   margin-top: 0.6em;
+  padding-bottom: 0.65em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="2"] {
-  font-size: 1.3em;
+  --level: 2em;
   font-weight: 680;
   margin-top: 0.55em;
+  padding-bottom: 0.6em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="3"] {
-  font-size: 1.15em;
+  --level: 1.3em;
   font-weight: 650;
   margin-top: 0.5em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="4"] {
-  font-size: 1.05em;
+  --level: 1em;
   font-weight: 650;
   margin-top: 0.45em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="5"] {
-  font-size: 1em;
+  --level: 0.9em;
   font-weight: 620;
   margin-top: 0.4em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="6"] {
-  font-size: 0.95em;
+  --level: 0.8em;
   font-weight: 620;
   margin-top: 0.4em;
   color: var(--muted);
+}
+
+.editor-canvas [data-prev-level="1"] {
+  --prev-level: 2.2em;
+}
+
+.editor-canvas [data-prev-level="2"] {
+  --prev-level: 2em;
+}
+
+.editor-canvas [data-prev-level="3"] {
+  --prev-level: 1.3em;
+}
+
+.editor-canvas [data-prev-level="4"] {
+  --prev-level: 1em;
+}
+
+.editor-canvas [data-prev-level="5"] {
+  --prev-level: 0.9em;
+}
+
+.editor-canvas [data-prev-level="6"] {
+  --prev-level: 0.8em;
+}
+
+.editor-canvas [data-content-type="divider"] hr {
+  border-color: var(--line);
+  margin: 1.1em 0 0.5em;
 }
 
 .editor-canvas [data-content-type="table"] table {
@@ -3203,6 +3236,7 @@ select {
 .editor-canvas blockquote {
   border-left: 3px solid rgba(203, 17, 171, 0.45);
   color: var(--muted);
+  margin: 0.85em 0;
 }
 
 /* Light syntax-highlighted code blocks (override BlockNote’s #161616 chrome). */
@@ -3211,6 +3245,7 @@ select {
   background: #f6f8fa;
   border: 1px solid var(--line);
   border-radius: 8px;
+  margin: 0.85em 0;
 }
 
 .editor-canvas .bn-block-content[data-content-type="codeBlock"] > pre {
@@ -3347,6 +3382,10 @@ select {
   max-width: 100%;
 }
 
+.editor-canvas .bn-block-content[data-content-type="image"] {
+  margin: 0.85em 0;
+}
+
 .editor-canvas .bn-visual-media-wrapper {
   max-width: 100% !important;
 }
@@ -3388,7 +3427,7 @@ select {
 
 .diagram-block {
   width: 100%;
-  margin: 0.35em 0;
+  margin: 0.85em 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--editor-surface);
@@ -3879,7 +3918,7 @@ select {
 }
 
 .drawio-embed {
-  margin: 0.35rem 0;
+  margin: 0.85em 0;
 }
 
 .drawio-embed__src {
