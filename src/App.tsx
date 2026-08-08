@@ -313,6 +313,19 @@ function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        if (e.code === "ArrowLeft") {
+          e.preventDefault();
+          void useVaultStore.getState().goBack();
+          return;
+        }
+        if (e.code === "ArrowRight") {
+          e.preventDefault();
+          void useVaultStore.getState().goForward();
+          return;
+        }
+      }
+
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
 

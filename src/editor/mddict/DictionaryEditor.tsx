@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MdAutoAwesome } from "react-icons/md";
+import {
+  applyGapFill,
+  entryNeedsGapFill,
+  fillDictGaps,
+} from "../../ai/fillDictGaps";
+import { credentialsFromSettings } from "../../ai/languageModel";
 import {
   AddWordDialog,
   type AddWordDialogValue,
@@ -21,9 +28,11 @@ import {
   isNativeLanguageId,
   nativeLanguageLabel,
 } from "../../settings/types";
+import { useAiSettingsStore } from "../../store/aiSettingsStore";
+import { usePrefsStore } from "../../store/prefsStore";
 import { useVaultStore } from "../../store/vaultStore";
+import { DictAiFillDialog } from "./DictAiFillDialog";
 import { DictGrid } from "./DictGrid";
-import { DictPracticeDialog } from "./DictPracticeDialog";
 import {
   ensureRows,
   itemsToRows,
@@ -83,16 +92,33 @@ function rowMatchesFilter(row: GridRow, filter: string[]): boolean {
   return need.every((t) => have.has(t));
 }
 
+function rowToGapFields(row: GridRow) {
+  return {
+    word: row.word,
+    transcript: row.transcript,
+    translation: row.translation,
+    examples: row.examples
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean),
+  };
+}
+
 export function DictionaryEditor({ path, content, onChange }: Props) {
   const { doc, error } = useMemo(() => safeParse(content), [content]);
   const dictionaryTags = useVaultStore((s) => s.dictionaryTags);
   const projectPropertiesByPath = useVaultStore(
     (s) => s.projectPropertiesByPath,
   );
-  const tree = useVaultStore((s) => s.tree);
+  const aiSettings = useAiSettingsStore((s) => s.settings);
+  const nativeLanguage = usePrefsStore((s) => s.prefs.nativeLanguage);
   const [searchQuery, setSearchQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
-  const [practiceOpen, setPracticeOpen] = useState(false);
+  const [aiFillOpen, setAiFillOpen] = useState(false);
+  const [aiFillDone, setAiFillDone] = useState(0);
+  const [aiFillTotal, setAiFillTotal] = useState(0);
+  const [aiFillError, setAiFillError] = useState<string | null>(null);
+  const aiFillAbortRef = useRef<AbortController | null>(null);
   const [revealMode, setRevealMode] = useState<DictRevealMode>("all");
   const [rows, setRows] = useState<GridRow[]>(() =>
     ensureRows(itemsToRows(doc.items)),
@@ -113,6 +139,11 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
       ? nativeLanguageLabel(learningLanguageCode)
       : learningLanguageCode
     : "";
+
+  const gapCount = useMemo(
+    () => rows.filter((r) => entryNeedsGapFill(rowToGapFields(r))).length,
+    [rows],
+  );
 
   const reloadProgress = useCallback(async () => {
     if (!projectPath) {
@@ -143,6 +174,12 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
     if (parsed.error) return;
     setRows(ensureRows(itemsToRows(parsed.doc.items)));
   }, [content]);
+
+  useEffect(() => {
+    return () => {
+      aiFillAbortRef.current?.abort();
+    };
+  }, []);
 
   const fileTags = useMemo(() => collectMddictTags(rowsToItems(rows)), [rows]);
 
@@ -235,6 +272,98 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
     setAddOpen(false);
   };
 
+  const closeAiFill = useCallback(() => {
+    aiFillAbortRef.current?.abort();
+    aiFillAbortRef.current = null;
+    setAiFillOpen(false);
+    setAiFillError(null);
+    setAiFillDone(0);
+    setAiFillTotal(0);
+  }, []);
+
+  const applyFilledEntries = useCallback(
+    (filled: ReturnType<typeof rowToGapFields>[]) => {
+      if (filled.length === 0) return;
+      const byWord = new Map(
+        filled.map((e) => [e.word.trim().toLowerCase(), e] as const),
+      );
+      setRows((prev) => {
+        const nextRows = prev.map((row) => {
+          const fill = byWord.get(row.word.trim().toLowerCase());
+          if (!fill) return row;
+          const merged = applyGapFill(rowToGapFields(row), fill);
+          return {
+            ...row,
+            transcript: merged.transcript,
+            translation: merged.translation,
+            examples: merged.examples.join("\n"),
+          };
+        });
+        const text = serializeMddict({
+          ...doc,
+          items: rowsToItems(nextRows),
+        });
+        lastEmitted.current = text;
+        onChange(text);
+        return ensureRows(nextRows);
+      });
+    },
+    [doc, onChange],
+  );
+
+  const runAiFill = useCallback(async () => {
+    const incomplete = rows.filter((r) => entryNeedsGapFill(rowToGapFields(r)));
+    if (incomplete.length === 0) return;
+
+    aiFillAbortRef.current?.abort();
+    const ac = new AbortController();
+    aiFillAbortRef.current = ac;
+    setAiFillOpen(true);
+    setAiFillError(null);
+    setAiFillDone(0);
+    setAiFillTotal(incomplete.length);
+
+    try {
+      await fillDictGaps({
+        entries: incomplete.map(rowToGapFields),
+        learningLanguageCode,
+        learningLanguageLabel,
+        nativeLanguageCode: nativeLanguage,
+        nativeLanguageLabel: nativeLanguageLabel(nativeLanguage),
+        keys: credentialsFromSettings(aiSettings),
+        fallbackModelId: aiSettings.modelId,
+        abortSignal: ac.signal,
+        onProgress: (done, total) => {
+          setAiFillDone(done);
+          setAiFillTotal(total);
+        },
+        onChunk: (chunk) => {
+          applyFilledEntries(chunk);
+        },
+      });
+      if (ac.signal.aborted) return;
+      closeAiFill();
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        closeAiFill();
+        return;
+      }
+      setAiFillError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (aiFillAbortRef.current === ac) {
+        aiFillAbortRef.current = null;
+      }
+    }
+  }, [
+    aiSettings,
+    applyFilledEntries,
+    closeAiFill,
+    learningLanguageCode,
+    learningLanguageLabel,
+    nativeLanguage,
+    rows,
+  ]);
+
   if (error) {
     return (
       <div className="dict-editor-column">
@@ -312,16 +441,19 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
             </div>
             <button
               type="button"
-              className="dict-editor-add-btn"
-              disabled={!isLanguageLearning}
+              className="dict-editor-icon-btn"
+              disabled={gapCount === 0 || aiFillOpen}
               title={
-                isLanguageLearning
-                  ? `Practice words from all dictionaries in this project (${DICT_KNOWN_THRESHOLD} correct → known)`
-                  : "Practice is available in language-learning projects"
+                gapCount === 0
+                  ? "No empty fields to fill"
+                  : `Fill empty fields with AI (${gapCount})`
               }
-              onClick={() => setPracticeOpen(true)}
+              aria-label="Fill empty fields with AI"
+              onClick={() => {
+                void runAiFill();
+              }}
             >
-              Practice
+              <MdAutoAwesome aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -341,17 +473,12 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
           onConfirm={onAddWord}
         />
 
-        <DictPracticeDialog
-          open={practiceOpen}
-          projectPath={projectPath}
-          tree={tree}
-          onClose={() => {
-            setPracticeOpen(false);
-            void reloadProgress();
-          }}
-          onProgressChange={() => {
-            void reloadProgress();
-          }}
+        <DictAiFillDialog
+          open={aiFillOpen}
+          done={aiFillDone}
+          total={aiFillTotal}
+          error={aiFillError}
+          onCancel={closeAiFill}
         />
 
         {filtering && visibleRows.length === 0 ? (

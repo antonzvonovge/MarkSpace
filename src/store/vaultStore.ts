@@ -57,6 +57,15 @@ import {
 } from "../lib/settingsStore";
 import { arrayMove } from "../lib/arrayMove";
 import {
+  canGoBack,
+  canGoForward,
+  emptyNavHistory,
+  moveNavBack,
+  moveNavForward,
+  pushNavVisit,
+  remapNavHistory,
+} from "../lib/navHistory";
+import {
   loadDocOutlineUi,
   saveDocOutlineOpen,
 } from "../lib/outlineUiState";
@@ -116,6 +125,8 @@ type OpenNoteOptions = {
   syncTreeSelection?: boolean;
   /** 1-based page to jump to when opening a PDF. */
   page?: number;
+  /** When true, do not push this activation onto the browse history stack. */
+  skipNavHistory?: boolean;
 };
 
 type VaultStore = {
@@ -136,6 +147,10 @@ type VaultStore = {
   favoritePaths: string[];
   /** Most recently opened vault-relative file paths (MRU, capped). */
   recentPaths: string[];
+  /** In-session document browse history (chronological; not persisted). */
+  navHistory: string[];
+  /** Index into `navHistory`; `-1` when empty. */
+  navIndex: number;
   /** Project properties keyed by project path (first-level folder). */
   projectPropertiesByPath: Record<string, ProjectProperties>;
   /** All vault comments for the sidebar inbox (project → note tree). */
@@ -176,9 +191,19 @@ type VaultStore = {
   /** Take and clear a pending PDF page jump (1-based), if any. */
   takePendingPdfPage: () => number | null;
   /** Open (or focus) the singleton tag graph tab. */
-  openGraphTab: (options?: { syncTreeSelection?: boolean }) => Promise<void>;
+  openGraphTab: (options?: {
+    syncTreeSelection?: boolean;
+    skipNavHistory?: boolean;
+  }) => Promise<void>;
   /** Open (or focus) the singleton settings tab. */
-  openSettingsTab: (options?: { syncTreeSelection?: boolean }) => Promise<void>;
+  openSettingsTab: (options?: {
+    syncTreeSelection?: boolean;
+    skipNavHistory?: boolean;
+  }) => Promise<void>;
+  /** Go to the previous document in browse history. */
+  goBack: () => Promise<void>;
+  /** Go to the next document in browse history. */
+  goForward: () => Promise<void>;
   pinTab: (path: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   closeTab: (path: string) => Promise<void>;
@@ -469,6 +494,60 @@ function applyRecentRemap(
   persistRecent(vaultPath, recentPaths);
 }
 
+function recordNavVisit(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  path: string,
+) {
+  if (!path) return;
+  const next = pushNavVisit(
+    { paths: get().navHistory, index: get().navIndex },
+    path,
+  );
+  if (next.paths === get().navHistory && next.index === get().navIndex) return;
+  if (
+    next.paths.length === get().navHistory.length &&
+    next.index === get().navIndex &&
+    next.paths.every((p, i) => p === get().navHistory[i])
+  ) {
+    return;
+  }
+  set({ navHistory: next.paths, navIndex: next.index });
+}
+
+function applyNavRemap(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  from: string,
+  to: string | null,
+) {
+  const next = remapNavHistory(
+    { paths: get().navHistory, index: get().navIndex },
+    from,
+    to,
+  );
+  if (next.paths === get().navHistory && next.index === get().navIndex) return;
+  if (
+    next.paths.length === get().navHistory.length &&
+    next.index === get().navIndex &&
+    next.paths.every((p, i) => p === get().navHistory[i])
+  ) {
+    return;
+  }
+  set({ navHistory: next.paths, navIndex: next.index });
+}
+
+/** Remap recent MRU and browse history after move/rename/delete. */
+function applyPathRemaps(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  from: string,
+  to: string | null,
+) {
+  applyRecentRemap(set, get, from, to);
+  applyNavRemap(set, get, from, to);
+}
+
 function activateLoaded(
   set: (partial: Partial<VaultStore>) => void,
   vaultPath: string | null,
@@ -651,6 +730,7 @@ async function openSingletonTab(
   path: string,
   kind: TabKind,
   syncTreeSelection: boolean,
+  skipNavHistory = false,
 ): Promise<void> {
   const stashed = stashActiveIntoTabs(
     get().tabs,
@@ -680,12 +760,14 @@ async function openSingletonTab(
     }
     activateVirtualTab(set, existing.path, tabs, syncTreeSelection);
     persistSession(get());
+    if (!skipNavHistory) recordNavVisit(set, get, path);
     return;
   }
 
   const nextTabs: EditorTab[] = [...tabs, { path, kind, preview: false }];
   activateVirtualTab(set, path, nextTabs, syncTreeSelection);
   persistSession(get());
+  if (!skipNavHistory) recordNavVisit(set, get, path);
 }
 
 /** Close every tab whose path is not in `keepPaths` (save dirty active if closing it). */
@@ -745,6 +827,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   expandedPaths: [],
   favoritePaths: [],
   recentPaths: [],
+  navHistory: [],
+  navIndex: -1,
   projectPropertiesByPath: {},
   allComments: [],
   activeNoteComments: [],
@@ -845,6 +929,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
               : "file",
         }));
 
+      const clearedNav = emptyNavHistory();
       set({
         vaultPath: path,
         tree,
@@ -858,6 +943,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         expandedPaths,
         favoritePaths,
         recentPaths,
+        navHistory: clearedNav.paths,
+        navIndex: clearedNav.index,
         projectPropertiesByPath,
         vaultTags: [],
         dictionaryTags: [],
@@ -933,17 +1020,22 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
   openNote: async (path, options) => {
     if (path === GRAPH_TAB_PATH) {
-      await get().openGraphTab({ syncTreeSelection: options?.syncTreeSelection });
+      await get().openGraphTab({
+        syncTreeSelection: options?.syncTreeSelection,
+        skipNavHistory: options?.skipNavHistory,
+      });
       return;
     }
     if (path === SETTINGS_TAB_PATH) {
       await get().openSettingsTab({
         syncTreeSelection: options?.syncTreeSelection,
+        skipNavHistory: options?.skipNavHistory,
       });
       return;
     }
     const asPreview = options?.preview !== false;
     const syncTreeSelection = options?.syncTreeSelection !== false;
+    const skipNavHistory = options?.skipNavHistory === true;
     const pdfPage =
       typeof options?.page === "number" && options.page >= 1
         ? Math.floor(options.page)
@@ -1031,6 +1123,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         if (pdfPage != null) set({ pendingPdfPage: pdfPage });
         persistSession(get());
         recordRecentFile(set, get, path);
+        if (!skipNavHistory) recordNavVisit(set, get, path);
         void get().loadActiveNoteComments();
       } catch (e) {
         set({
@@ -1082,6 +1175,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (pdfPage != null) set({ pendingPdfPage: pdfPage });
       persistSession(get());
       recordRecentFile(set, get, path);
+      if (!skipNavHistory) recordNavVisit(set, get, path);
       void get().loadActiveNoteComments();
     } catch (e) {
       set({
@@ -1098,6 +1192,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       GRAPH_TAB_PATH,
       "graph",
       options?.syncTreeSelection !== false,
+      options?.skipNavHistory === true,
     );
   },
 
@@ -1108,7 +1203,42 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       SETTINGS_TAB_PATH,
       "settings",
       options?.syncTreeSelection !== false,
+      options?.skipNavHistory === true,
     );
+  },
+
+  goBack: async () => {
+    const state = { paths: get().navHistory, index: get().navIndex };
+    if (!canGoBack(state)) return;
+    const moved = moveNavBack(state);
+    if (!moved) return;
+    const path = moved.paths[moved.index];
+    if (!path) return;
+    const existing = get().tabs.find((t) => t.path === path);
+    await get().openNote(path, {
+      preview: existing?.preview ?? true,
+      skipNavHistory: true,
+    });
+    if (get().activePath === path) {
+      set({ navHistory: moved.paths, navIndex: moved.index });
+    }
+  },
+
+  goForward: async () => {
+    const state = { paths: get().navHistory, index: get().navIndex };
+    if (!canGoForward(state)) return;
+    const moved = moveNavForward(state);
+    if (!moved) return;
+    const path = moved.paths[moved.index];
+    if (!path) return;
+    const existing = get().tabs.find((t) => t.path === path);
+    await get().openNote(path, {
+      preview: existing?.preview ?? true,
+      skipNavHistory: true,
+    });
+    if (get().activePath === path) {
+      set({ navHistory: moved.paths, navIndex: moved.index });
+    }
   },
 
   pinTab: (path) => {
@@ -1639,7 +1769,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
-      if (from !== nextPath) applyRecentRemap(set, get, from, nextPath);
+      if (from !== nextPath) applyPathRemaps(set, get, from, nextPath);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
@@ -1723,8 +1853,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
-      if (from !== result.moved) applyRecentRemap(set, get, from, result.moved);
-      applyRecentRemap(set, get, notePath, result.folderNote);
+      if (from !== result.moved) applyPathRemaps(set, get, from, result.moved);
+      applyPathRemaps(set, get, notePath, result.folderNote);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
@@ -1785,7 +1915,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
-      applyRecentRemap(set, get, notePath, result.folderNote);
+      applyPathRemaps(set, get, notePath, result.folderNote);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
@@ -1870,7 +2000,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
 
-      if (from !== nextPath) applyRecentRemap(set, get, from, nextPath);
+      if (from !== nextPath) applyPathRemaps(set, get, from, nextPath);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();
@@ -1923,7 +2053,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       );
       set({ expandedPaths: nextExpanded });
       if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
-      applyRecentRemap(set, get, path, null);
+      applyPathRemaps(set, get, path, null);
       persistSession(get());
       await get().refreshTree();
       void get().refreshVaultTags();

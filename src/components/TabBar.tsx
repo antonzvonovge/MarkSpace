@@ -8,6 +8,7 @@ import {
   isVirtualTab,
   type EditorTab,
 } from "../store/vaultStore";
+import { canGoBack, canGoForward } from "../lib/navHistory";
 import { documentKind } from "../lib/vaultApi";
 import { isUnderDiaryProject, vaultProjectRootOf } from "../lib/diaryNotes";
 import { useChatUiStore } from "../store/chatUiStore";
@@ -213,6 +214,10 @@ export function EditorChrome() {
   const closeTab = useVaultStore((s) => s.closeTab);
   const closeOtherTabs = useVaultStore((s) => s.closeOtherTabs);
   const closeTabsToTheRight = useVaultStore((s) => s.closeTabsToTheRight);
+  const navHistory = useVaultStore((s) => s.navHistory);
+  const navIndex = useVaultStore((s) => s.navIndex);
+  const goBack = useVaultStore((s) => s.goBack);
+  const goForward = useVaultStore((s) => s.goForward);
   const sidebarOpen = useSidebarUiStore((s) => s.open);
   const setSidebarOpen = useSidebarUiStore((s) => s.setOpen);
   const toggleSidebar = useSidebarUiStore((s) => s.toggle);
@@ -225,6 +230,10 @@ export function EditorChrome() {
   const [contextMenu, setContextMenu] = useState<TabContextMenuState | null>(
     null,
   );
+
+  const navState = { paths: navHistory, index: navIndex };
+  const backEnabled = canGoBack(navState);
+  const forwardEnabled = canGoForward(navState);
 
   const onReorder = useCallback(
     (from: number, to: number) => {
@@ -267,6 +276,42 @@ export function EditorChrome() {
           ) : (
             <path d="M1 3.5V12.5C1 13.879 2.122 15 3.5 15H12.5C13.878 15 15 13.879 15 12.5V3.5C15 2.122 13.878 1 12.5 1H3.5C2.122 1 1 2.122 1 3.5ZM12.5 14H7V2H12.5C13.327 2 14 2.673 14 3.5V12.5C14 13.327 13.327 14 12.5 14ZM2 3.5C2 2.673 2.673 2 3.5 2H6V14H3.5C2.673 14 2 13.327 2 12.5V3.5Z" />
           )}
+        </svg>
+      </button>
+      <button
+        type="button"
+        className="nav-history-btn"
+        title="Go back (Alt+Left)"
+        aria-label="Go back (Alt+Left)"
+        disabled={!backEnabled}
+        onClick={() => void goBack()}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M9.5 3.5 5 8l4.5 4.5.7-.7L6.4 8l3.8-3.8-.7-.7Z" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className="nav-history-btn nav-history-btn-forward"
+        title="Go forward (Alt+Right)"
+        aria-label="Go forward (Alt+Right)"
+        disabled={!forwardEnabled}
+        onClick={() => void goForward()}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="m6.5 3.5-.7.7L9.6 8l-3.8 3.8.7.7L11 8 6.5 3.5Z" />
         </svg>
       </button>
       <div ref={tabbarRef} className="editor-tabbar" role="tablist">
