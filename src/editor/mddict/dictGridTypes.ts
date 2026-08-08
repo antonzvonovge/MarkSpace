@@ -8,6 +8,7 @@ export type GridRow = {
   /** Newline-separated examples (one per line). */
   examples: string;
   tags: string[];
+  known: boolean;
 };
 
 export type ColId =
@@ -39,8 +40,8 @@ export const COL_META: Record<
   word: {
     title: "Word",
     placeholder: "Word",
-    minWidth: 100,
-    grow: 1,
+    minWidth: 140,
+    grow: 1.6,
     cellClass: "dict-grid-cell-lg dict-grid-cell-word",
   },
   transcript: {
@@ -60,8 +61,8 @@ export const COL_META: Record<
   examples: {
     title: "Examples",
     placeholder: "Examples",
-    minWidth: 220,
-    grow: 2.4,
+    minWidth: 160,
+    grow: 1.8,
     cellClass: "dict-grid-cell-examples",
   },
   tags: {
@@ -89,6 +90,7 @@ export function emptyRow(): GridRow {
     translation: "",
     examples: "",
     tags: [],
+    known: false,
   };
 }
 
@@ -100,6 +102,7 @@ export function itemToRow(item: MddictItem, key = newRowKey()): GridRow {
     translation: item.translation,
     examples: item.examples.join("\n"),
     tags: [...item.tags],
+    known: item.known,
   };
 }
 
@@ -115,6 +118,7 @@ export function rowToItem(row: GridRow): MddictItem | null {
       .map((l) => l.trim())
       .filter(Boolean),
     tags: row.tags,
+    known: row.known,
   };
 }
 

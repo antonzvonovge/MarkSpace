@@ -3,10 +3,14 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { TagChipsInput } from "../../components/TagChipsInput";
+import { writeClipboardText } from "../../lib/clipboardText";
+import { DICT_KNOWN_THRESHOLD } from "../../lib/dictProgress";
+import { readTextFromSystemClipboard } from "../pasteImages";
 import {
   DictSheetContextMenu,
   type DictContextMenuItem,
@@ -19,6 +23,7 @@ import {
   copyCellValue,
   emptyRow,
   ensureRows,
+  isRowBlank,
   newRowKey,
   pasteCellValue,
   withTrailingBlank,
@@ -33,6 +38,9 @@ export type DictGridProps = {
   autoAddRow: boolean;
   tagCatalog: string[];
   tagExtraCatalog: string[];
+  /** Lowercase word → correct-answer count from practice sidecar. */
+  correctCountByWord?: Record<string, number>;
+  onSetKnown?: (row: GridRow, known: boolean) => void;
 };
 
 type ActiveCell = { row: number; col: number };
@@ -268,6 +276,51 @@ function CellEditor({
   );
 }
 
+function KnownCell({
+  row,
+  correctCount,
+  onToggle,
+}: {
+  row: GridRow;
+  correctCount: number;
+  onToggle?: () => void;
+}) {
+  const blank = isRowBlank(row) && !row.word.trim();
+  if (blank) {
+    return <div className="dict-grid-known-cell" aria-hidden />;
+  }
+  const count = row.known
+    ? DICT_KNOWN_THRESHOLD
+    : Math.min(correctCount, DICT_KNOWN_THRESHOLD);
+  const title = row.known
+    ? "Known — click to mark as unknown"
+    : `Progress ${count}/${DICT_KNOWN_THRESHOLD} — click to mark as known`;
+  return (
+    <div className="dict-grid-known-cell">
+      <button
+        type="button"
+        className={
+          row.known ? "dict-grid-known-btn is-known" : "dict-grid-known-btn"
+        }
+        title={title}
+        aria-label={title}
+        aria-pressed={row.known}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggle?.();
+        }}
+      >
+        {row.known ? "✓" : count > 0 ? String(count) : "·"}
+      </button>
+    </div>
+  );
+}
+
 export function DictGrid({
   rows,
   onChange,
@@ -275,6 +328,8 @@ export function DictGrid({
   autoAddRow,
   tagCatalog,
   tagExtraCatalog,
+  correctCountByWord,
+  onSetKnown,
 }: DictGridProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<ActiveCell | null>(null);
@@ -368,24 +423,31 @@ export function DictGrid({
     const text = copyCellValue(r, COL_IDS[col]!);
     clipboardRef.current = text;
     try {
-      await navigator.clipboard.writeText(text);
+      await writeClipboardText(text);
     } catch {
       /* ignore */
     }
   }, []);
 
+  const applyPasteText = useCallback(
+    (row: number, col: number, text: string) => {
+      updateRow(row, pasteCellValue(COL_IDS[col]!, text));
+    },
+    [updateRow],
+  );
+
   const pasteCell = useCallback(
     async (row: number, col: number) => {
       let text = clipboardRef.current;
       try {
-        const clip = await navigator.clipboard.readText();
-        if (clip != null) text = clip;
+        const clip = await readTextFromSystemClipboard();
+        if (clip) text = clip;
       } catch {
         /* use internal */
       }
-      updateRow(row, pasteCellValue(COL_IDS[col]!, text));
+      applyPasteText(row, col, text);
     },
-    [updateRow],
+    [applyPasteText],
   );
 
   const clearCell = useCallback(
@@ -427,6 +489,7 @@ export function DictGrid({
         ...src,
         key: newRowKey(),
         tags: [...src.tags],
+        known: false,
       });
       emitRows(list);
       setActive({ row: rowIndex + 1, col: activeRef.current?.col ?? 0 });
@@ -444,6 +507,7 @@ export function DictGrid({
     e.stopPropagation();
     setActive({ row, col });
     setEditing(false);
+    const gridRow = rowsRef.current[row];
     const items: DictContextMenuItem[] = [
       {
         type: "CUT",
@@ -467,6 +531,25 @@ export function DictGrid({
         },
       },
     ];
+    if (gridRow && gridRow.word.trim() && onSetKnown) {
+      if (gridRow.known) {
+        items.push({
+          type: "MARK_UNKNOWN",
+          action: () => {
+            onSetKnown(gridRow, false);
+            setMenu(null);
+          },
+        });
+      } else {
+        items.push({
+          type: "MARK_KNOWN",
+          action: () => {
+            onSetKnown(gridRow, true);
+            setMenu(null);
+          },
+        });
+      }
+    }
     if (!lockRows) {
       items.push(
         {
@@ -576,6 +659,16 @@ export function DictGrid({
     }
   };
 
+  const onGridPaste = (e: ReactClipboardEvent) => {
+    if (editing) return;
+    if (!active) return;
+    const text = e.clipboardData.getData("text/plain");
+    if (text == null) return;
+    e.preventDefault();
+    clipboardRef.current = text;
+    applyPasteText(active.row, active.col, text);
+  };
+
   const displayRows = rows.length === 0 ? [emptyRow()] : rows;
 
   return (
@@ -586,6 +679,7 @@ export function DictGrid({
       role="grid"
       aria-rowcount={displayRows.length + 1}
       onKeyDown={onGridKeyDown}
+      onPaste={onGridPaste}
       onMouseDown={() => focusGrid()}
     >
       <div
@@ -593,6 +687,13 @@ export function DictGrid({
         style={{ height: HEADER_ROW_HEIGHT }}
         role="row"
       >
+        <div
+          className="dict-grid-cell dict-grid-cell-header dict-grid-cell-known"
+          role="columnheader"
+          title="Known"
+        >
+          ✓
+        </div>
         {COL_IDS.map((colId) => {
           const meta = COL_META[colId];
           return (
@@ -609,8 +710,22 @@ export function DictGrid({
 
       <div className="dict-grid-body" role="rowgroup">
         {displayRows.map((row, rowIndex) => {
+          const wordKey = row.word.trim().toLowerCase();
+          const correctCount =
+            wordKey && correctCountByWord
+              ? (correctCountByWord[wordKey] ?? 0)
+              : 0;
           return (
             <div key={row.key} className="dict-grid-row" role="row">
+              <KnownCell
+                row={row}
+                correctCount={correctCount}
+                onToggle={
+                  onSetKnown && row.word.trim()
+                    ? () => onSetKnown(row, !row.known)
+                    : undefined
+                }
+              />
               {COL_IDS.map((colId, colIndex) => {
                 const meta = COL_META[colId];
                 const isActive =

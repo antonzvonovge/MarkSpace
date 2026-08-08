@@ -22,6 +22,7 @@ filter: verbs, A1
 sprechen
 transcript: ˈʃpʁɛçn̩
 translation: to speak
+known: yes
 example: Kannst du Deutsch sprechen?
 example: Wir sprechen über das Wetter.
 tags: verbs, A1
@@ -43,9 +44,30 @@ example: Das Haus ist groß.
         "Wir sprechen über das Wetter.",
       ],
       tags: ["verbs", "A1"],
+      known: true,
     });
+    expect(doc.items[1]!.known).toBe(false);
     const again = parseMddict(serializeMddict(doc));
     expect(again).toEqual(doc);
+    expect(serializeMddict(doc)).toContain("known: yes");
+    expect(serializeMddict(doc).match(/known:/g)).toHaveLength(1);
+  });
+
+  it("parses known truthy values", () => {
+    for (const raw of ["yes", "true", "1", "YES"]) {
+      const doc = parseMddict(`${MDDICT_HEADER}
+
+word
+known: ${raw}
+`);
+      expect(doc.items[0]!.known).toBe(true);
+    }
+    const no = parseMddict(`${MDDICT_HEADER}
+
+word
+known: no
+`);
+    expect(no.items[0]!.known).toBe(false);
   });
 
   it("allows items with only a word", () => {
@@ -63,6 +85,7 @@ tags: noun
         translation: "",
         examples: [],
         tags: [],
+        known: false,
       },
       {
         word: "Baum",
@@ -70,6 +93,7 @@ tags: noun
         translation: "",
         examples: [],
         tags: ["noun"],
+        known: false,
       },
     ]);
   });
@@ -84,6 +108,7 @@ tags: noun
           translation: "y",
           examples: ["z"],
           tags: [],
+          known: true,
         },
         {
           word: "ok",
@@ -91,6 +116,7 @@ tags: noun
           translation: "",
           examples: [],
           tags: [],
+          known: false,
         },
       ],
     });
@@ -101,6 +127,7 @@ tags: noun
         translation: "",
         examples: [],
         tags: [],
+        known: false,
       },
     ]);
   });
@@ -113,6 +140,7 @@ tags: noun
         translation: "",
         examples: [],
         tags: ["verbs", "A1"],
+        known: false,
       },
       {
         word: "b",
@@ -120,6 +148,7 @@ tags: noun
         translation: "",
         examples: [],
         tags: ["verbs"],
+        known: false,
       },
       {
         word: "c",
@@ -127,6 +156,7 @@ tags: noun
         translation: "",
         examples: [],
         tags: ["A1"],
+        known: false,
       },
     ];
     expect(filterMddictItems(items, []).map((i) => i.word)).toEqual([
@@ -152,6 +182,7 @@ tags: noun
           translation: "",
           examples: [],
           tags: ["Verbs", "A1"],
+          known: false,
         },
         {
           word: "b",
@@ -159,6 +190,7 @@ tags: noun
           translation: "",
           examples: [],
           tags: ["verbs", "noun"],
+          known: false,
         },
       ]),
     ).toEqual(["Verbs", "A1", "noun"]);
@@ -173,6 +205,7 @@ tags: noun
             translation: "",
             examples: [],
             tags: ["a1", "verbs"],
+            known: false,
           },
         ],
       }),

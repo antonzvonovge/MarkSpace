@@ -6,6 +6,11 @@ import {
 import { DocumentToolbar } from "../../components/DocumentToolbar";
 import { TagChipsInput } from "../../components/TagChipsInput";
 import {
+  DICT_KNOWN_THRESHOLD,
+  getDictProgress,
+  setDictEntryCorrectCount,
+} from "../../lib/dictProgress";
+import {
   MDDICT_HEADER,
   collectMddictTags,
   parseMddict,
@@ -18,6 +23,7 @@ import {
 } from "../../settings/types";
 import { useVaultStore } from "../../store/vaultStore";
 import { DictGrid } from "./DictGrid";
+import { DictPracticeDialog } from "./DictPracticeDialog";
 import {
   ensureRows,
   itemsToRows,
@@ -83,25 +89,52 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
   const projectPropertiesByPath = useVaultStore(
     (s) => s.projectPropertiesByPath,
   );
+  const tree = useVaultStore((s) => s.tree);
   const [searchQuery, setSearchQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [practiceOpen, setPracticeOpen] = useState(false);
   const [revealMode, setRevealMode] = useState<DictRevealMode>("all");
   const [rows, setRows] = useState<GridRow[]>(() =>
     ensureRows(itemsToRows(doc.items)),
   );
+  const [correctCountByWord, setCorrectCountByWord] = useState<
+    Record<string, number>
+  >({});
   const lastEmitted = useRef(content);
 
   const projectPath = path.split("/")[0] ?? "";
   const projectProps = projectPropertiesByPath[projectPath];
-  const learningLanguageCode =
-    projectProps?.projectType === "languageLearning"
-      ? (projectProps.learningLanguage ?? "").trim()
-      : "";
+  const isLanguageLearning = projectProps?.projectType === "languageLearning";
+  const learningLanguageCode = isLanguageLearning
+    ? (projectProps.learningLanguage ?? "").trim()
+    : "";
   const learningLanguageLabel = learningLanguageCode
     ? isNativeLanguageId(learningLanguageCode)
       ? nativeLanguageLabel(learningLanguageCode)
       : learningLanguageCode
     : "";
+
+  const reloadProgress = useCallback(async () => {
+    if (!projectPath) {
+      setCorrectCountByWord({});
+      return;
+    }
+    try {
+      const prog = await getDictProgress(projectPath);
+      const byDict = prog.entries[path] ?? {};
+      const map: Record<string, number> = {};
+      for (const [word, entry] of Object.entries(byDict)) {
+        map[word.trim().toLowerCase()] = entry.correctCount ?? 0;
+      }
+      setCorrectCountByWord(map);
+    } catch {
+      setCorrectCountByWord({});
+    }
+  }, [path, projectPath]);
+
+  useEffect(() => {
+    void reloadProgress();
+  }, [reloadProgress]);
 
   useEffect(() => {
     if (content === lastEmitted.current) return;
@@ -157,6 +190,25 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
     emitDoc({ ...doc, items: rowsToItems(nextRows) }, ensureRows(nextRows));
   };
 
+  const onSetKnown = useCallback(
+    async (row: GridRow, known: boolean) => {
+      const word = row.word.trim();
+      if (!word || !projectPath) return;
+      const nextRows = rows.map((r) =>
+        r.key === row.key ? { ...r, known } : r,
+      );
+      emitDoc({ ...doc, items: rowsToItems(nextRows) }, nextRows);
+      await setDictEntryCorrectCount(
+        projectPath,
+        path,
+        word,
+        known ? DICT_KNOWN_THRESHOLD : 0,
+      );
+      await reloadProgress();
+    },
+    [doc, emitDoc, path, projectPath, reloadProgress, rows],
+  );
+
   const gridRows = filtering
     ? visibleRows
     : withTrailingBlank(rows);
@@ -173,6 +225,7 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
       translation: value.translation,
       examples: value.examples.join("\n"),
       tags: existingIdx >= 0 ? rows[existingIdx]!.tags : [],
+      known: existingIdx >= 0 ? rows[existingIdx]!.known : false,
     };
     const nextRows =
       existingIdx >= 0
@@ -260,6 +313,19 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
             <button
               type="button"
               className="dict-editor-add-btn"
+              disabled={!isLanguageLearning}
+              title={
+                isLanguageLearning
+                  ? `Practice words from all dictionaries in this project (${DICT_KNOWN_THRESHOLD} correct → known)`
+                  : "Practice is available in language-learning projects"
+              }
+              onClick={() => setPracticeOpen(true)}
+            >
+              Practice
+            </button>
+            <button
+              type="button"
+              className="dict-editor-add-btn"
               onClick={() => setAddOpen(true)}
             >
               Add entry
@@ -273,6 +339,19 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
           learningLanguageLabel={learningLanguageLabel}
           onCancel={() => setAddOpen(false)}
           onConfirm={onAddWord}
+        />
+
+        <DictPracticeDialog
+          open={practiceOpen}
+          projectPath={projectPath}
+          tree={tree}
+          onClose={() => {
+            setPracticeOpen(false);
+            void reloadProgress();
+          }}
+          onProgressChange={() => {
+            void reloadProgress();
+          }}
         />
 
         {filtering && visibleRows.length === 0 ? (
@@ -304,6 +383,10 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
               autoAddRow={!filtering}
               tagCatalog={dictionaryTags}
               tagExtraCatalog={fileTags}
+              correctCountByWord={correctCountByWord}
+              onSetKnown={(row, known) => {
+                void onSetKnown(row, known);
+              }}
             />
           </div>
         )}

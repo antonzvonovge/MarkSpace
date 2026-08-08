@@ -1,6 +1,7 @@
 mod agent_memory;
 mod chat_history;
 mod comments;
+mod dict_progress;
 mod embeddings;
 mod favorites;
 mod filemeta;
@@ -183,6 +184,8 @@ pub fn run() {
             projects::get_project_properties,
             projects::set_project_properties,
             projects::list_project_properties,
+            dict_progress::get_dict_progress,
+            dict_progress::set_dict_entry_progress,
             agent_memory::get_agent_memory,
             agent_memory::set_agent_memory_enabled,
             agent_memory::add_agent_memory,

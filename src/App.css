@@ -7686,6 +7686,15 @@ select {
   background: var(--accent-strong);
 }
 
+.dict-editor-add-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dict-editor-add-btn:disabled:hover {
+  background: var(--accent);
+}
+
 .dict-editor-toolbar-actions {
   display: flex;
   align-items: center;
@@ -7829,10 +7838,11 @@ select {
 
 .dict-grid {
   --dict-cols:
-    minmax(100px, 1fr)
+    36px
+    minmax(140px, 1.6fr)
     minmax(90px, 0.85fr)
     minmax(100px, 1fr)
-    minmax(220px, 2.4fr)
+    minmax(160px, 1.8fr)
     minmax(160px, 0.7fr);
   flex: 1;
   min-height: 0;
@@ -7910,6 +7920,65 @@ select {
   font-size: 12px;
   padding: 8px 8px 0;
   user-select: none;
+}
+
+.dict-grid-cell-known {
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+}
+
+.dict-grid-known-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 34px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--line);
+  background: inherit;
+}
+
+.dict-grid-row:nth-child(odd) .dict-grid-known-cell {
+  background: var(--editor-surface);
+}
+
+.dict-grid-row:nth-child(even) .dict-grid-known-cell {
+  background: color-mix(in srgb, #6b7c8f 10%, var(--editor-surface));
+}
+
+.dict-grid-header .dict-grid-cell-known {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  text-align: center;
+}
+
+.dict-grid-known-btn {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dict-grid-known-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dict-grid-known-btn.is-known {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent-strong);
+  font-weight: 600;
 }
 
 .dict-grid-cell.is-active {
@@ -8060,6 +8129,373 @@ select {
 .dict-grid-tags-input .tag-chips-input-field-wrap {
   flex: 1 1 60px;
   min-width: 60px;
+}
+
+/* —— Dictionary practice trainer —— */
+
+.dict-practice-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.dict-practice-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: default;
+  background: color-mix(in srgb, #1a1220 55%, transparent);
+  backdrop-filter: blur(18px) saturate(0.7);
+  -webkit-backdrop-filter: blur(18px) saturate(0.7);
+  animation: dict-practice-fade 0.22s ease;
+}
+
+.dict-practice {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 560px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 22px;
+  padding: 36px 32px 28px;
+  border-radius: 28px;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  background:
+    radial-gradient(
+      120% 80% at 50% -10%,
+      color-mix(in srgb, var(--accent) 18%, transparent),
+      transparent 55%
+    ),
+    var(--editor-surface);
+  color: var(--text);
+  box-shadow:
+    0 28px 80px rgba(20, 10, 30, 0.35),
+    inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
+  animation: dict-practice-pop 0.28s cubic-bezier(0.2, 0.9, 0.2, 1);
+  transition:
+    border-color 0.4s ease,
+    box-shadow 0.4s ease;
+  overflow: hidden;
+}
+
+.dict-practice::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease, background-color 0.4s ease;
+  z-index: 0;
+}
+
+.dict-practice > *:not(.dict-practice-exit) {
+  position: relative;
+  z-index: 1;
+}
+
+.dict-practice-exit {
+  z-index: 2;
+}
+
+.dict-practice.is-correct {
+  border-color: #22c55e;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #22c55e 45%, transparent),
+    0 28px 80px color-mix(in srgb, #16a34a 40%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent);
+}
+
+.dict-practice.is-correct::after {
+  opacity: 1;
+  background-color: color-mix(in srgb, #22c55e 28%, transparent);
+}
+
+.dict-practice.is-wrong {
+  border-color: #ef4444;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #ef4444 45%, transparent),
+    0 28px 80px color-mix(in srgb, #dc2626 40%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent);
+}
+
+.dict-practice.is-wrong::after {
+  opacity: 1;
+  background-color: color-mix(in srgb, #ef4444 30%, transparent);
+}
+
+.dict-practice-exit {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.dict-practice-exit:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.dict-practice-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 48px;
+}
+
+.dict-practice-pips {
+  display: flex;
+  gap: 7px;
+}
+
+.dict-practice-pip {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.dict-practice-pip.is-on {
+  background: var(--accent);
+  transform: scale(1.08);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.dict-practice-count {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dict-practice-prompt {
+  margin: 8px 0 0;
+  font-size: clamp(1.75rem, 4.2vw, 2.35rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dict-practice-hint {
+  margin: -8px 0 0;
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.dict-practice-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 64px;
+  border: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 18px;
+  padding: 0 20px;
+  background: color-mix(in srgb, var(--editor-surface) 88%, #fff);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.45rem;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: -0.01em;
+  transition: border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
+}
+
+.dict-practice-input::placeholder {
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  font-weight: 500;
+}
+
+.dict-practice-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.dict-practice-input:read-only {
+  opacity: 0.9;
+  cursor: default;
+}
+
+.dict-practice.is-correct .dict-practice-input {
+  border-color: #22c55e;
+  background: color-mix(in srgb, #22c55e 12%, var(--editor-surface));
+  box-shadow: 0 0 0 4px color-mix(in srgb, #22c55e 20%, transparent);
+}
+
+.dict-practice.is-wrong .dict-practice-input {
+  border-color: #ef4444;
+  background: color-mix(in srgb, #ef4444 12%, var(--editor-surface));
+  box-shadow: 0 0 0 4px color-mix(in srgb, #ef4444 20%, transparent);
+}
+
+.dict-practice-result {
+  min-height: 1.6em;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  transition: color 0.35s ease;
+}
+
+.dict-practice.is-correct .dict-practice-result {
+  color: #15803d;
+}
+
+.dict-practice.is-wrong .dict-practice-result {
+  color: #b91c1c;
+}
+
+.dict-practice-result strong {
+  color: inherit;
+}
+
+.dict-practice.is-correct .dict-practice-primary {
+  background: #16a34a;
+  box-shadow: 0 10px 24px color-mix(in srgb, #16a34a 40%, transparent);
+}
+
+.dict-practice.is-correct .dict-practice-primary:hover {
+  background: #15803d;
+}
+
+.dict-practice.is-wrong .dict-practice-primary {
+  background: #dc2626;
+  box-shadow: 0 10px 24px color-mix(in srgb, #dc2626 40%, transparent);
+}
+
+.dict-practice.is-wrong .dict-practice-primary:hover {
+  background: #b91c1c;
+}
+
+.dict-practice-examples {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.dict-practice-examples li {
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.dict-practice-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.dict-practice-primary {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  min-width: 160px;
+  height: 52px;
+  padding: 0 28px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.dict-practice-primary:hover {
+  background: var(--accent-strong);
+  transform: translateY(-1px);
+}
+
+.dict-practice-primary:active {
+  transform: translateY(0);
+}
+
+.dict-practice-skip {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dict-practice-ghost {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.dict-practice-ghost:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.dict-practice-status {
+  margin: 0;
+  text-align: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.dict-practice-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 8px;
+}
+
+@keyframes dict-practice-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dict-practice-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .app-dialog-body .app-dialog-label + .app-dialog-input,

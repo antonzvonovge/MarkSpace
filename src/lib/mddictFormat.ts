@@ -8,6 +8,8 @@ export type MddictItem = {
   translation: string;
   examples: string[];
   tags: string[];
+  /** Persisted learning status (`known: yes` on disk when true). */
+  known: boolean;
 };
 
 export type MddictDoc = {
@@ -36,7 +38,12 @@ function joinCsv(tags: string[]): string {
 }
 
 function isMetaKey(line: string): boolean {
-  return /^(transcript|translation|example|tags):/i.test(line);
+  return /^(transcript|translation|example|tags|known):/i.test(line);
+}
+
+function parseKnownValue(raw: string): boolean {
+  const v = raw.trim().toLowerCase();
+  return v === "yes" || v === "true" || v === "1";
 }
 
 /** Parse a `.mddict` document. Throws on invalid header. */
@@ -73,6 +80,7 @@ export function parseMddict(text: string): MddictDoc {
     let translation = "";
     const examples: string[] = [];
     let tags: string[] = [];
+    let known = false;
     while (i < lines.length && lines[i].trim() !== "") {
       const line = lines[i].trim();
       const tr = /^transcript:\s*(.*)$/i.exec(line);
@@ -100,9 +108,15 @@ export function parseMddict(text: string): MddictDoc {
         i += 1;
         continue;
       }
+      const knownLine = /^known:\s*(.*)$/i.exec(line);
+      if (knownLine) {
+        known = parseKnownValue(knownLine[1] ?? "");
+        i += 1;
+        continue;
+      }
       throw new Error(`Unexpected line in dictionary entry at ${i + 1}: ${line}`);
     }
-    items.push({ word: wordLine, transcript, translation, examples, tags });
+    items.push({ word: wordLine, transcript, translation, examples, tags, known });
   }
 
   return { filter, items };
@@ -124,6 +138,7 @@ export function serializeMddict(doc: MddictDoc): string {
     if (transcript) parts.push(`transcript: ${transcript}`);
     const translation = item.translation.trim();
     if (translation) parts.push(`translation: ${translation}`);
+    if (item.known) parts.push("known: yes");
     for (const example of item.examples) {
       const ex = example.trim();
       if (ex) parts.push(`example: ${ex}`);
@@ -189,5 +204,6 @@ export function emptyMddictItem(): MddictItem {
     translation: "",
     examples: [],
     tags: [],
+    known: false,
   };
 }

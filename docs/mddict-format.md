@@ -11,7 +11,7 @@ Call `read_mddict_format` for this full guide when unsure.
 - Optional `filter: tag1, tag2` stores UI multi-tag filter (AND). Empty / omit = no filter.
 - Entries are separated by a blank line; file order is display order.
 - Each entry starts with a word line (plain text, not a `key:` field).
-- Optional metadata: `transcript:`, `translation:` (single line each), repeated `example:` lines, `tags:` (comma-separated, no `#`).
+- Optional metadata: `transcript:`, `translation:` (single line each), `known: yes` when mastered, repeated `example:` lines, `tags:` (comma-separated, no `#`).
 - Do not put `|` pipe tables or blank lines inside an entry.
 - Dictionary tags are local to `.mddict` files (vault-wide dictionary tag bank); they are not note/PDF tags and do not appear in the tag graph.
 <!-- core-rules:end -->
@@ -25,6 +25,7 @@ filter: verbs, A1
 sprechen
 transcript: ˈʃpʁɛçn̩
 translation: to speak
+known: yes
 example: Kannst du Deutsch sprechen?
 example: Wir sprechen über das Wetter.
 tags: verbs, A1
@@ -47,6 +48,7 @@ example: Das Haus ist groß.
 - Optional metadata lines (order flexible within the entry):
   - `transcript: …` — single line (IPA / pinyin / romaji / etc.; free text)
   - `translation: …` — single line
+  - `known: yes` — mark as known / mastered; omit (or `known: no`) when unknown. Practice correct-answer counts live under `.markspace/dict-progress/`, not in this file.
   - `example: …` — repeatable; each line is one usage example
   - `tags: a, b` — comma-separated; no leading `#`
 - Tags are case-preserved; duplicates in a list are ignored case-insensitively.
@@ -59,4 +61,4 @@ When `filter` lists one or more tags, the UI shows only items that include **all
 
 1. Prefer structured tools that parse → mutate → serialize.
 2. If you must write raw text, preserve the header, blank-line separation, and never convert the file to a Markdown table.
-3. Do not invent extra fields — items have only word, transcript, translation, examples, and tags.
+3. Do not invent extra fields — items have only word, transcript, translation, known, examples, and tags.

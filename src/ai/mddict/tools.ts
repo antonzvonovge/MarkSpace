@@ -78,7 +78,7 @@ export function buildMddictTools(mode: ChatMode) {
 
     read_dictionary: tool({
       description:
-        "Read a .mddict dictionary file as structured entries (word, transcript, translation, examples, tags) plus the persisted filter. Prefer this over read_note for dictionary files.",
+        "Read a .mddict dictionary file as structured entries (word, transcript, translation, examples, tags, known) plus the persisted filter. Prefer this over read_note for dictionary files.",
       inputSchema: z.object({
         path: z.string().describe("Vault-relative .mddict path"),
       }),
@@ -131,8 +131,9 @@ export function buildMddictTools(mode: ChatMode) {
         translation: z.string().optional().describe("Translation / gloss"),
         examples: z.array(z.string()).optional().describe("Usage examples"),
         tags: z.array(z.string()).optional().describe("Tags without #"),
+        known: z.boolean().optional().describe("Mark as known / mastered"),
       }),
-      execute: async ({ path, word, transcript, translation, examples, tags }) => {
+      execute: async ({ path, word, transcript, translation, examples, tags, known }) => {
         try {
           const { path: p, doc } = await loadDoc(path);
           doc.items.push({
@@ -141,6 +142,7 @@ export function buildMddictTools(mode: ChatMode) {
             translation: (translation ?? "").trim(),
             examples: normalizeExamples(examples) ?? [],
             tags: tags ?? [],
+            known: known ?? false,
           });
           await saveDoc(p, doc);
           return {
@@ -167,6 +169,7 @@ export function buildMddictTools(mode: ChatMode) {
         translation: z.string().optional(),
         examples: z.array(z.string()).optional(),
         tags: z.array(z.string()).optional(),
+        known: z.boolean().optional().describe("Set known / mastered flag"),
       }),
       execute: async ({
         path,
@@ -177,6 +180,7 @@ export function buildMddictTools(mode: ChatMode) {
         translation,
         examples,
         tags,
+        known,
       }) => {
         try {
           const { path: p, doc } = await loadDoc(path);
@@ -199,6 +203,7 @@ export function buildMddictTools(mode: ChatMode) {
                 ? (normalizeExamples(examples) ?? [])
                 : cur.examples,
             tags: tags !== undefined ? tags : cur.tags,
+            known: known !== undefined ? known : cur.known,
           };
           await saveDoc(p, doc);
           return { ok: true as const, path: p, index: i, item: doc.items[i] };
