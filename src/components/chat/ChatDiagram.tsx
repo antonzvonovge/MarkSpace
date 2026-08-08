@@ -7,24 +7,15 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { DiagramEngine } from "../../editor/diagramCache";
-import { renderMermaidToSvg } from "../../editor/mermaid/renderMermaid";
-import { renderPlantUmlToSvg } from "../../editor/plantuml/renderPlantUml";
+import {
+  diagramEngineForLang,
+  diagramRenderFn,
+} from "../../editor/renderDiagram";
 import { scheduleDiagramPreview } from "../../editor/scheduleDiagramPreview";
 import { usePrefsStore } from "../../store/prefsStore";
 import { DiagramLightbox, fitSvgInto } from "../DiagramLightbox";
 
-const DIAGRAM_LANGS: Record<string, DiagramEngine> = {
-  mermaid: "mermaid",
-  plantuml: "plantuml",
-  puml: "plantuml",
-};
-
-export function diagramEngineForLang(
-  lang: string | undefined,
-): DiagramEngine | null {
-  if (!lang) return null;
-  return DIAGRAM_LANGS[lang.toLowerCase()] ?? null;
-}
+export { diagramEngineForLang };
 
 type Props = {
   engine: DiagramEngine;
@@ -45,7 +36,7 @@ export function ChatDiagram({ engine, code }: Props) {
       code,
       dark,
       skin: "neutral",
-      render: engine === "mermaid" ? renderMermaidToSvg : renderPlantUmlToSvg,
+      render: diagramRenderFn(engine),
       onUpdate: ({ svg, error: nextError, pending: nextPending }) => {
         setError(nextError);
         setPending(nextPending);
@@ -106,6 +97,17 @@ export function ChatDiagram({ engine, code }: Props) {
         open={open}
         engine={engine}
         code={code}
+        title={
+          engine === "d2"
+            ? "D2"
+            : engine === "dot"
+              ? "DOT"
+              : engine === "markmap"
+                ? "Markmap"
+                : engine === "plantuml"
+                  ? "PlantUML"
+                  : "Mermaid"
+        }
         onClose={() => setOpen(false)}
       />
     </>

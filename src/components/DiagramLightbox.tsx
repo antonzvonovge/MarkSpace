@@ -10,8 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { DiagramEngine } from "../editor/diagramCache";
-import { renderMermaidToSvg } from "../editor/mermaid/renderMermaid";
-import { renderPlantUmlToSvg } from "../editor/plantuml/renderPlantUml";
+import { diagramRenderFn } from "../editor/renderDiagram";
 import { scheduleDiagramPreview } from "../editor/scheduleDiagramPreview";
 
 /**
@@ -164,7 +163,7 @@ export function DiagramLightbox({
       code,
       dark: false,
       skin: "neutral",
-      render: engine === "mermaid" ? renderMermaidToSvg : renderPlantUmlToSvg,
+      render: diagramRenderFn(engine),
       onUpdate: ({ svg, error: nextError, pending: nextPending }) => {
         setError(nextError);
         setPending(nextPending);

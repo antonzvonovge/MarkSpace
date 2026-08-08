@@ -29,4 +29,12 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  optimizeDeps: {
+    // Huge WASM-inlined browser build — do not prebundle / transform.
+    exclude: ["@terrastruct/d2"],
+  },
+  build: {
+    chunkSizeWarningLimit: 12000,
+    assetsInlineLimit: 0,
+  },
 }));

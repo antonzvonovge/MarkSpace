@@ -65,6 +65,16 @@ describe("markdownFormat", () => {
     );
   });
 
+  it("describes indentation as relative to the parent at any depth", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/relative to the parent/i);
+    expect(rules).toMatch(/compounds/i);
+    expect(rules).toMatch(/restarts numbering/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/text column/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/Deeper nesting/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toContain("        Continuation of that child");
+  });
+
   it("forbids ASCII box tables in favor of GFM pipes", () => {
     const rules = markdownCoreRules().join("\n");
     expect(rules).toMatch(/GFM pipe tables/i);
@@ -78,6 +88,9 @@ describe("markdownFormat", () => {
     expect(rules).toMatch(/mermaid/i);
     expect(rules).toMatch(/plantuml/i);
     expect(rules).toMatch(/\.drawio/i);
+    expect(rules).toMatch(/d2/i);
+    expect(rules).toMatch(/dot|graphviz/i);
+    expect(rules).toMatch(/markmap/i);
     expect(rules).toMatch(/ASCII|box-drawing/i);
     expect(MARKDOWN_FORMAT_GUIDE).toMatch(/Do \*\*not\*\* draw diagrams with ASCII/i);
   });

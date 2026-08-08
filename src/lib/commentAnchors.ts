@@ -108,7 +108,13 @@ export function leafIdentity(
     const url = typeof a.url === "string" ? a.url : "";
     return { type, key: url || type };
   }
-  if (type === "mermaid" || type === "plantuml") {
+  if (
+    type === "mermaid" ||
+    type === "plantuml" ||
+    type === "d2" ||
+    type === "dot" ||
+    type === "markmap"
+  ) {
     const code = typeof a.code === "string" ? a.code : "";
     return { type, key: fnv1a(code) };
   }

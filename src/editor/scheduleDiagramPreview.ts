@@ -15,6 +15,22 @@ export type DiagramPreviewState = {
   pending: boolean;
 };
 
+function formatDiagramError(err: unknown): string {
+  if (err instanceof Error) return err.message || String(err);
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const rec = err as Record<string, unknown>;
+    if (typeof rec.message === "string") return rec.message;
+    if (typeof rec.error === "string") return rec.error;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      /* fall through */
+    }
+  }
+  return String(err);
+}
+
 function cacheSource(
   engine: DiagramEngine,
   code: string,
@@ -86,7 +102,7 @@ export function scheduleDiagramPreview(options: {
           if (cancelled) return;
           options.onUpdate({
             svg: null,
-            error: err instanceof Error ? err.message : String(err),
+            error: formatDiagramError(err),
             pending: false,
           });
         },

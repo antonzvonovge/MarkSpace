@@ -2,10 +2,13 @@ import {
   getDefaultReactSlashMenuItems,
   type DefaultReactSuggestionItem,
 } from "@blocknote/react";
+import { insertD2Item } from "./d2/slashItem";
+import { insertDotItem } from "./dot/slashItem";
 import {
   insertExistingDrawioItem,
   insertNewDrawioItem,
 } from "./drawio/slashItem";
+import { insertMarkmapItem } from "./markmap/slashItem";
 import {
   insertInlineMathItem,
   insertMathEquationItem,
@@ -35,6 +38,9 @@ export function getNoteSlashMenuItems(
     ...defaults,
     insertMermaidItem(editor),
     insertPlantUmlItem(editor),
+    insertD2Item(editor),
+    insertDotItem(editor),
+    insertMarkmapItem(editor),
     insertNewDrawioItem(editor, notePath),
     insertExistingDrawioItem(editor, notePath),
     insertMathEquationItem(editor),

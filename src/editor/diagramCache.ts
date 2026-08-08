@@ -6,7 +6,12 @@ import {
   diskTouchDiagram,
 } from "./diagramCacheIdb";
 
-export type DiagramEngine = "mermaid" | "plantuml";
+export type DiagramEngine =
+  | "mermaid"
+  | "plantuml"
+  | "d2"
+  | "dot"
+  | "markmap";
 
 /** `neutral` = muted gray palette (chat); `default` = engine themes (editor). */
 export type DiagramSkin = "default" | "neutral";
@@ -21,7 +26,7 @@ const memory = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<string>>();
 
 /** Bump when neutral/chat render settings change so stale SVGs are not reused. */
-const CACHE_REV = 7;
+const CACHE_REV = 10;
 
 export function diagramCacheKey(
   engine: DiagramEngine,

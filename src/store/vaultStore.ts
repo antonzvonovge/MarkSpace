@@ -43,6 +43,7 @@ import {
   type CommentRef,
   type NoteComment,
   type ProjectProperties,
+  type StructuralAnchor,
   type UpsertCommentInput,
 } from "../lib/vaultApi";
 import {
@@ -421,6 +422,113 @@ function collectDirPaths(node: TreeNode, out: string[] = []): string[] {
   return out;
 }
 
+function sameStringArray(a: string[], b: string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/** Structural equality for vault tree nodes (path/name/isDir/children order). */
+function treeShapeEqual(a: TreeNode | null, b: TreeNode | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.path !== b.path || a.name !== b.name || a.isDir !== b.isDir) {
+    return false;
+  }
+  const ac = a.children;
+  const bc = b.children;
+  if (!ac && !bc) return true;
+  if (!ac || !bc || ac.length !== bc.length) return false;
+  for (let i = 0; i < ac.length; i++) {
+    if (!treeShapeEqual(ac[i]!, bc[i]!)) return false;
+  }
+  return true;
+}
+
+function projectPropertiesMapsEqual(
+  a: Record<string, ProjectProperties>,
+  b: Record<string, ProjectProperties>,
+): boolean {
+  if (a === b) return true;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    const left = a[key];
+    const right = b[key];
+    if (!left || !right) return false;
+    if (
+      left.path !== right.path ||
+      left.about !== right.about ||
+      left.projectType !== right.projectType ||
+      left.learningLanguage !== right.learningLanguage ||
+      left.color !== right.color
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function commentRefsEqual(a: CommentRef[], b: CommentRef[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const left = a[i]!;
+    const right = b[i]!;
+    if (left.notePath !== right.notePath) return false;
+    if (!noteCommentsEqual([left.comment], [right.comment])) return false;
+  }
+  return true;
+}
+
+function anchorsEqual(
+  a: StructuralAnchor | null | undefined,
+  b: StructuralAnchor | null | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.kind === b.kind &&
+    a.startHash === b.startHash &&
+    a.startType === b.startType &&
+    a.startOcc === b.startOcc &&
+    a.startOffset === b.startOffset &&
+    a.endHash === b.endHash &&
+    a.endType === b.endType &&
+    a.endOcc === b.endOcc &&
+    a.endOffset === b.endOffset &&
+    a.leafType === b.leafType &&
+    a.leafKey === b.leafKey
+  );
+}
+
+function noteCommentsEqual(a: NoteComment[], b: NoteComment[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const left = a[i]!;
+    const right = b[i]!;
+    if (
+      left.id !== right.id ||
+      left.body !== right.body ||
+      left.quote !== right.quote ||
+      left.prefix !== right.prefix ||
+      left.suffix !== right.suffix ||
+      left.resolved !== right.resolved ||
+      left.createdAt !== right.createdAt ||
+      left.updatedAt !== right.updatedAt ||
+      !anchorsEqual(left.anchor, right.anchor)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Hidden folder notes (`.folder.md`) are omitted from `list_tree`, so they never
  * appear in `collectFilePaths`. Keep their tabs while the parent folder remains.
@@ -693,12 +801,16 @@ async function pruneMissingTabs(
   const lostActive = activePath != null && !activeStillOpen;
 
   if (nextTabs.length === tabs.length && !lostActive) {
+    if (treeShapeEqual(get().tree, tree)) return;
     set({ tree });
     return;
   }
 
   if (!lostActive) {
-    set({ tree, tabs: nextTabs });
+    set({
+      tree: treeShapeEqual(get().tree, tree) ? get().tree : tree,
+      tabs: nextTabs,
+    });
     persistSession(get());
     return;
   }
@@ -706,7 +818,7 @@ async function pruneMissingTabs(
   // File gone from disk — discard dirty buffer; do not try to save.
   if (!nextTabs.length) {
     set({
-      tree,
+      tree: treeShapeEqual(get().tree, tree) ? get().tree : tree,
       tabs: [],
       activePath: null,
       content: "",
@@ -718,7 +830,7 @@ async function pruneMissingTabs(
   }
 
   const fallback = pickFallbackTab(tabs, nextTabs, activePath!);
-  set({ tree });
+  if (!treeShapeEqual(get().tree, tree)) set({ tree });
   await activateTab(set, get, fallback, nextTabs);
   persistSession(get());
 }
@@ -1006,7 +1118,25 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
               loadFavoritePaths(),
               loadProjectPropertiesMap(),
             ]);
-          set({ favoritePaths, projectPropertiesByPath });
+          const prev = get();
+          const nextFav = sameStringArray(prev.favoritePaths, favoritePaths)
+            ? prev.favoritePaths
+            : favoritePaths;
+          const nextProps = projectPropertiesMapsEqual(
+            prev.projectPropertiesByPath,
+            projectPropertiesByPath,
+          )
+            ? prev.projectPropertiesByPath
+            : projectPropertiesByPath;
+          if (
+            nextFav !== prev.favoritePaths ||
+            nextProps !== prev.projectPropertiesByPath
+          ) {
+            set({
+              favoritePaths: nextFav,
+              projectPropertiesByPath: nextProps,
+            });
+          }
           await pruneMissingTabs(set, get, tree);
           void get().refreshAllComments();
           void get().loadActiveNoteComments();
@@ -1354,8 +1484,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   refreshAllComments: async () => {
     try {
       const allComments = await listAllComments();
+      if (commentRefsEqual(get().allComments, allComments)) return;
       set({ allComments });
     } catch {
+      if (get().allComments.length === 0) return;
       set({ allComments: [] });
     }
   },
@@ -1363,15 +1495,22 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   loadActiveNoteComments: async () => {
     const { activePath } = get();
     if (!activePath || !activePath.toLowerCase().endsWith(".md")) {
+      if (get().activeNoteComments.length === 0) return;
       set({ activeNoteComments: [] });
       return;
     }
     try {
       const activeNoteComments = await listNoteComments(activePath);
       if (get().activePath !== activePath) return;
+      if (noteCommentsEqual(get().activeNoteComments, activeNoteComments)) {
+        return;
+      }
       set({ activeNoteComments });
     } catch {
-      if (get().activePath === activePath) set({ activeNoteComments: [] });
+      if (get().activePath === activePath) {
+        if (get().activeNoteComments.length === 0) return;
+        set({ activeNoteComments: [] });
+      }
     }
   },
 

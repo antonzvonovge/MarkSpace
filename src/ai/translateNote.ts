@@ -141,7 +141,7 @@ Do NOT translate or alter:
 - Any remaining #tag tokens
 - Wiki-link targets/paths ([[Note]], [[folder/note|Alias]] — you may translate only the display alias after |)
 - Image/asset paths and Draw.io embeds (![[…]], ![alt](path) — translate alt text only)
-- Fenced code block contents (mermaid/plantuml/source); keep code as-is
+- Fenced code block contents (mermaid/plantuml/d2/dot/markmap/source); keep code as-is
 - URLs and HTML attributes (including data-background-color / data-text-color)
 
 Do translate natural-language content: headings, paragraphs, lists, table cell text, image alt text, and link labels.`;

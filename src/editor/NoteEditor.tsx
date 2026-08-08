@@ -387,6 +387,10 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const editor = useCreateBlockNote(
     {
       schema: noteEditorSchema,
+      // Default "prefer-navigate-ui" sends Tab into the formatting toolbar when a
+      // block/range is selected (toolbar open) — focus jumps and the page scrolls
+      // instead of nesting. Prefer indent like Notion/Obsidian.
+      tabBehavior: "prefer-indent",
       tables: {
         cellBackgroundColor: true,
         cellTextColor: true,

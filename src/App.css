@@ -3073,6 +3073,17 @@ select {
   margin-left: 1.25em;
 }
 
+/* Align list-item children with text after the marker (BlockNote: same 24px as
+   ::before min-width). Sibling selector — avoid :has() (expensive on WebKitGTK). */
+.editor-canvas
+  .bn-block-content[data-content-type="numberedListItem"]
+  ~ .bn-block-group,
+.editor-canvas
+  .bn-block-content[data-content-type="bulletListItem"]
+  ~ .bn-block-group {
+  margin-left: 24px;
+}
+
 .editor-canvas .bn-block-content {
   padding: 3px 2px;
 }

@@ -12,8 +12,8 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
 - Tables: use GFM pipe tables (`| col |`). Never draw ASCII / box-drawing tables (`+---`, `│`, monospace grids) and never put a table inside a plain-text / untitled code fence — those stay unrendered junk. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
-- Nested lists: use `*` bullets (preferred over `-`). Indent children with **2 spaces** under a `*` parent (`  * child`) and **3 spaces** under a numbered item (`   * child`). Never put a blank line between a parent item and its nested children — that breaks nesting. Bold labels (`* **Label:** …`): put a **short** body on the same line; for a longer explanation after the label, put it in a **indented** continuation paragraph (2 spaces under `*`, 3 under `1.`) so it stays inside the list item — never a flush-left paragraph (that exits the list). When editing, preserve the note’s existing list markers and indent depth.
-- Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. In chat and notes use fenced ` ```mermaid ` or ` ```plantuml ` / ` ```puml ` for quick sketches. For richer architecture (colors, swimlanes, ArchiMate, free layout) create or edit a `.drawio` and embed with `![[path/diagram.drawio]]`.
+- Nested lists: use `*` bullets (preferred over `-`). Indent is **relative to the parent item’s text column and compounds at every depth**: take the parent’s own indent and add **2 spaces** for a `*` parent, **3 spaces** for a `1. ` parent (`10. ` → 4). So a bullet under `1. ` sits at 3, its own child at 5, a numbered child of that at 8 — never reset to 2/3 just because you are deeper. Never put a blank line between a parent item and its nested children — that breaks nesting. Bold labels (`* **Label:** …`): put a **short** body on the same line; for a longer explanation after the label, put it in an **indented** continuation paragraph at that item’s text column so it stays inside the item — never a flush-left (or under-indented) paragraph, which ends the list and restarts numbering at `1.`. The same indent applies to anything else inside an item: extra paragraphs, code fences, tables, images. When editing, preserve the note’s existing list markers and indent depth.
+- Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. Prefer fenced ` ```d2 ` for richer architecture text-diagrams; also ` ```mermaid `, ` ```plantuml ` / ` ```puml `, ` ```dot ` / ` ```graphviz `, ` ```markmap `. For freeform rich graphics create/edit a `.drawio` and embed `![[path/diagram.drawio]]`.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
@@ -142,12 +142,29 @@ flowchart TD
 A -> B
 @enduml
 ```
+
+```d2
+direction: down
+a -> b
+```
+
+```dot
+digraph { a -> b }
+```
+
+```markmap
+# Topic
+## Branch
+```
 ````
 
-Language tags: `mermaid`, `plantuml`, or `puml`.
+Language tags: `mermaid`, `plantuml` / `puml`, `d2`, `dot` / `graphviz` (saved as `dot`), `markmap`.
 
-- Use Mermaid / PlantUML for **quick** flowcharts, sequences, and sketches (rendered inline in chat and Live).
-- For **richer** diagrams (colors, groups/swimlanes, ArchiMate, labels, free layout) use a vault **Draw.io** file (`.drawio`) via diagram tools, then embed `![[path/diagram.drawio]]` (optional width `|480`).
+- **D2** — preferred for richer architecture / cascade text-diagrams (containers, themes, layout).
+- Mermaid / PlantUML — quick flowcharts, sequences, sketches.
+- **DOT / Graphviz** — dense branching graphs.
+- **Markmap** — mind maps from a Markdown outline.
+- For **freeform** rich graphics (colors, swimlanes, ArchiMate, hand layout) use a vault **Draw.io** file (`.drawio`) via diagram tools, then embed `![[path/diagram.drawio]]` (optional width `|480`).
 - Do **not** draw diagrams with ASCII / box-drawing characters in a plain / untitled code fence — same problem as ASCII tables: they stay a “Plain Text” card.
 
 ## Standard blocks
@@ -176,19 +193,24 @@ Prefer `*` for unordered lists (CommonMark treats `*` and `-` the same; MarkSpac
 
 **Nesting (critical for `edit_note` / `write_note`):**
 
-| Parent | Child indent | Example |
+Indentation is **relative to the parent item, not to the left margin**, so it grows with depth. Every item has a *text column* = its own indent + the width of its marker (`* ` → +2, `1. ` → +3, `10. ` → +4). Anything belonging to that item — nested lists, continuation paragraphs, code fences, tables, images — starts at that column:
+
+| Item | Its indent | Text column = indent for its children / continuations |
 |---|---|---|
-| `* item` | 2 spaces | `  * nested` |
-| `1. item` | 3 spaces | `   * nested` |
+| `* item` | 0 | 2 spaces (`  * nested`) |
+| `1. item` | 0 | 3 spaces (`   * nested`) |
+| `   * item` (child of `1.`) | 3 | 5 spaces |
+| `     1. item` (child of that) | 5 | 8 spaces |
 
 - Do **not** insert a blank line between a parent and its nested children — parsers treat that as ending the list / flattening hierarchy.
 - **Bold labels in bullets:**
   - Short body → same line: `* **Label:** short explanation.`
-  - Longer body after the label → blank line, then an **indented** continuation (2 spaces under `*`, 3 under `1.`) so the text stays in the list item.
-  - Never put a flush-left paragraph under the label — Markdown treats that as outside the list.
+  - Longer body after the label → blank line, then a continuation paragraph indented to the item’s text column so the text stays in the list item.
+  - Never put a flush-left (or under-indented) paragraph under the label — Markdown treats that as outside the list, and in a numbered list each following item then restarts at `1.`.
 - A blank line **after the whole list** is correct before a following top-level paragraph.
-- Do not mix 4-space / tab indents for nesting; stick to the 2-space / 3-space pattern above.
+- Do not mix 4-space / tab indents for nesting; derive the indent from the parent’s text column as above.
 - When editing an existing note, keep its markers (`*` vs `-`) and indent depths; do not “normalize” nested lists into flat ones.
+- On note read/write, MarkSpace may auto-indent a flush (or under-indented) continuation paragraph that sits between two same-level list siblings — that is the case that otherwise exits the list and restarts numbering at `1.`. It never decreases indent, never rewrites markers, and leaves regions alone if a code fence or ATX heading sits between the siblings.
 
 ```md
 * **Short topic:** body stays on the same line.
@@ -208,12 +230,31 @@ Prefer `*` for unordered lists (CommonMark treats `*` and `-` the same; MarkSpac
   Indented second paragraph still belongs to this bullet.
 ```
 
-Wrong (body drops out of the list):
+Deeper nesting — each level keeps adding to the parent’s text column:
 
 ```md
-* **Topic label:**
+1. **Isolate the work:**
+
+   Continuation of step 1, indented 3 spaces.
+
+   * Nested bullet at 3 spaces.
+
+     Its own continuation at 5 spaces (3 + 2).
+
+     1. Numbered child at 5 spaces.
+
+        Continuation of that child at 8 spaces (5 + 3).
+2. **Second step:** numbering keeps counting because every body stayed indented.
+```
+
+Wrong (body drops out of the list, numbering restarts at `1.`):
+
+```md
+1. **Topic label:**
 
 Flush-left paragraph — looks nested, but Markdown treats it as outside the list.
+
+1. **Next topic:** renders as “1.” again instead of “2.”.
 ```
 
 ## Math

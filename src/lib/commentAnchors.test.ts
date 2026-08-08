@@ -22,6 +22,21 @@ const schema = new Schema({
       atom: true,
       attrs: { code: { default: "" } },
     },
+    d2: {
+      group: "block",
+      atom: true,
+      attrs: { code: { default: "" } },
+    },
+    dot: {
+      group: "block",
+      atom: true,
+      attrs: { code: { default: "" } },
+    },
+    markmap: {
+      group: "block",
+      atom: true,
+      attrs: { code: { default: "" } },
+    },
   },
 });
 
@@ -72,6 +87,17 @@ describe("leafIdentity", () => {
     const c = schema.nodes.mermaid.create({ code: "X" });
     expect(leafIdentity(a)?.key).toBe(leafIdentity(b)?.key);
     expect(leafIdentity(a)?.key).not.toBe(leafIdentity(c)?.key);
+  });
+
+  it("hashes d2 / dot / markmap code", () => {
+    for (const type of ["d2", "dot", "markmap"] as const) {
+      const a = schema.nodes[type].create({ code: "same" });
+      const b = schema.nodes[type].create({ code: "same" });
+      const c = schema.nodes[type].create({ code: "other" });
+      expect(leafIdentity(a)?.type).toBe(type);
+      expect(leafIdentity(a)?.key).toBe(leafIdentity(b)?.key);
+      expect(leafIdentity(a)?.key).not.toBe(leafIdentity(c)?.key);
+    }
   });
 });
 

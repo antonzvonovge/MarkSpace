@@ -23,6 +23,13 @@ pub fn run() {
         // SAFETY: once at process start, before GTK / other threads initialize.
         unsafe {
             std::env::set_var("GTK_OVERLAY_SCROLLING", "0");
+
+            // WebKitGTK's DMA-BUF renderer paints stale tiles on hybrid GPUs
+            // (NVIDIA + integrated): panels keep old content until pointer
+            // motion forces a full invalidate. Opt out unless the user set it.
+            if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+                std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            }
         }
     }
 
