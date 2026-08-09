@@ -9,6 +9,8 @@ type Props = {
   path: string;
   content: string;
   onChange: (xml: string) => void;
+  /** False for keep-alive hidden tabs — ignore iframe messages. */
+  isActive?: boolean;
 };
 
 function parseMessage(data: unknown): Record<string, unknown> | null {
@@ -20,7 +22,12 @@ function parseMessage(data: unknown): Record<string, unknown> | null {
   }
 }
 
-export function DrawioEditor({ path, content, onChange }: Props) {
+export function DrawioEditor({
+  path,
+  content,
+  onChange,
+  isActive = true,
+}: Props) {
   const theme = usePrefsStore((s) => s.prefs.theme);
   const dark = theme === "dark";
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -31,6 +38,8 @@ export function DrawioEditor({ path, content, onChange }: Props) {
   onChangeRef.current = onChange;
   const pathRef = useRef(path);
   pathRef.current = path;
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
   const lastLoadedRef = useRef<string | null>(null);
   const skipNextAutosaveRef = useRef(false);
   const previewTimerRef = useRef<number | null>(null);
@@ -77,6 +86,8 @@ export function DrawioEditor({ path, content, onChange }: Props) {
       }
 
       if (msg.event === "autosave" || msg.event === "save") {
+        // Hidden keep-alive tabs must not steal writes from the active note.
+        if (!isActiveRef.current) return;
         if (skipNextAutosaveRef.current) return;
         const xml = typeof msg.xml === "string" ? msg.xml : "";
         if (!xml || xml === contentRef.current) return;
@@ -104,6 +115,7 @@ export function DrawioEditor({ path, content, onChange }: Props) {
   }, []);
 
   useEffect(() => {
+    if (!isActive) return;
     if (!readyRef.current) return;
     if (content === lastLoadedRef.current) return;
     const frame = iframeRef.current;
@@ -119,7 +131,7 @@ export function DrawioEditor({ path, content, onChange }: Props) {
       }),
       "*",
     );
-  }, [content, path]);
+  }, [content, path, isActive]);
 
   return (
     <div className="drawio-editor">

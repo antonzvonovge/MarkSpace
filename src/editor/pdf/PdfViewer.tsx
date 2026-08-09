@@ -37,6 +37,8 @@ type OutlineItem = {
 
 type Props = {
   path: string;
+  /** False for keep-alive hidden tabs — skip global shortcuts. */
+  isActive?: boolean;
 };
 
 const SCALE_STEP = 0.1;
@@ -137,7 +139,7 @@ function OutlineTree({
   );
 }
 
-export function PdfViewer({ path }: Props) {
+export function PdfViewer({ path, isActive = true }: Props) {
   const takePendingPdfPage = useVaultStore((s) => s.takePendingPdfPage);
   const pendingPdfPage = useVaultStore((s) => s.pendingPdfPage);
   const vaultPath = useVaultStore((s) => s.vaultPath);
@@ -674,6 +676,7 @@ export function PdfViewer({ path }: Props) {
   }, [numPages, loading, persistPage]);
 
   useEffect(() => {
+    if (!isActive) return;
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.code === "KeyF") {
@@ -688,7 +691,7 @@ export function PdfViewer({ path }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [findOpen]);
+  }, [findOpen, isActive]);
 
   const runFind = async (direction: 1 | -1) => {
     const doc = docRef.current;
@@ -728,7 +731,7 @@ export function PdfViewer({ path }: Props) {
     }
   };
 
-  const showOutline = outlineOpen && outline.length > 0;
+  const showOutline = isActive && outlineOpen && outline.length > 0;
 
   return (
     <div className="pdf-viewer">

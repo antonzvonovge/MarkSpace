@@ -13,6 +13,7 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -75,6 +76,7 @@ import {
   parentPath,
   resolveWikiTarget,
   writeAsset,
+  type NoteComment,
 } from "../lib/vaultApi";
 import { isUnderDiaryProject } from "../lib/diaryNotes";
 import { editorFontStack } from "../settings/applyPrefs";
@@ -207,19 +209,35 @@ type Props = {
   path: string;
   content: string;
   onChange: (markdown: string) => void;
+  /** False for keep-alive hidden tabs — skip chrome, listeners, comment work. */
+  isActive?: boolean;
 };
 
 /** Delay Live→markdown export so keystrokes can paint before heavy serialize. */
 const LIVE_SERIALIZE_MS = 150;
 
-export function NoteEditor({ path, content, onChange }: Props) {
+const EMPTY_COMMENTS: NoteComment[] = [];
+
+export const NoteEditor = memo(function NoteEditor({
+  path,
+  content,
+  onChange,
+  isActive = true,
+}: Props) {
   const openNote = useVaultStore((s) => s.openNote);
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const markDirty = useVaultStore((s) => s.markDirty);
   const vaultPath = useVaultStore((s) => s.vaultPath);
-  const showOutline = useVaultStore((s) => s.showOutline);
-  const showComments = useVaultStore((s) => s.showComments);
-  const activeNoteComments = useVaultStore((s) => s.activeNoteComments);
+  // Inactive keep-alive tabs must not follow the active note's outline/comments.
+  const showOutline = useVaultStore((s) =>
+    isActive ? s.showOutline : false,
+  );
+  const showComments = useVaultStore((s) =>
+    isActive ? s.showComments : false,
+  );
+  const activeNoteComments = useVaultStore((s) =>
+    isActive ? s.activeNoteComments : EMPTY_COMMENTS,
+  );
   const upsertActiveComment = useVaultStore((s) => s.upsertActiveComment);
   const deleteActiveComment = useVaultStore((s) => s.deleteActiveComment);
   const setActiveCommentResolved = useVaultStore(
@@ -239,6 +257,8 @@ export function NoteEditor({ path, content, onChange }: Props) {
   const canvasLiveFontSize = diaryLiveFont ? liveFontSizeDiary : liveFontSize;
   const applyingRef = useRef(false);
   const adoptNextChangeRef = useRef(false);
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
   const lastPathRef = useRef<string | null>(null);
   /** Full file content last seen from props / emitted onChange. */
   const lastExternalRef = useRef(content);
@@ -526,6 +546,8 @@ export function NoteEditor({ path, content, onChange }: Props) {
       emitSerializedMarkdown(ed);
       return;
     }
+    // Keep-alive hidden editors must not mark the active note dirty.
+    if (!isActiveRef.current) return;
     pendingSerializeRef.current = true;
     markDirty();
     if (serializeTimerRef.current != null) {
@@ -766,6 +788,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
   }, []);
 
   useEffect(() => {
+    if (!isActive) return;
     const view = editor._tiptapEditor?.view;
     if (!view) return;
     setCommentDecorationsMeta(view, {
@@ -773,11 +796,17 @@ export function NoteEditor({ path, content, onChange }: Props) {
       showResolved: showResolvedComments,
       activeId: activeCommentId,
     });
-  }, [editor, commentAnchors, showResolvedComments, activeCommentId]);
+  }, [
+    editor,
+    isActive,
+    commentAnchors,
+    showResolvedComments,
+    activeCommentId,
+  ]);
 
   const [commentLayoutTick, setCommentLayoutTick] = useState(0);
   useEffect(() => {
-    if (!showComments) return;
+    if (!isActive || !showComments) return;
     const tip = editor._tiptapEditor;
     if (!tip) return;
     let raf = 0;
@@ -799,7 +828,14 @@ export function NoteEditor({ path, content, onChange }: Props) {
       tip.off("transaction", bump);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [editor, showComments, path, commentAnchors, showResolvedComments]);
+  }, [
+    editor,
+    isActive,
+    showComments,
+    path,
+    commentAnchors,
+    showResolvedComments,
+  ]);
 
   const commentsInDocOrder = useMemo(() => {
     const view = editor._tiptapEditor?.view;
@@ -958,6 +994,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
   }, [editor]);
 
   useEffect(() => {
+    if (!isActive) return;
     const shell = shellRef.current;
     if (!shell) return;
 
@@ -1006,7 +1043,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
       document.removeEventListener("drop", onDrop, true);
       document.removeEventListener("dragend", onDragEnd, true);
     };
-  }, [editor]);
+  }, [editor, isActive]);
 
   return (
     <div
@@ -1053,7 +1090,7 @@ export function NoteEditor({ path, content, onChange }: Props) {
         </>
       ) : null}
       <div className="editor-column">
-        <DocumentToolbar />
+        {isActive ? <DocumentToolbar /> : null}
         <div className="editor-main" onMouseDown={handleEmptyCanvasMouseDown}>
           <div className="editor-canvas-wrap">
             <div
@@ -1063,9 +1100,11 @@ export function NoteEditor({ path, content, onChange }: Props) {
                   "--live-font-size": `${canvasLiveFontSize}px`,
                 } as CSSProperties
               }
-              onContextMenu={openEditorContextMenu}
+              onContextMenu={isActive ? openEditorContextMenu : undefined}
             >
-              <PageTags content={content} onChange={onChange} />
+              {isActive ? (
+                <PageTags content={content} onChange={onChange} />
+              ) : null}
               <NoteFormattingToolbarProvider
                 notePath={path}
                 onComment={startCommentFromSelection}
@@ -1075,24 +1114,29 @@ export function NoteEditor({ path, content, onChange }: Props) {
                   theme={editorTheme}
                   slashMenu={false}
                   formattingToolbar={false}
+                  editable={isActive}
                 >
-                  <FormattingToolbarController
-                    formattingToolbar={NoteFormattingToolbar}
-                  />
-                  <SuggestionMenuController
-                    triggerCharacter="/"
-                    getItems={getSlashMenuItems}
-                    suggestionMenuComponent={NoteSlashSuggestionMenu}
-                  />
-                  <SuggestionMenuController
-                    triggerCharacter="#"
-                    getItems={getHashTagMenuItems}
-                    shouldOpen={shouldOpenTagMenu}
-                    suggestionMenuComponent={TagSuggestionMenu}
-                    onItemClick={(item) => {
-                      item.onItemClick?.();
-                    }}
-                  />
+                  {isActive ? (
+                    <>
+                      <FormattingToolbarController
+                        formattingToolbar={NoteFormattingToolbar}
+                      />
+                      <SuggestionMenuController
+                        triggerCharacter="/"
+                        getItems={getSlashMenuItems}
+                        suggestionMenuComponent={NoteSlashSuggestionMenu}
+                      />
+                      <SuggestionMenuController
+                        triggerCharacter="#"
+                        getItems={getHashTagMenuItems}
+                        shouldOpen={shouldOpenTagMenu}
+                        suggestionMenuComponent={TagSuggestionMenu}
+                        onItemClick={(item) => {
+                          item.onItemClick?.();
+                        }}
+                      />
+                    </>
+                  ) : null}
                 </BlockNoteView>
               </NoteFormattingToolbarProvider>
             </div>
@@ -1179,4 +1223,4 @@ export function NoteEditor({ path, content, onChange }: Props) {
       ) : null}
     </div>
   );
-}
+});
