@@ -647,6 +647,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const { mode, modelId } = defaultsFromSettings();
     const now = Date.now();
     const id = crypto.randomUUID();
+    // Inherit project from the chat the user was just in, else latest thread.
+    const inheritedProject =
+      get().projectPath?.trim() ||
+      [...get().threads]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map((t) => t.projectPath?.trim() || null)
+        .find((p): p is string => !!p) ||
+      null;
+    const project = await loadProjectContext(inheritedProject);
     const empty = {
       id,
       title: "New chat",
@@ -654,7 +663,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       updatedAt: now,
       mode,
       modelId,
-      projectPath: null as string | null,
+      projectPath: inheritedProject,
       messages: [] as UIMessage[],
     };
     const meta = await upsertChatThread(vaultPath, empty);
@@ -672,10 +681,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [],
       mode: meta.mode === "agent" ? "agent" : "ask",
       modelId: meta.modelId || modelId,
-      projectPath: null,
-      projectAbout: "",
-      projectType: "",
-      projectLearningLanguage: "",
+      projectPath: inheritedProject,
+      projectAbout: project.about,
+      projectType: project.projectType,
+      projectLearningLanguage: project.learningLanguage,
       contextAnchorTokens: null,
       contextAnchorMessageCount: null,
       status: "ready",
@@ -1154,6 +1163,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         forcedSkills,
         forcedTools,
         contextWindow: limit,
+        maxSteps: settings.agentMaxSteps,
         abortSignal: controller.signal,
         onMessages: (next) => {
           if (get().abort !== controller) return;

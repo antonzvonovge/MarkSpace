@@ -175,9 +175,8 @@ function buildProviderOptions(
   plan: ModelRoutePlan,
   enableReasoning: boolean,
 ): SharedV4ProviderOptions | undefined {
-  if (!enableReasoning) return undefined;
-
   if (plan.transport === "openrouter") {
+    if (!enableReasoning) return undefined;
     return {
       openrouter: {
         reasoning: {
@@ -189,14 +188,17 @@ function buildProviderOptions(
   }
 
   switch (plan.vendor) {
-    case "openai":
-      return {
-        openai: {
-          reasoningEffort: "medium",
-          reasoningSummary: "auto",
-        },
-      };
+    case "openai": {
+      // Keep parallel tool calls on (OpenAI default, but be explicit).
+      const openai: Record<string, unknown> = { parallelToolCalls: true };
+      if (enableReasoning) {
+        openai.reasoningEffort = "medium";
+        openai.reasoningSummary = "auto";
+      }
+      return { openai };
+    }
     case "anthropic":
+      if (!enableReasoning) return undefined;
       return {
         anthropic: {
           thinking: {
@@ -206,6 +208,7 @@ function buildProviderOptions(
         },
       };
     case "google":
+      if (!enableReasoning) return undefined;
       return {
         google: {
           thinkingConfig: {

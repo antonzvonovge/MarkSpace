@@ -28,9 +28,12 @@ export function inlineMathToEditorHtml(latex: string): string {
   return `<span data-inline-content-type="latex" data-latex="${safe}"></span>`;
 }
 
-/** Live intermediate for display `$$latex$$` (fenced so BlockNote makes a block). */
+/** Live intermediate for display `$$latex$$` (HTML so BlockNote keeps it in lists). */
 export function blockMathToEditorHtml(latex: string): string {
-  return `\`\`\`math\n${latex}\n\`\`\``;
+  const safe = escapeHtmlAttr(latex);
+  // Prefer a data-content-type div over an indented ```math fence: BlockNote
+  // drops indented fences inside list items as empty `codeBlock`s.
+  return `<div data-content-type="equation" data-latex="${safe}"></div>`;
 }
 
 type Segment =
@@ -134,13 +137,19 @@ function segmentMarkdown(source: string): Segment[] {
     let j = i + 1;
     while (j < n) {
       const c = source[j]!;
-      if (
-        c === "`" ||
-        c === "<" ||
-        c === "[" ||
-        (c === "!" && source[j + 1] === "[")
-      ) {
+      if (c === "`" || c === "[" || (c === "!" && source[j + 1] === "[")) {
         break;
+      }
+      // Only split on `<` when it starts a real HTML/autolink tag — otherwise
+      // `$<5$` / `$a < b$` would be torn apart and never project to KaTeX.
+      if (c === "<") {
+        const rest = source.slice(j);
+        if (
+          /^<\/?[A-Za-z][^>]*>/.test(rest) ||
+          /^<[a-zA-Z][a-zA-Z0-9+.-]*:/.test(rest)
+        ) {
+          break;
+        }
       }
       if (
         c === "\n" &&
@@ -184,8 +193,17 @@ function rewriteMathInText(text: string): string {
         if (text[j] === "$" && text[j + 1] === "$" && !isEscapedDollar(text, j)) {
           const latex = text.slice(i + 2, j);
           if (latex.trim()) {
+            // Drop indent before `$$` and isolate as its own block — indented
+            // ```math / HTML inside list continuations is not parsed as equation.
+            out = out.replace(/[ \t]+$/, "");
+            if (out.length > 0 && !out.endsWith("\n")) out += "\n";
+            if (out.length > 0 && !out.endsWith("\n\n")) out += "\n";
             out += blockMathToEditorHtml(latex.trim());
+            out += "\n\n";
             i = j + 2;
+            if (text[i] === "\n") i += 1;
+            // Drop indent on the following continuation line only when it was
+            // the same list-indent that preceded `$$` (keep content).
             closed = true;
             break;
           }
@@ -224,6 +242,72 @@ function rewriteMathInText(text: string): string {
     }
     out += inlineMathToEditorHtml(text.slice(i + 1, found));
     i = found + 1;
+  }
+
+  return out;
+}
+
+/**
+ * remark-math treats one-line `$$…$$` as *inline* math. Expand to the
+ * multiline display form so chat (and any remark-math consumer) renders a
+ * block equation. Skips fenced/inline code via `segmentMarkdown`.
+ */
+export function normalizeDisplayMath(source: string): string {
+  return segmentMarkdown(source)
+    .map((seg) =>
+      seg.kind === "protect" ? seg.text : expandOneLineDisplayMath(seg.text),
+    )
+    .join("");
+}
+
+function expandOneLineDisplayMath(text: string): string {
+  let out = "";
+  let i = 0;
+  const n = text.length;
+
+  while (i < n) {
+    if (text[i] !== "$" || isEscapedDollar(text, i)) {
+      out += text[i];
+      i += 1;
+      continue;
+    }
+    if (text[i + 1] !== "$") {
+      out += "$";
+      i += 1;
+      continue;
+    }
+    // Already multiline display opener (`$$\n` or `$$` at EOL before content).
+    if (text[i + 2] === "\n") {
+      out += "$$";
+      i += 2;
+      continue;
+    }
+    let j = i + 2;
+    let closed = -1;
+    while (j < n && text[j] !== "\n") {
+      if (
+        text[j] === "$" &&
+        text[j + 1] === "$" &&
+        !isEscapedDollar(text, j)
+      ) {
+        closed = j;
+        break;
+      }
+      j += 1;
+    }
+    if (closed === -1) {
+      out += "$$";
+      i += 2;
+      continue;
+    }
+    const latex = text.slice(i + 2, closed).trim();
+    if (!latex) {
+      out += "$$";
+      i += 2;
+      continue;
+    }
+    out += `$$\n${latex}\n$$`;
+    i = closed + 2;
   }
 
   return out;

@@ -32,6 +32,7 @@ import { chipLabelForPath } from "../../lib/chatComposerDom";
 import { commentQuoteLabel } from "../../lib/commentAnchors";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { findModel, OPENROUTER_MODELS } from "../../ai/models";
+import { isAgentStepLimitNotice } from "../../ai/runChat";
 import { resolveModelId } from "../../ai/resolveModelId";
 import type { AiSettings } from "../../ai/types";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
@@ -451,6 +452,17 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                 key={`${message.id}-t-${i}`}
                 className="chat-error-inthread"
                 role="alert"
+              >
+                {part.text}
+              </div>
+            );
+          }
+          if (isAgentStepLimitNotice(part.text)) {
+            return (
+              <div
+                key={`${message.id}-t-${i}`}
+                className="chat-step-limit-notice"
+                role="status"
               >
                 {part.text}
               </div>

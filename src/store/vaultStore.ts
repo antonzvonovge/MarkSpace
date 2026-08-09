@@ -1260,13 +1260,14 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   refreshTree: (() => {
-    let tail: Promise<void> = Promise.resolve();
-    let scheduled = false;
-    return () => {
-      if (scheduled) return tail;
-      scheduled = true;
-      tail = tail.then(async () => {
-        scheduled = false;
+    let chain: Promise<void> = Promise.resolve();
+    let pending = false;
+    const run = async () => {
+      // Refetch until a snapshot completes with no newer refreshTree() during the await.
+      // Otherwise a listTree() started before rename/move can prune remapped tabs and
+      // activate a random neighbour ("wrong article selected after rename").
+      while (pending) {
+        pending = false;
         try {
           const [tree, favoritePaths, projectPropertiesByPath] =
             await Promise.all([
@@ -1274,6 +1275,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
               loadFavoritePaths(),
               loadProjectPropertiesMap(),
             ]);
+          if (pending) continue;
           const prev = get();
           const nextFav = sameStringArray(prev.favoritePaths, favoritePaths)
             ? prev.favoritePaths
@@ -1294,13 +1296,19 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
             });
           }
           await pruneMissingTabs(set, get, tree);
+          if (pending) continue;
           void get().refreshAllComments();
           void get().loadActiveNoteComments();
         } catch (e) {
+          if (pending) continue;
           set({ error: e instanceof Error ? e.message : String(e) });
         }
-      });
-      return tail;
+      }
+    };
+    return () => {
+      pending = true;
+      chain = chain.then(run, run);
+      return chain;
     };
   })(),
 
@@ -2339,7 +2347,33 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
       if (from !== nextPath) applyPathRemaps(set, get, from, nextPath);
       persistSession(get());
+
+      // Pin selection across refreshTree: a stale listTree snapshot must not leave
+      // the editor on an unrelated neighbour tab.
+      const pinnedActive = get().activePath;
+      const pinnedFolder = get().selectedFolderPath;
+      const pinnedExplicit = get().selectedFolderExplicit;
+
       await get().refreshTree();
+
+      if (
+        pinnedActive &&
+        get().activePath !== pinnedActive &&
+        (pinnedActive === nextPath || pinnedActive.startsWith(`${nextPath}/`))
+      ) {
+        await get().openNote(pinnedActive, {
+          preview: true,
+          syncTreeSelection: !pinnedExplicit,
+        });
+        if (pinnedExplicit) {
+          set({
+            selectedFolderPath: pinnedFolder,
+            selectedFolderExplicit: true,
+            treeSelectionVisible: true,
+          });
+        }
+      }
+
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
       return nextPath;

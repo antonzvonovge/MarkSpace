@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  blockMathToEditorHtml,
   editorMarkdownToMath,
   inlineMathToEditorHtml,
   mathToEditorMarkdown,
+  normalizeDisplayMath,
 } from "./mathMarkdown";
 
 describe("mathMarkdown", () => {
@@ -10,10 +12,9 @@ describe("mathMarkdown", () => {
     const src = "More $Cl^-$ enters.\n\n$$E = mc^2$$";
     const projected = mathToEditorMarkdown(src);
     expect(projected).toContain(inlineMathToEditorHtml("Cl^-"));
-    expect(projected).toContain("```math\nE = mc^2\n```");
-    expect(editorMarkdownToMath(projected)).toBe(
-      "More $Cl^-$ enters.\n\n$$E = mc^2$$",
-    );
+    expect(projected).toContain(blockMathToEditorHtml("E = mc^2"));
+    expect(editorMarkdownToMath(projected)).toContain("$Cl^-$");
+    expect(editorMarkdownToMath(projected)).toContain("$$E = mc^2$$");
   });
 
   it("restores KaTeX-filled HTML using data-latex only", () => {
@@ -56,5 +57,50 @@ describe("mathMarkdown", () => {
 
   it("requires tight inline delimiters", () => {
     expect(mathToEditorMarkdown("bad $ x $ ok")).toBe("bad $ x $ ok");
+  });
+
+  it("projects math that contains < comparisons", () => {
+    expect(mathToEditorMarkdown("threshold $<5$ here")).toBe(
+      `threshold ${inlineMathToEditorHtml("<5")} here`,
+    );
+    expect(mathToEditorMarkdown("cmp $a<b$ end")).toBe(
+      `cmp ${inlineMathToEditorHtml("a<b")} end`,
+    );
+    expect(mathToEditorMarkdown("range $x < 5$ ok")).toBe(
+      `range ${inlineMathToEditorHtml("x < 5")} ok`,
+    );
+    expect(mathToEditorMarkdown("$$\na < b\n$$")).toContain(
+      blockMathToEditorHtml("a < b"),
+    );
+    // Still protects real HTML tags around math.
+    const mixed = 'before <span class="x">y</span> and $<5$ after';
+    const projected = mathToEditorMarkdown(mixed);
+    expect(projected).toContain('<span class="x">y</span>');
+    expect(projected).toContain(inlineMathToEditorHtml("<5"));
+    expect(editorMarkdownToMath(projected)).toBe(mixed);
+  });
+
+  it("projects indented display math inside list items", () => {
+    const src =
+      "* Стратегия:\n  $$t_{sleep} = 2^{\\text{attempt}} \\times \\text{base\\_delay}$$\n  Это текст.";
+    const projected = mathToEditorMarkdown(src);
+    expect(projected).toContain(
+      blockMathToEditorHtml(
+        "t_{sleep} = 2^{\\text{attempt}} \\times \\text{base\\_delay}",
+      ),
+    );
+    expect(projected).not.toMatch(/^[ \t]+```math/m);
+    expect(projected).not.toMatch(/^[ \t]+<div data-content-type="equation"/m);
+  });
+
+  it("normalizes one-line $$…$$ to display math for remark-math", () => {
+    const oneLine =
+      "$$t_{sleep} = 2^{\\text{attempt}} \\times \\text{base\\_delay}$$";
+    expect(normalizeDisplayMath(oneLine)).toBe(
+      "$$\nt_{sleep} = 2^{\\text{attempt}} \\times \\text{base\\_delay}\n$$",
+    );
+    expect(normalizeDisplayMath("$$\nE = mc^2\n$$")).toBe("$$\nE = mc^2\n$$");
+    expect(normalizeDisplayMath("keep $inline$")).toBe("keep $inline$");
+    expect(normalizeDisplayMath("```\n$$not$$\n```")).toBe("```\n$$not$$\n```");
   });
 });

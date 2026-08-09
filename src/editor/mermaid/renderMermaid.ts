@@ -12,47 +12,74 @@ function loadMermaid() {
   return mermaidReady;
 }
 
-/** Cursor-like muted grays; compact type + spacing for chat. */
+/**
+ * Mermaid's wrapLabel bails out entirely when a label already contains `<br>`,
+ * so one long line after a manual break still stretches that actor pair.
+ * Strip breaks in sequence diagrams — config `sequence.wrap` reflows for us.
+ */
+function prepareSequenceSource(code: string): string {
+  const body = code.replace(/^\s*%%\{[\s\S]*?\}%%\s*/m, "");
+  if (!/^\s*sequenceDiagram\b/m.test(body)) return code;
+  return code.replace(/<br\s*\/?>/gi, " ");
+}
+
+/** Shared sequence layout: equal lifeline columns, wrap long text. */
+const SEQUENCE_LAYOUT = {
+  wrap: true,
+  width: 200,
+  wrapPadding: 10,
+  // Distance between actor boxes (not centers) — larger = clearer columns.
+  actorMargin: 72,
+  boxMargin: 6,
+  boxTextMargin: 4,
+  noteMargin: 10,
+  messageMargin: 32,
+  messageAlign: "left" as const,
+  useMaxWidth: false,
+};
+
+
+/** Cursor Plan–like muted zinc; compact type + clearer edges. */
 const NEUTRAL_LIGHT = {
   darkMode: false,
   background: "#ffffff",
   mainBkg: "#f4f4f5",
   primaryColor: "#f4f4f5",
-  primaryTextColor: "#3f3f46",
-  primaryBorderColor: "#d4d4d8",
+  primaryTextColor: "#27272a",
+  primaryBorderColor: "#a1a1aa",
   secondaryColor: "#e4e4e7",
-  secondaryTextColor: "#3f3f46",
-  secondaryBorderColor: "#d4d4d8",
+  secondaryTextColor: "#27272a",
+  secondaryBorderColor: "#a1a1aa",
   tertiaryColor: "#fafafa",
-  tertiaryTextColor: "#52525b",
-  tertiaryBorderColor: "#e4e4e7",
-  lineColor: "#a1a1aa",
-  textColor: "#52525b",
-  titleColor: "#71717a",
-  nodeBorder: "#d4d4d8",
-  nodeTextColor: "#3f3f46",
+  tertiaryTextColor: "#3f3f46",
+  tertiaryBorderColor: "#d4d4d8",
+  lineColor: "#71717a",
+  textColor: "#3f3f46",
+  titleColor: "#52525b",
+  nodeBorder: "#a1a1aa",
+  nodeTextColor: "#27272a",
   clusterBkg: "#fafafa",
-  clusterBorder: "#e4e4e7",
+  clusterBorder: "#d4d4d8",
   edgeLabelBackground: "#ffffff",
   actorBkg: "#f4f4f5",
-  actorBorder: "#d4d4d8",
-  actorTextColor: "#3f3f46",
-  actorLineColor: "#a1a1aa",
-  signalColor: "#71717a",
-  signalTextColor: "#52525b",
+  actorBorder: "#a1a1aa",
+  actorTextColor: "#27272a",
+  actorLineColor: "#71717a",
+  signalColor: "#52525b",
+  signalTextColor: "#3f3f46",
   labelBoxBkgColor: "#f4f4f5",
-  labelBoxBorderColor: "#d4d4d8",
-  labelTextColor: "#3f3f46",
-  loopTextColor: "#52525b",
+  labelBoxBorderColor: "#a1a1aa",
+  labelTextColor: "#27272a",
+  loopTextColor: "#3f3f46",
   noteBkgColor: "#fafafa",
-  noteTextColor: "#52525b",
-  noteBorderColor: "#e4e4e7",
+  noteTextColor: "#3f3f46",
+  noteBorderColor: "#d4d4d8",
   activationBkgColor: "#e4e4e7",
-  activationBorderColor: "#a1a1aa",
+  activationBorderColor: "#71717a",
   sequenceNumberColor: "#ffffff",
   fontFamily:
     '-apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif',
-  fontSize: "10px",
+  fontSize: "12px",
 };
 
 const NEUTRAL_DARK = {
@@ -61,37 +88,37 @@ const NEUTRAL_DARK = {
   background: "#18181b",
   mainBkg: "#27272a",
   primaryColor: "#27272a",
-  primaryTextColor: "#e4e4e7",
-  primaryBorderColor: "#52525b",
+  primaryTextColor: "#f4f4f5",
+  primaryBorderColor: "#71717a",
   secondaryColor: "#3f3f46",
-  secondaryTextColor: "#e4e4e7",
-  secondaryBorderColor: "#52525b",
+  secondaryTextColor: "#f4f4f5",
+  secondaryBorderColor: "#71717a",
   tertiaryColor: "#1f1f23",
-  tertiaryTextColor: "#a1a1aa",
-  tertiaryBorderColor: "#3f3f46",
-  lineColor: "#71717a",
-  textColor: "#a1a1aa",
+  tertiaryTextColor: "#d4d4d8",
+  tertiaryBorderColor: "#52525b",
+  lineColor: "#a1a1aa",
+  textColor: "#d4d4d8",
   titleColor: "#a1a1aa",
-  nodeBorder: "#52525b",
-  nodeTextColor: "#e4e4e7",
+  nodeBorder: "#71717a",
+  nodeTextColor: "#f4f4f5",
   clusterBkg: "#1f1f23",
-  clusterBorder: "#3f3f46",
+  clusterBorder: "#52525b",
   edgeLabelBackground: "#27272a",
   actorBkg: "#27272a",
-  actorBorder: "#52525b",
-  actorTextColor: "#e4e4e7",
-  actorLineColor: "#71717a",
-  signalColor: "#a1a1aa",
-  signalTextColor: "#d4d4d8",
+  actorBorder: "#71717a",
+  actorTextColor: "#f4f4f5",
+  actorLineColor: "#a1a1aa",
+  signalColor: "#d4d4d8",
+  signalTextColor: "#e4e4e7",
   labelBoxBkgColor: "#27272a",
-  labelBoxBorderColor: "#52525b",
-  labelTextColor: "#e4e4e7",
-  loopTextColor: "#a1a1aa",
+  labelBoxBorderColor: "#71717a",
+  labelTextColor: "#f4f4f5",
+  loopTextColor: "#d4d4d8",
   noteBkgColor: "#1f1f23",
-  noteTextColor: "#a1a1aa",
-  noteBorderColor: "#3f3f46",
+  noteTextColor: "#d4d4d8",
+  noteBorderColor: "#52525b",
   activationBkgColor: "#3f3f46",
-  activationBorderColor: "#71717a",
+  activationBorderColor: "#a1a1aa",
 };
 
 async function renderMermaidUncached(
@@ -101,7 +128,7 @@ async function renderMermaidUncached(
   renderId: string,
 ): Promise<string> {
   const { default: mermaid } = await loadMermaid();
-  const configKey = `${skin}:${dark ? "1" : "0"}:compact6`;
+  const configKey = `${skin}:${dark ? "1" : "0"}:compact9`;
   if (lastConfigKey !== configKey) {
     if (skin === "neutral") {
       mermaid.initialize({
@@ -117,22 +144,15 @@ async function renderMermaidUncached(
         flowchart: {
           htmlLabels: true,
           curve: "basis",
-          padding: 10,
-          nodeSpacing: 20,
-          rankSpacing: 44,
-          wrappingWidth: 128,
+          padding: 12,
+          nodeSpacing: 24,
+          rankSpacing: 40,
+          wrappingWidth: 160,
           useMaxWidth: false,
           // >0 reserves space so nested nodes don't cover subgraph titles.
           subGraphTitleMargin: { top: 6, bottom: 14 },
         },
-        sequence: {
-          actorMargin: 16,
-          boxMargin: 3,
-          boxTextMargin: 2,
-          noteMargin: 4,
-          messageMargin: 20,
-          useMaxWidth: false,
-        },
+        sequence: { ...SEQUENCE_LAYOUT },
         er: { useMaxWidth: false },
         journey: { useMaxWidth: false },
         gantt: { useMaxWidth: false },
@@ -146,11 +166,15 @@ async function renderMermaidUncached(
         securityLevel: "strict",
         suppressErrorRendering: true,
         theme: dark ? "dark" : "default",
+        sequence: { ...SEQUENCE_LAYOUT },
       });
     }
     lastConfigKey = configKey;
   }
-  const { svg } = await mermaid.render(renderId, code);
+  const { svg } = await mermaid.render(
+    renderId,
+    prepareSequenceSource(code),
+  );
   return svg;
 }
 

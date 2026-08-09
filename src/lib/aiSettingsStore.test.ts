@@ -47,4 +47,13 @@ describe("normalizeAiSettings", () => {
     expect(merged.openaiApiKey).toBe("");
     expect(merged.anthropicApiKey).toBe("");
   });
+
+  it("clamps agentMaxSteps and defaults when missing", () => {
+    expect(normalizeAiSettings({}).agentMaxSteps).toBe(
+      DEFAULT_AI_SETTINGS.agentMaxSteps,
+    );
+    expect(normalizeAiSettings({ agentMaxSteps: 0 }).agentMaxSteps).toBe(1);
+    expect(normalizeAiSettings({ agentMaxSteps: 99 }).agentMaxSteps).toBe(64);
+    expect(normalizeAiSettings({ agentMaxSteps: 24.6 }).agentMaxSteps).toBe(25);
+  });
 });

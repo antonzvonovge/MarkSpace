@@ -3,6 +3,7 @@ import { resolveModelId } from "../ai/resolveModelId";
 import { OPENROUTER_BASE_URL, OPENROUTER_MODELS } from "../ai/models";
 import {
   DEFAULT_AI_SETTINGS,
+  clampAgentMaxSteps,
   type AiSettings,
   type AiModelKind,
   type AiModelOption,
@@ -163,6 +164,7 @@ export function normalizeAiSettings(
     firecrawlApiKey: stringField(raw, "firecrawlApiKey"),
     modelId: known,
     defaultMode: mode,
+    agentMaxSteps: clampAgentMaxSteps(raw.agentMaxSteps),
     contextWindow:
       typeof raw.contextWindow === "number" && raw.contextWindow > 0
         ? Math.round(raw.contextWindow)
@@ -205,6 +207,7 @@ export async function saveAiSettings(settings: AiSettings): Promise<void> {
       settings.defaultMode === "agent" || settings.defaultMode === "ask"
         ? settings.defaultMode
         : DEFAULT_AI_SETTINGS.defaultMode,
+    agentMaxSteps: clampAgentMaxSteps(settings.agentMaxSteps),
     modelId: resolveModelId(OPENROUTER_BASE_URL, settings.modelId),
     models: normalizeModels(
       settings.models?.length ? settings.models : OPENROUTER_MODELS,

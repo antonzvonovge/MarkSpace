@@ -14,10 +14,10 @@ import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import { highlightCodeToHtml } from "../../lib/codeHighlight";
 import { writeClipboardText } from "../../lib/clipboardText";
+import { normalizeDisplayMath } from "../../lib/mathMarkdown";
 import { ensureFolderNote, folderPathFromFolderNote, resolveWikiTarget } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatDiagram, diagramEngineForLang } from "./ChatDiagram";
-
 
 
 type Props = {
@@ -277,7 +277,7 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
           pre: ({ children }) => <ChatPre>{children}</ChatPre>,
         }}
       >
-        {text}
+        {normalizeDisplayMath(text)}
       </ReactMarkdown>
       {caret ? <span className="chat-caret" aria-hidden="true" /> : null}
     </div>

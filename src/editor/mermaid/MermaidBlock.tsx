@@ -25,6 +25,8 @@ function MermaidPreview({ code, dark }: { code: string; dark: boolean }) {
       engine: "mermaid",
       code,
       dark,
+      // Same muted Cursor-like palette as chat / lightbox.
+      skin: "neutral",
       render: renderMermaidToSvg,
       onUpdate: ({ svg, error: nextError, pending: nextPending }) => {
         setError(nextError);

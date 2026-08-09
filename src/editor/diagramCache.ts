@@ -26,7 +26,7 @@ const memory = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<string>>();
 
 /** Bump when neutral/chat render settings change so stale SVGs are not reused. */
-const CACHE_REV = 10;
+const CACHE_REV = 13;
 
 export function diagramCacheKey(
   engine: DiagramEngine,

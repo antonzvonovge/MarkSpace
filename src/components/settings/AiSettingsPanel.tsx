@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { ChatMode } from "../../ai/types";
 import {
+  AGENT_MAX_STEPS_MAX,
+  AGENT_MAX_STEPS_MIN,
+  clampAgentMaxSteps,
+} from "../../ai/types";
+import {
   downloadEmbeddingModel,
   getEmbeddingModelStatus,
   type EmbeddingModelStatus,
@@ -266,6 +271,29 @@ export function AiSettingsPanel() {
           options={MODE_OPTIONS}
           aria-label="Default mode"
           onChange={(defaultMode) => setSettings({ defaultMode })}
+        />
+      </section>
+
+      <section className="sync-block">
+        <h3 className="sync-block-title">Agent step limit</h3>
+        <p className="sync-block-desc">
+          Max model rounds with tools per user message (not per chat). Each
+          round can call several tools in parallel. When the limit is hit, the
+          reply stops with a notice — send another message to continue.
+        </p>
+        <input
+          type="number"
+          className="sync-input"
+          min={AGENT_MAX_STEPS_MIN}
+          max={AGENT_MAX_STEPS_MAX}
+          step={1}
+          value={settings.agentMaxSteps}
+          aria-label="Agent step limit"
+          onChange={(e) => {
+            const raw = e.target.valueAsNumber;
+            if (Number.isNaN(raw)) return;
+            setSettings({ agentMaxSteps: clampAgentMaxSteps(raw) });
+          }}
         />
       </section>
     </div>

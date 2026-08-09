@@ -38,10 +38,30 @@ export type AiSettings = {
   firecrawlApiKey: string;
   modelId: string;
   defaultMode: ChatMode;
+  /**
+   * Max model↔tool rounds per user send (`stopWhen`). Resets every time you
+   * send a message; not a session-wide budget.
+   */
+  agentMaxSteps: number;
   /** Default context window when model does not override */
   contextWindow: number;
   models: AiModelOption[];
 };
+
+/** Default / clamp bounds for `AiSettings.agentMaxSteps`. */
+export const DEFAULT_AGENT_MAX_STEPS = 12;
+export const AGENT_MAX_STEPS_MIN = 1;
+export const AGENT_MAX_STEPS_MAX = 64;
+
+export function clampAgentMaxSteps(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_AGENT_MAX_STEPS;
+  }
+  return Math.min(
+    AGENT_MAX_STEPS_MAX,
+    Math.max(AGENT_MAX_STEPS_MIN, Math.round(value)),
+  );
+}
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   baseUrl: OPENROUTER_BASE_URL,
@@ -53,6 +73,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   firecrawlApiKey: "",
   modelId: "anthropic/claude-sonnet-4.6",
   defaultMode: "ask",
+  agentMaxSteps: DEFAULT_AGENT_MAX_STEPS,
   contextWindow: 200_000,
   models: [...OPENROUTER_MODELS],
 };

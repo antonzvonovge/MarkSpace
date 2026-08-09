@@ -60,4 +60,20 @@ describe("math BlockNote round-trip", () => {
     expect(md).toMatch(/\$Cl\^-\$/);
     expect(md).not.toBe("## Features\n\n$Cl^-$\n");
   });
+
+  it("parses inline math with < comparisons", () => {
+    editor = BlockNoteEditor.create({ schema: noteEditorSchema });
+    const source = "threshold $<5$ here";
+    const projected = mathToEditorMarkdown(source);
+    expect(projected).toContain("data-latex");
+    const blocks = editor.tryParseMarkdownToBlocks(projected);
+    editor.replaceBlocks(editor.document, blocks);
+    const para = editor.document.find((b) => b.type === "paragraph");
+    const inline = JSON.stringify(para?.content ?? []);
+    expect(inline).toContain('"type":"latex"');
+    expect(inline).toContain("<5");
+    expect(editorMarkdownToMath(editor.blocksToMarkdownLossy())).toContain(
+      "$<5$",
+    );
+  });
 });

@@ -136,4 +136,25 @@ describe("ChatMarkdown note references", () => {
     expect(container.querySelector(".katex-display")).not.toBeNull();
     expect(container.textContent).not.toContain("$Cl^-$");
   });
+
+  it("renders KaTeX when math contains <", () => {
+    const { container } = render(
+      <ChatMarkdown text={"threshold $<5$ and $a < b$"} />,
+    );
+    expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+    expect(container.textContent).not.toContain("$<5$");
+  });
+
+  it("renders one-line $$…$$ as display math", () => {
+    const { container } = render(
+      <ChatMarkdown
+        text={
+          "$$t_{sleep} = 2^{\\text{attempt}} \\times \\text{base\\_delay} + \\text{random\\_jitter}$$"
+        }
+      />,
+    );
+    expect(container.querySelector(".katex-display")).not.toBeNull();
+    expect(container.querySelector(".katex-error")).toBeNull();
+    expect(container.textContent).toMatch(/base_delay/);
+  });
 });

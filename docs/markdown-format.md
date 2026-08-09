@@ -13,7 +13,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Tables: use GFM pipe tables (`| col |`). Never draw ASCII / box-drawing tables (`+---`, `│`, monospace grids) and never put a table inside a plain-text / untitled code fence — those stay unrendered junk. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
 - Nested lists: use `*` bullets (preferred over `-`). Indent is **relative to the parent item’s text column and compounds at every depth**: take the parent’s own indent and add **2 spaces** for a `*` parent, **3 spaces** for a `1. ` parent (`10. ` → 4). So a bullet under `1. ` sits at 3, its own child at 5, a numbered child of that at 8 — never reset to 2/3 just because you are deeper. Never put a blank line between a parent item and its nested children — that breaks nesting. Bold labels (`* **Label:** …`): put a **short** body on the same line; for a longer explanation after the label, put it in an **indented** continuation paragraph at that item’s text column so it stays inside the item — never a flush-left (or under-indented) paragraph, which ends the list and restarts numbering at `1.`. The same indent applies to anything else inside an item: extra paragraphs, code fences, tables, images. When editing, preserve the note’s existing list markers and indent depth.
-- Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. Prefer fenced ` ```d2 ` for richer architecture text-diagrams; also ` ```mermaid `, ` ```plantuml ` / ` ```puml `, ` ```dot ` / ` ```graphviz `, ` ```markmap `. For freeform rich graphics create/edit a `.drawio` and embed `![[path/diagram.drawio]]`.
+- Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. Prefer fenced ` ```d2 ` for richer architecture text-diagrams; also ` ```mermaid `, ` ```plantuml ` / ` ```puml `, ` ```dot ` / ` ```graphviz `, ` ```markmap `. For freeform rich graphics create/edit a `.drawio` and embed `![[path/diagram.drawio]]`. In Mermaid, quote subgraph/node labels that contain `(…)`, `<br/>`, or other special chars: `subgraph id ["Title (detail)"]`, `A["Label<br/>line2"]` — unquoted parentheses inside `[…]` cause parse errors.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
@@ -167,6 +167,26 @@ Language tags: `mermaid`, `plantuml` / `puml`, `d2`, `dot` / `graphviz` (saved a
 - For **freeform** rich graphics (colors, swimlanes, ArchiMate, hand layout) use a vault **Draw.io** file (`.drawio`) via diagram tools, then embed `![[path/diagram.drawio]]` (optional width `|480`).
 - Do **not** draw diagrams with ASCII / box-drawing characters in a plain / untitled code fence — same problem as ASCII tables: they stay a “Plain Text” card.
 
+### Mermaid pitfalls (common parse errors)
+
+Mermaid treats `(…)`, `[…]`, `{…}` inside labels as **shape syntax**. Titles or node text with parentheses, colons, commas, or `<br>` must be **double-quoted**:
+
+````md
+```mermaid
+flowchart TD
+  subgraph Run_1 ["Run 1 (Original - Crashed)"]
+    C3["Checkpoint 14<br/>Target for Fork"] --> C4["Checkpoint 15"]
+  end
+```
+````
+
+- Wrong: `subgraph Run_1 [Run 1 (Original - Crashed)]` — the `(` after the title breaks parsing (`Expecting 'SQE' … got 'PS'`).
+- Right: `subgraph Run_1 ["Run 1 (Original - Crashed)"]`.
+- Same for nodes: `A["Label (detail)"]`, not `A[Label (detail)]`.
+- Prefer `flowchart` over legacy `graph`; use `<br/>` inside quoted labels for line breaks.
+- `classDef` / `style`: do not put spaces inside CSS values — `stroke-dasharray:5 5` is ok, but a broken `classDef` often creates a stray node labeled `class`. Prefer `A:::failed` over a trailing `class A failed` line when possible.
+- **Sequence diagrams:** MarkSpace enables message/note wrapping (`sequence.wrap`) with equal actor columns (`actorMargin` + fixed `width`) so long payloads wrap vertically instead of stretching lifelines unevenly. Prefer plain message text without `<br/>` — a single `<br/>` disables Mermaid’s auto-wrap for that label. Explicit breaks are stripped at render time when wrap is on.
+
 ## Standard blocks
 
 Supported via the editor (typical on-disk forms):
@@ -271,15 +291,25 @@ $$
 ```
 
 - Inline: `$…$` — no space right after the opening `$` or before the closing `$`; single line.
-- Display: `$$…$$` — may span lines; Live also inserts via slash menu **Block equation** / **Inline equation**.
-- Skipped inside fenced/inline code. A lone `$5` (no closing `$`) stays plain text.
+- Display: prefer blank-line-wrapped
 
+  ```md
+  $$
+  E = mc^2
+  $$
+  ```
+
+  One-line `$$E = mc^2$$` is also accepted (chat expands it to display; Live projects it to a block equation).
+- Skipped inside fenced/inline code. A lone `$5` (no closing `$`) stays plain text.
+- Comparisons with `<` / `>` are fine: `$<5$`, `$a < b$`, `$x>0$` (Live projects them to KaTeX; prefer `\lt` / `\gt` only if you want to avoid raw `<` in TeX source).
+- Inside `\text{…}`, escape underscores: `\text{base\_delay}` (plain `\text{base_delay}` is a KaTeX error).
+- Live also inserts via slash menu **Block equation** / **Inline equation**.
 ## Round-trip caveats
 
 - **Underline and text/background colors** applied in the live UI are stripped on Markdown export — they are not a durable on-disk format (except table cell colors via HTML tables).
 - **CRLF** is normalized to LF on load; trailing `\` hard-breaks inside fenced code that came from CRLF corruption are healed. Prefer LF and do not add stray `\` at ends of fence lines.
 - Wiki-links and Draw.io embeds are rewritten through intermediate forms in the editor; always write the on-disk forms documented here when using `edit_note` / `write_note`.
-- Math round-trips through inline `data-latex` spans and temporary ` ```math ` fences in the Live editor; on disk always use `$` / `$$`.
+- Math round-trips through inline `data-latex` spans and temporary equation HTML (`data-content-type="equation"`) in the Live editor; on disk always use `$` / `$$`.
 
 ## Not supported
 

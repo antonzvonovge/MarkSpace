@@ -92,6 +92,8 @@ describe("markdownFormat", () => {
     expect(rules).toMatch(/dot|graphviz/i);
     expect(rules).toMatch(/markmap/i);
     expect(rules).toMatch(/ASCII|box-drawing/i);
+    expect(rules).toMatch(/subgraph id|quoted parentheses|double-quoted/i);
     expect(MARKDOWN_FORMAT_GUIDE).toMatch(/Do \*\*not\*\* draw diagrams with ASCII/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/Mermaid pitfalls/i);
   });
 });

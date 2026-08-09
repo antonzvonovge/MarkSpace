@@ -7252,6 +7252,18 @@ select {
   line-height: 1.45;
 }
 
+.chat-step-limit-notice {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+}
+
 .chat-error {
   display: flex;
   align-items: flex-start;

@@ -19,9 +19,33 @@ import {
   type AiProviderCredentials,
 } from "./languageModel";
 import type { LoadedSkill, SkillMeta } from "./skills";
-import type { ChatMode } from "./types";
+import {
+  clampAgentMaxSteps,
+  DEFAULT_AGENT_MAX_STEPS,
+  type ChatMode,
+} from "./types";
 import { buildSystemPrompt, buildVaultTools } from "./vaultTools";
 import { unwrapComposerMarkers } from "../lib/chatComposerDom";
+
+/** @deprecated Prefer DEFAULT_AGENT_MAX_STEPS / settings.agentMaxSteps */
+export const AGENT_MAX_STEPS = DEFAULT_AGENT_MAX_STEPS;
+
+const AGENT_STEP_LIMIT_NOTICE_RE =
+  /^Reached the agent step limit \(\d+ steps\)/;
+
+export function agentStepLimitNotice(
+  maxSteps = DEFAULT_AGENT_MAX_STEPS,
+  cutOff = false,
+): string {
+  if (cutOff) {
+    return `Reached the agent step limit (${maxSteps} steps) and stopped mid-work. Send another message to continue.`;
+  }
+  return `Reached the agent step limit (${maxSteps} steps) and wrapped up here. Send another message if you need more.`;
+}
+
+export function isAgentStepLimitNotice(text: string): boolean {
+  return AGENT_STEP_LIMIT_NOTICE_RE.test(text.trim());
+}
 
 export type RunChatResult = {
   messages: UIMessage[];
@@ -46,6 +70,11 @@ export type RunChatParams = {
   forcedTools?: string[] | null;
   /** Model context window — used to abort mid-loop before a hard provider error. */
   contextWindow?: number;
+  /**
+   * Max model↔tool rounds for this user send. Defaults to settings default.
+   * Counter resets every send — not session-wide.
+   */
+  maxSteps?: number;
   abortSignal?: AbortSignal;
   onMessages: (messages: UIMessage[]) => void;
   /**
@@ -318,13 +347,14 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
   const contextWindow = params.contextWindow;
   const toolSchemaTokens = estimateToolSchemaTokens(params.mode);
   const systemTokens = estimateTokensFromText(system);
+  const maxSteps = clampAgentMaxSteps(params.maxSteps ?? DEFAULT_AGENT_MAX_STEPS);
 
   const result = streamText({
     model: resolved.model,
     system,
     messages: modelMessages,
     tools,
-    stopWhen: stepCountIs(12),
+    stopWhen: stepCountIs(maxSteps),
     abortSignal: params.abortSignal,
     prepareStep: ({ messages, stepNumber, steps }) => {
       if (contextWindow == null || contextWindow <= 0 || stepNumber === 0) {
@@ -554,6 +584,22 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     if (isReasoningUIPart(p)) return p.text.trim().length > 0;
     return true;
   });
+
+  let stepLimitNotice: string | null = null;
+  try {
+    const steps = await result.steps;
+    const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
+    // stopWhen fires once this many steps are recorded — always surface it.
+    if (steps.length >= maxSteps) {
+      const cutOff = last?.finishReason === "tool-calls";
+      stepLimitNotice = agentStepLimitNotice(maxSteps, cutOff);
+    }
+  } catch {
+    stepLimitNotice = null;
+  }
+  if (stepLimitNotice) {
+    cleaned.push({ type: "text", text: stepLimitNotice });
+  }
 
   const finalMessages: UIMessage[] = [
     ...inputMessages,

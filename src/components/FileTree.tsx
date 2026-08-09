@@ -1352,13 +1352,15 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
 
   /**
    * Store remaps `expandedPaths` on rename, but react-dnd-treeview keeps its own
-   * path-keyed `openIds`. Close stale ids and reopen remapped ones so folders
-   * do not collapse after rename.
+   * path-keyed `openIds`. Close stale ids, then reopen remapped ones on the next
+   * frame (library open/close close over `openIds`, so back-to-back calls race;
+   * array `open` also requires the new node ids to already be in `tree`).
    */
   const syncTreeOpenAfterPathRemap = useCallback((from: string, to: string) => {
     if (!from || from === to) return;
-    const { expandedPaths } = useVaultStore.getState();
-    const toOpen = expandedPaths.filter(
+    const { expandedPaths, vaultPath: vp } = useVaultStore.getState();
+    const preserved = expandedPaths;
+    const toOpen = preserved.filter(
       (p) => p === to || p.startsWith(`${to}/`),
     );
     const toClose = [
@@ -1366,9 +1368,16 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       ...toOpen.map((p) => `${from}${p.slice(to.length)}`),
     ];
     treeRef.current?.close(toClose.map(toNodeId));
-    if (toOpen.length > 0) {
+    // `onChangeOpen` from close overwrites the store with pre-remap ids removed.
+    useVaultStore.setState({ expandedPaths: preserved });
+
+    if (toOpen.length === 0) return;
+
+    requestAnimationFrame(() => {
       treeRef.current?.open(toOpen.map(toNodeId));
-    }
+      useVaultStore.setState({ expandedPaths: preserved });
+      if (vp) void saveExpandedPaths(vp, preserved);
+    });
   }, []);
 
   const cancelInlineRename = useCallback(() => {
