@@ -1,7 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { SharedV4ProviderOptions } from "@ai-sdk/provider";
+import type { JSONObject, SharedV4ProviderOptions } from "@ai-sdk/provider";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
 import { modelSupportsReasoning, VENDOR_LABEL } from "./models";
@@ -190,7 +190,7 @@ function buildProviderOptions(
   switch (plan.vendor) {
     case "openai": {
       // Keep parallel tool calls on (OpenAI default, but be explicit).
-      const openai: Record<string, unknown> = { parallelToolCalls: true };
+      const openai: JSONObject = { parallelToolCalls: true };
       if (enableReasoning) {
         openai.reasoningEffort = "medium";
         openai.reasoningSummary = "auto";
