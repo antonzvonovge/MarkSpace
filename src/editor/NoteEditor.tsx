@@ -5,6 +5,7 @@ import { VALID_LINK_PROTOCOLS } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
 import type { Theme } from "@blocknote/mantine";
 import {
+  FormattingToolbarController,
   SuggestionMenuController,
   useCreateBlockNote,
   useEditorChange,
@@ -30,6 +31,11 @@ import {
 import { ImageLightbox } from "../components/ImageLightbox";
 import { PageTags } from "../components/PageTags";
 import { writeClipboardText } from "../lib/clipboardText";
+import { registerLiveEditorFlush } from "./liveEditorFlush";
+import {
+  NoteFormattingToolbar,
+  NoteFormattingToolbarProvider,
+} from "./NoteFormattingToolbar";
 import {
   editorMarkdownToHashtags,
 } from "../lib/hashtagMarkdown";
@@ -203,9 +209,13 @@ type Props = {
   onChange: (markdown: string) => void;
 };
 
+/** Delay Live→markdown export so keystrokes can paint before heavy serialize. */
+const LIVE_SERIALIZE_MS = 150;
+
 export function NoteEditor({ path, content, onChange }: Props) {
   const openNote = useVaultStore((s) => s.openNote);
   const refreshTree = useVaultStore((s) => s.refreshTree);
+  const markDirty = useVaultStore((s) => s.markDirty);
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const showOutline = useVaultStore((s) => s.showOutline);
   const showComments = useVaultStore((s) => s.showComments);
@@ -425,37 +435,100 @@ export function NoteEditor({ path, content, onChange }: Props) {
   );
   editorRef.current = editor;
 
-  useEditorChange((ed) => {
-    let md = applyImagePreviewWidths(
-      nestedHtmlToMarkdown(ed.blocksToHTMLLossy(ed.document)),
-      collectImageSizeRefs(ed.document),
-    );
-    md = applyColoredTableHtml(
-      md,
-      projectColoredTables(ed.document, (blocks) =>
-        ed.blocksToHTMLLossy(blocks as typeof ed.document),
-      ),
-    );
-    const wikiMd = markdownToWiki(
-      editorMarkdownToMath(editorMarkdownToHashtags(md)),
-    );
-    const full = withNoteBody(frontmatterBaseRef.current, wikiMd);
-    // External loads / round-trips: adopt serialization, do not pin preview.
-    if (applyingRef.current || adoptNextChangeRef.current) {
-      lastBodyRef.current = wikiMd;
-      frontmatterBaseRef.current = withNoteBody(
-        frontmatterBaseRef.current,
-        wikiMd,
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const serializeTimerRef = useRef<number | null>(null);
+  const pendingSerializeRef = useRef(false);
+
+  const emitSerializedMarkdown = useCallback(
+    (ed: typeof editor) => {
+      let md = applyImagePreviewWidths(
+        nestedHtmlToMarkdown(ed.blocksToHTMLLossy(ed.document)),
+        collectImageSizeRefs(ed.document),
       );
-      lastExternalRef.current = frontmatterBaseRef.current;
-      if (!applyingRef.current) adoptNextChangeRef.current = false;
+      md = applyColoredTableHtml(
+        md,
+        projectColoredTables(ed.document, (blocks) =>
+          ed.blocksToHTMLLossy(blocks as typeof ed.document),
+        ),
+      );
+      const wikiMd = markdownToWiki(
+        editorMarkdownToMath(editorMarkdownToHashtags(md)),
+      );
+      const full = withNoteBody(frontmatterBaseRef.current, wikiMd);
+      // External loads / round-trips: adopt serialization, do not pin preview.
+      if (applyingRef.current || adoptNextChangeRef.current) {
+        lastBodyRef.current = wikiMd;
+        frontmatterBaseRef.current = withNoteBody(
+          frontmatterBaseRef.current,
+          wikiMd,
+        );
+        lastExternalRef.current = frontmatterBaseRef.current;
+        if (!applyingRef.current) adoptNextChangeRef.current = false;
+        return;
+      }
+      if (full === lastExternalRef.current) return;
+      lastBodyRef.current = wikiMd;
+      frontmatterBaseRef.current = full;
+      lastExternalRef.current = full;
+      onChangeRef.current(full);
+    },
+    [editor],
+  );
+
+  const flushSerialize = useCallback(() => {
+    if (serializeTimerRef.current != null) {
+      window.clearTimeout(serializeTimerRef.current);
+      serializeTimerRef.current = null;
+    }
+    if (!pendingSerializeRef.current) return;
+    pendingSerializeRef.current = false;
+    const ed = editorRef.current;
+    if (!ed) return;
+    emitSerializedMarkdown(ed);
+  }, [emitSerializedMarkdown]);
+
+  useEffect(() => registerLiveEditorFlush(path, flushSerialize), [
+    path,
+    flushSerialize,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (serializeTimerRef.current != null) {
+        window.clearTimeout(serializeTimerRef.current);
+        serializeTimerRef.current = null;
+      }
+      if (!pendingSerializeRef.current) return;
+      pendingSerializeRef.current = false;
+      const ed = editorRef.current;
+      if (ed) emitSerializedMarkdown(ed);
+    };
+  }, [editor, emitSerializedMarkdown]);
+
+  useEditorChange((ed) => {
+    // Load/replaceBlocks must adopt serialization synchronously.
+    if (applyingRef.current || adoptNextChangeRef.current) {
+      if (serializeTimerRef.current != null) {
+        window.clearTimeout(serializeTimerRef.current);
+        serializeTimerRef.current = null;
+      }
+      pendingSerializeRef.current = false;
+      emitSerializedMarkdown(ed);
       return;
     }
-    if (full === lastExternalRef.current) return;
-    lastBodyRef.current = wikiMd;
-    frontmatterBaseRef.current = full;
-    lastExternalRef.current = full;
-    onChange(full);
+    pendingSerializeRef.current = true;
+    markDirty();
+    if (serializeTimerRef.current != null) {
+      window.clearTimeout(serializeTimerRef.current);
+    }
+    serializeTimerRef.current = window.setTimeout(() => {
+      serializeTimerRef.current = null;
+      if (!pendingSerializeRef.current) return;
+      pendingSerializeRef.current = false;
+      const current = editorRef.current;
+      if (current) emitSerializedMarkdown(current);
+    }, LIVE_SERIALIZE_MS);
   }, editor);
 
   const getSlashMenuItems = useCallback(
@@ -698,12 +771,24 @@ export function NoteEditor({ path, content, onChange }: Props) {
     if (!showComments) return;
     const tip = editor._tiptapEditor;
     if (!tip) return;
-    const bump = () => setCommentLayoutTick((n) => n + 1);
+    let raf = 0;
+    const bump = ({ transaction }: { transaction: { docChanged: boolean } }) => {
+      if (!transaction.docChanged) return;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setCommentLayoutTick((n) => n + 1);
+      });
+    };
     tip.on("transaction", bump);
     // After decorations meta applies, remount measures need a frame.
-    requestAnimationFrame(bump);
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      setCommentLayoutTick((n) => n + 1);
+    });
     return () => {
       tip.off("transaction", bump);
+      if (raf) cancelAnimationFrame(raf);
     };
   }, [editor, showComments, path, commentAnchors, showResolvedComments]);
 
@@ -972,26 +1057,35 @@ export function NoteEditor({ path, content, onChange }: Props) {
               onContextMenu={openEditorContextMenu}
             >
               <PageTags content={content} onChange={onChange} />
-              <BlockNoteView
-                editor={editor}
-                theme={editorTheme}
-                slashMenu={false}
+              <NoteFormattingToolbarProvider
+                notePath={path}
+                onComment={startCommentFromSelection}
               >
-                <SuggestionMenuController
-                  triggerCharacter="/"
-                  getItems={getSlashMenuItems}
-                  suggestionMenuComponent={NoteSlashSuggestionMenu}
-                />
-                <SuggestionMenuController
-                  triggerCharacter="#"
-                  getItems={getHashTagMenuItems}
-                  shouldOpen={shouldOpenTagMenu}
-                  suggestionMenuComponent={TagSuggestionMenu}
-                  onItemClick={(item) => {
-                    item.onItemClick?.();
-                  }}
-                />
-              </BlockNoteView>
+                <BlockNoteView
+                  editor={editor}
+                  theme={editorTheme}
+                  slashMenu={false}
+                  formattingToolbar={false}
+                >
+                  <FormattingToolbarController
+                    formattingToolbar={NoteFormattingToolbar}
+                  />
+                  <SuggestionMenuController
+                    triggerCharacter="/"
+                    getItems={getSlashMenuItems}
+                    suggestionMenuComponent={NoteSlashSuggestionMenu}
+                  />
+                  <SuggestionMenuController
+                    triggerCharacter="#"
+                    getItems={getHashTagMenuItems}
+                    shouldOpen={shouldOpenTagMenu}
+                    suggestionMenuComponent={TagSuggestionMenu}
+                    onItemClick={(item) => {
+                      item.onItemClick?.();
+                    }}
+                  />
+                </BlockNoteView>
+              </NoteFormattingToolbarProvider>
             </div>
           </div>
         </div>

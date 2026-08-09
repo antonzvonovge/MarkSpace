@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { skillTemplate } from "../ai/skills";
+import { flushLiveEditor } from "../editor/liveEditorFlush";
 import type { TreeNode } from "../lib/vaultApi";
 import {
   addFavorite,
@@ -211,6 +212,8 @@ type VaultStore = {
   closeOtherTabs: (path: string) => Promise<void>;
   closeTabsToTheRight: (path: string) => Promise<void>;
   setContent: (content: string) => void;
+  /** Mark the active buffer dirty without waiting for Live markdown serialize. */
+  markDirty: () => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
   toggleOutline: () => void;
@@ -387,6 +390,11 @@ function stashActiveIntoTabs(
   const active = tabs.find((t) => t.path === activePath);
   if (!active || isVirtualTab(active)) return tabs;
   return withTabBody(tabs, activePath, content, dirty);
+}
+
+/** Flush debounced Live→markdown into the store before reading `content`. */
+function flushActiveEditorBuffer(get: () => VaultStore): void {
+  flushLiveEditor(get().activePath);
 }
 
 function tabLabel(path: string, kind?: TabKind): string {
@@ -852,6 +860,7 @@ async function openSingletonTab(
   syncTreeSelection: boolean,
   skipNavHistory = false,
 ): Promise<void> {
+  flushActiveEditorBuffer(get);
   const stashed = stashActiveIntoTabs(
     get().tabs,
     get().activePath,
@@ -896,6 +905,7 @@ async function closeTabsKeeping(
   get: () => VaultStore,
   keepPaths: Set<string>,
 ): Promise<void> {
+  flushActiveEditorBuffer(get);
   let { tabs, activePath, dirty, content } = get();
   if (tabs.every((t) => keepPaths.has(t.path))) return;
 
@@ -1178,6 +1188,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       typeof options?.page === "number" && options.page >= 1
         ? Math.floor(options.page)
         : null;
+    flushActiveEditorBuffer(get);
     const stashed = stashActiveIntoTabs(
       get().tabs,
       get().activePath,
@@ -1397,6 +1408,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   closeTab: async (path) => {
+    flushActiveEditorBuffer(get);
     const { tabs, activePath, dirty, saveActive, content } = get();
     const closing = tabs.find((t) => t.path === path);
     if (dirty && activePath === path && closing && isFileTab(closing)) {
@@ -1452,10 +1464,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const { activePath, tabs, content: prev } = get();
     if (content === prev) return;
     const patch: Partial<VaultStore> = { content, dirty: true };
+    let sessionNeedsPersist = false;
     if (activePath) {
       patch.tabs = tabs.map((t) => {
         if (t.path !== activePath) return t;
-        if (t.body === content) return t;
+        if (t.body === content && t.dirty) return t;
+        // Session only stores path/preview/kind — persist when preview clears.
+        if (t.preview) sessionNeedsPersist = true;
         return {
           ...t,
           body: content,
@@ -1465,12 +1480,33 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       });
     }
     set(patch);
-    if (patch.tabs) persistSession(get());
+    if (sessionNeedsPersist) persistSession(get());
   },
 
-  setViewMode: (mode) => set({ viewMode: mode }),
+  markDirty: () => {
+    const { activePath, tabs, dirty } = get();
+    if (dirty) return;
+    const patch: Partial<VaultStore> = { dirty: true };
+    let sessionNeedsPersist = false;
+    if (activePath) {
+      patch.tabs = tabs.map((t) => {
+        if (t.path !== activePath) return t;
+        if (t.dirty && !t.preview) return t;
+        if (t.preview) sessionNeedsPersist = true;
+        return { ...t, dirty: true, preview: false };
+      });
+    }
+    set(patch);
+    if (sessionNeedsPersist) persistSession(get());
+  },
+
+  setViewMode: (mode) => {
+    flushActiveEditorBuffer(get);
+    set({ viewMode: mode });
+  },
 
   toggleViewMode: () => {
+    flushActiveEditorBuffer(get);
     const { viewMode } = get();
     set({ viewMode: viewMode === "live" ? "source" : "live" });
   },
@@ -1588,6 +1624,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   saveActive: async () => {
+    flushActiveEditorBuffer(get);
     const { activePath, content, dirty, tabs } = get();
     if (!activePath || !dirty) return;
     if (isPdfPath(activePath)) return;

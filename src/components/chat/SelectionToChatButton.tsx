@@ -22,7 +22,10 @@ function sourcePathFor(node: Node | null): { sourcePath: string | null } | null 
   if (!el) return null;
   if (el.closest(".chat-composer")) return null;
   if (el.closest(".chat-messages")) return { sourcePath: null };
-  if (el.closest(".bn-container, .cm-editor, .pdf-viewer")) {
+  // Live has Add to chat on the formatting toolbar; keep the floating
+  // button for Source / PDF where that toolbar does not exist.
+  if (el.closest(".bn-container")) return null;
+  if (el.closest(".cm-editor, .pdf-viewer")) {
     return { sourcePath: useVaultStore.getState().activePath };
   }
   return null;
@@ -58,8 +61,8 @@ function anchorFromSelection(): Anchor | null {
 }
 
 /**
- * Floating "Add to chat" affordance shown next to a text selection in the
- * note editor (Live or Source), PDF viewer, and chat messages.
+ * Floating "Add to chat" affordance next to a text selection in Source,
+ * PDF viewer, and chat messages. Live uses the formatting toolbar instead.
  */
 export function SelectionToChatButton() {
   const [anchor, setAnchor] = useState<Anchor | null>(null);

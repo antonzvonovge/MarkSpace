@@ -1,5 +1,5 @@
 import { useEditorChange } from "@blocknote/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildDocumentOutline,
   collectExpandableKeys,
@@ -128,6 +128,7 @@ export function DocumentOutline({
   const [collapsed, setCollapsed] = useState<Set<string>>(
     () => new Set(loadDocOutlineUi(vaultPath, notePath).collapsed),
   );
+  const outlineTimerRef = useRef<number | null>(null);
 
   const persistCollapsed = useCallback(
     (next: Set<string>) => {
@@ -141,11 +142,24 @@ export function DocumentOutline({
   }, [editor]);
 
   useEditorChange(() => {
-    refresh();
+    // Headings rarely change every keystroke; keep Live typing off the outline path.
+    if (outlineTimerRef.current != null) {
+      window.clearTimeout(outlineTimerRef.current);
+    }
+    outlineTimerRef.current = window.setTimeout(() => {
+      outlineTimerRef.current = null;
+      refresh();
+    }, 200);
   }, editor);
 
   useEffect(() => {
     refresh();
+    return () => {
+      if (outlineTimerRef.current != null) {
+        window.clearTimeout(outlineTimerRef.current);
+        outlineTimerRef.current = null;
+      }
+    };
   }, [refresh]);
 
   const onToggle = useCallback(

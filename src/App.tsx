@@ -843,29 +843,28 @@ function App() {
                                         }
                                       />
                                     </div>
-                                    <div
-                                      className={
-                                        viewMode === "source"
-                                          ? "document-editor-slot is-active"
-                                          : "document-editor-slot"
-                                      }
-                                    >
-                                      <div className="source-editor-wrap">
-                                        <PageTags
-                                          content={tabContent}
-                                          onChange={(markdown) =>
-                                            onEditorChange(tabPath, markdown)
-                                          }
-                                        />
-                                        <MarkdownSourceEditor
-                                          path={tabPath}
-                                          content={tabContent}
-                                          onChange={(markdown) =>
-                                            onEditorChange(tabPath, markdown)
-                                          }
-                                        />
+                                    {/* Mount Source only when active: Live typing
+                                        used to replace the whole CodeMirror doc
+                                        on every keystroke (even under display:none). */}
+                                    {viewMode === "source" ? (
+                                      <div className="document-editor-slot is-active">
+                                        <div className="source-editor-wrap">
+                                          <PageTags
+                                            content={tabContent}
+                                            onChange={(markdown) =>
+                                              onEditorChange(tabPath, markdown)
+                                            }
+                                          />
+                                          <MarkdownSourceEditor
+                                            path={tabPath}
+                                            content={tabContent}
+                                            onChange={(markdown) =>
+                                              onEditorChange(tabPath, markdown)
+                                            }
+                                          />
+                                        </div>
                                       </div>
-                                    </div>
+                                    ) : null}
                                   </>
                                 )}
                               </div>
