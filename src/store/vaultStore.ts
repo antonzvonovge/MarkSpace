@@ -280,7 +280,8 @@ type VaultStore = {
   ) => Promise<string | null>;
   /** Turn a markdown note into a folder with `{stem}/.folder.md`. */
   promoteNoteToFolder: (notePath: string) => Promise<string | null>;
-  renameTreeEntry: (from: string, nextName: string) => Promise<void>;
+  /** Returns the new vault-relative path, or null if unchanged / failed. */
+  renameTreeEntry: (from: string, nextName: string) => Promise<string | null>;
   removePath: (path: string) => Promise<boolean>;
   /** Import OS paths / file blobs into the selected folder. */
   importIntoSelection: (
@@ -376,7 +377,13 @@ function withTabBody(
   body: string,
   dirty: boolean,
 ): EditorTab[] {
-  return tabs.map((t) => (t.path === path ? { ...t, body, dirty } : t));
+  const idx = tabs.findIndex((t) => t.path === path);
+  if (idx < 0) return tabs;
+  const cur = tabs[idx]!;
+  if (cur.body === body && Boolean(cur.dirty) === dirty) return tabs;
+  const next = tabs.slice();
+  next[idx] = { ...cur, body, dirty };
+  return next;
 }
 
 /** Write the active editor buffer back into its tab slot. */
@@ -697,6 +704,144 @@ function activateLoaded(
   });
 }
 
+/**
+ * After a fast in-memory activate, optionally pull disk and apply if the tab
+ * is still active, still clean, and content actually changed (external edit /
+ * git restore). Never blocks the tab switch.
+ */
+function reconcileActiveTabFromDisk(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  path: string,
+  opts?: { allowDirtyTruncateCheck?: boolean },
+): void {
+  if (isPdfPath(path)) return;
+  const allowDirtyTruncateCheck = opts?.allowDirtyTruncateCheck === true;
+  void readNote(path)
+    .then((disk) => {
+      const st = get();
+      if (st.activePath !== path) return;
+      if (st.dirty) {
+        if (
+          allowDirtyTruncateCheck &&
+          disk.length > st.content.length + 200
+        ) {
+          set({
+            content: disk,
+            dirty: false,
+            tabs: withTabBody(st.tabs, path, disk, false),
+            loading: false,
+          });
+        }
+        return;
+      }
+      if (disk === st.content) return;
+      set({
+        content: disk,
+        dirty: false,
+        tabs: withTabBody(st.tabs, path, disk, false),
+        loading: false,
+      });
+    })
+    .catch(() => {
+      /* keep in-memory body */
+    });
+}
+
+function tabBuffer(
+  st: VaultStore,
+  path: string,
+): { body: string; dirty: boolean } | null {
+  const tab = st.tabs.find((t) => t.path === path);
+  if (!tab || !isFileTab(tab) || isPdfPath(path)) return null;
+  if (st.activePath === path) {
+    return { body: st.content, dirty: st.dirty };
+  }
+  if (tab.body === undefined) return null;
+  return { body: tab.body, dirty: Boolean(tab.dirty) };
+}
+
+/**
+ * Persist a dirty tab from its in-memory buffer without requiring it to stay
+ * active. Used after tab switches so save never blocks activation.
+ */
+async function persistDirtyTab(
+  set: (partial: Partial<VaultStore>) => void,
+  get: () => VaultStore,
+  path: string,
+): Promise<void> {
+  flushLiveEditor(path);
+  const start = tabBuffer(get(), path);
+  if (!start?.dirty) return;
+
+  // Prefer a fuller on-disk restore over writing a truncated dirty buffer.
+  try {
+    const disk = await readNote(path);
+    if (disk.length > start.body.length + 200) {
+      const st = get();
+      const cur = tabBuffer(st, path);
+      if (!cur || cur.body !== start.body) return;
+      if (st.activePath === path) {
+        set({
+          content: disk,
+          dirty: false,
+          tabs: withTabBody(st.tabs, path, disk, false),
+        });
+      } else {
+        set({ tabs: withTabBody(st.tabs, path, disk, false) });
+      }
+      return;
+    }
+  } catch {
+    /* write anyway */
+  }
+
+  const still = tabBuffer(get(), path);
+  if (!still?.dirty || still.body !== start.body) return;
+
+  const showSaving = get().activePath === path;
+  set({
+    ...(showSaving ? { saving: true } : {}),
+    suppressWatchUntil: Date.now() + 6_000,
+  });
+  try {
+    const savedContent = await writeNote(path, still.body);
+    const latest = get();
+    const cur = tabBuffer(latest, path);
+    if (!cur) {
+      if (latest.activePath === path) set({ saving: false });
+      return;
+    }
+    // Newer edits landed while we wrote — keep dirty and retry once.
+    if (cur.body !== still.body && cur.body !== savedContent) {
+      if (latest.activePath === path) set({ saving: false });
+      if (cur.dirty) void persistDirtyTab(set, get, path);
+      return;
+    }
+    if (latest.activePath === path) {
+      set({
+        content: savedContent,
+        dirty: false,
+        saving: false,
+        tabs: withTabBody(latest.tabs, path, savedContent, false),
+      });
+    } else {
+      set({ tabs: withTabBody(latest.tabs, path, savedContent, false) });
+    }
+    scheduleTagCatalogRefresh(() => get().refreshVaultTags());
+    if (path.toLowerCase().endsWith(".mddict")) {
+      void get().refreshDictionaryTags();
+    }
+  } catch (e) {
+    if (get().activePath === path) {
+      set({
+        saving: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+}
+
 /** Activate a non-file tab (graph, settings) without reading disk or touching the editor buffer. */
 function activateVirtualTab(
   set: (partial: Partial<VaultStore>) => void,
@@ -728,36 +873,23 @@ async function activateTab(
     activateVirtualTab(set, tab.path, tabs);
     return;
   }
-  // Prefer disk when clean so external restores (git/sync) are not masked by
-  // a stale in-memory body. If dirty but disk is much larger, treat disk as a
-  // restore and drop the truncated buffer.
-  if (!isPdfPath(tab.path)) {
-    try {
-      const disk = await readNote(tab.path);
-      const mem = tab.body;
-      const useDisk =
-        mem === undefined ||
-        !tab.dirty ||
-        disk.length > mem.length + 200;
-      if (useDisk) {
-        activateLoaded(set, get().vaultPath, tab.path, disk, tabs, false);
-        void get().loadActiveNoteComments();
-        return;
-      }
-    } catch {
-      // Fall through to memory / error paths below.
-    }
-  }
-  if (tab.body !== undefined) {
+  // Paint from memory first; reconcile disk in the background so closes /
+  // history navigation stay snappy. Disk still wins for clean tabs / restores.
+  if (tab.body !== undefined || isPdfPath(tab.path)) {
+    const content = isPdfPath(tab.path) ? "" : (tab.body as string);
+    const dirty = Boolean(tab.dirty) && !isPdfPath(tab.path);
     activateLoaded(
       set,
       get().vaultPath,
       tab.path,
-      tab.body,
+      content,
       tabs,
-      Boolean(tab.dirty),
+      dirty,
     );
     void get().loadActiveNoteComments();
+    reconcileActiveTabFromDisk(set, get, tab.path, {
+      allowDirtyTruncateCheck: dirty,
+    });
     return;
   }
   set({ loading: true, tabs, dirty: false });
@@ -861,20 +993,20 @@ async function openSingletonTab(
   skipNavHistory = false,
 ): Promise<void> {
   flushActiveEditorBuffer(get);
+  const leavingPath = get().activePath;
   const stashed = stashActiveIntoTabs(
     get().tabs,
-    get().activePath,
+    leavingPath,
     get().content,
     get().dirty,
   );
   if (stashed !== get().tabs) {
     set({ tabs: stashed });
   }
-
-  const active = get().tabs.find((t) => t.path === get().activePath);
-  if (get().dirty && active && isFileTab(active)) {
-    await get().saveActive();
-  }
+  const leavingDirty =
+    leavingPath != null &&
+    leavingPath !== path &&
+    Boolean(get().tabs.find((t) => t.path === leavingPath)?.dirty);
 
   const { tabs, activePath } = get();
   const existing = tabs.find((t) => t.path === path);
@@ -890,6 +1022,9 @@ async function openSingletonTab(
     activateVirtualTab(set, existing.path, tabs, syncTreeSelection);
     persistSession(get());
     if (!skipNavHistory) recordNavVisit(set, get, path);
+    if (leavingDirty && leavingPath) {
+      void persistDirtyTab(set, get, leavingPath);
+    }
     return;
   }
 
@@ -897,6 +1032,9 @@ async function openSingletonTab(
   activateVirtualTab(set, path, nextTabs, syncTreeSelection);
   persistSession(get());
   if (!skipNavHistory) recordNavVisit(set, get, path);
+  if (leavingDirty && leavingPath) {
+    void persistDirtyTab(set, get, leavingPath);
+  }
 }
 
 /** Close every tab whose path is not in `keepPaths` (save dirty active if closing it). */
@@ -1188,64 +1326,51 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       typeof options?.page === "number" && options.page >= 1
         ? Math.floor(options.page)
         : null;
+
+    // Re-activating the current file: pin / jump page only — no disk I/O.
+    if (path === get().activePath) {
+      if (!asPreview) {
+        const cur = get().tabs.find((t) => t.path === path);
+        if (cur?.preview) {
+          set({
+            tabs: get().tabs.map((t) =>
+              t.path === path ? { ...t, preview: false } : t,
+            ),
+          });
+          persistSession(get());
+        }
+      }
+      if (pdfPage != null) set({ pendingPdfPage: pdfPage });
+      return;
+    }
+
     flushActiveEditorBuffer(get);
+    const leavingPath = get().activePath;
     const stashed = stashActiveIntoTabs(
       get().tabs,
-      get().activePath,
+      leavingPath,
       get().content,
       get().dirty,
     );
     if (stashed !== get().tabs) {
       set({ tabs: stashed });
     }
-
-    {
-      const active = get().tabs.find((t) => t.path === get().activePath);
-      if (get().dirty && active && isFileTab(active)) {
-        // Never flush a truncated in-memory buffer over a fuller disk restore
-        // (e.g. git checkout while the wiped note is still open/dirty).
-        let skipSave = false;
-        if (!isPdfPath(active.path)) {
-          try {
-            const disk = await readNote(active.path);
-            const mem = get().content;
-            if (disk.length > mem.length + 200) {
-              skipSave = true;
-              set({
-                dirty: false,
-                content: disk,
-                tabs: withTabBody(get().tabs, active.path, disk, false),
-              });
-            }
-          } catch {
-            // Fall through to normal save.
-          }
-        }
-        if (!skipSave) await get().saveActive();
-      }
-    }
+    // Never await save before switching — dirty buffers stay in tab.body and
+    // flush to disk in the background after activate.
+    const leavingDirty =
+      leavingPath != null &&
+      leavingPath !== path &&
+      Boolean(get().tabs.find((t) => t.path === leavingPath)?.dirty);
 
     const loadContent = async (): Promise<string> => {
       if (isPdfPath(path)) return "";
       return readNote(path);
     };
 
-    /**
-     * Prefer on-disk content when the tab is clean, or when disk is clearly a
-     * fuller restore over a truncated in-memory buffer (git checkout / sync).
-     */
-    const resolveOpenContent = async (
-      tab: EditorTab,
-    ): Promise<{ content: string; dirty: boolean }> => {
-      if (isPdfPath(path)) return { content: "", dirty: false };
-      const disk = await loadContent();
-      const mem = tab.body;
-      if (mem === undefined) return { content: disk, dirty: false };
-      if (!tab.dirty) return { content: disk, dirty: false };
-      if (disk.length > mem.length + 200) {
-        return { content: disk, dirty: false };
+    const afterActivate = () => {
+      if (leavingDirty && leavingPath) {
+        void persistDirtyTab(set, get, leavingPath);
       }
-      return { content: mem, dirty: true };
     };
 
     const { tabs } = get();
@@ -1257,9 +1382,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           ? tabs.map((t) => (t.path === path ? { ...t, preview: false } : t))
           : tabs;
 
-      set({ loading: true, error: null });
-      try {
-        const { content, dirty } = await resolveOpenContent(existing);
+      // Fast path: body already in memory — switch UI immediately, then
+      // reconcile disk in the background (external edits / git restore).
+      if (existing.body !== undefined || isPdfPath(path)) {
+        const content = isPdfPath(path) ? "" : (existing.body as string);
+        const dirty = Boolean(existing.dirty) && !isPdfPath(path);
         activateLoaded(
           set,
           get().vaultPath,
@@ -1274,6 +1401,31 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         recordRecentFile(set, get, path);
         if (!skipNavHistory) recordNavVisit(set, get, path);
         void get().loadActiveNoteComments();
+        reconcileActiveTabFromDisk(set, get, path, {
+          allowDirtyTruncateCheck: dirty,
+        });
+        afterActivate();
+        return;
+      }
+
+      set({ loading: true, error: null });
+      try {
+        const content = await loadContent();
+        activateLoaded(
+          set,
+          get().vaultPath,
+          path,
+          content,
+          nextTabs,
+          false,
+          syncTreeSelection,
+        );
+        if (pdfPage != null) set({ pendingPdfPage: pdfPage });
+        persistSession(get());
+        recordRecentFile(set, get, path);
+        if (!skipNavHistory) recordNavVisit(set, get, path);
+        void get().loadActiveNoteComments();
+        afterActivate();
       } catch (e) {
         set({
           loading: false,
@@ -1326,6 +1478,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       recordRecentFile(set, get, path);
       if (!skipNavHistory) recordNavVisit(set, get, path);
       void get().loadActiveNoteComments();
+      afterActivate();
     } catch (e) {
       set({
         loading: false,
@@ -2114,25 +2267,25 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   renameTreeEntry: async (from, nextName) => {
     if (isSkillsFolder(from)) {
       set({ error: "Cannot rename the Skills folder" });
-      return;
+      return null;
     }
     const trimmed = nextName.trim().replace(/[\\/]/g, "");
-    if (!trimmed || !from) return;
+    if (!trimmed || !from) return null;
 
     const to = joinPath(parentPath(from), trimmed);
     if (isSkillsFolder(to)) {
       set({ error: "Cannot rename to the reserved Skills folder" });
-      return;
+      return null;
     }
     const fromKind = documentKind(from);
     if (fromKind === "drawio") {
-      if (to === from || to === from.replace(/\.drawio$/i, "")) return;
+      if (to === from || to === from.replace(/\.drawio$/i, "")) return null;
     } else if (fromKind === "mdlnks") {
-      if (to === from || to === from.replace(/\.mdlnks$/i, "")) return;
+      if (to === from || to === from.replace(/\.mdlnks$/i, "")) return null;
     } else if (fromKind === "mddict") {
-      if (to === from || to === from.replace(/\.mddict$/i, "")) return;
+      if (to === from || to === from.replace(/\.mddict$/i, "")) return null;
     } else if (to === from || to === from.replace(/\.md$/i, "")) {
-      return;
+      return null;
     }
 
     const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
@@ -2189,8 +2342,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       await get().refreshTree();
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
+      return nextPath;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
     }
   },
 

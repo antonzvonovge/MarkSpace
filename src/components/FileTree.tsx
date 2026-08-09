@@ -1343,6 +1343,53 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     setDndRoot(node);
   }, []);
 
+  /** Restore keyboard focus to the tree after inline rename blurs the input. */
+  const focusTree = useCallback(() => {
+    requestAnimationFrame(() => {
+      treeFocusRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  /**
+   * Store remaps `expandedPaths` on rename, but react-dnd-treeview keeps its own
+   * path-keyed `openIds`. Close stale ids and reopen remapped ones so folders
+   * do not collapse after rename.
+   */
+  const syncTreeOpenAfterPathRemap = useCallback((from: string, to: string) => {
+    if (!from || from === to) return;
+    const { expandedPaths } = useVaultStore.getState();
+    const toOpen = expandedPaths.filter(
+      (p) => p === to || p.startsWith(`${to}/`),
+    );
+    const toClose = [
+      from,
+      ...toOpen.map((p) => `${from}${p.slice(to.length)}`),
+    ];
+    treeRef.current?.close(toClose.map(toNodeId));
+    if (toOpen.length > 0) {
+      treeRef.current?.open(toOpen.map(toNodeId));
+    }
+  }, []);
+
+  const cancelInlineRename = useCallback(() => {
+    setRenamingPath(null);
+    focusTree();
+  }, [focusTree]);
+
+  const commitInlineRename = useCallback(
+    (path: string, nextName: string) => {
+      setRenamingPath(null);
+      void (async () => {
+        const nextPath = await renameTreeEntry(path, nextName);
+        if (nextPath && nextPath !== path) {
+          syncTreeOpenAfterPathRemap(path, nextPath);
+        }
+        focusTree();
+      })();
+    },
+    [focusTree, renameTreeEntry, syncTreeOpenAfterPathRemap],
+  );
+
   /** Expand every folder on the way to `path` (plus itself for folders) and scroll to it. */
   const revealPathInTree = useCallback(
     (path: string, options?: { isDir?: boolean }) => {
@@ -2052,11 +2099,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   void openNote(path, options);
                 }}
                 onToggleExpanded={toggleExpanded}
-                onRenameCommit={(path, nextName) => {
-                  setRenamingPath(null);
-                  void renameTreeEntry(path, nextName);
-                }}
-                onRenameCancel={() => setRenamingPath(null)}
+                onRenameCommit={commitInlineRename}
+                onRenameCancel={cancelInlineRename}
               />
             ) : null}
           </div>
@@ -2339,10 +2383,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       <InlineRenameInput
                         key={path}
                         initialValue={node.text}
-                        onCancel={() => setRenamingPath(null)}
+                        onCancel={cancelInlineRename}
                         onCommit={(nextName) => {
-                          setRenamingPath(null);
-                          void renameTreeEntry(path, nextName);
+                          commitInlineRename(path, nextName);
                         }}
                       />
                     ) : (

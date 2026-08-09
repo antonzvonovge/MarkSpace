@@ -17,6 +17,8 @@ Your notes are ordinary `.md` files in a folder. Open the same vault in VS Code 
 - Auto-creates `Welcome.md` and `.markspace/` for empty vaults
 - **GitHub sync** via built-in git (no separate Git install) — Settings → Sync
 
+
+
 ## Run
 
 Prerequisites: Node.js, Rust, and [Tauri Linux deps](https://tauri.app/start/prerequisites/). Building with GitHub sync also needs a C toolchain (libgit2 is vendored; OpenSSL may be required for HTTPS).
@@ -25,6 +27,8 @@ Prerequisites: Node.js, Rust, and [Tauri Linux deps](https://tauri.app/start/pre
 npm install
 npm run tauri dev
 ```
+
+
 
 ## Vault layout
 
@@ -65,8 +69,8 @@ MarkSpace can sync the open vault with a GitHub repository using an embedded git
 2. Open your vault in MarkSpace.
 3. Open **Settings → Sync** (or the sync icon in the sidebar footer).
 4. Sign in:
-   - **Personal Access Token** (always available): classic token with `repo` scope, or a fine-grained token with Contents read/write on that repository. The token is stored only on this machine.
-   - **Sign in with GitHub** (Device Flow): available when the app is built with `MARKSPACE_GITHUB_CLIENT_ID` set to a GitHub OAuth App client id.
+  - **Personal Access Token** (always available): classic token with `repo` scope, or a fine-grained token with Contents read/write on that repository. The token is stored only on this machine.
+  - **Sign in with GitHub** (Device Flow): available when the app is built with `MARKSPACE_GITHUB_CLIENT_ID` set to a GitHub OAuth App client id.
 5. Enter the repo URL or `owner/repo`, then **Connect**.
 6. Use **Sync Now** (or the status bar menu → Synchronize) to commit local changes, pull, and push.
 7. Optionally enable **Auto-sync** (5 / 15 / 30 / 60 minutes). While the app is open it syncs on that interval and when you return to the window.
@@ -87,12 +91,14 @@ Without this, users authenticate with a Personal Access Token.
 
 ## Linking
 
-| In Markdown | Behavior |
-|---|---|
-| `[[Welcome]]` | Opens / creates note by name |
-| `[[projects/ideas\|Ideas]]` | Wiki-link with alias |
-| `[Site](https://example.com)` | Opens in system browser |
-| `[Local](./Welcome.md)` | Opens local note when possible |
+
+| In Markdown                   | Behavior                       |
+| ----------------------------- | ------------------------------ |
+| `[[Welcome]]`                 | Opens / creates note by name   |
+| `[[projects/ideas             | Ideas]]`                       |
+| `[Site](https://example.com)` | Opens in system browser        |
+| `[Local](./Welcome.md)`       | Opens local note when possible |
+
 
 Full dialect (embeds, image widths, tables, diagrams, unsupported syntax): [docs/markdown-format.md](docs/markdown-format.md).
 

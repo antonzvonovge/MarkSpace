@@ -1090,7 +1090,10 @@ export const NoteEditor = memo(function NoteEditor({
         </>
       ) : null}
       <div className="editor-column">
-        {isActive ? <DocumentToolbar /> : null}
+        {/* Editor chrome stays mounted for keep-alive tabs: toggling
+            `editable` or the controllers makes BlockNote re-mount the
+            ProseMirror view on every tab switch. */}
+        <DocumentToolbar />
         <div className="editor-main" onMouseDown={handleEmptyCanvasMouseDown}>
           <div className="editor-canvas-wrap">
             <div
@@ -1100,11 +1103,9 @@ export const NoteEditor = memo(function NoteEditor({
                   "--live-font-size": `${canvasLiveFontSize}px`,
                 } as CSSProperties
               }
-              onContextMenu={isActive ? openEditorContextMenu : undefined}
+              onContextMenu={openEditorContextMenu}
             >
-              {isActive ? (
-                <PageTags content={content} onChange={onChange} />
-              ) : null}
+              <PageTags content={content} onChange={onChange} />
               <NoteFormattingToolbarProvider
                 notePath={path}
                 onComment={startCommentFromSelection}
@@ -1114,29 +1115,24 @@ export const NoteEditor = memo(function NoteEditor({
                   theme={editorTheme}
                   slashMenu={false}
                   formattingToolbar={false}
-                  editable={isActive}
                 >
-                  {isActive ? (
-                    <>
-                      <FormattingToolbarController
-                        formattingToolbar={NoteFormattingToolbar}
-                      />
-                      <SuggestionMenuController
-                        triggerCharacter="/"
-                        getItems={getSlashMenuItems}
-                        suggestionMenuComponent={NoteSlashSuggestionMenu}
-                      />
-                      <SuggestionMenuController
-                        triggerCharacter="#"
-                        getItems={getHashTagMenuItems}
-                        shouldOpen={shouldOpenTagMenu}
-                        suggestionMenuComponent={TagSuggestionMenu}
-                        onItemClick={(item) => {
-                          item.onItemClick?.();
-                        }}
-                      />
-                    </>
-                  ) : null}
+                  <FormattingToolbarController
+                    formattingToolbar={NoteFormattingToolbar}
+                  />
+                  <SuggestionMenuController
+                    triggerCharacter="/"
+                    getItems={getSlashMenuItems}
+                    suggestionMenuComponent={NoteSlashSuggestionMenu}
+                  />
+                  <SuggestionMenuController
+                    triggerCharacter="#"
+                    getItems={getHashTagMenuItems}
+                    shouldOpen={shouldOpenTagMenu}
+                    suggestionMenuComponent={TagSuggestionMenu}
+                    onItemClick={(item) => {
+                      item.onItemClick?.();
+                    }}
+                  />
                 </BlockNoteView>
               </NoteFormattingToolbarProvider>
             </div>

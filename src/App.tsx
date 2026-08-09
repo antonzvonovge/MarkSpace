@@ -48,6 +48,7 @@ import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
 import { isFileTab, isSettingsTab, useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
+import { useWarmLiveMarkdownPaths } from "./hooks/useWarmLiveMarkdownPaths";
 import { getEmbeddingsIndexStatus } from "./lib/vaultApi";
 import "./App.css";
 
@@ -59,12 +60,15 @@ const DocumentTab = memo(function DocumentTab({
   path,
   kind,
   isActive,
+  keepLiveMounted,
   onEditorChange,
   onCloseSettings,
 }: {
   path: string;
   kind: "settings" | "graph" | "file";
   isActive: boolean;
+  /** LRU keep-alive for Live markdown (BlockNote). */
+  keepLiveMounted: boolean;
   onEditorChange: (path: string, nextContent: string) => void;
   onCloseSettings: () => void;
 }) {
@@ -188,12 +192,14 @@ const DocumentTab = memo(function DocumentTab({
                 : "document-editor-slot"
             }
           >
-            <NoteEditor
-              path={path}
-              content={content}
-              isActive={isActive}
-              onChange={(markdown) => onEditorChange(path, markdown)}
-            />
+            {keepLiveMounted ? (
+              <NoteEditor
+                path={path}
+                content={content}
+                isActive={isActive}
+                onChange={(markdown) => onEditorChange(path, markdown)}
+              />
+            ) : null}
           </div>
           {isActive && viewMode === "source" ? (
             <div className="document-editor-slot is-active">
@@ -231,6 +237,7 @@ const MainPane = memo(function MainPane({
   const viewMode = useVaultStore((s) => s.viewMode);
   const error = useVaultStore((s) => s.error);
   const closeSettings = usePrefsStore((s) => s.closeSettings);
+  const warmLivePaths = useWarmLiveMarkdownPaths(tabs, activePath);
 
   return (
     <main className="main-pane">
@@ -287,6 +294,10 @@ const MainPane = memo(function MainPane({
                         path={tab.path}
                         kind={tabKind}
                         isActive={tab.path === activePath}
+                        keepLiveMounted={
+                          tab.path === activePath ||
+                          warmLivePaths.has(tab.path)
+                        }
                         onEditorChange={onEditorChange}
                         onCloseSettings={closeSettings}
                       />
