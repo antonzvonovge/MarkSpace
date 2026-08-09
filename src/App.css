@@ -682,6 +682,12 @@ select {
   pointer-events: none;
 }
 
+/* Avoid animating the grip while dragging — reads as lag behind the pointer. */
+.app-splitter[data-separator][data-active]::before,
+.app-splitter.is-active::before {
+  transition: none;
+}
+
 .app-splitter:hover::before,
 .app-splitter[data-separator][data-active]::before,
 .app-splitter.is-active::before,

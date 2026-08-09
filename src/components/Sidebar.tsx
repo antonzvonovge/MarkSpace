@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import {
@@ -34,7 +34,7 @@ function SettingsGearIcon() {
   );
 }
 
-export function Sidebar() {
+export const Sidebar = memo(function Sidebar() {
   const openVaultAt = useVaultStore((s) => s.openVaultAt);
   const settingsActive = useSettingsTabActive();
   const toggleSettings = usePrefsStore((s) => s.toggleSettings);
@@ -131,4 +131,4 @@ export function Sidebar() {
       </footer>
     </aside>
   );
-}
+});

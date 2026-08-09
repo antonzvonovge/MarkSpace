@@ -288,21 +288,27 @@ export function NoteEditor({ path, content, onChange }: Props) {
       const startX = event.clientX;
       const startWidth = outlineWidth;
       const target = event.currentTarget;
+      // Drive width via DOM during drag — setState every move re-renders BlockNote.
+      const outlineEl = target.previousElementSibling as HTMLElement | null;
       target.setPointerCapture(event.pointerId);
       target.classList.add("is-active");
+      let latest = startWidth;
 
       const onMove = (ev: PointerEvent) => {
-        setOutlineWidth(clampOutlineWidth(startWidth + (ev.clientX - startX)));
+        latest = clampOutlineWidth(startWidth + (ev.clientX - startX));
+        if (outlineEl) {
+          outlineEl.style.width = `${latest}px`;
+          outlineEl.style.flexBasis = `${latest}px`;
+        }
+        target.setAttribute("aria-valuenow", String(latest));
       };
       const onUp = (ev: PointerEvent) => {
         target.releasePointerCapture(ev.pointerId);
         target.classList.remove("is-active");
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
-        setOutlineWidth((w) => {
-          persistOutlineWidth(w);
-          return w;
-        });
+        setOutlineWidth(latest);
+        persistOutlineWidth(latest);
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
@@ -317,24 +323,27 @@ export function NoteEditor({ path, content, onChange }: Props) {
       const startX = event.clientX;
       const startWidth = commentsWidth;
       const target = event.currentTarget;
+      // Dragging left grows the panel (splitter is on the left edge).
+      const commentsEl = target.nextElementSibling as HTMLElement | null;
       target.setPointerCapture(event.pointerId);
       target.classList.add("is-active");
+      let latest = startWidth;
 
       const onMove = (ev: PointerEvent) => {
-        // Dragging left grows the panel (splitter is on the left edge).
-        setCommentsWidth(
-          clampCommentsWidth(startWidth - (ev.clientX - startX)),
-        );
+        latest = clampCommentsWidth(startWidth - (ev.clientX - startX));
+        if (commentsEl) {
+          commentsEl.style.width = `${latest}px`;
+          commentsEl.style.flexBasis = `${latest}px`;
+        }
+        target.setAttribute("aria-valuenow", String(latest));
       };
       const onUp = (ev: PointerEvent) => {
         target.releasePointerCapture(ev.pointerId);
         target.classList.remove("is-active");
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
-        setCommentsWidth((w) => {
-          persistCommentsWidth(w);
-          return w;
-        });
+        setCommentsWidth(latest);
+        persistCommentsWidth(latest);
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);

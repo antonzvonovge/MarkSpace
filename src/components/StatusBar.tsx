@@ -164,7 +164,7 @@ function WordCountItem() {
 
   useEffect(() => {
     let frame = 0;
-    let inputTimer: number | null = null;
+    let syncTimer: number | null = null;
     const sync = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -181,23 +181,23 @@ function WordCountItem() {
         setLabel(null);
       });
     };
-    const onInput = () => {
-      // innerText of the whole Live editor is costly; don't do it every key.
-      if (inputTimer != null) return;
-      inputTimer = window.setTimeout(() => {
-        inputTimer = null;
+    const scheduleSync = () => {
+      // innerText of the whole Live editor is costly; coalesce input + selection.
+      if (syncTimer != null) return;
+      syncTimer = window.setTimeout(() => {
+        syncTimer = null;
         sync();
       }, 300);
     };
 
     sync();
-    document.addEventListener("selectionchange", sync);
-    document.addEventListener("input", onInput, true);
+    document.addEventListener("selectionchange", scheduleSync);
+    document.addEventListener("input", scheduleSync, true);
     return () => {
       cancelAnimationFrame(frame);
-      if (inputTimer != null) window.clearTimeout(inputTimer);
-      document.removeEventListener("selectionchange", sync);
-      document.removeEventListener("input", onInput, true);
+      if (syncTimer != null) window.clearTimeout(syncTimer);
+      document.removeEventListener("selectionchange", scheduleSync);
+      document.removeEventListener("input", scheduleSync, true);
     };
   }, [activePath, viewMode, content]);
 

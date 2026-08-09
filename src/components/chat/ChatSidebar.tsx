@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { hasAnyLlmCredentials } from "../../ai/languageModel";
 import { useAgentMemoryStore } from "../../store/agentMemoryStore";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
@@ -9,7 +9,7 @@ import { ChatComposer } from "./ChatComposer";
 import { ChatMessages } from "./ChatMessages";
 import { ChatTabBar } from "./ChatTabBar";
 
-export function ChatSidebar() {
+export const ChatSidebar = memo(function ChatSidebar() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const hydrateForVault = useChatStore((s) => s.hydrateForVault);
   const hydrateMemory = useAgentMemoryStore((s) => s.hydrateForVault);
@@ -84,4 +84,4 @@ export function ChatSidebar() {
       )}
     </aside>
   );
-}
+});

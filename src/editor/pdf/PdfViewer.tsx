@@ -246,21 +246,26 @@ export function PdfViewer({ path }: Props) {
       const startX = event.clientX;
       const startWidth = outlineWidth;
       const target = event.currentTarget;
+      const outlineEl = target.previousElementSibling as HTMLElement | null;
       target.setPointerCapture(event.pointerId);
       target.classList.add("is-active");
+      let latest = startWidth;
 
       const onMove = (ev: PointerEvent) => {
-        setOutlineWidth(clampOutlineWidth(startWidth + (ev.clientX - startX)));
+        latest = clampOutlineWidth(startWidth + (ev.clientX - startX));
+        if (outlineEl) {
+          outlineEl.style.width = `${latest}px`;
+          outlineEl.style.flexBasis = `${latest}px`;
+        }
+        target.setAttribute("aria-valuenow", String(latest));
       };
       const onUp = (ev: PointerEvent) => {
         target.releasePointerCapture(ev.pointerId);
         target.classList.remove("is-active");
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
-        setOutlineWidth((w) => {
-          persistOutlineWidth(w);
-          return w;
-        });
+        setOutlineWidth(latest);
+        persistOutlineWidth(latest);
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);

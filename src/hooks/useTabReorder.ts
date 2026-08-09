@@ -75,7 +75,8 @@ export function useTabReorder(
           e.dataTransfer.dropEffect = "move";
           const rect = e.currentTarget.getBoundingClientRect();
           const before = e.clientX < rect.left + rect.width / 2;
-          setDropGap(before ? index : index + 1);
+          const next = before ? index : index + 1;
+          setDropGap((g) => (g === next ? g : next));
         },
         onDragLeave: (e) => {
           const related = e.relatedTarget as Node | null;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -50,6 +50,247 @@ import { isFileTab, isSettingsTab, useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import { getEmbeddingsIndexStatus } from "./lib/vaultApi";
 import "./App.css";
+
+/**
+ * Isolated from shell Panel re-renders during splitter drag so NoteEditor /
+ * FileTree / chat are not reconciled every pointermove.
+ */
+const MainPane = memo(function MainPane({
+  onEditorChange,
+}: {
+  onEditorChange: (path: string, nextContent: string) => void;
+}) {
+  const vaultPath = useVaultStore((s) => s.vaultPath);
+  const tabs = useVaultStore((s) => s.tabs);
+  const activePath = useVaultStore((s) => s.activePath);
+  const content = useVaultStore((s) => s.content);
+  const viewMode = useVaultStore((s) => s.viewMode);
+  const error = useVaultStore((s) => s.error);
+  const closeSettings = usePrefsStore((s) => s.closeSettings);
+
+  return (
+    <main className="main-pane">
+      {error && <div className="error-banner">{error}</div>}
+      <SyncConflictBanner />
+      <div className="main-pane-body">
+        {!vaultPath && tabs.length === 0 && (
+          <div className="empty-state">
+            <h1>MarkSpace</h1>
+            <p>
+              Open a local folder as your vault. Notes are plain Markdown — editable here
+              or in VS Code / Cursor.
+            </p>
+          </div>
+        )}
+        {(vaultPath || tabs.length > 0) && (
+          <>
+            <EditorChrome />
+            {!activePath && (
+              <div className="empty-state">
+                <h1>Select a note</h1>
+                <p>Or create one from the sidebar.</p>
+              </div>
+            )}
+            {activePath && (
+              <div className="document-column">
+                {(() => {
+                  const activeTab = tabs.find((t) => t.path === activePath);
+                  if (activeTab && !isFileTab(activeTab)) return null;
+                  return (
+                    (documentKind(activePath) === "markdown" ||
+                      documentKind(activePath) === "mdlnks" ||
+                      documentKind(activePath) === "mddict") &&
+                    viewMode === "source" ? (
+                      <DocumentToolbar
+                        showOutlineToggle={
+                          documentKind(activePath) === "markdown"
+                        }
+                        showCommentsToggle={false}
+                      />
+                    ) : null
+                  );
+                })()}
+                <div className="document-body">
+                  {tabs.map((tab) => {
+                    const tabPath = tab.path;
+                    const isActiveTab = tabPath === activePath;
+                    const tabContent =
+                      isActiveTab ? content : (tab.body ?? "");
+                    if (isSettingsTab(tab)) {
+                      return (
+                        <div
+                          key={tabPath}
+                          className={
+                            isActiveTab
+                              ? "document-instance is-active"
+                              : "document-instance"
+                          }
+                          aria-hidden={!isActiveTab}
+                        >
+                          <SettingsPage onClose={closeSettings} />
+                        </div>
+                      );
+                    }
+                    if (!isFileTab(tab)) {
+                      return (
+                        <div
+                          key={tabPath}
+                          className={
+                            isActiveTab
+                              ? "document-instance document-instance-graph is-active"
+                              : "document-instance document-instance-graph"
+                          }
+                          aria-hidden={!isActiveTab}
+                        >
+                          {/* Keep mounted: WebGL survives visibility:hidden,
+                              but is lost under display:none. */}
+                          <TagGraphView />
+                        </div>
+                      );
+                    }
+                    const kind = documentKind(tabPath);
+                    return (
+                      <div
+                        key={tabPath}
+                        className={
+                          isActiveTab
+                            ? "document-instance is-active"
+                            : "document-instance"
+                        }
+                        aria-hidden={!isActiveTab}
+                      >
+                        {kind === "drawio" ? (
+                          <DrawioEditor
+                            path={tabPath}
+                            content={tabContent}
+                            onChange={(xml) => onEditorChange(tabPath, xml)}
+                          />
+                        ) : kind === "pdf" ? (
+                          <PdfViewer path={tabPath} />
+                        ) : kind === "mdlnks" ? (
+                          <>
+                            <div
+                              className={
+                                viewMode === "live"
+                                  ? "document-editor-slot is-active"
+                                  : "document-editor-slot"
+                              }
+                            >
+                              <LinksEditor
+                                path={tabPath}
+                                content={tabContent}
+                                onChange={(next) =>
+                                  onEditorChange(tabPath, next)
+                                }
+                              />
+                            </div>
+                            <div
+                              className={
+                                viewMode === "source"
+                                  ? "document-editor-slot is-active"
+                                  : "document-editor-slot"
+                              }
+                            >
+                              <div className="source-editor-wrap">
+                                <PlainSourceEditor
+                                  path={tabPath}
+                                  content={tabContent}
+                                  onChange={(text) =>
+                                    onEditorChange(tabPath, text)
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </>
+                        ) : kind === "mddict" ? (
+                          <>
+                            <div
+                              className={
+                                viewMode === "live"
+                                  ? "document-editor-slot is-active"
+                                  : "document-editor-slot"
+                              }
+                            >
+                              <DictionaryEditor
+                                path={tabPath}
+                                content={tabContent}
+                                onChange={(next) =>
+                                  onEditorChange(tabPath, next)
+                                }
+                              />
+                            </div>
+                            <div
+                              className={
+                                viewMode === "source"
+                                  ? "document-editor-slot is-active"
+                                  : "document-editor-slot"
+                              }
+                            >
+                              <div className="source-editor-wrap">
+                                <PlainSourceEditor
+                                  path={tabPath}
+                                  content={tabContent}
+                                  onChange={(text) =>
+                                    onEditorChange(tabPath, text)
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div
+                              className={
+                                viewMode === "live"
+                                  ? "document-editor-slot is-active"
+                                  : "document-editor-slot"
+                              }
+                            >
+                              <NoteEditor
+                                path={tabPath}
+                                content={tabContent}
+                                onChange={(markdown) =>
+                                  onEditorChange(tabPath, markdown)
+                                }
+                              />
+                            </div>
+                            {/* Mount Source only when active: Live typing
+                                used to replace the whole CodeMirror doc
+                                on every keystroke (even under display:none). */}
+                            {viewMode === "source" ? (
+                              <div className="document-editor-slot is-active">
+                                <div className="source-editor-wrap">
+                                  <PageTags
+                                    content={tabContent}
+                                    onChange={(markdown) =>
+                                      onEditorChange(tabPath, markdown)
+                                    }
+                                  />
+                                  <MarkdownSourceEditor
+                                    path={tabPath}
+                                    content={tabContent}
+                                    onChange={(markdown) =>
+                                      onEditorChange(tabPath, markdown)
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <StatusBar />
+    </main>
+  );
+});
 
 const PALETTE_COMMANDS = [
   {
@@ -110,18 +351,12 @@ function shouldKeepShellPeek(side: ShellPeekSide, x: number, y: number): boolean
 
 function App() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
-  const tabs = useVaultStore((s) => s.tabs);
-  const activePath = useVaultStore((s) => s.activePath);
-  const content = useVaultStore((s) => s.content);
-  const viewMode = useVaultStore((s) => s.viewMode);
-  const error = useVaultStore((s) => s.error);
   const setContent = useVaultStore((s) => s.setContent);
   const toggleViewMode = useVaultStore((s) => s.toggleViewMode);
   const saveActive = useVaultStore((s) => s.saveActive);
   const openVaultAt = useVaultStore((s) => s.openVaultAt);
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const toggleSettings = usePrefsStore((s) => s.toggleSettings);
-  const closeSettings = usePrefsStore((s) => s.closeSettings);
   const hydratePrefs = usePrefsStore((s) => s.hydrate);
   const hydrateAi = useAiSettingsStore((s) => s.hydrate);
   const refreshSyncStatus = useSyncStore((s) => s.refreshStatus);
@@ -544,17 +779,20 @@ function App() {
     };
   }, [saveActive]);
 
-  const onEditorChange = (path: string, nextContent: string) => {
-    // Each tab keeps its own mounted editor instance; accept input only
-    // from the currently active tab to avoid cross-tab writes.
-    if (useVaultStore.getState().activePath !== path) return;
-    setContent(nextContent);
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      timer.current = null;
-      void saveActive();
-    }, AUTOSAVE_MS);
-  };
+  const onEditorChange = useCallback(
+    (path: string, nextContent: string) => {
+      // Each tab keeps its own mounted editor instance; accept input only
+      // from the currently active tab to avoid cross-tab writes.
+      if (useVaultStore.getState().activePath !== path) return;
+      setContent(nextContent);
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => {
+        timer.current = null;
+        void saveActive();
+      }, AUTOSAVE_MS);
+    },
+    [setContent, saveActive],
+  );
 
   const panelClass = [
     "app-panels",
@@ -656,228 +894,7 @@ function App() {
             defaultSize={`${initialLayout.main}%`}
             minSize={360}
           >
-            <main className="main-pane">
-              {error && <div className="error-banner">{error}</div>}
-              <SyncConflictBanner />
-              <div className="main-pane-body">
-                {!vaultPath && tabs.length === 0 && (
-                  <div className="empty-state">
-                    <h1>MarkSpace</h1>
-                    <p>
-                      Open a local folder as your vault. Notes are plain Markdown — editable here
-                      or in VS Code / Cursor.
-                    </p>
-                  </div>
-                )}
-                {(vaultPath || tabs.length > 0) && (
-                  <>
-                    <EditorChrome />
-                    {!activePath && (
-                      <div className="empty-state">
-                        <h1>Select a note</h1>
-                        <p>Or create one from the sidebar.</p>
-                      </div>
-                    )}
-                    {activePath && (
-                      <div className="document-column">
-                        {(() => {
-                          const activeTab = tabs.find(
-                            (t) => t.path === activePath,
-                          );
-                          if (activeTab && !isFileTab(activeTab)) return null;
-                          return (
-                            (documentKind(activePath) === "markdown" ||
-                              documentKind(activePath) === "mdlnks" ||
-                              documentKind(activePath) === "mddict") &&
-                            viewMode === "source" ? (
-                              <DocumentToolbar
-                                showOutlineToggle={
-                                  documentKind(activePath) === "markdown"
-                                }
-                                showCommentsToggle={false}
-                              />
-                            ) : null
-                          );
-                        })()}
-                        <div className="document-body">
-                          {tabs.map((tab) => {
-                            const tabPath = tab.path;
-                            const isActiveTab = tabPath === activePath;
-                            const tabContent =
-                              isActiveTab ? content : (tab.body ?? "");
-                            if (isSettingsTab(tab)) {
-                              return (
-                                <div
-                                  key={tabPath}
-                                  className={
-                                    isActiveTab
-                                      ? "document-instance is-active"
-                                      : "document-instance"
-                                  }
-                                  aria-hidden={!isActiveTab}
-                                >
-                                  <SettingsPage onClose={closeSettings} />
-                                </div>
-                              );
-                            }
-                            if (!isFileTab(tab)) {
-                              return (
-                                <div
-                                  key={tabPath}
-                                  className={
-                                    isActiveTab
-                                      ? "document-instance document-instance-graph is-active"
-                                      : "document-instance document-instance-graph"
-                                  }
-                                  aria-hidden={!isActiveTab}
-                                >
-                                  {/* Keep mounted: WebGL survives visibility:hidden,
-                                      but is lost under display:none. */}
-                                  <TagGraphView />
-                                </div>
-                              );
-                            }
-                            const kind = documentKind(tabPath);
-                            return (
-                              <div
-                                key={tabPath}
-                                className={
-                                  isActiveTab
-                                    ? "document-instance is-active"
-                                    : "document-instance"
-                                }
-                                aria-hidden={!isActiveTab}
-                              >
-                                {kind === "drawio" ? (
-                                  <DrawioEditor
-                                    path={tabPath}
-                                    content={tabContent}
-                                    onChange={(xml) => onEditorChange(tabPath, xml)}
-                                  />
-                                ) : kind === "pdf" ? (
-                                  <PdfViewer path={tabPath} />
-                                ) : kind === "mdlnks" ? (
-                                  <>
-                                    <div
-                                      className={
-                                        viewMode === "live"
-                                          ? "document-editor-slot is-active"
-                                          : "document-editor-slot"
-                                      }
-                                    >
-                                      <LinksEditor
-                                        path={tabPath}
-                                        content={tabContent}
-                                        onChange={(next) =>
-                                          onEditorChange(tabPath, next)
-                                        }
-                                      />
-                                    </div>
-                                    <div
-                                      className={
-                                        viewMode === "source"
-                                          ? "document-editor-slot is-active"
-                                          : "document-editor-slot"
-                                      }
-                                    >
-                                      <div className="source-editor-wrap">
-                                        <PlainSourceEditor
-                                          path={tabPath}
-                                          content={tabContent}
-                                          onChange={(text) =>
-                                            onEditorChange(tabPath, text)
-                                          }
-                                        />
-                                      </div>
-                                    </div>
-                                  </>
-                                ) : kind === "mddict" ? (
-                                  <>
-                                    <div
-                                      className={
-                                        viewMode === "live"
-                                          ? "document-editor-slot is-active"
-                                          : "document-editor-slot"
-                                      }
-                                    >
-                                      <DictionaryEditor
-                                        path={tabPath}
-                                        content={tabContent}
-                                        onChange={(next) =>
-                                          onEditorChange(tabPath, next)
-                                        }
-                                      />
-                                    </div>
-                                    <div
-                                      className={
-                                        viewMode === "source"
-                                          ? "document-editor-slot is-active"
-                                          : "document-editor-slot"
-                                      }
-                                    >
-                                      <div className="source-editor-wrap">
-                                        <PlainSourceEditor
-                                          path={tabPath}
-                                          content={tabContent}
-                                          onChange={(text) =>
-                                            onEditorChange(tabPath, text)
-                                          }
-                                        />
-                                      </div>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div
-                                      className={
-                                        viewMode === "live"
-                                          ? "document-editor-slot is-active"
-                                          : "document-editor-slot"
-                                      }
-                                    >
-                                      <NoteEditor
-                                        path={tabPath}
-                                        content={tabContent}
-                                        onChange={(markdown) =>
-                                          onEditorChange(tabPath, markdown)
-                                        }
-                                      />
-                                    </div>
-                                    {/* Mount Source only when active: Live typing
-                                        used to replace the whole CodeMirror doc
-                                        on every keystroke (even under display:none). */}
-                                    {viewMode === "source" ? (
-                                      <div className="document-editor-slot is-active">
-                                        <div className="source-editor-wrap">
-                                          <PageTags
-                                            content={tabContent}
-                                            onChange={(markdown) =>
-                                              onEditorChange(tabPath, markdown)
-                                            }
-                                          />
-                                          <MarkdownSourceEditor
-                                            path={tabPath}
-                                            content={tabContent}
-                                            onChange={(markdown) =>
-                                              onEditorChange(tabPath, markdown)
-                                            }
-                                          />
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                  </>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-              <StatusBar />
-            </main>
+            <MainPane onEditorChange={onEditorChange} />
           </Panel>
 
           <Separator

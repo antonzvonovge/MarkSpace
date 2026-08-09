@@ -73,7 +73,8 @@ export function useListReorder(
           e.dataTransfer.dropEffect = "move";
           const rect = e.currentTarget.getBoundingClientRect();
           const before = e.clientY < rect.top + rect.height / 2;
-          setDropGap(before ? index : index + 1);
+          const next = before ? index : index + 1;
+          setDropGap((g) => (g === next ? g : next));
         },
         onDragLeave: (e) => {
           const related = e.relatedTarget as Node | null;
