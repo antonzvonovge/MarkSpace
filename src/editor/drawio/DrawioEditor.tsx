@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { usePrefsStore } from "../../store/prefsStore";
+import { useVaultStore } from "../../store/vaultStore";
 import { buildDrawioEmbedUrl } from "./constants";
-import { exportDrawioXmlToSvg } from "./exportSvg";
+import { registerDrawioEditorFlush } from "./drawioEditorFlush";
 import { applyDrawioIframeTweaks } from "./iframeTweaks";
-import { drawioPreviewCacheKey, putDrawioSvg } from "./previewCache";
+import { warmDrawioPreview } from "./warmPreview";
 
 type Props = {
   path: string;
@@ -12,6 +13,9 @@ type Props = {
   /** False for keep-alive hidden tabs — ignore iframe messages. */
   isActive?: boolean;
 };
+
+/** Debounce Zustand updates so drag/edit does not thrash React with full XML. */
+const STORE_DEBOUNCE_MS = 1800;
 
 function parseMessage(data: unknown): Record<string, unknown> | null {
   if (typeof data !== "string") return null;
@@ -30,6 +34,7 @@ export function DrawioEditor({
 }: Props) {
   const theme = usePrefsStore((s) => s.prefs.theme);
   const dark = theme === "dark";
+  const markDirty = useVaultStore((s) => s.markDirty);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const readyRef = useRef(false);
   const contentRef = useRef(content);
@@ -42,13 +47,55 @@ export function DrawioEditor({
   isActiveRef.current = isActive;
   const lastLoadedRef = useRef<string | null>(null);
   const skipNextAutosaveRef = useRef(false);
-  const previewTimerRef = useRef<number | null>(null);
+  /** Latest XML from iframe; may be ahead of the vault store. */
+  const pendingXmlRef = useRef<string | null>(null);
+  const lastEmittedRef = useRef<string | null>(content);
+  const storeTimerRef = useRef<number | null>(null);
+  const pendingStoreRef = useRef(false);
+  const wasActiveRef = useRef(isActive);
 
   const src = buildDrawioEmbedUrl({ dark });
+
+  const flushToStore = useCallback(() => {
+    if (storeTimerRef.current != null) {
+      window.clearTimeout(storeTimerRef.current);
+      storeTimerRef.current = null;
+    }
+    if (!pendingStoreRef.current) return;
+    pendingStoreRef.current = false;
+    const xml = pendingXmlRef.current;
+    if (xml == null || xml === lastEmittedRef.current) return;
+    lastEmittedRef.current = xml;
+    lastLoadedRef.current = xml;
+    onChangeRef.current(xml);
+  }, []);
+
+  const scheduleStoreFlush = useCallback(() => {
+    pendingStoreRef.current = true;
+    if (storeTimerRef.current != null) {
+      window.clearTimeout(storeTimerRef.current);
+    }
+    storeTimerRef.current = window.setTimeout(() => {
+      storeTimerRef.current = null;
+      flushToStore();
+    }, STORE_DEBOUNCE_MS);
+  }, [flushToStore]);
+
+  useEffect(() => registerDrawioEditorFlush(path, flushToStore), [
+    path,
+    flushToStore,
+  ]);
 
   useEffect(() => {
     readyRef.current = false;
     lastLoadedRef.current = null;
+    pendingXmlRef.current = null;
+    lastEmittedRef.current = contentRef.current;
+    pendingStoreRef.current = false;
+    if (storeTimerRef.current != null) {
+      window.clearTimeout(storeTimerRef.current);
+      storeTimerRef.current = null;
+    }
   }, [src, path]);
 
   useEffect(() => {
@@ -66,6 +113,7 @@ export function DrawioEditor({
         readyRef.current = true;
         skipNextAutosaveRef.current = true;
         lastLoadedRef.current = contentRef.current;
+        lastEmittedRef.current = contentRef.current;
         applyDrawioIframeTweaks(iframeRef.current);
         post({
           action: "load",
@@ -90,29 +138,43 @@ export function DrawioEditor({
         if (!isActiveRef.current) return;
         if (skipNextAutosaveRef.current) return;
         const xml = typeof msg.xml === "string" ? msg.xml : "";
-        if (!xml || xml === contentRef.current) return;
-        lastLoadedRef.current = xml;
-        onChangeRef.current(xml);
-        // Preview SVG via a separate iframe — never send export with spin:false
-        // to the editor (draw.io treats non-null spin as status text → crash).
-        if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current);
-        previewTimerRef.current = window.setTimeout(() => {
-          const key = drawioPreviewCacheKey(pathRef.current, xml);
-          void exportDrawioXmlToSvg(xml)
-            .then((svg) => putDrawioSvg(key, svg))
-            .catch(() => {
-              /* preview cache is best-effort */
-            });
-        }, 600);
+        if (!xml || xml === pendingXmlRef.current) return;
+        if (xml === lastEmittedRef.current && !pendingStoreRef.current) return;
+        pendingXmlRef.current = xml;
+        // Dirty immediately; full XML hits Zustand on debounce / flush.
+        markDirty();
+        scheduleStoreFlush();
       }
     };
 
     window.addEventListener("message", onMessage);
     return () => {
       window.removeEventListener("message", onMessage);
-      if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current);
+      if (storeTimerRef.current != null) {
+        window.clearTimeout(storeTimerRef.current);
+        storeTimerRef.current = null;
+      }
+      if (pendingStoreRef.current) {
+        pendingStoreRef.current = false;
+        const xml = pendingXmlRef.current;
+        if (xml != null && xml !== lastEmittedRef.current) {
+          lastEmittedRef.current = xml;
+          onChangeRef.current(xml);
+        }
+      }
     };
-  }, []);
+  }, [markDirty, scheduleStoreFlush]);
+
+  // Leave tab / blur: flush store + warm embed preview (not on every edit).
+  useEffect(() => {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = isActive;
+    if (wasActive && !isActive) {
+      flushToStore();
+      const xml = pendingXmlRef.current ?? contentRef.current;
+      if (xml) warmDrawioPreview(path, xml);
+    }
+  }, [isActive, path, flushToStore]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -122,6 +184,13 @@ export function DrawioEditor({
     if (!frame?.contentWindow) return;
     skipNextAutosaveRef.current = true;
     lastLoadedRef.current = content;
+    lastEmittedRef.current = content;
+    pendingXmlRef.current = content;
+    pendingStoreRef.current = false;
+    if (storeTimerRef.current != null) {
+      window.clearTimeout(storeTimerRef.current);
+      storeTimerRef.current = null;
+    }
     frame.contentWindow.postMessage(
       JSON.stringify({
         action: "load",

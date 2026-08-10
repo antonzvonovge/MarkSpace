@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { skillTemplate } from "../ai/skills";
+import { flushDrawioEditor } from "../editor/drawio/drawioEditorFlush";
+import { warmDrawioPreview } from "../editor/drawio/warmPreview";
 import { flushLiveEditor } from "../editor/liveEditorFlush";
 import type { TreeNode } from "../lib/vaultApi";
 import {
@@ -17,6 +19,7 @@ import {
   importDocumentBytes,
   importPaths,
   isFolderNotePath,
+  isDrawioPath,
   isPdfPath,
   isSkillsFolder,
   isValidSkillId,
@@ -399,9 +402,11 @@ function stashActiveIntoTabs(
   return withTabBody(tabs, activePath, content, dirty);
 }
 
-/** Flush debounced Live→markdown into the store before reading `content`. */
+/** Flush debounced Live/Draw.io buffers into the store before reading `content`. */
 function flushActiveEditorBuffer(get: () => VaultStore): void {
-  flushLiveEditor(get().activePath);
+  const path = get().activePath;
+  flushLiveEditor(path);
+  flushDrawioEditor(path);
 }
 
 function tabLabel(path: string, kind?: TabKind): string {
@@ -771,6 +776,7 @@ async function persistDirtyTab(
   path: string,
 ): Promise<void> {
   flushLiveEditor(path);
+  flushDrawioEditor(path);
   const start = tabBuffer(get(), path);
   if (!start?.dirty) return;
 
@@ -828,6 +834,7 @@ async function persistDirtyTab(
     } else {
       set({ tabs: withTabBody(latest.tabs, path, savedContent, false) });
     }
+    if (isDrawioPath(path)) warmDrawioPreview(path, savedContent);
     scheduleTagCatalogRefresh(() => get().refreshVaultTags());
     if (path.toLowerCase().endsWith(".mddict")) {
       void get().refreshDictionaryTags();
@@ -1810,6 +1817,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         saving: false,
         tabs: withTabBody(current.tabs, activePath, savedContent, false),
       });
+      if (isDrawioPath(activePath)) warmDrawioPreview(activePath, savedContent);
       // Tag index was already patched in write_note; refresh UI catalogs after
       // a short settle so rapid saves do not spam listVaultTags IPC.
       scheduleTagCatalogRefresh(() => get().refreshVaultTags());

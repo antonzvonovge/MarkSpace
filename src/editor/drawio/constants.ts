@@ -16,12 +16,14 @@ export const DEFAULT_DRAWIO_PREVIEW_WIDTH = 480;
 export function buildDrawioEmbedUrl(opts: {
   dark?: boolean;
   lightbox?: boolean;
+  /** Shape libraries UI; default on for the interactive editor, off for export. */
+  libraries?: boolean;
 }): string {
   const params = new URLSearchParams({
     embed: "1",
     proto: "json",
     spin: "1",
-    libraries: "1",
+    libraries: opts.libraries === false ? "0" : "1",
     offline: "1",
     saveAndExit: "0",
     noSaveBtn: "1",

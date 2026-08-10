@@ -21,7 +21,8 @@ function ensureIframe(): HTMLIFrameElement {
   el.style.cssText =
     "position:fixed;width:1px;height:1px;left:-100px;top:-100px;opacity:0;pointer-events:none;border:0";
   // Full embed editor (not lightbox) — export protocol is more reliable here.
-  el.src = buildDrawioEmbedUrl({});
+  // Skip shape libraries: export iframe never needs the library chrome.
+  el.src = buildDrawioEmbedUrl({ libraries: false });
   document.body.appendChild(el);
   iframe = el;
 

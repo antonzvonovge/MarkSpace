@@ -2136,6 +2136,14 @@ select {
   left: 0;
   right: 0;
   height: 2px;
+  background: color-mix(
+    in srgb,
+    var(--tab-project-color) 42%,
+    transparent
+  );
+}
+
+.editor-tab.has-project-color.is-active::before {
   background: var(--tab-project-color);
 }
 
@@ -2313,6 +2321,9 @@ select {
   overflow: auto;
   padding: 4px 0 48px;
   cursor: text;
+  /* Lets tables break out of the reading measure via 100cqi. */
+  container-type: inline-size;
+  container-name: editor-main;
 }
 
 .document-outline {
@@ -2826,13 +2837,22 @@ select {
 
 .editor-canvas-wrap {
   position: relative;
-  max-width: 760px;
+  /* Full editor-main width; reading measure comes from --editor-side-pad so
+     tables can break out into the unused side gutters. */
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   cursor: text;
+  --editor-measure: 760px;
+  --editor-gutter: 12px;
+  --editor-side-pad: max(
+    var(--editor-gutter),
+    calc((100% - var(--editor-measure)) / 2)
+  );
 }
 
 .editor-canvas {
-  padding: 8px 12px 64px;
+  padding: 8px var(--editor-side-pad) 64px;
   cursor: text;
   min-height: min(70vh, 640px);
 }
@@ -3206,6 +3226,62 @@ select {
 
 .editor-canvas [data-content-type="table"] table {
   font-size: 0.875em;
+}
+
+/* Wide tables (4+ columns): break out of the ~760px reading measure to
+   the full editor column, center, cap columns at 15vw. Narrower tables
+   (≤3 columns) keep the default reading-column layout. */
+.editor-canvas
+  .bn-block-outer:has(
+    > .bn-block
+      > .bn-block-content[data-content-type="table"]
+      tr:first-child
+      > :nth-child(4)
+  ) {
+  width: calc(100cqi - 2 * var(--editor-gutter));
+  max-width: calc(100cqi - 2 * var(--editor-gutter));
+  margin-left: calc(50% - 50cqi + var(--editor-gutter));
+  box-sizing: border-box;
+}
+
+.editor-canvas
+  .bn-block-content[data-content-type="table"]:has(tr:first-child > :nth-child(4)) {
+  width: 100%;
+  max-width: none;
+  justify-content: center;
+}
+
+.editor-canvas
+  .bn-editor
+  [data-content-type="table"]:has(tr:first-child > :nth-child(4))
+  .tableWrapper {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.editor-canvas
+  .bn-editor
+  [data-content-type="table"]:has(tr:first-child > :nth-child(4))
+  table {
+  /* Grow to column content (capped by 15vw); overflow scrolls on the wrapper
+     instead of squeezing the table into the available width. */
+  width: max-content !important;
+  max-width: none;
+  margin-inline: auto;
+  table-layout: auto;
+  overflow: visible;
+  word-break: normal;
+}
+
+.editor-canvas
+  .bn-editor
+  [data-content-type="table"]:has(tr:first-child > :nth-child(4))
+  :is(th, td) {
+  max-width: 15vw;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .editor-canvas a {
