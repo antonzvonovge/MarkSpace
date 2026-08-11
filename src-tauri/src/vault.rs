@@ -2030,16 +2030,25 @@ pub fn resolve_wiki_target(
     }
 
     // Folder wiki target → hidden folder note path (may not exist yet).
-    let folder_candidate = if lower.ends_with(".md") {
-        target[..target.len() - 3].to_string()
+    // Specialized document extensions are never folders.
+    let folder_candidate = if lower.ends_with(".pdf")
+        || lower.ends_with(".drawio")
+        || lower.ends_with(".mdlnks")
+        || lower.ends_with(".mddict")
+    {
+        None
+    } else if lower.ends_with(".md") {
+        Some(target[..target.len() - 3].to_string())
     } else {
-        target.to_string()
+        Some(target.to_string())
     };
-    if !folder_candidate.is_empty() {
-        if let Ok(folder_path) = ensure_inside(&root, Path::new(&folder_candidate)) {
-            if folder_path.is_dir() {
-                let rel = relative_to_root(&root, &folder_path);
-                return Ok(Some(folder_note_rel(&rel)));
+    if let Some(folder_candidate) = folder_candidate {
+        if !folder_candidate.is_empty() {
+            if let Ok(folder_path) = ensure_inside(&root, Path::new(&folder_candidate)) {
+                if folder_path.is_dir() {
+                    let rel = relative_to_root(&root, &folder_path);
+                    return Ok(Some(folder_note_rel(&rel)));
+                }
             }
         }
     }
@@ -2050,39 +2059,56 @@ pub fn resolve_wiki_target(
         .unwrap_or_else(|| target.to_string())
         .to_lowercase();
 
-    let prefer_pdf = lower.ends_with(".pdf");
+    // When the wiki target names an extension, prefer that document kind in the
+    // basename walk. Bare names may match any vault document type (not only .md).
+    let prefer_ext: Option<&str> = if lower.ends_with(".pdf") {
+        Some("pdf")
+    } else if lower.ends_with(".mddict") {
+        Some("mddict")
+    } else if lower.ends_with(".mdlnks") {
+        Some("mdlnks")
+    } else if lower.ends_with(".drawio") {
+        Some("drawio")
+    } else if lower.ends_with(".md") {
+        Some("md")
+    } else {
+        None
+    };
 
     // Basename walk: prefer a matching folder (folder note) over a distant file.
-    for entry in WalkDir::new(&root)
-        .into_iter()
-        .filter_entry(|e| {
-            if e.depth() == 0 {
-                return true;
-            }
-            e.file_name()
-                .to_str()
-                .map(walk_entry_allowed)
-                .unwrap_or(false)
-        })
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        if path
-            .components()
-            .any(|c| matches!(c, Component::Normal(n) if is_skipped_hidden_component(&n.to_string_lossy())))
+    // Skip folder matching for specialized document extensions — those are never folders.
+    let allow_folder_match = prefer_ext.is_none() || prefer_ext == Some("md");
+    if allow_folder_match {
+        for entry in WalkDir::new(&root)
+            .into_iter()
+            .filter_entry(|e| {
+                if e.depth() == 0 {
+                    return true;
+                }
+                e.file_name()
+                    .to_str()
+                    .map(walk_entry_allowed)
+                    .unwrap_or(false)
+            })
+            .filter_map(|e| e.ok())
         {
-            continue;
-        }
-        let name = path
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-        if name.to_lowercase() == needle {
-            let rel = relative_to_root(&root, path);
-            return Ok(Some(folder_note_rel(&rel)));
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.components().any(|c| {
+                matches!(c, Component::Normal(n) if is_skipped_hidden_component(&n.to_string_lossy()))
+            }) {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if name.to_lowercase() == needle {
+                let rel = relative_to_root(&root, path);
+                return Ok(Some(folder_note_rel(&rel)));
+            }
         }
     }
 
@@ -2103,18 +2129,23 @@ pub fn resolve_wiki_target(
         if !path.is_file() {
             continue;
         }
-        if path
-            .components()
-            .any(|c| matches!(c, Component::Normal(n) if is_skipped_hidden_component(&n.to_string_lossy())))
-        {
+        if path.components().any(|c| {
+            matches!(c, Component::Normal(n) if is_skipped_hidden_component(&n.to_string_lossy()))
+        }) {
             continue;
         }
         let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("");
-        if prefer_pdf {
-            if ext != "pdf" {
-                continue;
+        let ext_ok = match prefer_ext {
+            Some(want) => ext.eq_ignore_ascii_case(want),
+            None => {
+                ext.eq_ignore_ascii_case("md")
+                    || ext.eq_ignore_ascii_case("pdf")
+                    || ext.eq_ignore_ascii_case("drawio")
+                    || ext.eq_ignore_ascii_case("mdlnks")
+                    || ext.eq_ignore_ascii_case("mddict")
             }
-        } else if ext != "md" {
+        };
+        if !ext_ok {
             continue;
         }
         let stem = path

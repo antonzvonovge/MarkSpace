@@ -61,6 +61,8 @@ import {
   type SkillMeta,
 } from "./skills";
 import { formatForcedToolsLines } from "./toolCatalog";
+import { buildRunSpecialistTool } from "./specialists";
+import { ORCHESTRATOR_TOOL_NAMES, pickTools } from "./toolPacks";
 import type { ChatMode } from "./types";
 import { buildWebTools } from "./webTools";
 import {
@@ -194,13 +196,22 @@ export const _test = {
   MAX_FOLDER_LIST,
 };
 
-export function buildVaultTools(
-  mode: ChatMode,
-  opts?: {
-    getMessages?: () => UIMessage[];
-    projectPath?: string | null;
-  },
-) {
+export type BuildVaultToolsOpts = {
+  getMessages?: () => UIMessage[];
+  projectPath?: string | null;
+  projectAbout?: string | null;
+  projectType?: string | null;
+  projectLearningLanguage?: string | null;
+  /** Model id for specialist workers (defaults to settings). */
+  modelId?: string | null;
+  /**
+   * Restrict to these tool names. For Agent mode, omit to get the
+   * orchestrator 8-tool set. Pass an explicit list for specialists.
+   */
+  toolNames?: string[];
+};
+
+export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
   const getMessages = opts?.getMessages ?? (() => [] as UIMessage[]);
   const projectPath = opts?.projectPath?.trim() || null;
   const inProject = makeInProject(projectPath);
@@ -535,12 +546,12 @@ export function buildVaultTools(
 
     open_note: tool({
       description:
-        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page. For a folder path (or `{folder}/.folder.md`), opens that folder’s hidden overview note, creating it if missing.",
+        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, dictionary (.mddict), links file (.mdlnks), or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page. For a folder path (or `{folder}/.folder.md`), opens that folder’s hidden overview note, creating it if missing.",
       inputSchema: z.object({
         path: z
           .string()
           .describe(
-            "Vault-relative path, e.g. Folder/Note.md, diagram.drawio, report.pdf, a folder, or Folder/.folder.md",
+            "Vault-relative path, e.g. Folder/Note.md, diagram.drawio, words.mddict, links.mdlnks, report.pdf, a folder, or Folder/.folder.md",
           ),
         preview: z
           .boolean()
@@ -815,7 +826,7 @@ export function buildVaultTools(
   const askUserTool = { ask_user: buildAskUserTool() };
 
   if (mode === "ask") {
-    return {
+    const askAll = {
       ...readTools,
       ...drawioTools,
       ...mdlnksTools,
@@ -824,9 +835,177 @@ export function buildVaultTools(
       ...fileTools,
       ...askUserTool,
     };
+    if (opts?.toolNames?.length) {
+      return pickTools(askAll, opts.toolNames) as typeof askAll;
+    }
+    return askAll;
   }
 
-  return {
+  const orchestratorExtras = {
+    search: tool({
+      description:
+        "Search the vault. mode=exact for substrings/symbols/filenames; mode=semantic for meaning/paraphrases (local embedding model). Prefer semantic for conceptual questions.",
+      inputSchema: z.object({
+        query: z.string().min(1).describe("Search query"),
+        mode: z
+          .enum(["exact", "semantic"])
+          .describe("exact = substring; semantic = embeddings"),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe("Max hits for semantic mode (default 10)"),
+      }),
+      execute: async ({ query, mode: searchMode, limit }) => {
+        if (searchMode === "exact") {
+          const hits = (await searchNotes(query)).filter((h) =>
+            inProject(h.path),
+          );
+          await yieldToUi();
+          return { mode: "exact" as const, count: hits.length, hits };
+        }
+        const desired = limit ?? 10;
+        const fetchLimit = projectPath
+          ? Math.min(desired * 4, 50)
+          : limit;
+        const model = await getEmbeddingModelStatus();
+        if (!model.installed) {
+          return {
+            mode: "semantic" as const,
+            available: false as const,
+            count: 0,
+            hits: [],
+            error:
+              "Local semantic search model is not installed. It can be downloaded in Settings → AI.",
+          };
+        }
+        try {
+          const raw = await semanticSearchNotes(query, fetchLimit);
+          const hits = raw.filter((h) => inProject(h.path)).slice(0, desired);
+          await yieldToUi();
+          return {
+            mode: "semantic" as const,
+            available: true as const,
+            count: hits.length,
+            hits,
+          };
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          const hits = (await searchNotes(query))
+            .filter((h) => inProject(h.path))
+            .slice(0, desired);
+          await yieldToUi();
+          return {
+            mode: "semantic" as const,
+            available: false as const,
+            count: hits.length,
+            hits,
+            fallback: "substring" as const,
+            warning: message,
+          };
+        }
+      },
+    }),
+
+    memory: tool({
+      description:
+        "Save or delete a durable agent memory. action=remember stores a short fact; action=forget deletes by id (preferred) or exact text. Memories already appear in the system prompt — no list action.",
+      inputSchema: z.object({
+        action: z.enum(["remember", "forget"]),
+        text: z
+          .string()
+          .optional()
+          .describe(
+            "Fact to remember (remember), or exact text to match (forget without id)",
+          ),
+        id: z.string().optional().describe("Memory id when forgetting"),
+        project: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(
+            "Project folder for remember scope; omit/null for global",
+          ),
+      }),
+      execute: async ({ action, text, id, project }) => {
+        const doc = await getAgentMemory();
+        if (!doc.enabled) return memoryDisabledError();
+        try {
+          if (action === "remember") {
+            const body = text?.trim() ?? "";
+            if (!body) {
+              return { ok: false as const, error: "text required to remember" };
+            }
+            if (body.length > 500) {
+              return {
+                ok: false as const,
+                error: "text must be at most 500 characters",
+              };
+            }
+            const scope =
+              project == null || String(project).trim() === ""
+                ? null
+                : String(project).trim();
+            const entry = await addAgentMemory(body, scope);
+            await refreshMemoryStore();
+            await yieldToUi();
+            return {
+              ok: true as const,
+              action: "remember" as const,
+              entry: {
+                id: entry.id,
+                text: entry.text,
+                projectPath: entry.projectPath,
+              },
+            };
+          }
+          let targetId = id?.trim() || "";
+          if (!targetId && text?.trim()) {
+            const needle = text.trim();
+            const match = doc.entries.find((e) => e.text === needle);
+            if (!match) {
+              return {
+                ok: false as const,
+                error: `No memory with exact text: ${needle}`,
+              };
+            }
+            targetId = match.id;
+          }
+          if (!targetId) {
+            return {
+              ok: false as const,
+              error: "Provide id or exact text to forget",
+            };
+          }
+          await deleteAgentMemory(targetId);
+          await refreshMemoryStore();
+          await yieldToUi();
+          return {
+            ok: true as const,
+            action: "forget" as const,
+            id: targetId,
+          };
+        } catch (err) {
+          return {
+            ok: false as const,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      },
+    }),
+
+    run_specialist: buildRunSpecialistTool({
+      projectPath,
+      projectAbout: opts?.projectAbout,
+      projectType: opts?.projectType,
+      projectLearningLanguage: opts?.projectLearningLanguage,
+      modelId: opts?.modelId,
+    }),
+  };
+
+  const agentAll = {
     ...readTools,
     ...drawioTools,
     ...mdlnksTools,
@@ -834,6 +1013,7 @@ export function buildVaultTools(
     ...webTools,
     ...fileTools,
     ...askUserTool,
+    ...orchestratorExtras,
     set_file_tags: tool({
       description:
         "Set tags for a PDF (or other filemeta-backed vault file). Replaces the full tag list. Pass an empty array to clear tags. For markdown notes, edit YAML frontmatter tags via edit_note instead.",
@@ -1422,6 +1602,11 @@ export function buildVaultTools(
       },
     }),
   };
+
+  const names = opts?.toolNames?.length
+    ? opts.toolNames
+    : [...ORCHESTRATOR_TOOL_NAMES];
+  return pickTools(agentAll, names) as typeof agentAll;
 }
 
 function syncOpenEditor(path: string, content: string) {
@@ -1467,20 +1652,27 @@ export function buildSystemPrompt(opts: {
 
   const lines = [
     "You are MarkSpace, an AI assistant embedded in a local Markdown vault app.",
-    "You mostly read and edit Markdown (.md) notes — plain text with Markdown formatting.",
-    "You can also inspect and edit Draw.io diagrams (.drawio) via diagram tools. Prefer mutate_diagram for any multi-element change (add/update/color/align/connect/page settings/layout in one call). Also: read_diagram, create_diagram, and single-element helpers.",
-    "You can manage link collections (.mdlnks) via links tools: read_links, add_link, update_link, remove_link, reorder_links, set_links_filter, create_links. Call read_mdlnks_format when unsure. Never raw-edit .mdlnks with edit_note/write_note.",
-    "You can manage vocabulary dictionaries (.mddict) via dictionary tools: read_dictionary, add_entry, update_entry, remove_entry, reorder_entries, set_dictionary_filter, create_dictionary. Call read_mddict_format when unsure. Never raw-edit .mddict with edit_note/write_note. Dictionary tags are a separate bank from note/PDF tags and do not appear in the tag graph.",
-    "PDF documents (.pdf) are first-class vault files (view-only). They appear in list_notes/list_folder, are indexed for search_notes and semantic_search when text is extractable, and open in the PDF viewer via open_note (optional page). Use read_note or read_file to get extracted text; scanned PDFs may have no text. Tags for PDFs are stored in vault filemeta (same catalog as notes / tag graph); never edit_note/write_note on PDFs.",
-    ...mdlnksCoreRules().map((r) => `Links (.mdlnks): ${r}`),
-    ...mddictCoreRules().map((r) => `Dictionary (.mddict): ${r}`),
-    "You can search the public web (web_search) and fetch pages as markdown (fetch_url) when vault notes are not enough. fetch_url auto-picks Tavily (if configured) or Jina; x.com/twitter.com status URLs use FxTwitter automatically.",
-    `Web API keys configured: Tavily=${tavilyConfigured ? "yes" : "no"}, Firecrawl=${firecrawlConfigured ? "yes" : "no"}. These flags are authoritative — never ask the user whether a key is set. If Firecrawl=yes and they ask for Firecrawl / provider=firecrawl / scrape_url, call the tool immediately. If Firecrawl=no and they insist on Firecrawl, tell them to add the key in Settings → Firecrawl API key.`,
-    "scrape_url (Firecrawl browser scrape, markdown only) is expensive — ONLY call it when the user explicitly asks to scrape a page (or names Firecrawl / scrape_url). Never use it for routine fetch_url work.",
-    "In Agent mode, use clip_article to save a web page as a vault note with images downloaded into .assets/ (prefer this over fetch_url + manual image saves when the user wants to keep the article). Default provider is Tavily/Jina; pass provider=firecrawl when the user wants Firecrawl for the clip.",
-    "You can read vault files or download http(s) URLs with read_file (images are returned for vision analysis). In Agent mode, pass save_as to store a copy at a vault-relative path of your choice.",
-    `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes and folders via tools)"}.`,
+    "You mostly work with Markdown (.md) notes — a dialect of standard Markdown.",
+    `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (orchestrator: peek/search locally, then delegate writes and domain work via run_specialist)"}.`,
   ];
+
+  if (opts.mode === "ask") {
+    lines.push(
+      "PDF documents (.pdf) are first-class vault files (view-only). Use read_note or read_file for extracted text; open_note for the viewer.",
+      ...mdlnksCoreRules().map((r) => `Links (.mdlnks): ${r}`),
+      ...mddictCoreRules().map((r) => `Dictionary (.mddict): ${r}`),
+      `Web API keys configured: Tavily=${tavilyConfigured ? "yes" : "no"}, Firecrawl=${firecrawlConfigured ? "yes" : "no"}. These flags are authoritative — never ask the user whether a key is set.`,
+      "scrape_url is expensive — only when the user explicitly asks to scrape / names Firecrawl.",
+    );
+  } else {
+    lines.push(
+      "Delegate with run_specialist: research (vault/web read), edit_notes (markdown/folders/assets), diagram (.drawio), links (.mdlnks), dict (.mddict).",
+      "CRITICAL — parallel specialists: when tasks are independent, emit several run_specialist calls in ONE response (each with a short title and self-contained task). Do not serialize unrelated work. Avoid parallel write specialists on overlapping paths.",
+      "Cite vault files in chat with wiki-links, including dictionaries: `[[English/Dictionary.mddict|Dictionary.mddict]]` (also .mdlnks / .drawio / .pdf).",
+      "Diary daily notes: `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` — tell the edit_notes specialist to use open_or_create_daily_note.",
+      `Web API keys configured: Tavily=${tavilyConfigured ? "yes" : "no"}, Firecrawl=${firecrawlConfigured ? "yes" : "no"}.`,
+    );
+  }
 
   const gemName = opts.gemName?.trim();
   const gemInstructions = opts.gemInstructions?.trim();
@@ -1500,38 +1692,28 @@ export function buildSystemPrompt(opts: {
   }
 
   lines.push(
-    "CRITICAL — parallel tools: every model round re-sends the whole context. When several independent tools are needed, emit them TOGETHER in one response (parallel tool calls) — e.g. several read_note paths, list_folder + search_notes, multiple search queries, web_search + fetch_url. Do NOT call one tool, wait, then call another when the second does not depend on the first result. Only serialize when a later call truly needs a prior result (unknown path, edit after read). Never parallelize writes to the same path; for .drawio use one mutate_diagram.",
-    "Vault search: prefer semantic_search for meaning/conceptual questions (paraphrases, topics); use search_notes for exact substrings, symbols, or filenames.",
-    "Use list_tags to inspect the current vault tag catalog before choosing or changing note tags.",
-    "For external facts/docs: web_search first, then fetch_url on the best 1–3 links. Do not invent URLs. To download an image/file into the vault, use read_file with save_as.",
-    "When you need a decision, confirmation, or clarification with clear choices: use ask_user (multiple-choice + optional free-text) instead of listing A/B/C options in plain chat text. Keep questions focused; prefer one round of 1–3 questions.",
-    "Paths are vault-relative. Use wiki-style note names only when resolving via tools.",
-    "When the user mentions vault paths in their message (files or folders ending with /), use list_folder, read_note, and/or list_notes as needed — do not ask them to paste the contents again.",
-    "Use list_folder to inspect folder contents (folders vs files; recursive optional). Prefer it over list_notes when checking whether a folder exists or listing empty folders.",
-    "Folder notes: each folder may have a hidden overview at `{folder}/.folder.md` (not listed in the tree or list_folder/list_notes). Clicking a folder in the UI opens it; you can read/edit that path directly, or pass a folder path to open_note. Wiki-links to a folder name resolve to its folder note.",
-    "When the user asks to open, show, or switch to a note/diagram/PDF in the editor, call open_note (preview tab by default; for PDFs pass page from search hits). Prefer open_note to show work; still use read_note/get_active_note to read contents.",
-    "MarkSpace Markdown is a dialect of standard Markdown. Follow these rules exactly; call read_format_guide when unsure or before writing non-trivial markdown:",
+    "CRITICAL — parallel tools: every model round re-sends the whole context. When several independent tools are needed, emit them TOGETHER in one response.",
+    "When you need a decision, confirmation, or clarification with clear choices: use ask_user instead of listing A/B/C in plain chat text.",
+    "Paths are vault-relative.",
+    "Folder notes: each folder may have a hidden overview at `{folder}/.folder.md` (not listed in the tree). Pass a folder path to open_note to open it.",
+    "When the user asks to open/show a file, call open_note.",
+    "MarkSpace Markdown dialect — follow these rules; call read_format_guide when unsure:",
     ...markdownCoreRules(),
-    "In chat replies you may include diagrams as fenced ```d2 (preferred for richer architecture), ```mermaid, ```plantuml / ```puml, ```dot / ```graphviz, or ```markmap (rendered inline). Prefer those over ASCII art. For freeform rich graphics in the vault, create/edit a .drawio (mutate_diagram / create_diagram) and embed ![[path.drawio]] — not a monospace box drawing.",
+    opts.mode === "agent"
+      ? "In chat replies you may include diagrams as fenced ```d2 (preferred), ```mermaid, ```plantuml / ```puml, ```dot / ```graphviz, or ```markmap. For freeform vault graphics use a .drawio via the diagram specialist."
+      : "In chat replies you may include diagrams as fenced ```d2 (preferred), ```mermaid, ```plantuml / ```puml, ```dot / ```graphviz, or ```markmap. For freeform vault graphics use .drawio tools.",
   );
-  if (opts.mode === "agent") {
+  if (opts.mode === "ask") {
     lines.push(
-      "When editing notes: prefer edit_note (partial replace) over write_note (full overwrite) to save tokens.",
-      "Create empty folders with create_folder, or ensure_folder when you only need the path to exist (returns created vs already existed). To add a note in a new path, use create_note (parents are created automatically).",
-      "Diary daily notes: always `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` with English month abbreviations (e.g. Journal/2026/08/02.Aug.2026.md). Use open_or_create_daily_note (date as YYYY-MM-DD) to create or open a day — never invent a different diary path with create_note.",
-      "Move files or folders between vault folders with move_path. Markdown note assets referenced from .assets are migrated automatically.",
-      "Delete files or folders with delete_path only when the user clearly asks to delete/remove them (folders are recursive). Use delete_folder_if_empty to remove a folder only if it is vacant.",
-      "When reading long notes: use read_note/get_active_note with start_line and end_line instead of loading the whole file.",
-      "Preserve existing Markdown structure; keep one empty line between paragraphs in any text you insert or rewrite. Nested lists: prefer `*`; indentation is relative to the parent item and compounds with depth — parent indent + 2 spaces under `*`, + 3 under `1.` (0 → 3 → 5 → 8 …), never reset to 2/3 at deeper levels; never blank-line between parent and nested children; do not flatten multilevel lists. Bold list labels: short body on the same line; longer body after the label must be a continuation paragraph indented to that item's text column (any nesting depth), never flush-left or under-indented — that ends the list and restarts numbering at 1. Tables: GFM pipe tables only — never ASCII/box-drawing tables in code fences.",
-      "For .drawio files: use mutate_diagram for batch edits (never many parallel single updates — they race). Use temp_id on new nodes and reference them from add_edges / child parent in the same call. Never raw edit_note on XML.",
-      "For .pdf files: use set_file_tags / get_file_tags for document tags (sidecar in .markspace/filemeta). Never edit_note/write_note on PDFs.",
-      "For .mdlnks files: use add_link / update_link / remove_link / reorder_links / set_links_filter (never raw edit_note on the links text format).",
-      "For .mddict files: use add_entry / update_entry / remove_entry / reorder_entries / set_dictionary_filter (never raw edit_note on the dictionary text format).",
-      "Draw.io layout: for multi-shape diagrams OMIT x/y — mutate_diagram auto-layouts top-down (ArchiMate: Motivation→Strategy→Business→Application→Technology→Implementation). Do not invent sideways coordinates. Use layout:{type:'none'} only when intentionally keeping positions; layout:{type:'archimate'|'hierarchical'|'grid', direction:'top_down'|'left_right'} to override.",
-      "Draw.io capabilities: text align/vertical_align/font_*; sketch; page_settings; shapes include group/swimlane and ArchiMate 3.2 (archimate.*); edges relation=serving|realization|assignment|…; parent=temp_id nesting; waypoints + exit_*/entry_*; add_pages/rename_pages.",
-      "Images in notes: save with save_attachment (chat images), write_asset (raw base64 into note .assets/), read_file with save_as (URL/vault file → any vault path), or clip_article (web page → note + .assets/). Then edit_note to insert markdown using the returned path/url. Never invent .assets paths.",
-      "When the user asks to clip/save/archive a web article into the vault, call clip_article then open_note on the returned path. Do not manually chain fetch_url + many read_file downloads for that workflow.",
-      "When the user asks to translate a note (to their native language or another), call translate_note — it smart-translates in place (keeps frontmatter and #tags). Do not manually rewrite the whole note with write_note/edit_note for translation.",
+      "Vault search: prefer semantic_search for meaning; search_notes for exact substrings.",
+      "Use list_folder to inspect folders; prefer it over list_notes when checking empty folders.",
+      "For external facts: web_search first, then fetch_url on the best 1–3 links.",
+    );
+  } else {
+    lines.push(
+      "Use search with mode=semantic for conceptual questions and mode=exact for substrings/symbols.",
+      "Use list_folder for navigation. For deep research or web lookup, run_specialist kind=research.",
+      "When the user asks to remember or forget something, call memory (do not only acknowledge).",
     );
   }
   if (opts.vaultPath) {
@@ -1561,7 +1743,9 @@ export function buildSystemPrompt(opts: {
     let budget = MAX_MEMORY_PROMPT_CHARS;
     if (globalEntries.length > 0 || projectEntries.length > 0) {
       lines.push(
-        "Saved memories are durable facts across chats in this vault. Use them. When the user asks to remember or forget something, call remember / forget (do not only acknowledge). Prefer project scope when the fact is about the active project; otherwise global. Do not duplicate Profile or project description. Do not store secrets unless the user explicitly asks.",
+        opts.mode === "agent"
+          ? "Saved memories are durable facts across chats in this vault. Use them. When the user asks to remember or forget something, call memory (do not only acknowledge). Prefer project scope when the fact is about the active project; otherwise global. Do not duplicate Profile or project description. Do not store secrets unless the user explicitly asks."
+          : "Saved memories are durable facts across chats in this vault. Use them. When the user asks to remember or forget something, call remember / forget (do not only acknowledge). Prefer project scope when the fact is about the active project; otherwise global. Do not duplicate Profile or project description. Do not store secrets unless the user explicitly asks.",
       );
     }
     if (globalEntries.length > 0) {
@@ -1611,7 +1795,7 @@ export function buildSystemPrompt(opts: {
         );
       }
       lines.push(
-        "For vocabulary / word lists in this project, prefer .mddict dictionary files and dictionary tools over Markdown tables.",
+        "For vocabulary / word lists in this project, prefer .mddict dictionary files (dict specialist in Agent mode) over Markdown tables.",
       );
     }
     if (opts.projectType === "diary") {
@@ -1619,7 +1803,9 @@ export function buildSystemPrompt(opts: {
         "This is a personal diary project. Prefer dated daily notes and keep entries personal and chronological unless the user asks otherwise.",
       );
       lines.push(
-        "Daily notes live at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (e.g. Journal/2026/08/02.Aug.2026.md). In Agent mode call open_or_create_daily_note (optional date YYYY-MM-DD; omit for today) — do not hand-build paths with create_note.",
+        opts.mode === "agent"
+          ? "Daily notes live at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (e.g. Journal/2026/08/02.Aug.2026.md). Delegate to edit_notes specialist with open_or_create_daily_note — do not hand-build paths."
+          : "Daily notes live at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (e.g. Journal/2026/08/02.Aug.2026.md).",
       );
     }
     const about = opts.projectAbout?.trim();
@@ -1630,7 +1816,9 @@ export function buildSystemPrompt(opts: {
       lines.push("```");
     }
     lines.push(
-      "Project scope: list_notes, list_folder (empty path = project root), search_notes, semantic_search, and list_tags are limited to this project. You may still read or edit files outside the project by explicit vault-relative path when needed (e.g. cross-project links or moves).",
+      opts.mode === "agent"
+        ? "Project scope: list_folder (empty path = project root) and search are limited to this project. Specialists inherit the same project scope. You may still read files outside by explicit path when needed."
+        : "Project scope: list_notes, list_folder (empty path = project root), search_notes, semantic_search, and list_tags are limited to this project. You may still read or edit files outside the project by explicit vault-relative path when needed (e.g. cross-project links or moves).",
     );
   }
   if (opts.activePath) {

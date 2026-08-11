@@ -1,0 +1,199 @@
+/** Specialist kinds the orchestrator may spawn via `run_specialist`. */
+export type SpecialistKind =
+  | "research"
+  | "edit_notes"
+  | "diagram"
+  | "links"
+  | "dict";
+
+export type SpecialistPreset = {
+  kind: SpecialistKind;
+  /** English UI label on the specialist card. */
+  label: string;
+  /** Short worker system prompt (role + constraints). */
+  system: string;
+  /** Tool names exposed to the worker (from the full agent tool map). */
+  toolNames: readonly string[];
+  /** Write specialist — participates in path-overlap mutex. */
+  writes: boolean;
+};
+
+/** Parent Agent orchestrator surface (exactly 8 tools). */
+export const ORCHESTRATOR_TOOL_NAMES = [
+  "list_folder",
+  "search",
+  "read_note",
+  "open_note",
+  "ask_user",
+  "memory",
+  "read_skill",
+  "run_specialist",
+] as const;
+
+export type OrchestratorToolName = (typeof ORCHESTRATOR_TOOL_NAMES)[number];
+
+const VAULT_READ_CORE = [
+  "list_notes",
+  "list_folder",
+  "search_notes",
+  "semantic_search",
+  "list_tags",
+  "get_file_tags",
+  "read_note",
+  "get_active_note",
+  "open_note",
+  "read_format_guide",
+  "read_skill",
+] as const;
+
+export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
+  research: {
+    kind: "research",
+    label: "Research",
+    writes: false,
+    system: [
+      "You are a MarkSpace research specialist. Read-only: search and read the vault and web.",
+      "Do not modify files. Return a clear summary of findings; list key paths.",
+      "If you lack information to proceed, set needsClarification in your final answer.",
+    ].join(" "),
+    toolNames: [
+      ...VAULT_READ_CORE,
+      "read_diagram",
+      "read_mdlnks_format",
+      "read_links",
+      "read_mddict_format",
+      "read_dictionary",
+      "web_search",
+      "fetch_url",
+      "scrape_url",
+      "read_file",
+    ],
+  },
+  edit_notes: {
+    kind: "edit_notes",
+    label: "Editor",
+    writes: true,
+    system: [
+      "You are a MarkSpace note editor. Create/edit markdown notes, folders, and assets.",
+      "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, or .mddict — those need other specialists.",
+      "Follow MarkSpace Markdown dialect; call read_format_guide when unsure.",
+      "Diary daily notes: {project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md via open_or_create_daily_note.",
+      "End with a summary and list changedPaths.",
+    ].join(" "),
+    toolNames: [
+      "list_folder",
+      "search_notes",
+      "semantic_search",
+      "read_note",
+      "get_active_note",
+      "open_note",
+      "read_format_guide",
+      "list_tags",
+      "get_file_tags",
+      "set_file_tags",
+      "edit_note",
+      "write_note",
+      "create_note",
+      "create_folder",
+      "ensure_folder",
+      "move_path",
+      "delete_path",
+      "delete_folder_if_empty",
+      "save_attachment",
+      "write_asset",
+      "open_or_create_daily_note",
+      "translate_note",
+      "clip_article",
+      "read_file",
+    ],
+  },
+  diagram: {
+    kind: "diagram",
+    label: "Diagram",
+    writes: true,
+    system: [
+      "You are a MarkSpace Draw.io specialist. Use mutate_diagram for batch edits (never many parallel single-element updates).",
+      "Omit x/y for new multi-shape layouts (auto layout). Never raw-edit diagram XML via edit_note.",
+      "End with a summary and changedPaths.",
+    ].join(" "),
+    toolNames: [
+      "list_folder",
+      "open_note",
+      "read_diagram",
+      "create_diagram",
+      "mutate_diagram",
+    ],
+  },
+  links: {
+    kind: "links",
+    label: "Links",
+    writes: true,
+    system: [
+      "You are a MarkSpace .mdlnks links specialist. Use links tools only — never raw edit_note on .mdlnks.",
+      "Call read_mdlnks_format when unsure of the format. End with summary and changedPaths.",
+    ].join(" "),
+    toolNames: [
+      "list_folder",
+      "open_note",
+      "read_mdlnks_format",
+      "read_links",
+      "create_links",
+      "add_link",
+      "update_link",
+      "remove_link",
+      "reorder_links",
+      "set_links_filter",
+    ],
+  },
+  dict: {
+    kind: "dict",
+    label: "Dictionary",
+    writes: true,
+    system: [
+      "You are a MarkSpace .mddict dictionary specialist. Use dictionary tools only — never raw edit_note on .mddict.",
+      "Call read_mddict_format when unsure. Dictionary tags are separate from note/PDF tags. End with summary and changedPaths.",
+    ].join(" "),
+    toolNames: [
+      "list_folder",
+      "open_note",
+      "read_mddict_format",
+      "read_dictionary",
+      "create_dictionary",
+      "add_entry",
+      "update_entry",
+      "remove_entry",
+      "reorder_entries",
+      "set_dictionary_filter",
+    ],
+  },
+};
+
+export function isSpecialistKind(value: string): value is SpecialistKind {
+  return Object.prototype.hasOwnProperty.call(SPECIALIST_PRESETS, value);
+}
+
+export function specialistLabel(kind: SpecialistKind): string {
+  return SPECIALIST_PRESETS[kind].label;
+}
+
+/** Pick a subset of a tools record by name. Missing names are skipped. */
+export function pickTools<T extends Record<string, unknown>>(
+  tools: T,
+  names: readonly string[],
+): Partial<T> {
+  const out: Partial<T> = {};
+  for (const name of names) {
+    if (name in tools) {
+      (out as Record<string, unknown>)[name] = tools[name];
+    }
+  }
+  return out;
+}
+
+export function packCacheKey(
+  mode: string,
+  toolNames: readonly string[] | null | undefined,
+): string {
+  if (!toolNames || toolNames.length === 0) return mode;
+  return `${mode}:${[...toolNames].sort().join(",")}`;
+}

@@ -356,6 +356,10 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
   const tools = buildVaultTools(params.mode, {
     getMessages: () => inputMessages,
     projectPath: params.projectPath,
+    projectAbout: params.projectAbout,
+    projectType: params.projectType,
+    projectLearningLanguage: params.projectLearningLanguage,
+    modelId: params.modelId,
   });
   const modelMessages = await convertToModelMessages(
     unwrapMessagesForModel(inputMessages),

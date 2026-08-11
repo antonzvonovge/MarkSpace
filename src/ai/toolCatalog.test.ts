@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatForcedToolsLines, listChatTools } from "./toolCatalog";
+import { ORCHESTRATOR_TOOL_NAMES } from "./toolPacks";
 
 describe("listChatTools", () => {
   it("lists ask tools without agent-only writes", () => {
@@ -12,13 +13,15 @@ describe("listChatTools", () => {
     expect(ids).toEqual([...ids].sort((a, b) => a.localeCompare(b)));
   });
 
-  it("includes agent write tools in agent mode", () => {
+  it("lists orchestrator tools in agent mode", () => {
     const agent = listChatTools("agent");
     const ids = agent.map((t) => t.id);
-    expect(ids).toContain("edit_note");
-    expect(ids).toContain("translate_note");
-    expect(ids).toContain("open_or_create_daily_note");
-    expect(ids).toContain("web_search");
+    expect(ids.sort()).toEqual([...ORCHESTRATOR_TOOL_NAMES].sort());
+    expect(ids).toContain("run_specialist");
+    expect(ids).toContain("search");
+    expect(ids).toContain("memory");
+    expect(ids).not.toContain("edit_note");
+    expect(ids).not.toContain("web_search");
   });
 });
 

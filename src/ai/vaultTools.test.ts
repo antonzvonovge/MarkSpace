@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../lib/vaultApi";
+import { SPECIALIST_PRESETS } from "./toolPacks";
 import { _test, buildSystemPrompt, buildVaultTools } from "./vaultTools";
 
 function folder(
@@ -15,7 +16,7 @@ function file(name: string, path: string): TreeNode {
 }
 
 describe("vault agent tools", () => {
-  it("exposes tags and folder listing in both modes; write path tools only in Agent", () => {
+  it("Ask keeps read tools; Agent orchestrator has exactly 8 tools", () => {
     const askTools = buildVaultTools("ask");
     const agentTools = buildVaultTools("agent");
 
@@ -29,19 +30,42 @@ describe("vault agent tools", () => {
     expect(askTools).not.toHaveProperty("translate_note");
     expect(askTools).not.toHaveProperty("open_or_create_daily_note");
     expect(askTools).toHaveProperty("scrape_url");
-    expect(agentTools).toHaveProperty("list_tags");
-    expect(agentTools).toHaveProperty("scrape_url");
-    expect(agentTools).toHaveProperty("list_folder");
-    expect(agentTools).toHaveProperty("move_path");
-    expect(agentTools).toHaveProperty("delete_path");
-    expect(agentTools).toHaveProperty("ensure_folder");
-    expect(agentTools).toHaveProperty("delete_folder_if_empty");
-    expect(agentTools).toHaveProperty("clip_article");
-    expect(agentTools).toHaveProperty("translate_note");
-    expect(agentTools).toHaveProperty("open_or_create_daily_note");
+    expect(askTools).not.toHaveProperty("run_specialist");
+
+    const agentIds = Object.keys(agentTools).sort();
+    expect(agentIds).toEqual([
+      "ask_user",
+      "list_folder",
+      "memory",
+      "open_note",
+      "read_note",
+      "read_skill",
+      "run_specialist",
+      "search",
+    ]);
+    expect(agentTools).not.toHaveProperty("edit_note");
+    expect(agentTools).not.toHaveProperty("mutate_diagram");
+    expect(agentTools).not.toHaveProperty("list_notes");
   });
 
-  it("tells the model when to use the new tools", () => {
+  it("specialist toolNames expose write/domain tools", () => {
+    const edit = buildVaultTools("agent", {
+      toolNames: [...SPECIALIST_PRESETS.edit_notes.toolNames],
+    });
+    expect(edit).toHaveProperty("edit_note");
+    expect(edit).toHaveProperty("create_note");
+    expect(edit).not.toHaveProperty("mutate_diagram");
+    expect(edit).not.toHaveProperty("run_specialist");
+
+    const diagram = buildVaultTools("agent", {
+      toolNames: [...SPECIALIST_PRESETS.diagram.toolNames],
+    });
+    expect(diagram).toHaveProperty("mutate_diagram");
+    expect(diagram).toHaveProperty("create_diagram");
+    expect(diagram).not.toHaveProperty("add_diagram_node");
+  });
+
+  it("tells the model when to use tools / specialists", () => {
     const base = {
       vaultPath: null,
       activePath: null,
@@ -49,25 +73,23 @@ describe("vault agent tools", () => {
     };
 
     const askPrompt = buildSystemPrompt({ ...base, mode: "ask" });
-    expect(askPrompt).toContain("list_tags");
     expect(askPrompt).toContain("list_folder");
     expect(askPrompt).toContain("Folder notes:");
     expect(askPrompt).toContain(
-      "In **chat replies**, reference vault notes with `[[vault/path/Note.md]]`",
+      "In **chat replies**, reference vault files with `[[vault/path/Note.md]]`",
     );
+    expect(askPrompt).toContain(".mddict");
     expect(askPrompt).toMatch(/Web API keys configured: Tavily=(yes|no), Firecrawl=(yes|no)/);
-
-    const agentPrompt = buildSystemPrompt({ ...base, mode: "agent" });
-    expect(agentPrompt).toContain("move_path");
-    expect(agentPrompt).toContain("delete_path");
-    expect(agentPrompt).toContain("list_folder");
-    expect(agentPrompt).toContain("ensure_folder");
-    expect(agentPrompt).toContain("delete_folder_if_empty");
-    expect(agentPrompt).toContain("clip_article");
-    expect(agentPrompt).toContain("translate_note");
-    expect(agentPrompt).toContain("scrape_url");
     expect(askPrompt).toContain("scrape_url");
     expect(askPrompt).not.toContain("translate_note");
+
+    const agentPrompt = buildSystemPrompt({ ...base, mode: "agent" });
+    expect(agentPrompt).toContain("run_specialist");
+    expect(agentPrompt).toContain("edit_notes");
+    expect(agentPrompt).toContain("parallel specialists");
+    expect(agentPrompt).toContain("list_folder");
+    expect(agentPrompt).not.toContain("prefer edit_note");
+    expect(agentPrompt).not.toContain("move_path");
   });
 
   it("reports configured web API keys without exposing secrets", async () => {
@@ -185,7 +207,7 @@ describe("vault agent tools", () => {
   });
 
   it("includes diary guidance in the system prompt", () => {
-    const prompt = buildSystemPrompt({
+    const ask = buildSystemPrompt({
       mode: "ask",
       vaultPath: null,
       activePath: null,
@@ -194,14 +216,26 @@ describe("vault agent tools", () => {
       projectType: "diary",
       projectAbout: "Daily reflections",
     });
-    expect(prompt).toContain("Project type: Diary.");
-    expect(prompt).toContain("personal diary project");
-    expect(prompt).toContain("Daily reflections");
-    expect(prompt).toContain("{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md");
-    expect(prompt).toContain("open_or_create_daily_note");
+    expect(ask).toContain("Project type: Diary.");
+    expect(ask).toContain("personal diary project");
+    expect(ask).toContain("Daily reflections");
+    expect(ask).toContain("{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md");
+    expect(ask).not.toContain("open_or_create_daily_note");
+
+    const agent = buildSystemPrompt({
+      mode: "agent",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      projectPath: "Journal",
+      projectType: "diary",
+      projectAbout: "Daily reflections",
+    });
+    expect(agent).toContain("open_or_create_daily_note");
+    expect(agent).toContain("edit_notes");
   });
 
-  it("documents diary daily-note tool in agent mode system prompt", () => {
+  it("documents diary daily-note layout in agent mode system prompt", () => {
     const prompt = buildSystemPrompt({
       mode: "agent",
       vaultPath: null,
@@ -210,6 +244,7 @@ describe("vault agent tools", () => {
     });
     expect(prompt).toContain("open_or_create_daily_note");
     expect(prompt).toContain("{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md");
+    expect(prompt).toContain("run_specialist");
   });
 
   it("tells the model to address the user by name when Profile name is set", async () => {
@@ -321,15 +356,16 @@ describe("vault agent tools", () => {
     }
   });
 
-  it("exposes remember/forget/list_memories in ask and agent modes", () => {
+  it("exposes remember/forget/list_memories in Ask; unified memory on Agent", () => {
     const ask = buildVaultTools("ask");
     const agent = buildVaultTools("agent");
     expect(ask).toHaveProperty("remember");
     expect(ask).toHaveProperty("forget");
     expect(ask).toHaveProperty("list_memories");
-    expect(agent).toHaveProperty("remember");
-    expect(agent).toHaveProperty("forget");
-    expect(agent).toHaveProperty("list_memories");
+    expect(agent).toHaveProperty("memory");
+    expect(agent).not.toHaveProperty("remember");
+    expect(agent).not.toHaveProperty("forget");
+    expect(agent).not.toHaveProperty("list_memories");
   });
 
   it("matches paths inside the active project only", () => {

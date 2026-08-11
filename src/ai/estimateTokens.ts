@@ -6,6 +6,7 @@ import {
   type ChatAttachment,
 } from "./chatAttachments";
 import { buildVaultTools } from "./vaultTools";
+import { ORCHESTRATOR_TOOL_NAMES, packCacheKey } from "./toolPacks";
 import type { ChatMode } from "./types";
 
 export type ContextAnchor = {
@@ -15,7 +16,7 @@ export type ContextAnchor = {
   messageCount: number;
 };
 
-const toolSchemaTokenCache = new Map<ChatMode, number>();
+const toolSchemaTokenCache = new Map<string, number>();
 
 /** Rough token estimate; non-ASCII (e.g. Cyrillic) counted more conservatively. */
 export function estimateTokensFromText(text: string): number {
@@ -62,12 +63,19 @@ export function estimateMessagesTokens(messages: UIMessage[]): number {
   return total;
 }
 
-/** Serialize tool names/descriptions/JSON schemas into a token estimate (cached per mode). */
-export function estimateToolSchemaTokens(mode: ChatMode): number {
-  const cached = toolSchemaTokenCache.get(mode);
+/** Serialize tool names/descriptions/JSON schemas into a token estimate (cached per mode + tool set). */
+export function estimateToolSchemaTokens(
+  mode: ChatMode,
+  toolNames?: readonly string[] | null,
+): number {
+  const names =
+    toolNames ??
+    (mode === "agent" ? [...ORCHESTRATOR_TOOL_NAMES] : null);
+  const key = packCacheKey(mode, names);
+  const cached = toolSchemaTokenCache.get(key);
   if (cached != null) return cached;
 
-  const tools = buildVaultTools(mode);
+  const tools = buildVaultTools(mode, names ? { toolNames: [...names] } : undefined);
   let chars = 0;
   let count = 0;
   for (const [name, t] of Object.entries(tools)) {
@@ -88,7 +96,7 @@ export function estimateToolSchemaTokens(mode: ChatMode): number {
   }
   // Extra framing per tool (OpenAI/Anthropic tool-call envelopes).
   const tokens = Math.ceil(chars / 4) + count * 24;
-  toolSchemaTokenCache.set(mode, tokens);
+  toolSchemaTokenCache.set(key, tokens);
   return tokens;
 }
 

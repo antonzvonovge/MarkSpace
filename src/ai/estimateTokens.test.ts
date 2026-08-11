@@ -19,12 +19,14 @@ describe("estimateTokensFromText", () => {
 });
 
 describe("estimateToolSchemaTokens", () => {
-  it("counts agent tools far above the old fixed overhead", () => {
+  it("counts ask tools above fixed overhead; agent orchestrator is leaner than ask", () => {
     const ask = estimateToolSchemaTokens("ask");
     const agent = estimateToolSchemaTokens("agent");
     expect(ask).toBeGreaterThan(2_000);
-    expect(agent).toBeGreaterThan(ask);
-    expect(agent).toBeGreaterThan(8_000);
+    // Orchestrator (8 tools) should be well under the old full-agent ~8k+.
+    expect(agent).toBeLessThan(ask);
+    expect(agent).toBeLessThan(8_000);
+    expect(agent).toBeGreaterThan(500);
   });
 });
 

@@ -42,6 +42,7 @@ import { ChatAskUser } from "./ChatAskUser";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { ChatReasoning } from "./ChatReasoning";
 import { ChatToolCall } from "./ChatToolCall";
+import { ChatSpecialistCard } from "./ChatSpecialistCard";
 
 type CopyMenuState = { x: number; y: number; text: string };
 
@@ -488,6 +489,14 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
           if (toolName === "ask_user") {
             return (
               <ChatAskUser key={`${message.id}-tool-${i}`} part={part} />
+            );
+          }
+          if (toolName === "run_specialist") {
+            return (
+              <ChatSpecialistCard
+                key={`${message.id}-tool-${i}`}
+                part={part}
+              />
             );
           }
           return (

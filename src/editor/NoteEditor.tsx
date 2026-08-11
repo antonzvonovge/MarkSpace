@@ -645,15 +645,19 @@ export const NoteEditor = memo(function NoteEditor({
           const wikiTarget = wikiTargetFromHref(href);
           let resolved = await resolveWikiTarget(wikiTarget);
           if (!resolved) {
-            resolved = await createNote(wikiTarget);
-            await refreshTree();
-          } else {
-            const folder = folderPathFromFolderNote(resolved);
-            if (folder) {
-              resolved = await ensureFolderNote(folder);
+            // Specialized vault docs must already exist — never invent a .md sibling.
+            if (/\.(mddict|mdlnks|drawio|pdf)$/i.test(wikiTarget.trim())) {
+              await go(wikiTarget.trim().replace(/^\/+/, ""));
+              return;
             }
+            const created = await createNote(wikiTarget);
+            await refreshTree();
+            await go(created);
+            return;
           }
-          await go(resolved);
+          const folder = folderPathFromFolderNote(resolved);
+          const notePath = folder ? await ensureFolderNote(folder) : resolved;
+          await go(notePath);
           return;
         }
         if (isExternalHref(href)) {

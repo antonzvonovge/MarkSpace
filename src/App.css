@@ -6274,6 +6274,139 @@ select {
   word-break: break-word;
 }
 
+.chat-specialist-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  opacity: 0.72;
+  overflow: hidden;
+  margin: 2px 0;
+}
+
+.chat-specialist-card:hover,
+.chat-specialist-card:focus-within {
+  opacity: 0.92;
+}
+
+.chat-specialist-card.is-running {
+  opacity: 0.88;
+}
+
+.chat-specialist-card.is-error {
+  opacity: 0.8;
+}
+
+.chat-specialist-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--sidebar-fg, var(--fg));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.chat-specialist-card-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--sidebar-muted, var(--muted));
+  opacity: 0.85;
+}
+
+.chat-specialist-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-specialist-card-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat-specialist-card-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--sidebar-fg, var(--fg));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chat-specialist-card-kind {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--sidebar-muted, var(--muted));
+}
+
+.chat-specialist-card-status {
+  font-size: 0.6875rem;
+  color: var(--sidebar-muted, var(--muted));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chat-specialist-card-body {
+  padding: 2px 0 8px 26px;
+}
+
+.chat-specialist-card-note,
+.chat-specialist-card-empty {
+  font-size: 0.6875rem;
+  color: var(--sidebar-muted, var(--muted));
+  margin-bottom: 6px;
+}
+
+.chat-specialist-card-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-specialist-card-step-name {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 450;
+  color: var(--sidebar-muted, var(--muted));
+}
+
+.chat-specialist-card-step-err {
+  color: var(--danger, #c44);
+  font-weight: 500;
+}
+
+.chat-specialist-card-body pre {
+  margin: 2px 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--sidebar-muted, var(--muted));
+  opacity: 0.9;
+}
+
 .chat-ask-user {
   margin: 6px 0 10px;
   padding: 10px 12px;
