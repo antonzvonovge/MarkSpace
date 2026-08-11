@@ -449,6 +449,12 @@ export const NoteEditor = memo(function NoteEditor({
       uploadFile: (file, blockId) => uploadFileRef.current(file, blockId),
       resolveFileUrl: (url) => resolveFileUrlRef.current(url),
       pasteHandler: (ctx) => pasteHandlerRef.current(ctx),
+      // Browser spellcheck red-squiggles are noise in notes (esp. wiki names / other languages).
+      domAttributes: {
+        editor: {
+          spellcheck: "false",
+        },
+      },
       _tiptapOptions: {
         extensions: [
           layoutKeymap,

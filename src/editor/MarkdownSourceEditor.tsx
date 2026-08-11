@@ -121,6 +121,7 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
         syntaxHighlighting(markdownHighlightStyle),
         markspaceTheme,
         EditorView.lineWrapping,
+        EditorView.contentAttributes.of({ spellcheck: "false" }),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         // Ctrl/Cmd+Z/Y by physical key so undo works on Russian layout.
         Prec.highest(

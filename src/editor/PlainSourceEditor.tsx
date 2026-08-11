@@ -94,6 +94,7 @@ export function PlainSourceEditor({ path, content, onChange }: Props) {
         history(),
         plainTheme,
         EditorView.lineWrapping,
+        EditorView.contentAttributes.of({ spellcheck: "false" }),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         Prec.highest(
           EditorView.domEventHandlers({
