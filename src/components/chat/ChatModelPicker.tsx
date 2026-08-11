@@ -182,22 +182,12 @@ export function ChatModelPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Model"
-        title={
-          selected ? `${selected.label} · ${KIND_LABEL[selected.kind]}` : value
-        }
+        title={selected ? selected.label : value}
         onClick={() => setOpen((v) => !v)}
       >
         <span className="chat-model-trigger-label">
           {selected?.label ?? value}
         </span>
-        {selected ? (
-          <>
-            <span className="chat-model-trigger-sep" aria-hidden="true">
-              ·
-            </span>
-            <ModelKindBadge kind={selected.kind} />
-          </>
-        ) : null}
         {isField ? (
           <span className="chat-model-trigger-caret" aria-hidden="true">
             ▾

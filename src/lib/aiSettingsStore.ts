@@ -24,10 +24,13 @@ function vendorFromId(id: string): AiModelVendor {
 }
 
 function kindFromId(id: string): AiModelKind {
-  // Chat-only / non-reasoning OpenAI variants
-  if (/(^|\/)(gpt-4\.1|gpt-4o|gpt-5(\.\d+)?-chat)(-|$)/i.test(id)) {
+  // Chat-only / non-reasoning OpenAI variants + light Google Flash
+  if (
+    /(^|\/)(gpt-4\.1|gpt-4o|gpt-5(\.\d+)?-chat|gpt-chat-latest)(-|$)/i.test(id)
+  ) {
     return "chat";
   }
+  if (/flash-lite/i.test(id)) return "chat";
   if (/\/(o[0-9]|gpt-5)/i.test(id)) return "reasoning";
   if (id.startsWith("anthropic/") || id.startsWith("google/")) {
     return "reasoning";

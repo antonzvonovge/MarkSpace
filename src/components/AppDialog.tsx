@@ -40,7 +40,7 @@ type ConfirmDialogProps = {
   onConfirm: () => void;
 };
 
-function DialogShell({
+export function DialogShell({
   open,
   title,
   description,

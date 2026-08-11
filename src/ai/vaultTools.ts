@@ -1449,6 +1449,10 @@ export function buildSystemPrompt(opts: {
   projectType?: string | null;
   /** Learning language ISO code when project type is language learning. */
   projectLearningLanguage?: string | null;
+  /** Active Gem display name (when a Gem is selected on the thread). */
+  gemName?: string | null;
+  /** Active Gem custom instructions. */
+  gemInstructions?: string | null;
   /** Skill catalog (name + description) for model auto-discovery. */
   skills?: SkillMeta[] | null;
   /** Full skill bodies forced by the user via slash in the composer. */
@@ -1476,7 +1480,26 @@ export function buildSystemPrompt(opts: {
     "In Agent mode, use clip_article to save a web page as a vault note with images downloaded into .assets/ (prefer this over fetch_url + manual image saves when the user wants to keep the article). Default provider is Tavily/Jina; pass provider=firecrawl when the user wants Firecrawl for the clip.",
     "You can read vault files or download http(s) URLs with read_file (images are returned for vision analysis). In Agent mode, pass save_as to store a copy at a vault-relative path of your choice.",
     `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you may read and write notes and folders via tools)"}.`,
-    "Be concise. Prefer tools over guessing vault contents or the web.",
+  ];
+
+  const gemName = opts.gemName?.trim();
+  const gemInstructions = opts.gemInstructions?.trim();
+  const gemActive = Boolean(gemName && gemInstructions);
+  if (gemActive) {
+    lines.push(
+      `CRITICAL — Active Gem: ${gemName}. For this chat you MUST follow the Gem instructions below. They OVERRIDE conflicting MarkSpace defaults (reply language, tone, whether to converse or ask questions, whether to use tools). Do not ignore them. Do not merely echo the user's message unless the Gem explicitly asks for that.`,
+      "Gem instructions:",
+      "```",
+      gemInstructions!.slice(0, 8000),
+      "```",
+      "If the Gem forbids tools, answer in plain text only — do not call tools.",
+      "Vault tools remain available only when the Gem or the user clearly needs vault/web actions.",
+    );
+  } else {
+    lines.push("Be concise. Prefer tools over guessing vault contents or the web.");
+  }
+
+  lines.push(
     "CRITICAL — parallel tools: every model round re-sends the whole context. When several independent tools are needed, emit them TOGETHER in one response (parallel tool calls) — e.g. several read_note paths, list_folder + search_notes, multiple search queries, web_search + fetch_url. Do NOT call one tool, wait, then call another when the second does not depend on the first result. Only serialize when a later call truly needs a prior result (unknown path, edit after read). Never parallelize writes to the same path; for .drawio use one mutate_diagram.",
     "Vault search: prefer semantic_search for meaning/conceptual questions (paraphrases, topics); use search_notes for exact substrings, symbols, or filenames.",
     "Use list_tags to inspect the current vault tag catalog before choosing or changing note tags.",
@@ -1490,7 +1513,7 @@ export function buildSystemPrompt(opts: {
     "MarkSpace Markdown is a dialect of standard Markdown. Follow these rules exactly; call read_format_guide when unsure or before writing non-trivial markdown:",
     ...markdownCoreRules(),
     "In chat replies you may include diagrams as fenced ```d2 (preferred for richer architecture), ```mermaid, ```plantuml / ```puml, ```dot / ```graphviz, or ```markmap (rendered inline). Prefer those over ASCII art. For freeform rich graphics in the vault, create/edit a .drawio (mutate_diagram / create_diagram) and embed ![[path.drawio]] — not a monospace box drawing.",
-  ];
+  );
   if (opts.mode === "agent") {
     lines.push(
       "When editing notes: prefer edit_note (partial replace) over write_note (full overwrite) to save tokens.",
@@ -1522,7 +1545,11 @@ export function buildSystemPrompt(opts: {
     );
   }
   lines.push(
-    `User's native language: ${nativeLanguageLabel(prefs.nativeLanguage)} (${prefs.nativeLanguage}). Prefer this language when the user writes in it or asks for a translation.`,
+    `User's native language: ${nativeLanguageLabel(prefs.nativeLanguage)} (${prefs.nativeLanguage}).${
+      gemActive
+        ? " The Active Gem may override reply language and style — follow the Gem when they conflict."
+        : " Prefer this language when the user writes in it or asks for a translation."
+    }`,
   );
 
   const memoryDoc = useAgentMemoryStore.getState().doc;

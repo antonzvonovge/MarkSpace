@@ -18,6 +18,7 @@ import {
   resolveLanguageModel,
   type AiProviderCredentials,
 } from "./languageModel";
+import { modelSupportsReasoning } from "./models";
 import type { LoadedSkill, SkillMeta } from "./skills";
 import {
   clampAgentMaxSteps,
@@ -65,6 +66,13 @@ export type RunChatParams = {
   projectAbout?: string | null;
   projectType?: string | null;
   projectLearningLanguage?: string | null;
+  gemName?: string | null;
+  gemInstructions?: string | null;
+  /**
+   * When set (e.g. from an active Gem), overrides catalog default for thinking.
+   * Ignored when the current model does not support reasoning.
+   */
+  enableReasoning?: boolean | null;
   skills?: SkillMeta[] | null;
   forcedSkills?: LoadedSkill[] | null;
   forcedTools?: string[] | null;
@@ -316,9 +324,17 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
 
   emit(true);
 
+  const supportsReasoning = modelSupportsReasoning(params.modelId);
+  const enableReasoning = supportsReasoning
+    ? params.enableReasoning == null
+      ? undefined
+      : Boolean(params.enableReasoning)
+    : false;
+
   const resolved = resolveLanguageModel({
     modelId: params.modelId,
     keys: params.keys,
+    enableReasoning,
   });
 
   const system = buildSystemPrompt({
@@ -330,6 +346,8 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     projectAbout: params.projectAbout,
     projectType: params.projectType,
     projectLearningLanguage: params.projectLearningLanguage,
+    gemName: params.gemName,
+    gemInstructions: params.gemInstructions,
     skills: params.skills,
     forcedSkills: params.forcedSkills,
     forcedTools: params.forcedTools,

@@ -17,6 +17,9 @@ pub struct ChatThreadMeta {
     /// Optional vault project (first-level folder) for this thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_path: Option<String>,
+    /// Optional Gem id (`.markspace/gems/<id>.json`) for this thread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gem_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -31,6 +34,12 @@ pub struct ChatThreadFile {
     /// Optional vault project (first-level folder) for this thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_path: Option<String>,
+    /// Optional Gem id (`.markspace/gems/<id>.json`) for this thread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gem_id: Option<String>,
+    /// Sticky Reasoning toggle (composer). Absent on older threads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_reasoning: Option<bool>,
     /// Measured context baseline (next prompt, empty draft).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_anchor_tokens: Option<i64>,
@@ -190,6 +199,7 @@ pub fn upsert_chat_thread(
         mode: thread.mode.clone(),
         model_id: thread.model_id.clone(),
         project_path: thread.project_path.clone(),
+        gem_id: thread.gem_id.clone(),
     };
 
     let mut index = read_index(&dir)?;

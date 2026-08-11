@@ -6,6 +6,7 @@ import { useChatStore } from "../../store/chatStore";
 import { usePrefsStore } from "../../store/prefsStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatComposer } from "./ChatComposer";
+import { ChatGemBanner } from "./ChatGemBanner";
 import { ChatMessages } from "./ChatMessages";
 import { ChatTabBar } from "./ChatTabBar";
 
@@ -62,6 +63,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
         </div>
       ) : (
         <>
+          <ChatGemBanner />
           <ChatMessages
             messages={messages}
             streaming={status === "streaming" || status === "compacting"}

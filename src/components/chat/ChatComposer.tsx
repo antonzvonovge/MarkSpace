@@ -47,6 +47,8 @@ import { ChatContextMeter } from "./ChatContextMeter";
 import { ChatModelPicker } from "./ChatModelPicker";
 import { ChatProjectPicker } from "./ChatProjectPicker";
 import { ChatSkillSlashMenu } from "./ChatSkillSlashMenu";
+import { ReasoningToggle } from "./ReasoningToggle";
+import { modelSupportsReasoning } from "../../ai/models";
 
 /** Selected text if the selection is inside `el`, otherwise "". */
 function selectionTextIn(el: HTMLElement): string {
@@ -157,6 +159,8 @@ export function ChatComposer() {
   const setProjectPath = useChatStore((s) => s.setProjectPath);
   const modelId = useChatStore((s) => s.modelId);
   const setModelId = useChatStore((s) => s.setModelId);
+  const enableReasoning = useChatStore((s) => s.enableReasoning);
+  const setEnableReasoning = useChatStore((s) => s.setEnableReasoning);
   const status = useChatStore((s) => s.status);
   const messages = useChatStore((s) => s.messages);
   const send = useChatStore((s) => s.send);
@@ -489,6 +493,17 @@ export function ChatComposer() {
     focusComposerEnd(el);
   }, [selectionCount, streaming]);
 
+  // New / empty chat (New chat, Gem, open empty tab): focus the composer.
+  useEffect(() => {
+    if (!activeThreadId || streaming || messages.length > 0) return;
+    const t = window.setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      focusComposerEnd(el);
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [activeThreadId, messages.length, streaming]);
+
   return (
     <div
       className={
@@ -732,6 +747,13 @@ export function ChatComposer() {
           value={modelId}
           disabled={streaming}
           onChange={setModelId}
+        />
+
+        <ReasoningToggle
+          supported={modelSupportsReasoning(modelId, modelOptions)}
+          value={enableReasoning}
+          disabled={streaming}
+          onChange={setEnableReasoning}
         />
 
         <ChatContextMeter

@@ -11,6 +11,8 @@ export type ChatThreadMeta = {
   modelId: string;
   /** Vault project path (first-level folder), or omit/null for none. */
   projectPath?: string | null;
+  /** Gem id under `.markspace/gems/`, or omit/null for none. */
+  gemId?: string | null;
 };
 
 export type ChatThreadFile = {
@@ -22,6 +24,8 @@ export type ChatThreadFile = {
   modelId: string;
   /** Vault project path (first-level folder), or omit/null for none. */
   projectPath?: string | null;
+  /** Gem id under `.markspace/gems/`, or omit/null for none. */
+  gemId?: string | null;
   /**
    * Measured context baseline for the next prompt with an empty draft
    * (last API input tokens + trailing assistant text).
@@ -29,6 +33,8 @@ export type ChatThreadFile = {
   contextAnchorTokens?: number | null;
   /** `messages.length` when `contextAnchorTokens` was recorded. */
   contextAnchorMessageCount?: number | null;
+  /** Sticky Reasoning toggle; omit on older threads. */
+  enableReasoning?: boolean | null;
   messages: UIMessage[];
 };
 

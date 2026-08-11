@@ -9,6 +9,8 @@ import {
 } from "../TabContextMenu";
 import { CloseIcon } from "../treeIcons";
 import { ChatHistoryMenu } from "./ChatHistoryMenu";
+import { ChatGemsMenu } from "./ChatGemsMenu";
+import { ChatGemIcon } from "./ChatGemIcon";
 
 export function ChatTabBar() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
@@ -146,6 +148,15 @@ export function ChatTabBar() {
                   aria-label="Agent finished"
                 />
               ) : null}
+              {tab.gemId ? (
+                <span
+                  className="chat-tab-gem"
+                  title="Gem chat"
+                  aria-label="Gem chat"
+                >
+                  <ChatGemIcon size={12} />
+                </span>
+              ) : null}
               <span className="editor-tab-label">{tab.title}</span>
               <button
                 type="button"
@@ -188,6 +199,7 @@ export function ChatTabBar() {
             onClose={() => setHistoryOpen(false)}
           />
         </div>
+        <ChatGemsMenu />
         <button
           type="button"
           className="chat-icon-btn"

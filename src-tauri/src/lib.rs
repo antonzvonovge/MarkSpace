@@ -5,6 +5,7 @@ mod dict_progress;
 mod embeddings;
 mod favorites;
 mod filemeta;
+mod gems;
 mod git_sync;
 mod http_fetch;
 mod order_merge;
@@ -191,6 +192,10 @@ pub fn run() {
             projects::get_project_properties,
             projects::set_project_properties,
             projects::list_project_properties,
+            gems::list_gems,
+            gems::get_gem,
+            gems::upsert_gem,
+            gems::delete_gem,
             dict_progress::get_dict_progress,
             dict_progress::set_dict_entry_progress,
             agent_memory::get_agent_memory,

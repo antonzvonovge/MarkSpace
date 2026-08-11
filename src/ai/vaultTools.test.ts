@@ -112,6 +112,47 @@ describe("vault agent tools", () => {
     expect(prompt).toContain("Prefer calling them when relevant");
   });
 
+  it("includes Active Gem instructions in the system prompt", () => {
+    const prompt = buildSystemPrompt({
+      mode: "ask",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      gemName: "Spanish tutor",
+      gemInstructions: "Always correct grammar gently.",
+    });
+    expect(prompt).toContain("CRITICAL — Active Gem: Spanish tutor");
+    expect(prompt).toContain("Gem instructions:");
+    expect(prompt).toContain("Always correct grammar gently.");
+    expect(prompt).toContain("OVERRIDE conflicting MarkSpace defaults");
+    // Gem block appears before native-language / project boilerplate.
+    expect(prompt.indexOf("CRITICAL — Active Gem")).toBeLessThan(
+      prompt.indexOf("User's native language:"),
+    );
+  });
+
+  it("omits Gem block when name or instructions are empty", () => {
+    const noInstructions = buildSystemPrompt({
+      mode: "ask",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      gemName: "X",
+      gemInstructions: "  ",
+    });
+    expect(noInstructions).not.toContain("CRITICAL — Active Gem:");
+
+    const noName = buildSystemPrompt({
+      mode: "ask",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      gemName: "",
+      gemInstructions: "Do something",
+    });
+    expect(noName).not.toContain("CRITICAL — Active Gem:");
+  });
+
   it("documents project-scoped discovery tools in the system prompt", () => {
     const prompt = buildSystemPrompt({
       mode: "ask",

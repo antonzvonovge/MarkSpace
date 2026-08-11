@@ -5053,6 +5053,46 @@ select {
   background: var(--accent);
 }
 
+.chat-tab-gem {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.editor-tab.is-active .chat-tab-gem {
+  color: var(--accent);
+}
+
+.chat-gem-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 8%, var(--editor-surface));
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+
+.chat-gem-banner svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.chat-gem-banner-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-gem-banner-text strong {
+  font-weight: 650;
+}
+
 .chat-tabbar .editor-tab.has-attention {
   padding-left: 8px;
 }
@@ -5183,6 +5223,131 @@ select {
 
 .chat-history-delete:hover {
   color: var(--danger);
+}
+
+.chat-gems-wrap {
+  position: relative;
+}
+
+.chat-gems-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  width: min(260px, 70vw);
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.chat-gems-empty {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.chat-gems-create {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.chat-gems-create:hover {
+  background: var(--sidebar-hover);
+}
+
+.chat-gems-row {
+  display: flex;
+  align-items: stretch;
+  border-radius: 6px;
+}
+
+.chat-gems-edit {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  margin: 2px 0 2px 2px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chat-gems-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px 6px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.chat-gems-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Monolithic highlight when hovering the select (main) part. */
+.chat-gems-row:has(.chat-gems-select:hover) {
+  background: var(--sidebar-hover);
+}
+
+.chat-gems-row:has(.chat-gems-select:hover) .chat-gems-edit {
+  color: var(--text);
+}
+
+/* Edit-only hover: highlight just the pencil, not the row. */
+.chat-gems-edit:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.chat-gems-row.is-active {
+  background: var(--sidebar-active);
+}
+
+.chat-gems-row.is-active .chat-gems-edit {
+  color: var(--text);
+}
+
+.chat-gems-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+
+.app-dialog-footer-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-dialog-error {
+  margin: 8px 0 0;
+  color: var(--danger);
+  font-size: 0.8125rem;
 }
 
 .chat-messages {
@@ -7044,6 +7209,18 @@ select {
   cursor: default;
 }
 
+.gem-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gem-model-row .chat-model-picker {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+
 .chat-model-picker {
   position: relative;
   flex-shrink: 1;
@@ -8862,7 +9039,9 @@ select {
 .app-dialog-body .app-dialog-label + .app-dialog-input,
 .app-dialog-body .app-dialog-label + .ms-select,
 .app-dialog-body .app-dialog-label + .link-dialog-tags,
-.app-dialog-body .app-dialog-label + .project-color-picker {
+.app-dialog-body .app-dialog-label + .project-color-picker,
+.app-dialog-body .app-dialog-label + .chat-model-picker,
+.app-dialog-body .app-dialog-label + .gem-model-row {
   margin-bottom: 12px;
 }
 

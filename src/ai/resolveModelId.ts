@@ -6,7 +6,7 @@ import { OPENROUTER_MODELS } from "./models";
  */
 export function resolveModelId(_baseUrl: string, modelId: string): string {
   let id = (modelId || "").trim();
-  if (!id) return OPENROUTER_MODELS[0]?.id ?? "anthropic/claude-sonnet-4.6";
+  if (!id) return OPENROUTER_MODELS[0]?.id ?? "anthropic/claude-sonnet-5";
 
   // Legacy openai.com bare ids
   if (!id.includes("/")) {

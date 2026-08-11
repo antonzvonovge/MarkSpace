@@ -71,7 +71,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   googleApiKey: "",
   tavilyApiKey: "",
   firecrawlApiKey: "",
-  modelId: "anthropic/claude-sonnet-4.6",
+  modelId: "anthropic/claude-sonnet-5",
   defaultMode: "ask",
   agentMaxSteps: DEFAULT_AGENT_MAX_STEPS,
   contextWindow: 200_000,

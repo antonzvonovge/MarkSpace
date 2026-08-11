@@ -26,6 +26,7 @@ import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
 import { listSkills, loadSkills, type SkillMeta } from "../ai/skills";
 import { buildSystemPrompt } from "../ai/vaultTools";
+import { modelSupportsReasoning } from "../ai/models";
 import { contextWindowForModel, type ChatMode } from "../ai/types";
 import {
   deleteChatThread,
@@ -53,6 +54,7 @@ import {
   getProjectProperties,
   type ProjectTypeId,
 } from "../lib/vaultApi";
+import { getGem } from "../lib/gemsApi";
 import { useAiSettingsStore } from "./aiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
@@ -111,6 +113,11 @@ type ChatStore = {
   messages: UIMessage[];
   mode: ChatMode;
   modelId: string;
+  /**
+   * Sticky Reasoning toggle for this thread. Auto-on when picking a reasoning
+   * model; user may turn it off. Forced off when the model has no reasoning.
+   */
+  enableReasoning: boolean;
   /** Selected vault project path, or null for none. */
   projectPath: string | null;
   /** Cached "about" text for `projectPath` (for prompt + context meter). */
@@ -119,6 +126,12 @@ type ChatStore = {
   projectType: ProjectTypeId;
   /** Cached learning language code when type is language learning. */
   projectLearningLanguage: string;
+  /** Selected Gem id, or null for none. */
+  gemId: string | null;
+  /** Cached Gem name for system prompt. */
+  gemName: string;
+  /** Cached Gem instructions for system prompt. */
+  gemInstructions: string;
   /** Cached Skills/ catalog for system prompt preview / context meter. */
   skillsCatalog: SkillMeta[];
   /**
@@ -160,7 +173,14 @@ type ChatStore = {
   clearAttachments: () => void;
   setMode: (mode: ChatMode) => void;
   setModelId: (modelId: string) => void;
+  setEnableReasoning: (enableReasoning: boolean) => void;
   setProjectPath: (projectPath: string | null) => Promise<void>;
+  /** Start a new chat thread with the given Gem (model + instructions). */
+  newThreadWithGem: (gemId: string) => Promise<void>;
+  /** Drop Gem from the active thread (e.g. after the Gem was deleted). */
+  clearActiveGem: () => Promise<void>;
+  /** Refresh gem name/instructions cache after edit; clear if deleted. */
+  refreshActiveGem: () => Promise<void>;
   refreshSkillsCatalog: () => Promise<SkillMeta[]>;
   newThread: () => Promise<void>;
   selectThread: (threadId: string) => Promise<void>;
@@ -176,16 +196,24 @@ type ChatStore = {
   systemPromptPreview: () => string;
 };
 
-function defaultsFromSettings(): { mode: ChatMode; modelId: string } {
+function defaultsFromSettings(): {
+  mode: ChatMode;
+  modelId: string;
+  enableReasoning: boolean;
+} {
   const s = useAiSettingsStore.getState().settings;
-  return { mode: s.defaultMode, modelId: s.modelId };
+  return {
+    mode: s.defaultMode,
+    modelId: s.modelId,
+    enableReasoning: modelSupportsReasoning(s.modelId),
+  };
 }
 
 function DEFAULT_MODEL_PLACEHOLDER(): string {
   try {
     return useAiSettingsStore.getState().settings.modelId;
   } catch {
-    return "anthropic/claude-sonnet-4.6";
+    return "anthropic/claude-sonnet-5";
   }
 }
 
@@ -209,6 +237,9 @@ function emptySession(vaultBound: string | null = null) {
     projectAbout: "",
     projectType: "" as ProjectTypeId,
     projectLearningLanguage: "",
+    gemId: null as string | null,
+    gemName: "",
+    gemInstructions: "",
     skillsCatalog: [] as SkillMeta[],
     contextAnchorTokens: null as number | null,
     contextAnchorMessageCount: null as number | null,
@@ -248,10 +279,27 @@ type ProjectContext = {
   learningLanguage: string;
 };
 
+type GemContext = {
+  gemId: string | null;
+  gemName: string;
+  gemInstructions: string;
+  enableReasoning: boolean;
+  /** Model from the gem when found; null if none / missing. */
+  modelId: string | null;
+};
+
 const EMPTY_PROJECT_CONTEXT: ProjectContext = {
   about: "",
   projectType: "",
   learningLanguage: "",
+};
+
+const EMPTY_GEM_CONTEXT: GemContext = {
+  gemId: null,
+  gemName: "",
+  gemInstructions: "",
+  enableReasoning: true,
+  modelId: null,
 };
 
 async function loadProjectContext(
@@ -270,6 +318,102 @@ async function loadProjectContext(
   }
 }
 
+async function loadGemContext(gemId: string | null): Promise<GemContext> {
+  const id = gemId?.trim() || null;
+  if (!id) return EMPTY_GEM_CONTEXT;
+  try {
+    const gem = await getGem(id);
+    return {
+      gemId: gem.id,
+      gemName: gem.name,
+      gemInstructions: gem.instructions,
+      enableReasoning: gem.enableReasoning !== false,
+      modelId: gem.modelId,
+    };
+  } catch {
+    return EMPTY_GEM_CONTEXT;
+  }
+}
+
+type ChatStoreGet = () => ChatStore;
+type ChatStoreSet = (
+  partial:
+    | Partial<ChatStore>
+    | ((state: ChatStore) => Partial<ChatStore>),
+) => void;
+
+/** Create a new chat tab. Project is inherited; Gem only when `gemId` is passed. */
+async function createNewThread(
+  get: ChatStoreGet,
+  set: ChatStoreSet,
+  gemId: string | null,
+): Promise<void> {
+  const vaultPath = get().vaultBound ?? useVaultStore.getState().vaultPath;
+  if (!vaultPath) return;
+  if (isChatBusy(get().status)) get().stop();
+  const { mode, modelId: defaultModelId } = defaultsFromSettings();
+  const now = Date.now();
+  const id = crypto.randomUUID();
+  // Inherit project from the chat the user was just in, else latest thread.
+  const inheritedProject =
+    get().projectPath?.trim() ||
+    [...get().threads]
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((t) => t.projectPath?.trim() || null)
+      .find((p): p is string => !!p) ||
+    null;
+  const project = await loadProjectContext(inheritedProject);
+  const gem = await loadGemContext(gemId);
+  const settings = useAiSettingsStore.getState().settings;
+  const modelId = gem.modelId
+    ? resolveModelId(settings.baseUrl, gem.modelId)
+    : defaultModelId;
+  const supports = modelSupportsReasoning(modelId);
+  const enableReasoning = gem.gemId
+    ? supports && gem.enableReasoning
+    : supports;
+  const empty = {
+    id,
+    title: "New chat",
+    createdAt: now,
+    updatedAt: now,
+    mode,
+    modelId,
+    projectPath: inheritedProject,
+    gemId: gem.gemId,
+    enableReasoning,
+    messages: [] as UIMessage[],
+  };
+  const meta = await upsertChatThread(vaultPath, empty);
+  const openTabIds = [...get().openTabIds.filter((t) => t !== id), id];
+  await setOpenChatTabs(vaultPath, openTabIds, id);
+  const listed = await listChatThreads(vaultPath);
+  set({
+    vaultBound: vaultPath,
+    threads: listed.threads,
+    openTabIds: listed.openTabIds,
+    activeThreadId: id,
+    messages: [],
+    mode: meta.mode === "agent" ? "agent" : "ask",
+    modelId: meta.modelId || modelId,
+    enableReasoning,
+    projectPath: inheritedProject,
+    projectAbout: project.about,
+    projectType: project.projectType,
+    projectLearningLanguage: project.learningLanguage,
+    gemId: gem.gemId,
+    gemName: gem.gemName,
+    gemInstructions: gem.gemInstructions,
+    contextAnchorTokens: null,
+    contextAnchorMessageCount: null,
+    status: "ready",
+    error: null,
+    draft: "",
+    draftAttachments: [],
+    streamStartedAt: null,
+  });
+}
+
 async function loadThreadIntoState(
   vaultPath: string,
   threadId: string,
@@ -281,6 +425,7 @@ async function loadThreadIntoState(
   const thread = await getChatThread(vaultPath, threadId);
   const projectPath = thread.projectPath?.trim() || null;
   const project = await loadProjectContext(projectPath);
+  const gem = await loadGemContext(thread.gemId?.trim() || null);
   const anchorTokens =
     typeof thread.contextAnchorTokens === "number" &&
     thread.contextAnchorTokens > 0
@@ -291,6 +436,12 @@ async function loadThreadIntoState(
     thread.contextAnchorMessageCount >= 0
       ? thread.contextAnchorMessageCount
       : null;
+  const resolvedModelId = resolveModelId(baseUrl, thread.modelId || modelId);
+  const supports = modelSupportsReasoning(resolvedModelId);
+  const enableReasoning =
+    typeof thread.enableReasoning === "boolean"
+      ? thread.enableReasoning && supports
+      : supports;
   return {
     vaultBound: vaultPath,
     threads,
@@ -298,11 +449,15 @@ async function loadThreadIntoState(
     activeThreadId: threadId,
     messages: Array.isArray(thread.messages) ? thread.messages : [],
     mode: thread.mode === "agent" ? ("agent" as const) : ("ask" as const),
-    modelId: resolveModelId(baseUrl, thread.modelId || modelId),
+    modelId: resolvedModelId,
+    enableReasoning,
     projectPath,
     projectAbout: project.about,
     projectType: project.projectType,
     projectLearningLanguage: project.learningLanguage,
+    gemId: gem.gemId,
+    gemName: gem.gemName,
+    gemInstructions: gem.gemInstructions,
     contextAnchorTokens: anchorTokens,
     contextAnchorMessageCount:
       anchorTokens != null ? anchorCount : null,
@@ -454,10 +609,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   mode: "ask",
   modelId: DEFAULT_MODEL_PLACEHOLDER(),
+  enableReasoning: modelSupportsReasoning(DEFAULT_MODEL_PLACEHOLDER()),
   projectPath: null,
   projectAbout: "",
   projectType: "",
   projectLearningLanguage: "",
+  gemId: null,
+  gemName: "",
+  gemInstructions: "",
   skillsCatalog: [],
   contextAnchorTokens: null,
   contextAnchorMessageCount: null,
@@ -610,8 +769,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setModelId: (modelId) => {
     const settings = useAiSettingsStore.getState().settings;
     const resolved = resolveModelId(settings.baseUrl, modelId);
+    const supports = modelSupportsReasoning(resolved);
     set({
       modelId: resolved,
+      // Selecting a reasoning model sticks Reasoning on; chat models force off.
+      enableReasoning: supports,
+      contextAnchorTokens: null,
+      contextAnchorMessageCount: null,
+    });
+    void get().persistActive();
+  },
+
+  setEnableReasoning: (enableReasoning) => {
+    const supports = modelSupportsReasoning(get().modelId);
+    set({
+      enableReasoning: supports ? enableReasoning : false,
       contextAnchorTokens: null,
       contextAnchorMessageCount: null,
     });
@@ -638,61 +810,50 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     void get().persistActive();
   },
 
+  clearActiveGem: async () => {
+    const activeThreadId = get().activeThreadId;
+    set({
+      gemId: null,
+      gemName: "",
+      gemInstructions: "",
+      contextAnchorTokens: null,
+      contextAnchorMessageCount: null,
+      threads: activeThreadId
+        ? get().threads.map((t) =>
+            t.id === activeThreadId ? { ...t, gemId: null } : t,
+          )
+        : get().threads,
+    });
+    void get().persistActive();
+  },
+
+  refreshActiveGem: async () => {
+    const current = get().gemId;
+    if (!current) return;
+    const gem = await loadGemContext(current);
+    if (!gem.gemId) {
+      await get().clearActiveGem();
+      return;
+    }
+    set({
+      gemId: gem.gemId,
+      gemName: gem.gemName,
+      gemInstructions: gem.gemInstructions,
+      contextAnchorTokens: null,
+      contextAnchorMessageCount: null,
+    });
+  },
+
   clearError: () => set({ error: null, status: "ready" }),
 
   newThread: async () => {
-    const vaultPath = get().vaultBound ?? useVaultStore.getState().vaultPath;
-    if (!vaultPath) return;
-    if (isChatBusy(get().status)) get().stop();
-    const { mode, modelId } = defaultsFromSettings();
-    const now = Date.now();
-    const id = crypto.randomUUID();
-    // Inherit project from the chat the user was just in, else latest thread.
-    const inheritedProject =
-      get().projectPath?.trim() ||
-      [...get().threads]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map((t) => t.projectPath?.trim() || null)
-        .find((p): p is string => !!p) ||
-      null;
-    const project = await loadProjectContext(inheritedProject);
-    const empty = {
-      id,
-      title: "New chat",
-      createdAt: now,
-      updatedAt: now,
-      mode,
-      modelId,
-      projectPath: inheritedProject,
-      messages: [] as UIMessage[],
-    };
-    const meta = await upsertChatThread(vaultPath, empty);
-    const openTabIds = [
-      ...get().openTabIds.filter((t) => t !== id),
-      id,
-    ];
-    await setOpenChatTabs(vaultPath, openTabIds, id);
-    const listed = await listChatThreads(vaultPath);
-    set({
-      vaultBound: vaultPath,
-      threads: listed.threads,
-      openTabIds: listed.openTabIds,
-      activeThreadId: id,
-      messages: [],
-      mode: meta.mode === "agent" ? "agent" : "ask",
-      modelId: meta.modelId || modelId,
-      projectPath: inheritedProject,
-      projectAbout: project.about,
-      projectType: project.projectType,
-      projectLearningLanguage: project.learningLanguage,
-      contextAnchorTokens: null,
-      contextAnchorMessageCount: null,
-      status: "ready",
-      error: null,
-      draft: "",
-      draftAttachments: [],
-      streamStartedAt: null,
-    });
+    await createNewThread(get, set, null);
+  },
+
+  newThreadWithGem: async (gemId) => {
+    const id = gemId?.trim();
+    if (!id) return;
+    await createNewThread(get, set, id);
   },
 
   selectThread: async (threadId) => {
@@ -879,6 +1040,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       mode,
       modelId,
       projectPath,
+      gemId,
+      enableReasoning,
       contextAnchorTokens,
       contextAnchorMessageCount,
       threads,
@@ -905,6 +1068,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       mode,
       modelId,
       projectPath,
+      gemId,
+      enableReasoning,
       contextAnchorTokens,
       contextAnchorMessageCount,
       messages,
@@ -995,6 +1160,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       projectAbout: project.about,
       projectType: project.projectType,
       projectLearningLanguage: project.learningLanguage,
+      gemName: get().gemName,
+      gemInstructions: get().gemInstructions,
       skills,
       forcedSkills,
       forcedTools,
@@ -1159,6 +1326,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         projectAbout: project.about,
         projectType: project.projectType,
         projectLearningLanguage: project.learningLanguage,
+        gemName: get().gemName,
+        gemInstructions: get().gemInstructions,
+        enableReasoning: get().enableReasoning,
         skills,
         forcedSkills,
         forcedTools,
@@ -1274,6 +1444,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       projectAbout: get().projectAbout,
       projectType: get().projectType,
       projectLearningLanguage: get().projectLearningLanguage,
+      gemName: get().gemName,
+      gemInstructions: get().gemInstructions,
       skills: get().skillsCatalog,
     });
   },
