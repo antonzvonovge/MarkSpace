@@ -667,13 +667,6 @@ fn do_push(repo: &Repository, token: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
 #[tauri::command(async)]
 pub fn sync_github_client_id() -> Option<String> {
     github_client_id().map(|s| s.to_string())
@@ -832,7 +825,7 @@ pub fn sync_now(
 
     Ok(SyncResult {
         status: build_status(&repo),
-        message: format!("Synced at {}", now_secs()),
+        message: "Synced".into(),
         conflicted: Vec::new(),
     })
 }
