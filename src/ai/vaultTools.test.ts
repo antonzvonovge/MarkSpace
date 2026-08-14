@@ -75,6 +75,8 @@ describe("vault agent tools", () => {
     const askPrompt = buildSystemPrompt({ ...base, mode: "ask" });
     expect(askPrompt).toContain("list_folder");
     expect(askPrompt).toContain("Folder notes:");
+    expect(askPrompt).toContain("{folder}/.folder.md");
+    expect(askPrompt).toContain("not some other note inside the folder");
     expect(askPrompt).toContain(
       "In **chat replies**, reference vault files with `[[vault/path/Note.md]]`",
     );

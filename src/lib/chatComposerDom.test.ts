@@ -6,6 +6,7 @@ import {
   createToolChipElement,
   extractSkillIdsFromDraft,
   extractToolIdsFromDraft,
+  formatVaultPathForModel,
   renderComposerFromDraft,
   replaceAtWithToolChip,
   replaceSlashWithSkillChip,
@@ -21,8 +22,16 @@ describe("vault path markers", () => {
   it("wraps and unwraps paths", () => {
     expect(wrapVaultPathMarker("Notes/todo.md")).toBe("⟦Notes/todo.md⟧");
     expect(unwrapVaultPathMarkers("see ⟦Notes/todo.md⟧ and ⟦Projects/⟧")).toBe(
-      "see Notes/todo.md and Projects/",
+      "see Notes/todo.md and [folder: Projects/; folder note: Projects/.folder.md]",
     );
+  });
+
+  it("expands folder chips with folder note path for the model", () => {
+    expect(formatVaultPathForModel("Notes/todo.md")).toBe("Notes/todo.md");
+    expect(formatVaultPathForModel("Projects/ideas/")).toBe(
+      "[folder: Projects/ideas/; folder note: Projects/ideas/.folder.md]",
+    );
+    expect(formatVaultPathForModel("/")).toBe("/");
   });
 
   it("strips close markers from paths when wrapping", () => {
@@ -40,6 +49,11 @@ describe("skill markers", () => {
     expect(
       unwrapComposerMarkers("use ⦃meeting-notes⦄ on ⟦Notes/a.md⟧"),
     ).toBe("use /meeting-notes on Notes/a.md");
+    expect(
+      unwrapComposerMarkers("run ⦃x⦄ on ⟦Projects/⟧"),
+    ).toBe(
+      "run /x on [folder: Projects/; folder note: Projects/.folder.md]",
+    );
   });
 });
 

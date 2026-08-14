@@ -4,6 +4,7 @@ import {
   wrapSelectionMarker,
 } from "./chatSelectionChips";
 import type { ChatSelectionRef } from "./chatSelectionChips";
+import { folderNotePath } from "./vaultApi";
 
 /** Markers for vault path chips in the chat composer draft string. */
 export const VAULT_PATH_OPEN = "⟦";
@@ -46,9 +47,24 @@ export function wrapToolMarker(id: string): string {
   return `${TOOL_OPEN}${safe}${TOOL_CLOSE}`;
 }
 
+/**
+ * Plain text the model sees for a vault path chip.
+ * Folder chips (trailing `/`) also name the hidden folder note path so the
+ * model does not confuse “folder note” with an arbitrary note in that folder.
+ */
+export function formatVaultPathForModel(path: string): string {
+  if (!path.endsWith("/")) return path;
+  const folder = path.replace(/\/+$/, "");
+  // Vault root has no folder note.
+  if (!folder) return path;
+  return `[folder: ${folder}/; folder note: ${folderNotePath(folder)}]`;
+}
+
 /** Expand chip markers to plain vault-relative paths for the model. */
 export function unwrapVaultPathMarkers(text: string): string {
-  return text.replace(PATH_MARKER_RE, "$1");
+  return text.replace(PATH_MARKER_RE, (_m, path: string) =>
+    formatVaultPathForModel(path),
+  );
 }
 
 /** Replace skill chips with `/skill-id` in the user-visible message text. */

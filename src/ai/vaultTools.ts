@@ -385,9 +385,13 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
 
     read_note: tool({
       description:
-        "Read a note by vault-relative path. Prefer start_line/end_line to read only a slice and save tokens; omit both to read the full file (capped). For .pdf files returns extracted plain text (scanned PDFs may be empty); start_line/end_line then mean 1-based page numbers.",
+        "Read a note by vault-relative path. Prefer start_line/end_line to read only a slice and save tokens; omit both to read the full file (capped). For .pdf files returns extracted plain text (scanned PDFs may be empty); start_line/end_line then mean 1-based page numbers. A folder’s overview (“folder note”) is `{folder}/.folder.md`.",
       inputSchema: z.object({
-        path: z.string().describe("Vault-relative path, e.g. Folder/Note.md"),
+        path: z
+          .string()
+          .describe(
+            "Vault-relative path, e.g. Folder/Note.md or Folder/.folder.md",
+          ),
         start_line: z
           .number()
           .int()
@@ -1040,9 +1044,13 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     }),
     edit_note: tool({
       description:
-        "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note. When inserting or rewriting lists, indent relative to the parent item at every depth (parent indent + 2 spaces under `*`, + 3 under numbered — so 3, then 5, then 8 …) and never insert a blank line between a parent and its nested children. For `* **Label:** …`, short body on the same line; longer body after a blank line must be indented to that item's text column, never flush left or under-indented.",
+        "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note. When inserting or rewriting lists, indent relative to the parent item at every depth (parent indent + 2 spaces under `*`, + 3 under numbered — so 3, then 5, then 8 …) and never insert a blank line between a parent and its nested children. For `* **Label:** …`, short body on the same line; longer body after a blank line must be indented to that item's text column, never flush left or under-indented. To edit a folder’s overview (“folder note”), path must be `{folder}/.folder.md`.",
       inputSchema: z.object({
-        path: z.string().describe("Vault-relative path"),
+        path: z
+          .string()
+          .describe(
+            "Vault-relative path, e.g. Folder/Note.md or Folder/.folder.md",
+          ),
         old_string: z
           .string()
           .min(1)
@@ -1695,7 +1703,7 @@ export function buildSystemPrompt(opts: {
     "CRITICAL — parallel tools: every model round re-sends the whole context. When several independent tools are needed, emit them TOGETHER in one response.",
     "When you need a decision, confirmation, or clarification with clear choices: use ask_user instead of listing A/B/C in plain chat text.",
     "Paths are vault-relative.",
-    "Folder notes: each folder may have a hidden overview at `{folder}/.folder.md` (not listed in the tree). Pass a folder path to open_note to open it.",
+    "Folder notes: every vault folder (except the vault root) has a special hidden overview note at `{folder}/.folder.md` (not listed in the tree). When the user pastes/drops a folder into chat, the message names both the folder and its folder note path separately. If they ask to read/edit/open the folder note / overview for a mentioned folder, they mean that exact `{folder}/.folder.md` — not some other note inside the folder. Pass a folder path or `{folder}/.folder.md` to open_note (created if missing); use read_note / edit_note on `{folder}/.folder.md` for contents.",
     "When the user asks to open/show a file, call open_note.",
     "MarkSpace Markdown dialect — follow these rules; call read_format_guide when unsure:",
     ...markdownCoreRules(),
