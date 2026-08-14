@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -28,6 +29,7 @@ import {
   isFolderNotePath,
   isSkillsFolder,
   isVaultProjectFolder,
+  joinPath,
   parentPath,
   setProjectProperties,
   type ProjectProperties,
@@ -1277,6 +1279,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
 
   const treeRef = useRef<TreeMethods>(null);
   const treeFocusRef = useRef<HTMLDivElement | null>(null);
+  /** Destination path after rename/move; remount Tree once this id exists. */
+  const [pendingOpenRemapTo, setPendingOpenRemapTo] = useState<string | null>(
+    null,
+  );
+  const [treeOpenEpoch, setTreeOpenEpoch] = useState(0);
   const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
   const [promptKind, setPromptKind] = useState<PromptKind | null>(null);
   const [clipFolder, setClipFolder] = useState<string | null>(null);
@@ -1351,34 +1358,16 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   }, []);
 
   /**
-   * Store remaps `expandedPaths` on rename, but react-dnd-treeview keeps its own
-   * path-keyed `openIds`. Close stale ids, then reopen remapped ones on the next
-   * frame (library open/close close over `openIds`, so back-to-back calls race;
-   * array `open` also requires the new node ids to already be in `tree`).
+   * After rename/move, node ids change and react-dnd-treeview treats the folder
+   * as closed. Remount with remapped `initialOpen` before paint once the new id
+   * is in `tree` (`open()`/`close()` close over stale state).
    */
-  const syncTreeOpenAfterPathRemap = useCallback((from: string, to: string) => {
-    if (!from || from === to) return;
-    const { expandedPaths, vaultPath: vp } = useVaultStore.getState();
-    const preserved = expandedPaths;
-    const toOpen = preserved.filter(
-      (p) => p === to || p.startsWith(`${to}/`),
-    );
-    const toClose = [
-      from,
-      ...toOpen.map((p) => `${from}${p.slice(to.length)}`),
-    ];
-    treeRef.current?.close(toClose.map(toNodeId));
-    // `onChangeOpen` from close overwrites the store with pre-remap ids removed.
-    useVaultStore.setState({ expandedPaths: preserved });
-
-    if (toOpen.length === 0) return;
-
-    requestAnimationFrame(() => {
-      treeRef.current?.open(toOpen.map(toNodeId));
-      useVaultStore.setState({ expandedPaths: preserved });
-      if (vp) void saveExpandedPaths(vp, preserved);
-    });
-  }, []);
+  useLayoutEffect(() => {
+    if (!pendingOpenRemapTo) return;
+    if (!findTreeNode(tree, pendingOpenRemapTo)) return;
+    setPendingOpenRemapTo(null);
+    setTreeOpenEpoch((n) => n + 1);
+  }, [tree, pendingOpenRemapTo]);
 
   const cancelInlineRename = useCallback(() => {
     setRenamingPath(null);
@@ -1388,15 +1377,21 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const commitInlineRename = useCallback(
     (path: string, nextName: string) => {
       setRenamingPath(null);
+      const trimmed = nextName.trim().replace(/[\\/]/g, "");
+      if (trimmed) {
+        setPendingOpenRemapTo(joinPath(parentPath(path), trimmed));
+      }
       void (async () => {
         const nextPath = await renameTreeEntry(path, nextName);
         if (nextPath && nextPath !== path) {
-          syncTreeOpenAfterPathRemap(path, nextPath);
+          setPendingOpenRemapTo((prev) => (prev == null ? null : nextPath));
+        } else {
+          setPendingOpenRemapTo(null);
         }
         focusTree();
       })();
     },
-    [focusTree, renameTreeEntry, syncTreeOpenAfterPathRemap],
+    [focusTree, renameTreeEntry],
   );
 
   /** Expand every folder on the way to `path` (plus itself for folders) and scroll to it. */
@@ -1751,9 +1746,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
 
   const initialOpen = useMemo(
     () => [VAULT_ID, ...expandedPaths.map(toNodeId)],
-    // Only used on mount / vault change via key=
+    // Recomputed on remount after rename/move (`treeOpenEpoch`) and vault switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [vaultPath],
+    [vaultPath, treeOpenEpoch],
   );
 
   if (!tree || !vaultPath) return null;
@@ -1777,11 +1772,17 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       targetPath.toLowerCase().endsWith(".md");
 
     if (nestOntoNote) {
-      void nestTreeEntryUnderNote(from, targetPath, relativeIndex ?? 0);
+      void nestTreeEntryUnderNote(from, targetPath, relativeIndex ?? 0).then(
+        (next) => {
+          if (next && next !== from) setPendingOpenRemapTo(next);
+        },
+      );
       return;
     }
 
-    void moveTreeEntry(from, targetPath, relativeIndex ?? 0);
+    void moveTreeEntry(from, targetPath, relativeIndex ?? 0).then((next) => {
+      if (next && next !== from) setPendingOpenRemapTo(next);
+    });
   };
 
   const submitCreate = (name: string) => {
@@ -2120,7 +2121,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           <DndProvider backend={HTML5Backend} options={backendOptions}>
             <Tree
               ref={treeRef}
-              key={vaultPath}
+              key={`${vaultPath}:${treeOpenEpoch}`}
               tree={flatTree}
               rootId={TREE_ROOT}
               sort={false}
