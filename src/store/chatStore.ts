@@ -22,6 +22,7 @@ import {
   hasCredentialsForModel,
   missingCredentialsMessage,
 } from "../ai/languageModel";
+import { settleIncompleteToolCalls } from "../ai/incompleteToolCalls";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
 import { listSkills, loadSkills, type SkillMeta } from "../ai/skills";
@@ -442,12 +443,17 @@ async function loadThreadIntoState(
     typeof thread.enableReasoning === "boolean"
       ? thread.enableReasoning && supports
       : supports;
+  const rawMessages = Array.isArray(thread.messages) ? thread.messages : [];
+  const messages = settleIncompleteToolCalls(rawMessages);
+  if (messages !== rawMessages) {
+    void upsertChatThread(vaultPath, { ...thread, messages });
+  }
   return {
     vaultBound: vaultPath,
     threads,
     openTabIds,
     activeThreadId: threadId,
-    messages: Array.isArray(thread.messages) ? thread.messages : [],
+    messages,
     mode: thread.mode === "agent" ? ("agent" as const) : ("ask" as const),
     modelId: resolvedModelId,
     enableReasoning,

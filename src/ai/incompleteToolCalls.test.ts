@@ -1,0 +1,106 @@
+import { describe, expect, it, vi } from "vitest";
+import type { ToolSet, UIMessage } from "ai";
+import {
+  executeIncompleteParts,
+  hasIncompleteToolCalls,
+  INCOMPLETE_TOOL_REASON_ABORTED,
+  INCOMPLETE_TOOL_REASON_DROPPED,
+  isIncompleteToolPart,
+  settleIncompleteToolCalls,
+} from "./incompleteToolCalls";
+
+function specialistPart(
+  state: "input-available" | "output-available" | "output-error",
+  extra: Record<string, unknown> = {},
+): UIMessage["parts"][number] {
+  return {
+    type: "tool-run_specialist",
+    toolCallId: "call_1",
+    toolName: "run_specialist",
+    state,
+    input: { kind: "diagram", title: "Draw", task: "draw it" },
+    ...extra,
+  } as UIMessage["parts"][number];
+}
+
+describe("isIncompleteToolPart", () => {
+  it("treats input-available tool calls as incomplete", () => {
+    expect(isIncompleteToolPart(specialistPart("input-available"))).toBe(true);
+  });
+
+  it("treats completed tools as settled", () => {
+    expect(
+      isIncompleteToolPart(
+        specialistPart("output-available", { output: { ok: true } }),
+      ),
+    ).toBe(false);
+    expect(
+      isIncompleteToolPart(
+        specialistPart("output-error", { errorText: "nope" }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("settleIncompleteToolCalls", () => {
+  it("closes dangling specialist calls so history can be sent again", () => {
+    const messages: UIMessage[] = [
+      { id: "u", role: "user", parts: [{ type: "text", text: "draw" }] },
+      {
+        id: "a",
+        role: "assistant",
+        parts: [specialistPart("input-available")],
+      },
+    ];
+    const settled = settleIncompleteToolCalls(messages);
+    expect(hasIncompleteToolCalls(settled)).toBe(false);
+    const part = settled[1]!.parts[0] as {
+      state: string;
+      errorText?: string;
+    };
+    expect(part.state).toBe("output-error");
+    expect(part.errorText).toBe(INCOMPLETE_TOOL_REASON_DROPPED);
+  });
+
+  it("returns the same array when nothing is pending", () => {
+    const messages: UIMessage[] = [
+      { id: "u", role: "user", parts: [{ type: "text", text: "hi" }] },
+    ];
+    expect(settleIncompleteToolCalls(messages)).toBe(messages);
+  });
+});
+
+describe("executeIncompleteParts", () => {
+  it("runs dropped tools and writes output-available", async () => {
+    const execute = vi.fn(async () => ({ ok: true, summary: "drew it" }));
+    const tools = {
+      run_specialist: { execute },
+    } as unknown as ToolSet;
+    const { parts, executed } = await executeIncompleteParts({
+      parts: [specialistPart("input-available")],
+      tools,
+    });
+    expect(executed).toBe(1);
+    expect(execute).toHaveBeenCalledOnce();
+    const part = parts[0] as { state: string; output?: { summary?: string } };
+    expect(part.state).toBe("output-available");
+    expect(part.output?.summary).toBe("drew it");
+  });
+
+  it("marks leftover tools cancelled when aborted", async () => {
+    const tools = {
+      run_specialist: { execute: vi.fn() },
+    } as unknown as ToolSet;
+    const controller = new AbortController();
+    controller.abort();
+    const { parts, executed } = await executeIncompleteParts({
+      parts: [specialistPart("input-available")],
+      tools,
+      abortSignal: controller.signal,
+    });
+    expect(executed).toBe(0);
+    const part = parts[0] as { state: string; errorText?: string };
+    expect(part.state).toBe("output-error");
+    expect(part.errorText).toBe(INCOMPLETE_TOOL_REASON_ABORTED);
+  });
+});

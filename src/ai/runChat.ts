@@ -4,10 +4,19 @@ import {
   isReasoningUIPart,
   isTextUIPart,
   isToolUIPart,
+  MissingToolResultsError,
   stepCountIs,
   streamText,
   type UIMessage,
 } from "ai";
+import {
+  executeIncompleteParts,
+  INCOMPLETE_TOOL_REASON_ABORTED,
+  INCOMPLETE_TOOL_REASON_DROPPED,
+  isIncompleteToolPart,
+  settleIncompleteParts,
+  settleIncompleteToolCalls,
+} from "./incompleteToolCalls";
 import {
   estimateModelMessagesTokens,
   estimateTokensFromText,
@@ -218,7 +227,10 @@ function isAbortError(error: unknown, signal?: AbortSignal): boolean {
 }
 
 export async function runChat(params: RunChatParams): Promise<RunChatResult> {
-  const inputMessages = params.messages;
+  const inputMessages = settleIncompleteToolCalls(params.messages);
+  if (inputMessages !== params.messages) {
+    params.onMessages(inputMessages);
+  }
   const assistantId = crypto.randomUUID();
   const parts: AssistantPart[] = [];
   const reasoningIndex = new Map<string, number>();
@@ -361,62 +373,90 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     projectLearningLanguage: params.projectLearningLanguage,
     modelId: params.modelId,
   });
-  const modelMessages = await convertToModelMessages(
-    unwrapMessagesForModel(inputMessages),
-    { tools },
-  );
 
   const contextWindow = params.contextWindow;
   const toolSchemaTokens = estimateToolSchemaTokens(params.mode);
   const systemTokens = estimateTokensFromText(system);
   const maxSteps = clampAgentMaxSteps(params.maxSteps ?? DEFAULT_AGENT_MAX_STEPS);
 
-  const result = streamText({
-    model: resolved.model,
-    system,
-    messages: modelMessages,
-    tools,
-    stopWhen: stepCountIs(maxSteps),
-    abortSignal: params.abortSignal,
-    prepareStep: ({ messages, stepNumber, steps }) => {
-      if (contextWindow == null || contextWindow <= 0 || stepNumber === 0) {
-        return {};
-      }
-      let used = systemTokens + toolSchemaTokens + estimateModelMessagesTokens(messages);
-      const prev = steps.length > 0 ? steps[steps.length - 1] : undefined;
-      const prevIn = prev?.usage?.inputTokens;
-      const prevOut = prev?.usage?.outputTokens;
-      if (prevIn != null && prevIn > 0) {
-        used = Math.max(used, prevIn + (prevOut ?? 0));
-      }
-      if (wouldExceedContext(used, contextWindow)) {
-        throw new Error(
-          "Context window is full (during tool use). Start a new chat or shorten the conversation.",
-        );
-      }
-      return {};
-    },
-    ...(resolved.providerOptions
-      ? { providerOptions: resolved.providerOptions }
-      : {}),
-  });
-
-  const readLastStepInputTokens = async (): Promise<number | null> => {
+  const toModelMessages = async (messages: UIMessage[]) => {
     try {
-      const steps = await result.steps;
-      const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
-      const n = last?.usage?.inputTokens;
-      return n != null && n > 0 ? n : null;
-    } catch {
-      return null;
+      return await convertToModelMessages(unwrapMessagesForModel(messages), {
+        tools,
+      });
+    } catch (error) {
+      if (!MissingToolResultsError.isInstance(error)) throw error;
+      const fixed = settleIncompleteToolCalls(
+        messages,
+        INCOMPLETE_TOOL_REASON_DROPPED,
+      );
+      return await convertToModelMessages(unwrapMessagesForModel(fixed), {
+        tools,
+        ignoreIncompleteToolCalls: true,
+      });
     }
   };
 
-  try {
-    for await (const part of result.fullStream) {
-      if (params.abortSignal?.aborted) break;
+  let remainingSteps = maxSteps;
+  let lastStepInputTokens: number | null = null;
+  let aborted = false;
+  let hitStepLimit = false;
+  let lastFinishWasToolCalls = false;
+  let recoveryRounds = 0;
 
-      switch (part.type) {
+  while (remainingSteps > 0) {
+    if (params.abortSignal?.aborted) {
+      aborted = true;
+      break;
+    }
+
+    const conversation: UIMessage[] =
+      parts.length > 0
+        ? [
+            ...inputMessages,
+            { id: assistantId, role: "assistant", parts: [...parts] },
+          ]
+        : inputMessages;
+    const modelMessages = await toModelMessages(conversation);
+    const result = streamText({
+      model: resolved.model,
+      system,
+      messages: modelMessages,
+      tools,
+      stopWhen: stepCountIs(remainingSteps),
+      abortSignal: params.abortSignal,
+      prepareStep: ({ messages, stepNumber, steps }) => {
+        if (contextWindow == null || contextWindow <= 0 || stepNumber === 0) {
+          return {};
+        }
+        let used =
+          systemTokens + toolSchemaTokens + estimateModelMessagesTokens(messages);
+        const prev = steps.length > 0 ? steps[steps.length - 1] : undefined;
+        const prevIn = prev?.usage?.inputTokens;
+        const prevOut = prev?.usage?.outputTokens;
+        if (prevIn != null && prevIn > 0) {
+          used = Math.max(used, prevIn + (prevOut ?? 0));
+        }
+        if (wouldExceedContext(used, contextWindow)) {
+          throw new Error(
+            "Context window is full (during tool use). Start a new chat or shorten the conversation.",
+          );
+        }
+        return {};
+      },
+      ...(resolved.providerOptions
+        ? { providerOptions: resolved.providerOptions }
+        : {}),
+    });
+
+    try {
+      for await (const part of result.fullStream) {
+        if (params.abortSignal?.aborted) {
+          aborted = true;
+          break;
+        }
+
+        switch (part.type) {
         case "reasoning-start": {
           const idx = parts.length;
           reasoningIndex.set(part.id, idx);
@@ -564,33 +604,64 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
           break;
       }
     }
-  } catch (error) {
-    if (isAbortError(error, params.abortSignal)) {
-      for (let i = 0; i < parts.length; i++) {
-        const p = parts[i];
-        if (p && isReasoningUIPart(p) && p.state === "streaming") {
-          parts[i] = { ...p, state: "done" };
-        }
+    } catch (error) {
+      if (isAbortError(error, params.abortSignal)) {
+        aborted = true;
+      } else {
+        clearReasoningPreview();
+        throw error instanceof Error ? error : new Error(formatAiError(error));
       }
-      clearReasoningPreview();
-      emit(true);
-      return {
-        messages: [
-          ...inputMessages,
-          { id: assistantId, role: "assistant", parts: [...parts] },
-        ],
-        lastStepInputTokens: await readLastStepInputTokens(),
-      };
     }
-    clearReasoningPreview();
-    throw error instanceof Error ? error : new Error(formatAiError(error));
-  }
 
-  try {
-    await result.text;
-  } catch (error) {
-    if (!isAbortError(error, params.abortSignal)) {
-      throw error instanceof Error ? error : new Error(formatAiError(error));
+    try {
+      await result.text;
+    } catch (error) {
+      if (isAbortError(error, params.abortSignal)) {
+        aborted = true;
+      } else {
+        throw error instanceof Error ? error : new Error(formatAiError(error));
+      }
+    }
+
+    try {
+      const steps = await result.steps;
+      remainingSteps -= Math.max(steps.length, 1);
+      const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
+      const n = last?.usage?.inputTokens;
+      if (n != null && n > 0) lastStepInputTokens = n;
+      if (last?.finishReason === "tool-calls") lastFinishWasToolCalls = true;
+      if (remainingSteps <= 0) hitStepLimit = true;
+    } catch {
+      /* stream already consumed */
+    }
+
+    if (aborted || params.abortSignal?.aborted) {
+      aborted = true;
+      break;
+    }
+
+    if (!parts.some(isIncompleteToolPart)) break;
+
+    // Provider ended the stream after a tool-call without executing it (Gemini).
+    recoveryRounds += 1;
+    if (recoveryRounds > maxSteps) break;
+
+    const recovered = await executeIncompleteParts({
+      parts,
+      tools,
+      abortSignal: params.abortSignal,
+    });
+    parts.splice(0, parts.length, ...recovered.parts);
+    emit(true);
+
+    if (params.abortSignal?.aborted) {
+      aborted = true;
+      break;
+    }
+    if (remainingSteps <= 0) {
+      hitStepLimit = true;
+      lastFinishWasToolCalls = true;
+      break;
     }
   }
 
@@ -601,26 +672,20 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     }
   }
 
-  const cleaned = parts.filter((p) => {
+  const settled = settleIncompleteParts(
+    parts,
+    aborted ? INCOMPLETE_TOOL_REASON_ABORTED : INCOMPLETE_TOOL_REASON_DROPPED,
+  );
+  const cleaned = settled.filter((p) => {
     if (isTextUIPart(p)) return p.text.trim().length > 0;
     if (isReasoningUIPart(p)) return p.text.trim().length > 0;
     return true;
   });
-
-  let stepLimitNotice: string | null = null;
-  try {
-    const steps = await result.steps;
-    const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
-    // stopWhen fires once this many steps are recorded — always surface it.
-    if (steps.length >= maxSteps) {
-      const cutOff = last?.finishReason === "tool-calls";
-      stepLimitNotice = agentStepLimitNotice(maxSteps, cutOff);
-    }
-  } catch {
-    stepLimitNotice = null;
-  }
-  if (stepLimitNotice) {
-    cleaned.push({ type: "text", text: stepLimitNotice });
+  if (hitStepLimit) {
+    cleaned.push({
+      type: "text",
+      text: agentStepLimitNotice(maxSteps, lastFinishWasToolCalls),
+    });
   }
 
   const finalMessages: UIMessage[] = [
@@ -636,6 +701,6 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
   params.onMessages(finalMessages);
   return {
     messages: finalMessages,
-    lastStepInputTokens: await readLastStepInputTokens(),
+    lastStepInputTokens,
   };
 }
