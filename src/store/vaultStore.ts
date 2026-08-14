@@ -286,10 +286,11 @@ type VaultStore = {
   /** Returns the new vault-relative path, or null if unchanged / failed. */
   renameTreeEntry: (from: string, nextName: string) => Promise<string | null>;
   removePath: (path: string) => Promise<boolean>;
-  /** Import OS paths / file blobs into the selected folder. */
+  /** Import OS paths / file blobs into a vault folder (default: selected). */
   importIntoSelection: (
     sources: string[],
     files?: File[],
+    opts?: { parent?: string; overwrite?: boolean },
   ) => Promise<string[]>;
   /** Suppress vault-change handling for `ms` (default 1200). */
   markExternalWrite: (ms?: number) => void;
@@ -2446,18 +2447,24 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
-  importIntoSelection: async (sources, files = []) => {
-    const parent = get().selectedFolderPath;
+  importIntoSelection: async (sources, files = [], opts) => {
+    const parent = opts?.parent ?? get().selectedFolderPath;
+    const overwrite = opts?.overwrite ?? false;
     const created: string[] = [];
     try {
       set({ suppressWatchUntil: Date.now() + 2000 });
       if (sources.length) {
-        const paths = await importPaths(parent, sources);
+        const paths = await importPaths(parent, sources, overwrite);
         created.push(...paths);
       } else if (files.length) {
         for (const file of files) {
           const buf = new Uint8Array(await file.arrayBuffer());
-          const path = await importDocumentBytes(parent, file.name, buf);
+          const path = await importDocumentBytes(
+            parent,
+            file.name,
+            buf,
+            overwrite,
+          );
           created.push(path);
         }
       }

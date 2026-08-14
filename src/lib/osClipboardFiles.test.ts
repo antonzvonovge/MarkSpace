@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  basenameFromOsPath,
   collectVaultDocumentFiles,
+  conflictingImportNames,
+  importEntryNames,
   isVaultDocumentName,
   pathsFromClipboardData,
 } from "./osClipboardFiles";
@@ -63,5 +66,20 @@ describe("osClipboardFiles", () => {
       ],
     });
     expect(collectVaultDocumentFiles(dt).map((f) => f.name)).toEqual(["note.md"]);
+  });
+
+  it("derives basenames and import conflicts", () => {
+    expect(basenameFromOsPath("/home/user/Notes/Welcome.md")).toBe("Welcome.md");
+    expect(basenameFromOsPath("C:\\Users\\me\\note.md")).toBe("note.md");
+    expect(importEntryNames(["/tmp/a.md", "/tmp/b.drawio"], [])).toEqual([
+      "a.md",
+      "b.drawio",
+    ]);
+    expect(
+      conflictingImportNames("Project", ["a.md", "new.md"], (p) => p === "Project/a.md"),
+    ).toEqual(["a.md"]);
+    expect(
+      conflictingImportNames("", ["Root.md"], (p) => p === "Root.md"),
+    ).toEqual(["Root.md"]);
   });
 });

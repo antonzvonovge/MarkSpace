@@ -1254,7 +1254,9 @@ select {
 
 /* Library may leave `.dnd-drop-target` on a row after dragend; only paint while dragging. */
 .tree-scroll.is-tree-dragging .dnd-drop-target > .tree-row,
-.tree-scroll.is-tree-dragging li.dnd-drop-target > .tree-row {
+.tree-scroll.is-tree-dragging li.dnd-drop-target > .tree-row,
+.tree-scroll.is-os-file-dragging .dnd-drop-target > .tree-row,
+.tree-scroll.is-os-file-dragging li.dnd-drop-target > .tree-row {
   outline: 1px solid rgba(203, 17, 171, 0.55);
   background: rgba(203, 17, 171, 0.1);
 }

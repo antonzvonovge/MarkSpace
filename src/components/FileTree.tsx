@@ -77,11 +77,14 @@ import {
 import {
   beginVaultTreeDrag,
   endVaultTreeDrag,
+  isVaultTreeDrag,
   VAULT_TREE_MIME,
 } from "../lib/vaultTreeDrag";
 import {
   clipboardHasOsFiles,
   collectVaultDocumentFiles,
+  conflictingImportNames,
+  importEntryNames,
   pathsFromClipboardData,
 } from "../lib/osClipboardFiles";
 import {
@@ -202,6 +205,33 @@ type DeleteTarget = {
   name: string;
   isDir: boolean;
 };
+
+type PendingOsImport = {
+  parent: string;
+  paths: string[];
+  files: File[];
+  conflicts: string[];
+};
+
+/** Row under the pointer for OS file drops; vault root when over empty tree chrome. */
+function vaultRowFromPointerTarget(target: EventTarget | null): {
+  path: string;
+  isDir: boolean;
+} {
+  const el = (target as HTMLElement | null)?.closest?.(
+    "[data-vault-path]",
+  ) as HTMLElement | null;
+  if (!el || !el.hasAttribute("data-vault-path")) {
+    return { path: "", isDir: true };
+  }
+  const path = el.getAttribute("data-vault-path") ?? "";
+  const isDir = el.dataset.vaultIsdir === "1" || path === "";
+  return { path, isDir };
+}
+
+function importParentFromRow(path: string, isDir: boolean): string {
+  return isDir ? path : parentPath(path);
+}
 
 function toStorePath(id: string | number): string {
   const s = String(id);
@@ -1096,8 +1126,8 @@ function FavoritesTreeRows({
                   ? ({ ["--project-color"]: projectColor } as CSSProperties)
                   : null),
               }}
-              data-vault-path={path || undefined}
-              data-vault-isdir={isDir && path ? "1" : undefined}
+              data-vault-path={path}
+              data-vault-isdir={isDir ? "1" : undefined}
               data-drawio-path={isDrawio ? path : undefined}
               onClick={() => {
                 if (renaming) return;
@@ -1290,6 +1320,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [pendingOsImport, setPendingOsImport] =
+    useState<PendingOsImport | null>(null);
+  const [osDropRowPath, setOsDropRowPath] = useState<string | null>(null);
   const [projectPropsTarget, setProjectPropsTarget] =
     useState<ProjectProperties | null>(null);
   const [projectPropsLoading, setProjectPropsLoading] = useState(false);
@@ -1533,6 +1566,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       endVaultTreeDrag();
       endDrawioTreeDrag();
       setTreeDragging(false);
+      setOsDropRowPath(null);
     };
     const onDragEnd = () => {
       endDragChrome();
@@ -1554,7 +1588,13 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   // F2 rename + arrow-key selection when the tree has focus.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (renamingPath || promptKind || clipFolder !== null || deleteTarget) {
+      if (
+        renamingPath ||
+        promptKind ||
+        clipFolder !== null ||
+        deleteTarget ||
+        pendingOsImport
+      ) {
         return;
       }
       if (isEditableTarget(e.target)) return;
@@ -1698,15 +1738,39 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [renamingPath, promptKind, clipFolder, deleteTarget]);
+  }, [renamingPath, promptKind, clipFolder, deleteTarget, pendingOsImport]);
+
+  const runOsImport = useCallback(
+    (parent: string, paths: string[], files: File[], overwrite: boolean) => {
+      void importIntoSelection(paths, files, { parent, overwrite });
+    },
+    [importIntoSelection],
+  );
+
+  const beginOsImport = useCallback(
+    (parent: string, data: DataTransfer | null) => {
+      if (!data || !clipboardHasOsFiles(data)) return false;
+      const paths = pathsFromClipboardData(data);
+      const files = paths.length ? [] : collectVaultDocumentFiles(data);
+      if (!paths.length && !files.length) return false;
+      const names = importEntryNames(paths, files);
+      const vaultTree = useVaultStore.getState().tree;
+      const conflicts = conflictingImportNames(parent, names, (rel) =>
+        Boolean(findTreeNode(vaultTree, rel)),
+      );
+      if (conflicts.length) {
+        setPendingOsImport({ parent, paths, files, conflicts });
+        return true;
+      }
+      runOsImport(parent, paths, files, false);
+      return true;
+    },
+    [runOsImport],
+  );
 
   const pasteOsFiles = (data: DataTransfer | null) => {
-    if (!data || !clipboardHasOsFiles(data)) return false;
-    const paths = pathsFromClipboardData(data);
-    const files = paths.length ? [] : collectVaultDocumentFiles(data);
-    if (!paths.length && !files.length) return false;
-    void importIntoSelection(paths, files);
-    return true;
+    const parent = useVaultStore.getState().selectedFolderPath;
+    return beginOsImport(parent, data);
   };
 
   const flatTree = useMemo(() => (tree ? flattenTree(tree) : []), [tree]);
@@ -2028,11 +2092,40 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         }}
       />
 
+      <ConfirmDialog
+        open={pendingOsImport !== null}
+        title="Replace existing files?"
+        description={
+          pendingOsImport
+            ? pendingOsImport.conflicts.length === 1
+              ? `“${pendingOsImport.conflicts[0]}” already exists in this folder. Replace it?`
+              : `${pendingOsImport.conflicts.length} items already exist in this folder (${pendingOsImport.conflicts
+                  .slice(0, 3)
+                  .join(", ")}${
+                  pendingOsImport.conflicts.length > 3 ? ", …" : ""
+                }). Replace them?`
+            : ""
+        }
+        confirmLabel="Replace"
+        danger
+        onCancel={() => setPendingOsImport(null)}
+        onConfirm={() => {
+          const pending = pendingOsImport;
+          setPendingOsImport(null);
+          if (!pending) return;
+          runOsImport(pending.parent, pending.paths, pending.files, true);
+        }}
+      />
+
       {/* Stable ref callback: an inline closure here re-runs on every render
           (detach with null → setDndRoot(null) → Tree unmounts → remounts with
           initialOpen), silently resetting expand/collapse state. */}
       <div
-        className={["tree-scroll", treeDragging ? "is-tree-dragging" : ""]
+        className={[
+          "tree-scroll",
+          treeDragging ? "is-tree-dragging" : "",
+          osDropRowPath !== null ? "is-os-file-dragging" : "",
+        ]
           .filter(Boolean)
           .join(" ")}
         ref={setTreeScrollRef}
@@ -2042,6 +2135,45 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             e.preventDefault();
             e.stopPropagation();
           }
+        }}
+        onDragEnterCapture={(e) => {
+          if (isVaultTreeDrag(e.dataTransfer)) return;
+          if (!clipboardHasOsFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const row = vaultRowFromPointerTarget(e.target);
+          setOsDropRowPath(row.path);
+        }}
+        onDragOverCapture={(e) => {
+          if (isVaultTreeDrag(e.dataTransfer)) return;
+          if (!clipboardHasOsFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "copy";
+          const row = vaultRowFromPointerTarget(e.target);
+          setOsDropRowPath(row.path);
+        }}
+        onDragLeaveCapture={(e) => {
+          if (isVaultTreeDrag(e.dataTransfer)) return;
+          const related = e.relatedTarget as Node | null;
+          if (related && e.currentTarget.contains(related)) return;
+          setOsDropRowPath(null);
+        }}
+        onDropCapture={(e) => {
+          if (isVaultTreeDrag(e.dataTransfer)) {
+            setOsDropRowPath(null);
+            return;
+          }
+          if (!clipboardHasOsFiles(e.dataTransfer)) {
+            setOsDropRowPath(null);
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          const row = vaultRowFromPointerTarget(e.target);
+          setOsDropRowPath(null);
+          const parent = importParentFromRow(row.path, row.isDir);
+          beginOsImport(parent, e.dataTransfer);
         }}
       >
         {favoriteNodes.length > 0 ? (
@@ -2268,6 +2400,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       projectColor ? "has-project-color" : "",
                       selected || active ? "is-selected" : "",
                       isDropTarget && treeDragging ? "is-drop-target" : "",
+                      osDropRowPath !== null && path === osDropRowPath
+                        ? "is-drop-target"
+                        : "",
                       isDragging ? "is-dragging" : "",
                       renaming ? "is-renaming" : "",
                     ]
@@ -2280,8 +2415,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         ? ({ ["--project-color"]: projectColor } as CSSProperties)
                         : null),
                     }}
-                    data-vault-path={path || undefined}
-                    data-vault-isdir={isDir && path ? "1" : undefined}
+                    data-vault-path={path}
+                    data-vault-isdir={isDir ? "1" : undefined}
                     data-drawio-path={isDrawio ? path : undefined}
                     onClick={handleRowClick}
                     onDoubleClick={() => {

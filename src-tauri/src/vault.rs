@@ -1296,13 +1296,17 @@ pub fn import_drawio(
 }
 
 /// Copy external files/folders (from OS clipboard / explorer) into a vault folder.
-/// Only `.md` / `.drawio` files are imported; directory structure is preserved.
+/// Vault documents (`.md` / `.drawio` / `.mdlnks` / `.mddict` / `.pdf`) are imported;
+/// directory structure is preserved. When `overwrite` is false, name conflicts get a
+/// unique sibling (`note-1.md`). When true, existing files are replaced and folders merge.
 #[tauri::command(async)]
 pub fn import_paths(
     parent: String,
     sources: Vec<String>,
+    overwrite: Option<bool>,
     state: State<VaultState>,
 ) -> Result<Vec<String>, String> {
+    let overwrite = overwrite.unwrap_or(false);
     let root = get_root(&state)?;
     let root_canon = root
         .canonicalize()
@@ -1331,6 +1335,7 @@ pub fn import_paths(
             &dest_dir,
             &parent_rel,
             &source_path,
+            overwrite,
             &mut order,
             &mut created,
         )?;
@@ -1342,9 +1347,20 @@ pub fn import_paths(
             if let Ok(text) = fs::read_to_string(&full) {
                 set_tag_index_path(&state, rel, tags_from_note_content(&text));
             }
+            crate::embeddings::notify_file_changed(rel);
+        } else if is_pdf(rel) {
+            crate::embeddings::notify_file_changed(rel);
         }
     }
     Ok(created)
+}
+
+fn import_dest_name(dest_dir: &Path, name: &str, overwrite: bool) -> String {
+    if overwrite {
+        sanitize_asset_filename(name)
+    } else {
+        unique_filename(dest_dir, name)
+    }
 }
 
 fn import_path_recursive(
@@ -1353,6 +1369,7 @@ fn import_path_recursive(
     dest_dir: &Path,
     dest_parent_rel: &str,
     source: &Path,
+    overwrite: bool,
     order: &mut OrderMap,
     created: &mut Vec<String>,
 ) -> Result<(), String> {
@@ -1381,23 +1398,41 @@ fn import_path_recursive(
             return Ok(());
         }
         fs::create_dir_all(dest_dir).map_err(|e| format!("Cannot create folders: {e}"))?;
-        let unique = unique_filename(dest_dir, &name);
-        let dest = dest_dir.join(&unique);
+        let dest_name = import_dest_name(dest_dir, &name, overwrite);
+        let dest = dest_dir.join(&dest_name);
+        if dest.exists() && dest.is_dir() {
+            return Err(format!(
+                "Cannot overwrite folder with file: {}",
+                dest.display()
+            ));
+        }
+        let existed = dest.is_file();
         fs::copy(&source_canon, &dest)
             .map_err(|e| format!("Cannot copy {}: {e}", source.display()))?;
         let rel = relative_to_root(root_canon, &dest);
-        order_insert_child(order, dest_parent_rel, &unique, None);
+        if !existed {
+            order_insert_child(order, dest_parent_rel, &dest_name, None);
+        }
         created.push(rel);
         return Ok(());
     }
 
     if source_canon.is_dir() {
-        let unique_dir = unique_filename(dest_dir, &name);
-        let next_dir = dest_dir.join(&unique_dir);
+        let dest_name = import_dest_name(dest_dir, &name, overwrite);
+        let next_dir = dest_dir.join(&dest_name);
+        if next_dir.exists() && next_dir.is_file() {
+            return Err(format!(
+                "Cannot overwrite file with folder: {}",
+                next_dir.display()
+            ));
+        }
+        let existed = next_dir.is_dir();
         fs::create_dir_all(&next_dir).map_err(|e| format!("Cannot create folder: {e}"))?;
-        let next_rel = join_parent(dest_parent_rel, &unique_dir);
-        order_insert_child(order, dest_parent_rel, &unique_dir, None);
-        created.push(next_rel.clone());
+        let next_rel = join_parent(dest_parent_rel, &dest_name);
+        if !existed {
+            order_insert_child(order, dest_parent_rel, &dest_name, None);
+            created.push(next_rel.clone());
+        }
 
         let entries = fs::read_dir(&source_canon)
             .map_err(|e| format!("Cannot read folder {}: {e}", source.display()))?;
@@ -1409,6 +1444,7 @@ fn import_path_recursive(
                 &next_dir,
                 &next_rel,
                 &entry.path(),
+                overwrite,
                 order,
                 created,
             )?;
@@ -1424,10 +1460,12 @@ pub fn import_document_bytes(
     parent: String,
     file_name: String,
     data_base64: String,
+    overwrite: Option<bool>,
     state: State<VaultState>,
 ) -> Result<String, String> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
+    let overwrite = overwrite.unwrap_or(false);
     let root = get_root(&state)?;
     let root_canon = root
         .canonicalize()
@@ -1453,13 +1491,22 @@ pub fn import_document_bytes(
     };
     fs::create_dir_all(&dest_dir).map_err(|e| format!("Cannot create folders: {e}"))?;
 
-    let unique = unique_filename(&dest_dir, &name);
-    let dest = dest_dir.join(&unique);
+    let dest_name = import_dest_name(&dest_dir, &name, overwrite);
+    let dest = dest_dir.join(&dest_name);
+    if dest.exists() && dest.is_dir() {
+        return Err(format!(
+            "Cannot overwrite folder with file: {}",
+            dest.display()
+        ));
+    }
+    let existed = dest.is_file();
     fs::write(&dest, data).map_err(|e| format!("Cannot write file: {e}"))?;
 
     let created = relative_to_root(&root_canon, &dest);
     let mut order = read_order(&root);
-    order_insert_child(&mut order, &parent_rel, &unique, None);
+    if !existed {
+        order_insert_child(&mut order, &parent_rel, &dest_name, None);
+    }
     write_order(&root, &order)?;
     if is_markdown(&created) {
         if let Ok(text) = fs::read_to_string(&dest) {

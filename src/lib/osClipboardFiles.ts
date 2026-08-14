@@ -117,3 +117,39 @@ export function clipboardHasOsFiles(data: DataTransfer | null): boolean {
   }
   return false;
 }
+
+/** Last path segment from an OS absolute path (Unix or Windows). */
+export function basenameFromOsPath(path: string): string {
+  const cleaned = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const i = cleaned.lastIndexOf("/");
+  return i === -1 ? cleaned : cleaned.slice(i + 1);
+}
+
+/** Top-level entry names that import will place under `parent`. */
+export function importEntryNames(paths: string[], files: File[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (name: string) => {
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    out.push(name);
+  };
+  for (const p of paths) push(basenameFromOsPath(p));
+  for (const f of files) {
+    if (isVaultDocumentName(f.name)) push(f.name);
+  }
+  return out;
+}
+
+/** Names that already exist under `parent` in the vault tree. */
+export function conflictingImportNames(
+  parent: string,
+  names: string[],
+  exists: (vaultRelPath: string) => boolean,
+): string[] {
+  const prefix = parent.replace(/\/$/, "");
+  return names.filter((name) => {
+    const dest = prefix ? `${prefix}/${name}` : name;
+    return exists(dest);
+  });
+}
