@@ -174,6 +174,21 @@ pub fn get_chat_thread(
     serde_json::from_str(&raw).map_err(|e| format!("Invalid chat thread: {e}"))
 }
 
+/// Absolute filesystem path of the thread JSON under the app data chats dir.
+#[tauri::command(async)]
+pub fn get_chat_thread_path(
+    vault_path: String,
+    thread_id: String,
+    app: AppHandle,
+) -> Result<String, String> {
+    let id = thread_id.trim();
+    if id.is_empty() {
+        return Err("Thread id required".into());
+    }
+    let dir = vault_dir(&app, &vault_path)?;
+    Ok(thread_path(&dir, id).to_string_lossy().into_owned())
+}
+
 #[tauri::command(async)]
 pub fn upsert_chat_thread(
     vault_path: String,

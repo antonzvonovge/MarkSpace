@@ -1,4 +1,3 @@
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   useCallback,
   useEffect,
@@ -12,6 +11,8 @@ import { createPortal } from "react-dom";
 import type { DiagramEngine } from "../editor/diagramCache";
 import { diagramRenderFn } from "../editor/renderDiagram";
 import { scheduleDiagramPreview } from "../editor/scheduleDiagramPreview";
+import { writeClipboardPng } from "../lib/clipboardImage";
+import { rasterizeSvgElementToPng } from "../lib/rasterizeSvg";
 
 /**
  * Keep intrinsic SVG size (no stretch-to-column). Only shrink if wider than
@@ -120,11 +121,14 @@ export function DiagramLightbox({
   const [pending, setPending] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [svgReady, setSvgReady] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
   const [panning, setPanning] = useState(false);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const copiedTimerRef = useRef<number | undefined>(undefined);
+  const copyInFlightRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -134,26 +138,33 @@ export function DiagramLightbox({
     };
   }, []);
 
-  const copyMarkup = useCallback(async () => {
-    const text = code.trim();
-    if (!text) return;
+  const copyImage = useCallback(async () => {
+    const svg = containerRef.current?.querySelector("svg");
+    if (!(svg instanceof SVGSVGElement) || copyInFlightRef.current) return;
+    copyInFlightRef.current = true;
+    // Yield so the click can paint before heavy SVG work (avoids "frozen" UI).
+    await new Promise<void>((r) => window.setTimeout(r, 0));
     try {
-      await writeText(text);
-    } catch {
-      await navigator.clipboard.writeText(text);
+      const png = await rasterizeSvgElementToPng(svg);
+      await writeClipboardPng(png);
+      setCopyState("copied");
+    } catch (err) {
+      console.warn("diagram clipboard copy failed", err);
+      setCopyState("error");
+    } finally {
+      copyInFlightRef.current = false;
     }
-    setCopied(true);
     if (copiedTimerRef.current !== undefined) {
       window.clearTimeout(copiedTimerRef.current);
     }
-    copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
-  }, [code]);
+    copiedTimerRef.current = window.setTimeout(() => setCopyState("idle"), 1800);
+  }, []);
 
   useEffect(() => {
     if (!open) {
       setZoom(1);
       setSvgReady(false);
-      setCopied(false);
+      setCopyState("idle");
       setPanning(false);
       return;
     }
@@ -267,6 +278,12 @@ export function DiagramLightbox({
   if (!open) return null;
 
   const zoomPercent = `${Math.round(zoom * 100)}%`;
+  const copyLabel =
+    copyState === "copied"
+      ? "Copied"
+      : copyState === "error"
+        ? "Could not copy image"
+        : "Copy image";
 
   return createPortal(
     <div className="diagram-lightbox-root" role="presentation">
@@ -316,17 +333,13 @@ export function DiagramLightbox({
             </div>
             <button
               type="button"
-              className={
-                copied
-                  ? "diagram-lightbox__btn diagram-lightbox__icon-btn is-copied"
-                  : "diagram-lightbox__btn diagram-lightbox__icon-btn"
-              }
-              aria-label={copied ? "Copied" : "Copy diagram markup"}
-              title={copied ? "Copied" : "Copy markup"}
-              disabled={!code.trim()}
-              onClick={() => void copyMarkup()}
+              className={`diagram-lightbox__btn diagram-lightbox__icon-btn is-${copyState}`}
+              aria-label={copyLabel}
+              title={copyLabel}
+              disabled={!svgReady}
+              onClick={() => void copyImage()}
             >
-              {copied ? (
+              {copyState === "copied" ? (
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                   <path
                     fill="currentColor"

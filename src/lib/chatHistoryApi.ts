@@ -57,6 +57,14 @@ export async function getChatThread(
   return invoke("get_chat_thread", { vaultPath, threadId });
 }
 
+/** Absolute path to `{appData}/chats/<vaultKey>/<threadId>.json`. */
+export async function getChatThreadPath(
+  vaultPath: string,
+  threadId: string,
+): Promise<string> {
+  return invoke("get_chat_thread_path", { vaultPath, threadId });
+}
+
 export async function upsertChatThread(
   vaultPath: string,
   thread: ChatThreadFile,

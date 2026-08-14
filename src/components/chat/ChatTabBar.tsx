@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { getChatThreadPath } from "../../lib/chatHistoryApi";
+import { writeClipboardText } from "../../lib/clipboardText";
 import { useChatStore } from "../../store/chatStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
@@ -54,6 +56,19 @@ export function ChatTabBar() {
     [reorderOpenTabs],
   );
   const bindReorder = useTabReorder(tabs.length, onReorder);
+
+  const copyThreadPath = useCallback(
+    async (threadId: string) => {
+      if (!vaultPath) return;
+      try {
+        const path = await getChatThreadPath(vaultPath, threadId);
+        await writeClipboardText(path);
+      } catch (err) {
+        console.warn("copy chat thread path failed", err);
+      }
+    },
+    [vaultPath],
+  );
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({
@@ -220,6 +235,7 @@ export function ChatTabBar() {
         <TabContextMenu
           menu={contextMenu}
           onClose={() => setContextMenu(null)}
+          onCopyPath={() => void copyThreadPath(contextMenu.targetId)}
           onCloseTab={() => void closeTab(contextMenu.targetId)}
           onCloseOthers={() => void closeOtherTabs(contextMenu.targetId)}
           onCloseToTheRight={() =>

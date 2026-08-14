@@ -5725,6 +5725,11 @@ select {
   color: #ffffff;
 }
 
+.diagram-lightbox__btn.is-error {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: #ffffff;
+}
+
 .diagram-lightbox__zoom {
   display: inline-flex;
   align-items: center;

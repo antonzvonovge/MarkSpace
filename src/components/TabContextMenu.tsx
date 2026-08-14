@@ -17,6 +17,8 @@ type Props = {
   onCloseTab: () => void;
   onCloseOthers: () => void;
   onCloseToTheRight: () => void;
+  /** When set, shows a “Copy path” item (e.g. chat thread JSON on disk). */
+  onCopyPath?: () => void;
 };
 
 export function TabContextMenu({
@@ -25,6 +27,7 @@ export function TabContextMenu({
   onCloseTab,
   onCloseOthers,
   onCloseToTheRight,
+  onCopyPath,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const hasOthers = menu.tabCount > 1;
@@ -49,7 +52,7 @@ export function TabContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 220);
-  const top = Math.min(menu.y, window.innerHeight - 160);
+  const top = Math.min(menu.y, window.innerHeight - 200);
 
   return createPortal(
     <div
@@ -58,6 +61,19 @@ export function TabContextMenu({
       role="menu"
       style={{ left, top }}
     >
+      {onCopyPath ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={() => {
+            onClose();
+            onCopyPath();
+          }}
+        >
+          <span>Copy path</span>
+        </button>
+      ) : null}
       <button
         type="button"
         role="menuitem"

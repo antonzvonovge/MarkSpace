@@ -1,5 +1,3 @@
-import { Image as TauriImage } from "@tauri-apps/api/image";
-import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import {
   useCallback,
   useEffect,
@@ -10,6 +8,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { writeClipboardImageData } from "../lib/clipboardImage";
 
 const ZOOM_LEVELS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5];
 const ZOOM_MAX = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
@@ -135,16 +134,7 @@ export function ImageLightbox({ src, alt, onClose }: Props) {
       if (!context) throw new Error("Canvas is unavailable");
       context.drawImage(image, 0, 0);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-      const clipboardImage = await TauriImage.new(
-        pixels.data,
-        canvas.width,
-        canvas.height,
-      );
-      try {
-        await writeImage(clipboardImage);
-      } finally {
-        await clipboardImage.close();
-      }
+      await writeClipboardImageData(pixels);
       setCopyState("copied");
     } catch {
       setCopyState("error");

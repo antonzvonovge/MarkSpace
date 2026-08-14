@@ -208,6 +208,7 @@ pub fn run() {
             http_fetch::http_fetch_bytes,
             chat_history::list_chat_threads,
             chat_history::get_chat_thread,
+            chat_history::get_chat_thread_path,
             chat_history::upsert_chat_thread,
             chat_history::delete_chat_thread,
             chat_history::set_active_chat_thread,
