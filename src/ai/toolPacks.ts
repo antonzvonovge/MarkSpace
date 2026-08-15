@@ -4,7 +4,8 @@ export type SpecialistKind =
   | "edit_notes"
   | "diagram"
   | "links"
-  | "dict";
+  | "dict"
+  | "terminal";
 
 export type SpecialistPreset = {
   kind: SpecialistKind;
@@ -18,7 +19,7 @@ export type SpecialistPreset = {
   writes: boolean;
 };
 
-/** Parent Agent orchestrator surface (exactly 8 tools). */
+/** Parent Agent orchestrator surface without terminal. */
 export const ORCHESTRATOR_TOOL_NAMES = [
   "list_folder",
   "search",
@@ -29,6 +30,17 @@ export const ORCHESTRATOR_TOOL_NAMES = [
   "read_skill",
   "run_specialist",
 ] as const;
+
+export const TERMINAL_TOOL_NAME = "run_terminal" as const;
+
+/** Orchestrator tools for the current Settings toggle. */
+export function orchestratorToolNames(
+  terminalEnabled: boolean,
+): readonly string[] {
+  return terminalEnabled
+    ? [...ORCHESTRATOR_TOOL_NAMES, TERMINAL_TOOL_NAME]
+    : [...ORCHESTRATOR_TOOL_NAMES];
+}
 
 export type OrchestratorToolName = (typeof ORCHESTRATOR_TOOL_NAMES)[number];
 
@@ -165,6 +177,18 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "reorder_entries",
       "set_dictionary_filter",
     ],
+  },
+  terminal: {
+    kind: "terminal",
+    label: "Terminal",
+    writes: true,
+    system: [
+      "You are a MarkSpace terminal specialist. Run shell commands with run_terminal.",
+      "The user must approve each command unless they enabled Allow for this chat.",
+      "Do not edit notes, diagrams, .mdlnks, or .mddict via the shell — other specialists own those.",
+      "Prefer list_folder / read_note to inspect vault files. End with a summary of commands and results.",
+    ].join(" "),
+    toolNames: ["run_terminal", "list_folder", "read_note"],
   },
 };
 

@@ -43,6 +43,11 @@ export type AiSettings = {
    * send a message; not a session-wide budget.
    */
   agentMaxSteps: number;
+  /**
+   * When true, Agent mode may call `run_terminal`. Off by default — each
+   * command still needs Allow / Deny unless the chat has auto-allow.
+   */
+  agentTerminalEnabled: boolean;
   /** Default context window when model does not override */
   contextWindow: number;
   models: AiModelOption[];
@@ -74,6 +79,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   modelId: "anthropic/claude-sonnet-5",
   defaultMode: "ask",
   agentMaxSteps: DEFAULT_AGENT_MAX_STEPS,
+  agentTerminalEnabled: false,
   contextWindow: 200_000,
   models: [...OPENROUTER_MODELS],
 };

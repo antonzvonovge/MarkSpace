@@ -16,6 +16,7 @@ import {
   type SpecialistKind,
 } from "./toolPacks";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { isAgentTerminalEnabled } from "./terminalTool";
 
 export const SPECIALIST_WORKER_MAX_STEPS = 8;
 
@@ -245,6 +246,7 @@ function humanStatus(toolName: string): string {
     add_entry: "Adding entry…",
     clip_article: "Clipping article…",
     translate_note: "Translating…",
+    run_terminal: "Waiting for terminal…",
   };
   return map[toolName] ?? `Running ${toolName}…`;
 }
@@ -516,17 +518,22 @@ export async function runSpecialist(params: {
 }
 
 export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
-  const kindEnum = z.enum([
-    "research",
-    "edit_notes",
-    "diagram",
-    "links",
-    "dict",
-  ]);
+  const terminalOn = isAgentTerminalEnabled();
+  const kindEnum = terminalOn
+    ? z.enum([
+        "research",
+        "edit_notes",
+        "diagram",
+        "links",
+        "dict",
+        "terminal",
+      ])
+    : z.enum(["research", "edit_notes", "diagram", "links", "dict"]);
 
   return tool({
-    description:
-      "Delegate a focused subtask to a specialist worker with a limited tool set. Use for research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, or .mddict dictionaries. Emit multiple run_specialist calls in ONE response when tasks are independent. Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known.",
+    description: terminalOn
+      ? "Delegate a focused subtask to a specialist worker with a limited tool set. Use for research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, or a terminal command sequence. Emit multiple run_specialist calls in ONE response when tasks are independent. Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known."
+      : "Delegate a focused subtask to a specialist worker with a limited tool set. Use for research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, or .mddict dictionaries. Emit multiple run_specialist calls in ONE response when tasks are independent. Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known.",
     inputSchema: z.object({
       kind: kindEnum.describe("Specialist preset"),
       title: z
@@ -551,6 +558,13 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
         return {
           ok: false as const,
           error: `Unknown specialist kind: ${kind}`,
+        };
+      }
+      if (String(kind) === "terminal" && !isAgentTerminalEnabled()) {
+        return {
+          ok: false as const,
+          error:
+            "Terminal is disabled. The user can enable it in Settings → AI → Allow agent terminal.",
         };
       }
       return runSpecialist({

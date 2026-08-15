@@ -55,5 +55,15 @@ describe("normalizeAiSettings", () => {
     expect(normalizeAiSettings({ agentMaxSteps: 0 }).agentMaxSteps).toBe(1);
     expect(normalizeAiSettings({ agentMaxSteps: 99 }).agentMaxSteps).toBe(64);
     expect(normalizeAiSettings({ agentMaxSteps: 24.6 }).agentMaxSteps).toBe(25);
+    expect(normalizeAiSettings({}).agentTerminalEnabled).toBe(false);
+    expect(normalizeAiSettings({ agentTerminalEnabled: true }).agentTerminalEnabled).toBe(
+      true,
+    );
+    expect(
+      normalizeAiSettings({
+        // @ts-expect-error intentional bad persist shape
+        agentTerminalEnabled: "yes",
+      }).agentTerminalEnabled,
+    ).toBe(false);
   });
 });

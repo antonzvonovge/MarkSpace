@@ -40,6 +40,9 @@ pub struct ChatThreadFile {
     /// Sticky Reasoning toggle (composer). Absent on older threads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enable_reasoning: Option<bool>,
+    /// Skip per-command terminal approval for this thread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_allow_for_chat: Option<bool>,
     /// Measured context baseline (next prompt, empty draft).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_anchor_tokens: Option<i64>,

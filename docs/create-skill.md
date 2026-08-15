@@ -40,7 +40,7 @@ Write clear, step-by-step instructions the agent must follow after loading the s
 4. Output format / template the agent should produce
 5. Edge cases and what not to do
 
-Prefer concrete MarkSpace paths, wiki-links, and tool names (`read_note`, `edit_note`, `create_note`, etc.). Do not assume Cursor-only concepts (MCP, terminal, git) unless the user asked for that workflow in this vault.
+Prefer concrete MarkSpace paths, wiki-links, and tool names (`read_note`, `edit_note`, `create_note`, etc.). Do not assume Cursor-only concepts (MCP, git CLI) unless the user asked for that workflow in this vault. `run_terminal` exists only when the user enabled **Allow agent terminal** in Settings — do not write skills that require it unless they asked.
 
 ## How to create a skill for the user
 

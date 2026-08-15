@@ -46,6 +46,32 @@ describe("vault agent tools", () => {
     expect(agentTools).not.toHaveProperty("edit_note");
     expect(agentTools).not.toHaveProperty("mutate_diagram");
     expect(agentTools).not.toHaveProperty("list_notes");
+    expect(agentTools).not.toHaveProperty("run_terminal");
+  });
+
+  it("adds run_terminal to the orchestrator when the setting is on", async () => {
+    const { useAiSettingsStore } = await import("../store/aiSettingsStore");
+    const { DEFAULT_AI_SETTINGS } = await import("./types");
+    const prev = useAiSettingsStore.getState().settings;
+    useAiSettingsStore.setState({
+      settings: { ...DEFAULT_AI_SETTINGS, agentTerminalEnabled: true },
+      hydrated: true,
+    });
+    try {
+      const agentTools = buildVaultTools("agent");
+      expect(agentTools).toHaveProperty("run_terminal");
+      expect(Object.keys(agentTools)).toHaveLength(9);
+      const prompt = buildSystemPrompt({
+        mode: "agent",
+        vaultPath: null,
+        activePath: null,
+        activeExcerpt: null,
+      });
+      expect(prompt).toContain("run_terminal");
+      expect(prompt).toContain("kind=terminal");
+    } finally {
+      useAiSettingsStore.setState({ settings: prev, hydrated: true });
+    }
   });
 
   it("specialist toolNames expose write/domain tools", () => {
@@ -63,6 +89,14 @@ describe("vault agent tools", () => {
     expect(diagram).toHaveProperty("mutate_diagram");
     expect(diagram).toHaveProperty("create_diagram");
     expect(diagram).not.toHaveProperty("add_diagram_node");
+
+    const terminal = buildVaultTools("agent", {
+      toolNames: [...SPECIALIST_PRESETS.terminal.toolNames],
+    });
+    expect(terminal).toHaveProperty("run_terminal");
+    expect(terminal).toHaveProperty("list_folder");
+    expect(terminal).not.toHaveProperty("edit_note");
+    expect(terminal).not.toHaveProperty("run_specialist");
   });
 
   it("tells the model when to use tools / specialists", () => {
@@ -92,6 +126,7 @@ describe("vault agent tools", () => {
     expect(agentPrompt).toContain("list_folder");
     expect(agentPrompt).not.toContain("prefer edit_note");
     expect(agentPrompt).not.toContain("move_path");
+    expect(agentPrompt).not.toContain("run_terminal");
   });
 
   it("reports configured web API keys without exposing secrets", async () => {

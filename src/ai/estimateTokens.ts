@@ -6,7 +6,8 @@ import {
   type ChatAttachment,
 } from "./chatAttachments";
 import { buildVaultTools } from "./vaultTools";
-import { ORCHESTRATOR_TOOL_NAMES, packCacheKey } from "./toolPacks";
+import { orchestratorToolNames, packCacheKey } from "./toolPacks";
+import { isAgentTerminalEnabled } from "./terminalTool";
 import type { ChatMode } from "./types";
 
 export type ContextAnchor = {
@@ -70,7 +71,9 @@ export function estimateToolSchemaTokens(
 ): number {
   const names =
     toolNames ??
-    (mode === "agent" ? [...ORCHESTRATOR_TOOL_NAMES] : null);
+    (mode === "agent"
+      ? [...orchestratorToolNames(isAgentTerminalEnabled())]
+      : null);
   const key = packCacheKey(mode, names);
   const cached = toolSchemaTokenCache.get(key);
   if (cached != null) return cached;

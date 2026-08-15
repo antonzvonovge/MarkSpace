@@ -263,7 +263,8 @@ export function AiSettingsPanel() {
       <section className="sync-block">
         <h3 className="sync-block-title">Default mode</h3>
         <p className="sync-block-desc">
-          Ask is read-only; Agent can create and write notes.
+          Ask is read-only; Agent can create and write notes. Terminal
+          commands require the setting below.
         </p>
         <Select
           variant="field"
@@ -295,6 +296,25 @@ export function AiSettingsPanel() {
             setSettings({ agentMaxSteps: clampAgentMaxSteps(raw) });
           }}
         />
+      </section>
+
+      <section className="sync-block">
+        <h3 className="sync-block-title">Agent terminal</h3>
+        <p className="sync-block-desc">
+          Lets Agent run shell commands on this computer (cwd stays inside
+          the vault). Each command still needs Allow unless you choose Allow
+          for this chat. Off by default.
+        </p>
+        <label className="agent-memory-toggle">
+          <input
+            type="checkbox"
+            checked={settings.agentTerminalEnabled}
+            onChange={(e) =>
+              setSettings({ agentTerminalEnabled: e.target.checked })
+            }
+          />
+          <span>Allow agent terminal</span>
+        </label>
       </section>
     </div>
   );

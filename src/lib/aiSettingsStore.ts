@@ -168,6 +168,7 @@ export function normalizeAiSettings(
     modelId: known,
     defaultMode: mode,
     agentMaxSteps: clampAgentMaxSteps(raw.agentMaxSteps),
+    agentTerminalEnabled: raw.agentTerminalEnabled === true,
     contextWindow:
       typeof raw.contextWindow === "number" && raw.contextWindow > 0
         ? Math.round(raw.contextWindow)
@@ -211,6 +212,7 @@ export async function saveAiSettings(settings: AiSettings): Promise<void> {
         ? settings.defaultMode
         : DEFAULT_AI_SETTINGS.defaultMode,
     agentMaxSteps: clampAgentMaxSteps(settings.agentMaxSteps),
+    agentTerminalEnabled: settings.agentTerminalEnabled === true,
     modelId: resolveModelId(OPENROUTER_BASE_URL, settings.modelId),
     models: normalizeModels(
       settings.models?.length ? settings.models : OPENROUTER_MODELS,

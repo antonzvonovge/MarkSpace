@@ -11,9 +11,11 @@ mod http_fetch;
 mod order_merge;
 mod pdf_text;
 mod projects;
+mod terminal;
 mod vault;
 
 use git_sync::SyncRuntime;
+use terminal::TerminalRuntime;
 use vault::VaultState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -144,6 +146,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(VaultState::default())
         .manage(SyncRuntime::default())
+        .manage(TerminalRuntime::default())
         .invoke_handler(tauri::generate_handler![
             vault::open_vault,
             vault::list_tree,
@@ -208,6 +211,8 @@ pub fn run() {
             agent_memory::clear_agent_memory,
             http_fetch::http_fetch,
             http_fetch::http_fetch_bytes,
+            terminal::run_terminal_command,
+            terminal::kill_terminal_command,
             chat_history::list_chat_threads,
             chat_history::get_chat_thread,
             chat_history::get_chat_thread_path,

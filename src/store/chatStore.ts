@@ -9,6 +9,11 @@ import {
 import { generateChatTitle } from "../ai/generateChatTitle";
 import { cancelAllPendingAskUser } from "../ai/askUser";
 import {
+  cancelAllPendingTerminal,
+  killAllRunningTerminalJobs,
+  setTerminalThreadAutoAllow,
+} from "../ai/terminalTool";
+import {
   buildContextAnchor,
   estimateUsedContext,
   wouldExceedContext,
@@ -119,7 +124,11 @@ type ChatStore = {
    * model; user may turn it off. Forced off when the model has no reasoning.
    */
   enableReasoning: boolean;
-  /** Selected vault project path, or null for none. */
+  /**
+   * Skip per-command terminal approval for this thread. Only effective while
+   * Settings → Allow agent terminal is on.
+   */
+  terminalAllowForChat: boolean;
   projectPath: string | null;
   /** Cached "about" text for `projectPath` (for prompt + context meter). */
   projectAbout: string;
@@ -175,6 +184,7 @@ type ChatStore = {
   setMode: (mode: ChatMode) => void;
   setModelId: (modelId: string) => void;
   setEnableReasoning: (enableReasoning: boolean) => void;
+  setTerminalAllowForChat: (allow: boolean) => void;
   setProjectPath: (projectPath: string | null) => Promise<void>;
   /** Start a new chat thread with the given Gem (model + instructions). */
   newThreadWithGem: (gemId: string) => Promise<void>;
@@ -244,6 +254,7 @@ function emptySession(vaultBound: string | null = null) {
     skillsCatalog: [] as SkillMeta[],
     contextAnchorTokens: null as number | null,
     contextAnchorMessageCount: null as number | null,
+    terminalAllowForChat: false,
     ...defaultsFromSettings(),
   };
 }
@@ -383,8 +394,10 @@ async function createNewThread(
     projectPath: inheritedProject,
     gemId: gem.gemId,
     enableReasoning,
+    terminalAllowForChat: false,
     messages: [] as UIMessage[],
   };
+  setTerminalThreadAutoAllow(false);
   const meta = await upsertChatThread(vaultPath, empty);
   const openTabIds = [...get().openTabIds.filter((t) => t !== id), id];
   await setOpenChatTabs(vaultPath, openTabIds, id);
@@ -398,6 +411,7 @@ async function createNewThread(
     mode: meta.mode === "agent" ? "agent" : "ask",
     modelId: meta.modelId || modelId,
     enableReasoning,
+    terminalAllowForChat: false,
     projectPath: inheritedProject,
     projectAbout: project.about,
     projectType: project.projectType,
@@ -443,6 +457,8 @@ async function loadThreadIntoState(
     typeof thread.enableReasoning === "boolean"
       ? thread.enableReasoning && supports
       : supports;
+  const terminalAllowForChat = thread.terminalAllowForChat === true;
+  setTerminalThreadAutoAllow(terminalAllowForChat);
   const rawMessages = Array.isArray(thread.messages) ? thread.messages : [];
   const messages = settleIncompleteToolCalls(rawMessages);
   if (messages !== rawMessages) {
@@ -457,6 +473,7 @@ async function loadThreadIntoState(
     mode: thread.mode === "agent" ? ("agent" as const) : ("ask" as const),
     modelId: resolvedModelId,
     enableReasoning,
+    terminalAllowForChat,
     projectPath,
     projectAbout: project.about,
     projectType: project.projectType,
@@ -616,6 +633,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   mode: "ask",
   modelId: DEFAULT_MODEL_PLACEHOLDER(),
   enableReasoning: modelSupportsReasoning(DEFAULT_MODEL_PLACEHOLDER()),
+  terminalAllowForChat: false,
   projectPath: null,
   projectAbout: "",
   projectType: "",
@@ -641,6 +659,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const prev = get().abort;
     if (prev) prev.abort();
     if (!vaultPath) {
+      setTerminalThreadAutoAllow(false);
       set(emptySession(null));
       return;
     }
@@ -793,6 +812,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       contextAnchorTokens: null,
       contextAnchorMessageCount: null,
     });
+    void get().persistActive();
+  },
+
+  setTerminalAllowForChat: (allow) => {
+    const next = Boolean(allow);
+    setTerminalThreadAutoAllow(next);
+    set({ terminalAllowForChat: next });
     void get().persistActive();
   },
 
@@ -1048,6 +1074,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       projectPath,
       gemId,
       enableReasoning,
+      terminalAllowForChat,
       contextAnchorTokens,
       contextAnchorMessageCount,
       threads,
@@ -1076,6 +1103,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       projectPath,
       gemId,
       enableReasoning,
+      terminalAllowForChat,
       contextAnchorTokens,
       contextAnchorMessageCount,
       messages,
@@ -1430,6 +1458,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   stop: () => {
     const { abort } = get();
     cancelAllPendingAskUser("stopped");
+    cancelAllPendingTerminal("stopped");
+    void killAllRunningTerminalJobs();
     if (abort) abort.abort();
     set({
       abort: null,

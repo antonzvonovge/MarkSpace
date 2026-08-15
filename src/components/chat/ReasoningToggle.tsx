@@ -6,7 +6,7 @@ type Props = {
   onChange: (next: boolean) => void;
 };
 
-/** Sticky on/off chip for reasoning — same chrome as Ask/Agent switch. */
+/** Sticky on/off chip for reasoning. */
 export function ReasoningToggle({
   supported,
   value,

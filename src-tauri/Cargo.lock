@@ -3010,6 +3010,7 @@ dependencies = [
  "gdk",
  "git2",
  "gtk",
+ "libc",
  "notify",
  "parking_lot",
  "pdf-extract",

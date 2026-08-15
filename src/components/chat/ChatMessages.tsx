@@ -42,6 +42,7 @@ import { ChatMarkdown } from "./ChatMarkdown";
 import { ChatReasoning } from "./ChatReasoning";
 import { ChatToolCall } from "./ChatToolCall";
 import { ChatSpecialistCard } from "./ChatSpecialistCard";
+import { ChatTerminalCall } from "./ChatTerminalCall";
 
 type CopyMenuState = { x: number; y: number; text: string };
 
@@ -490,6 +491,14 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
           if (toolName === "run_specialist") {
             return (
               <ChatSpecialistCard
+                key={`${message.id}-tool-${i}`}
+                part={part}
+              />
+            );
+          }
+          if (toolName === "run_terminal") {
+            return (
+              <ChatTerminalCall
                 key={`${message.id}-tool-${i}`}
                 part={part}
               />

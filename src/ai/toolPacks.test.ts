@@ -7,15 +7,22 @@ import {
 } from "./specialists";
 import {
   ORCHESTRATOR_TOOL_NAMES,
+  orchestratorToolNames,
   pickTools,
   SPECIALIST_PRESETS,
   specialistLabel,
 } from "./toolPacks";
 
 describe("toolPacks", () => {
-  it("defines 8 orchestrator tools", () => {
+  it("defines 8 orchestrator tools; terminal is opt-in", () => {
     expect(ORCHESTRATOR_TOOL_NAMES).toHaveLength(8);
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("run_specialist");
+    expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("run_terminal");
+    expect(orchestratorToolNames(false)).toHaveLength(8);
+    expect(orchestratorToolNames(true)).toEqual([
+      ...ORCHESTRATOR_TOOL_NAMES,
+      "run_terminal",
+    ]);
   });
 
   it("diagram preset omits granular shape tools", () => {
@@ -36,6 +43,8 @@ describe("toolPacks", () => {
   it("labels kinds in English", () => {
     expect(specialistLabel("research")).toBe("Research");
     expect(specialistLabel("edit_notes")).toBe("Editor");
+    expect(specialistLabel("terminal")).toBe("Terminal");
+    expect(SPECIALIST_PRESETS.terminal.toolNames).toContain("run_terminal");
   });
 });
 

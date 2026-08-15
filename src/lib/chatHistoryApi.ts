@@ -35,6 +35,11 @@ export type ChatThreadFile = {
   contextAnchorMessageCount?: number | null;
   /** Sticky Reasoning toggle; omit on older threads. */
   enableReasoning?: boolean | null;
+  /**
+   * Skip per-command terminal approval for this thread (still requires
+   * Settings → Allow agent terminal). Omit on older threads.
+   */
+  terminalAllowForChat?: boolean | null;
   messages: UIMessage[];
 };
 

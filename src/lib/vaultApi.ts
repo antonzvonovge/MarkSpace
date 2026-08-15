@@ -240,6 +240,37 @@ export async function httpFetchBytes(
   });
 }
 
+export type RunTerminalResult = {
+  ok: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  cwd: string;
+  timedOut: boolean;
+  truncated: boolean;
+  killed: boolean;
+  error?: string | null;
+};
+
+export async function runTerminalCommand(input: {
+  jobId: string;
+  command: string;
+  cwd?: string | null;
+  timeoutMs?: number | null;
+}): Promise<RunTerminalResult> {
+  return invoke("run_terminal_command", {
+    jobId: input.jobId,
+    command: input.command,
+    cwd: input.cwd ?? null,
+    timeoutMs: input.timeoutMs ?? null,
+  });
+}
+
+/** Kill a running terminal job (process group). Returns false if already gone. */
+export async function killTerminalCommand(jobId: string): Promise<boolean> {
+  return invoke("kill_terminal_command", { jobId });
+}
+
 export type SearchHit = {
   path: string;
   line: number;

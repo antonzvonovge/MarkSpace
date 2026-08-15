@@ -46,10 +46,12 @@ import {
   type EditContextMenuState,
 } from "../EditContextMenu";
 import { ChatContextMeter } from "./ChatContextMeter";
+import { ChatModePicker } from "./ChatModePicker";
 import { ChatModelPicker } from "./ChatModelPicker";
 import { ChatProjectPicker } from "./ChatProjectPicker";
 import { ChatSkillSlashMenu } from "./ChatSkillSlashMenu";
 import { ReasoningToggle } from "./ReasoningToggle";
+import { TerminalAutoAllowChip } from "./TerminalAutoAllowChip";
 import { modelSupportsReasoning } from "../../ai/models";
 
 /** Selected text if the selection is inside `el`, otherwise "". */
@@ -164,6 +166,8 @@ export function ChatComposer() {
   const setModelId = useChatStore((s) => s.setModelId);
   const enableReasoning = useChatStore((s) => s.enableReasoning);
   const setEnableReasoning = useChatStore((s) => s.setEnableReasoning);
+  const terminalAllowForChat = useChatStore((s) => s.terminalAllowForChat);
+  const setTerminalAllowForChat = useChatStore((s) => s.setTerminalAllowForChat);
   const status = useChatStore((s) => s.status);
   const messages = useChatStore((s) => s.messages);
   const send = useChatStore((s) => s.send);
@@ -795,24 +799,11 @@ export function ChatComposer() {
           }}
         />
 
-        <div className="chat-mode-switch" role="group" aria-label="Chat mode">
-          <button
-            type="button"
-            className={mode === "ask" ? "is-active" : ""}
-            onClick={() => setMode("ask")}
-            disabled={streaming}
-          >
-            Ask
-          </button>
-          <button
-            type="button"
-            className={mode === "agent" ? "is-active" : ""}
-            onClick={() => setMode("agent")}
-            disabled={streaming}
-          >
-            Agent
-          </button>
-        </div>
+        <ChatModePicker
+          value={mode}
+          disabled={streaming}
+          onChange={setMode}
+        />
 
         <ChatModelPicker
           models={modelOptions}
@@ -826,6 +817,16 @@ export function ChatComposer() {
           value={enableReasoning}
           disabled={streaming}
           onChange={setEnableReasoning}
+        />
+
+        <TerminalAutoAllowChip
+          visible={
+            settings.agentTerminalEnabled &&
+            mode === "agent" &&
+            terminalAllowForChat
+          }
+          disabled={streaming}
+          onRevoke={() => setTerminalAllowForChat(false)}
         />
 
         <ChatContextMeter
