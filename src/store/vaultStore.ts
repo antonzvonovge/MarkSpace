@@ -98,7 +98,6 @@ import {
 import { normalizeDayMarkerId } from "../lib/dayMarkers";
 import {
   getNoteDayMarker,
-  getNoteTags,
   setNoteDayMarker,
   setNoteTags,
 } from "../lib/noteFrontmatter";
