@@ -186,7 +186,7 @@ export function buildRunTerminalTool(opts?: BuildRunTerminalToolOpts) {
 
   return tool({
     description:
-      "Run a one-shot shell command on the user's machine. Working directory is inside the open vault (default: selected project, else vault root). The user must approve each command unless they chose Allow for this chat. Prefer vault tools (edit_note, etc.) for notes, diagrams, links, and dictionaries. Use this for git, language CLIs, tests, and builds. No interactive TTY.",
+      "Run a one-shot shell command on the user's machine. Working directory is inside the open vault (default: selected project, else vault root). Write commands for the host OS/shell named in the system prompt. The user must approve each command unless they chose Allow for this chat. Prefer vault tools (edit_note, etc.) for notes, diagrams, links, and dictionaries. Use this for git, language CLIs, tests, and builds. No interactive TTY.",
     inputSchema: z.object({
       command: z.string().min(1).describe("Shell command to run"),
       cwd: z

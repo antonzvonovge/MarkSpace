@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  getNoteDayMarker,
   getNoteTags,
   mergeFrontmatter,
   noteBody,
+  setNoteDayMarker,
   setNoteTags,
   splitFrontmatter,
   stampNoteTimestamps,
@@ -158,5 +160,34 @@ Old
   it("withNoteBody preserves unparseable fence", () => {
     const md = "---\n: bad: [yaml\n---\n\nOld\n";
     expect(withNoteBody(md, "New\n")).toBe("---\n: bad: [yaml\n---\nNew\n");
+  });
+
+  it("reads and writes diary day markers", () => {
+    const md = `---
+tags:
+  - diary
+---
+
+# 15.Aug.2026
+`;
+    expect(getNoteDayMarker(md)).toBe("");
+    const next = setNoteDayMarker(md, "holiday");
+    expect(getNoteDayMarker(next)).toBe("holiday");
+    expect(getNoteTags(next)).toEqual(["diary"]);
+    expect(noteBody(next)).toBe("\n# 15.Aug.2026\n");
+    expect(getNoteDayMarker(setNoteDayMarker(next, ""))).toBe("");
+    expect(getNoteDayMarker(setNoteDayMarker(next, "🎉"))).toBe("");
+  });
+
+  it("adds marker frontmatter when none existed", () => {
+    const next = setNoteDayMarker("# Hi\n", "important");
+    expect(next.startsWith("---\n")).toBe(true);
+    expect(getNoteDayMarker(next)).toBe("important");
+    expect(noteBody(next)).toBe("# Hi\n");
+  });
+
+  it("leaves unparseable fence untouched on setNoteDayMarker", () => {
+    const md = "---\n: bad: [yaml\n---\n\nBody\n";
+    expect(setNoteDayMarker(md, "sad")).toBe(md);
   });
 });

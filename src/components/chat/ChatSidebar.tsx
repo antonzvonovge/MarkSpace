@@ -3,6 +3,7 @@ import { hasAnyLlmCredentials } from "../../ai/languageModel";
 import { useAgentMemoryStore } from "../../store/agentMemoryStore";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
+import { useDiarySettingsStore } from "../../store/diarySettingsStore";
 import { usePrefsStore } from "../../store/prefsStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatComposer } from "./ChatComposer";
@@ -15,6 +16,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const hydrateForVault = useChatStore((s) => s.hydrateForVault);
   const hydrateMemory = useAgentMemoryStore((s) => s.hydrateForVault);
+  const hydrateDiary = useDiarySettingsStore((s) => s.hydrateForVault);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const openTabIds = useChatStore((s) => s.openTabIds);
   const messages = useChatStore((s) => s.messages);
@@ -28,7 +30,8 @@ export const ChatSidebar = memo(function ChatSidebar() {
   useEffect(() => {
     void hydrateForVault(vaultPath);
     void hydrateMemory(vaultPath);
-  }, [vaultPath, hydrateForVault, hydrateMemory]);
+    void hydrateDiary(vaultPath);
+  }, [vaultPath, hydrateForVault, hydrateMemory, hydrateDiary]);
 
   const hasOpenTabs = openTabIds.length > 0 && !!activeThreadId;
 

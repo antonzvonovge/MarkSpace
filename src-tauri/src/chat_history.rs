@@ -20,6 +20,9 @@ pub struct ChatThreadMeta {
     /// Optional Gem id (`.markspace/gems/<id>.json`) for this thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gem_id: Option<String>,
+    /// User-set title; skip first-message / LLM auto-rename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_locked: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -37,6 +40,9 @@ pub struct ChatThreadFile {
     /// Optional Gem id (`.markspace/gems/<id>.json`) for this thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gem_id: Option<String>,
+    /// User-set title; skip first-message / LLM auto-rename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_locked: Option<bool>,
     /// Sticky Reasoning toggle (composer). Absent on older threads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enable_reasoning: Option<bool>,
@@ -227,6 +233,7 @@ pub fn upsert_chat_thread(
         model_id: thread.model_id.clone(),
         project_path: thread.project_path.clone(),
         gem_id: thread.gem_id.clone(),
+        title_locked: thread.title_locked.filter(|locked| *locked),
     };
 
     let mut index = read_index(&dir)?;

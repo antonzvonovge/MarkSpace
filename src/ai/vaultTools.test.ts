@@ -28,6 +28,7 @@ describe("vault agent tools", () => {
     expect(askTools).not.toHaveProperty("delete_folder_if_empty");
     expect(askTools).not.toHaveProperty("clip_article");
     expect(askTools).not.toHaveProperty("translate_note");
+    expect(askTools).not.toHaveProperty("auto_tag_note");
     expect(askTools).not.toHaveProperty("open_or_create_daily_note");
     expect(askTools).toHaveProperty("scrape_url");
     expect(askTools).not.toHaveProperty("run_specialist");
@@ -69,6 +70,10 @@ describe("vault agent tools", () => {
       });
       expect(prompt).toContain("run_terminal");
       expect(prompt).toContain("kind=terminal");
+      expect(prompt).toMatch(/Host OS: .+\((Windows|Unix) family\)/);
+      expect(prompt).toMatch(/run_terminal uses (cmd\.exe \/C|\/bin\/sh -c)/);
+      expect(prompt).toContain("terminal plan confirmation");
+      expect(prompt).toContain("ask_user");
     } finally {
       useAiSettingsStore.setState({ settings: prev, hydrated: true });
     }
@@ -80,6 +85,8 @@ describe("vault agent tools", () => {
     });
     expect(edit).toHaveProperty("edit_note");
     expect(edit).toHaveProperty("create_note");
+    expect(edit).toHaveProperty("auto_tag_note");
+    expect(edit).toHaveProperty("translate_note");
     expect(edit).not.toHaveProperty("mutate_diagram");
     expect(edit).not.toHaveProperty("run_specialist");
 
@@ -108,6 +115,9 @@ describe("vault agent tools", () => {
 
     const askPrompt = buildSystemPrompt({ ...base, mode: "ask" });
     expect(askPrompt).toContain("list_folder");
+    expect(askPrompt).toMatch(/Host OS: .+\((Windows|Unix) family\)/);
+    expect(askPrompt).not.toContain("run_terminal uses");
+    expect(askPrompt).not.toContain("terminal plan confirmation");
     expect(askPrompt).toContain("Folder notes:");
     expect(askPrompt).toContain("{folder}/.folder.md");
     expect(askPrompt).toContain("not some other note inside the folder");
@@ -120,6 +130,9 @@ describe("vault agent tools", () => {
     expect(askPrompt).not.toContain("translate_note");
 
     const agentPrompt = buildSystemPrompt({ ...base, mode: "agent" });
+    expect(agentPrompt).toMatch(/Host OS: .+\((Windows|Unix) family\)/);
+    expect(agentPrompt).not.toContain("run_terminal uses");
+    expect(agentPrompt).not.toContain("terminal plan confirmation");
     expect(agentPrompt).toContain("run_specialist");
     expect(agentPrompt).toContain("edit_notes");
     expect(agentPrompt).toContain("parallel specialists");

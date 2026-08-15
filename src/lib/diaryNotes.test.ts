@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   collectDailyNoteDayKeys,
   dailyNoteFolderPaths,
+  dailyNoteOpeningMarkdown,
   dailyNotePath,
   dayKey,
   diaryProjectRootForPath,
+  formatDailyNoteHeading,
   formatDailyNoteStem,
+  isoDateOnly,
   isUnderDiaryProject,
   parseDailyNoteDate,
   parseIsoDateOnly,
@@ -61,6 +64,17 @@ describe("daily note naming and layout", () => {
     expect(formatDailyNoteStem(new Date(2026, 0, 9))).toBe("09.Jan.2026");
   });
 
+  it("formats the in-note heading in the native language", () => {
+    const aug15 = new Date(2026, 7, 15);
+    expect(formatDailyNoteHeading(aug15, "ru")).toBe("15 Августа 2026");
+    expect(formatDailyNoteHeading(aug15, "en")).toBe("15 August 2026");
+    expect(formatDailyNoteHeading(aug15, "uk")).toBe("15 Серпня 2026");
+    expect(formatDailyNoteHeading(new Date(2026, 0, 9), "ru")).toBe(
+      "9 Января 2026",
+    );
+    expect(dailyNoteOpeningMarkdown(aug15, "ru")).toBe("# 15 Августа 2026\n\n");
+  });
+
   it("parses YYYY-MM-DD local dates", () => {
     const d = parseIsoDateOnly("2026-08-02");
     expect(d).not.toBeNull();
@@ -69,6 +83,11 @@ describe("daily note naming and layout", () => {
     expect(d!.getDate()).toBe(2);
     expect(parseIsoDateOnly("02.Aug.2026")).toBeNull();
     expect(parseIsoDateOnly("2026-02-31")).toBeNull();
+  });
+
+  it("formats local YYYY-MM-DD", () => {
+    expect(isoDateOnly(new Date(2026, 7, 2))).toBe("2026-08-02");
+    expect(isoDateOnly(new Date(2026, 0, 9))).toBe("2026-01-09");
   });
 
   it("builds year/month path", () => {

@@ -22,6 +22,14 @@ export type PracticeCard = {
   answer: string;
 };
 
+function collectMddictPathsFromNode(node: TreeNode, out: string[]): void {
+  if (!node.isDir) {
+    if (node.path.toLowerCase().endsWith(".mddict")) out.push(node.path);
+    return;
+  }
+  for (const child of node.children ?? []) collectMddictPathsFromNode(child, out);
+}
+
 export function collectProjectMddictPaths(
   tree: TreeNode | null | undefined,
   projectPath: string,
@@ -34,15 +42,64 @@ export function collectProjectMddictPaths(
   if (!projectNode) return [];
 
   const out: string[] = [];
-  const walk = (node: TreeNode) => {
-    if (!node.isDir) {
-      if (node.path.toLowerCase().endsWith(".mddict")) out.push(node.path);
-      return;
-    }
-    for (const child of node.children ?? []) walk(child);
-  };
-  walk(projectNode);
+  collectMddictPathsFromNode(projectNode, out);
   return out.sort((a, b) => a.localeCompare(b));
+}
+
+/** All `.mddict` files in the vault, sorted by path. */
+export function collectVaultMddictPaths(
+  tree: TreeNode | null | undefined,
+): string[] {
+  if (!tree) return [];
+  const out: string[] = [];
+  collectMddictPathsFromNode(tree, out);
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
+/** Project dictionaries first (when `activePath` is set), then the rest. */
+export function sortMddictPathsForPicker(
+  paths: string[],
+  activePath: string | null | undefined,
+): string[] {
+  const project = (activePath ?? "").split("/")[0]?.trim() ?? "";
+  if (!project) return [...paths].sort((a, b) => a.localeCompare(b));
+  const inProject: string[] = [];
+  const rest: string[] = [];
+  for (const path of paths) {
+    if (path === project || path.startsWith(`${project}/`)) inProject.push(path);
+    else rest.push(path);
+  }
+  inProject.sort((a, b) => a.localeCompare(b));
+  rest.sort((a, b) => a.localeCompare(b));
+  return [...inProject, ...rest];
+}
+
+type LearningProjectProps = {
+  projectType?: string;
+  learningLanguage?: string;
+};
+
+/**
+ * Hide dictionaries that live in a language-learning project whose learning
+ * language does not match `languageCode`. Dictionaries outside those projects
+ * (or with no learning language set) stay visible.
+ */
+export function filterMddictPathsForLearningLanguage(
+  paths: string[],
+  projectPropertiesByPath: Record<string, LearningProjectProps>,
+  languageCode: string,
+): string[] {
+  const lang = languageCode.trim().toLowerCase();
+  if (!lang) return paths;
+  return paths.filter((path) => {
+    const project = path.split("/")[0]?.trim() ?? "";
+    if (!project || project === path) return true;
+    const props = projectPropertiesByPath[project];
+    if (!props || props.projectType !== "languageLearning") return true;
+    const learning = (props.learningLanguage ?? "").trim().toLowerCase();
+    if (!learning) return true;
+    return learning === lang;
+  });
 }
 
 function escapeRegExp(s: string): string {

@@ -1,4 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { DayMarkerPicker } from "./DayMarkerPicker";
+import { dayMarkerById } from "../lib/dayMarkers";
+import { getNoteDayMarker } from "../lib/noteFrontmatter";
 import {
   collectDailyNoteDayKeys,
   dayKey,
@@ -6,6 +10,7 @@ import {
   resolveDiaryProjectRoot,
 } from "../lib/diaryNotes";
 import { useChatStore } from "../store/chatStore";
+import { useDiarySettingsStore } from "../store/diarySettingsStore";
 import { useVaultStore } from "../store/vaultStore";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const;
@@ -125,7 +130,20 @@ export function SidebarCalendar() {
     (s) => s.projectPropertiesByPath,
   );
   const openOrCreateDailyNote = useVaultStore((s) => s.openOrCreateDailyNote);
+  const content = useVaultStore((s) => s.content);
+  const diaryDayMarkers = useVaultStore((s) => s.diaryDayMarkers);
+  const loadDiaryDayMarkers = useVaultStore((s) => s.loadDiaryDayMarkers);
+  const setDailyNoteMarker = useVaultStore((s) => s.setDailyNoteMarker);
+  const markerCatalog = useDiarySettingsStore((s) => s.markers);
+  const hydrateDiarySettings = useDiarySettingsStore((s) => s.hydrateForVault);
+  const vaultPath = useVaultStore((s) => s.vaultPath);
   const chatProjectPath = useChatStore((s) => s.projectPath);
+  const [picker, setPicker] = useState<{
+    date: Date;
+    left: number;
+    top: number;
+  } | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   const diaryRoot = useMemo(
     () =>
@@ -142,6 +160,34 @@ export function SidebarCalendar() {
       projectPropertiesByPath,
     ],
   );
+
+  useEffect(() => {
+    if (diaryRoot) void loadDiaryDayMarkers(diaryRoot);
+  }, [diaryRoot, loadDiaryDayMarkers]);
+
+  useEffect(() => {
+    void hydrateDiarySettings(vaultPath);
+  }, [vaultPath, hydrateDiarySettings]);
+
+  useEffect(() => {
+    if (!picker) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (pickerRef.current?.contains(event.target as Node)) return;
+      setPicker(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setPicker(null);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [picker]);
 
   const daysWithNotes = useMemo(
     () => (diaryRoot ? collectDailyNoteDayKeys(tree, diaryRoot) : new Set<string>()),
@@ -172,6 +218,44 @@ export function SidebarCalendar() {
       return;
     }
     void openOrCreateDailyNote(diaryRoot, date, { preview: true });
+  };
+
+  const markerIdFor = (date: Date): string => {
+    if (!diaryRoot) return "";
+    if (selectedDate && sameDay(date, selectedDate) && activePath) {
+      return getNoteDayMarker(content);
+    }
+    return diaryDayMarkers[dayKey(date)] ?? "";
+  };
+
+  const openMarkerPicker = (date: Date, anchor: HTMLElement) => {
+    if (!diaryRoot) {
+      useVaultStore.setState({
+        error:
+          "Select a diary project (or open a note in one) to use the calendar.",
+      });
+      return;
+    }
+    const rect = anchor.getBoundingClientRect();
+    const width = 232;
+    const height = 128;
+    const left = Math.max(
+      8,
+      Math.min(rect.left, window.innerWidth - width - 8),
+    );
+    const below = rect.bottom + 6;
+    const top =
+      below + height > window.innerHeight - 8
+        ? Math.max(8, rect.top - height - 6)
+        : below;
+    setPicker({ date, left, top });
+  };
+
+  const applyMarker = (id: string) => {
+    if (!picker || !diaryRoot) return;
+    const date = picker.date;
+    setPicker(null);
+    void setDailyNoteMarker(diaryRoot, date, id);
   };
 
   return (
@@ -212,12 +296,17 @@ export function SidebarCalendar() {
           const isToday = sameDay(date, today);
           const isSelected = selectedDate ? sameDay(date, selectedDate) : false;
           const hasNote = daysWithNotes.has(dayKey(date));
+          const markerId = markerIdFor(date);
+          const marker = markerId
+            ? dayMarkerById(markerId, markerCatalog)
+            : undefined;
           const className = [
             "sidebar-calendar-day",
             outside ? "is-outside" : "",
             isToday ? "is-today" : "",
             isSelected ? "is-selected" : "",
             hasNote ? "has-note" : "",
+            marker ? "has-marker" : "",
           ]
             .filter(Boolean)
             .join(" ");
@@ -227,6 +316,12 @@ export function SidebarCalendar() {
             day: "numeric",
             year: "numeric",
           });
+          const extras = [
+            hasNote ? "has note" : "",
+            marker ? marker.label : "",
+          ].filter(Boolean);
+          const fullLabel =
+            extras.length > 0 ? `${label}, ${extras.join(", ")}` : label;
 
           return (
             <button
@@ -236,11 +331,21 @@ export function SidebarCalendar() {
               className={className}
               aria-current={isToday ? "date" : undefined}
               aria-selected={isSelected}
-              aria-label={hasNote ? `${label}, has note` : label}
-              title={label}
+              aria-label={fullLabel}
+              title={fullLabel}
               onClick={() => selectDay(date)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openMarkerPicker(date, event.currentTarget);
+              }}
             >
-              {date.getDate()}
+              <span className="sidebar-calendar-day-num">{date.getDate()}</span>
+              {marker ? (
+                <span className="sidebar-calendar-day-marker" aria-hidden>
+                  {marker.emoji}
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -258,6 +363,24 @@ export function SidebarCalendar() {
           Today
         </button>
       )}
+
+      {picker
+        ? createPortal(
+            <div
+              ref={pickerRef}
+              className="day-marker-popover"
+              role="dialog"
+              aria-label="Day marker"
+              style={{ left: picker.left, top: picker.top }}
+            >
+              <DayMarkerPicker
+                value={markerIdFor(picker.date)}
+                onChange={applyMarker}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

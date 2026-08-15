@@ -561,6 +561,7 @@ select {
 }
 
 .sidebar-calendar-day {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -576,6 +577,20 @@ select {
   cursor: pointer;
   user-select: none;
   transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sidebar-calendar-day-num {
+  display: block;
+  line-height: 1;
+}
+
+.sidebar-calendar-day-marker {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .sidebar-calendar-day:hover {
@@ -661,6 +676,10 @@ select {
   height: 26px;
   border-radius: 6px;
   font-size: 0.75rem;
+}
+
+:root[data-density="compact"] .sidebar-calendar-day-marker {
+  font-size: 10px;
 }
 
 :root[data-density="compact"] .sidebar-calendar-nav {
@@ -2936,6 +2955,7 @@ select {
   .bn-side-menu,
   .bn-resize-handle,
   .page-tags-chips,
+  .page-day-marker,
   .mantine-Menu-dropdown,
   .mantine-Menu-item,
   img.bn-visual-media
@@ -2952,6 +2972,57 @@ select {
   pointer-events: none;
   padding: 4px 8px 8px;
   margin: 0;
+}
+
+.note-page-chrome {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  padding: 4px 8px 8px;
+  margin: 0;
+}
+
+.note-page-chrome .page-tags {
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.page-day-marker {
+  position: relative;
+  flex-shrink: 0;
+  pointer-events: auto;
+  margin-right: 6px;
+  padding-top: 0;
+}
+
+.page-day-marker-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px dashed var(--tag-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--tag-text);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.page-day-marker-btn:hover,
+.page-day-marker-btn[aria-expanded="true"] {
+  background: var(--tag-bg-hover);
+}
+
+.page-day-marker-btn.is-set {
+  border-style: solid;
+  background: var(--tag-bg);
 }
 
 .page-tags-chips {
@@ -3126,6 +3197,7 @@ select {
   min-height: 0;
 }
 
+.source-editor-wrap > .note-page-chrome,
 .source-editor-wrap > .page-tags {
   position: relative;
   top: auto;
@@ -4516,6 +4588,111 @@ select {
   line-height: 1.4;
 }
 
+.diary-marker-settings-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diary-marker-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  position: relative;
+  cursor: grab;
+}
+
+.diary-marker-settings-row.is-dragging {
+  opacity: 0.55;
+}
+
+.diary-marker-settings-row.is-drop-before::before,
+.diary-marker-settings-row.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.diary-marker-settings-row.is-drop-before::before {
+  top: -1px;
+}
+
+.diary-marker-settings-row.is-drop-after::after {
+  bottom: -1px;
+}
+
+.diary-marker-emoji-input {
+  box-sizing: border-box;
+  width: 2.6rem;
+  height: 32px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font-size: 1.05rem;
+  text-align: center;
+}
+
+.diary-marker-label-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.diary-marker-emoji-input,
+.diary-marker-label-input {
+  cursor: text;
+}
+
+.diary-marker-emoji-input:focus,
+.diary-marker-label-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.diary-marker-id {
+  flex-shrink: 0;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--muted);
+}
+
+.diary-marker-remove {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.diary-marker-remove:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
+
 .embedding-download-progress {
   display: grid;
   gap: 7px;
@@ -4816,6 +4993,10 @@ select {
   padding: 24px;
 }
 
+.app-dialog-root.is-nested {
+  z-index: 1100;
+}
+
 .app-dialog-backdrop {
   position: absolute;
   inset: 0;
@@ -4934,6 +5115,69 @@ select {
   margin-top: -1px;
 }
 
+.day-marker-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.day-marker-swatch {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--editor-surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.day-marker-swatch:hover {
+  transform: scale(1.08);
+}
+
+.day-marker-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.day-marker-swatch.is-selected {
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    0 0 0 2px var(--editor-surface),
+    0 0 0 4px var(--text);
+}
+
+.day-marker-swatch.is-none {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.day-marker-swatch-none-x {
+  display: block;
+  margin-top: -1px;
+}
+
+.day-marker-popover {
+  position: fixed;
+  z-index: 1100;
+  width: 232px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--editor-surface);
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.18);
+}
+
 .app-dialog-input {
   width: 100%;
   border: 1px solid var(--line);
@@ -5022,6 +5266,20 @@ select {
   cursor: default;
 }
 
+.app-dialog-btn:focus,
+.app-dialog-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(203, 17, 171, 0.25);
+}
+
+.app-dialog-btn.is-primary:focus,
+.app-dialog-btn.is-primary:focus-visible {
+  outline: 2px solid var(--editor-surface);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--accent-strong);
+}
+
 .app-dialog-btn.is-primary {
   background: var(--accent);
   color: #ffffff;
@@ -5038,6 +5296,402 @@ select {
 
 .app-dialog-btn.is-danger:hover {
   filter: brightness(1.05);
+}
+
+.quick-translate-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.quick-translate-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quick-translate-input-row .app-dialog-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-translate-input-row .app-dialog-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.quick-translate-card {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(62vh, 520px);
+  overflow-y: auto;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sidebar);
+}
+
+.quick-translate-lemma {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+}
+
+.quick-translate-transcript {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 500;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.quick-translate-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick-translate-section-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quick-translate-forms {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.5;
+}
+
+.quick-translate-examples {
+  margin: 0;
+  padding: 0 0 0 1.6em;
+  list-style: decimal;
+}
+
+.quick-translate-examples li {
+  padding-left: 0.3em;
+}
+
+.quick-translate-examples li + li {
+  margin-top: 12px;
+}
+
+.quick-translate-example-text {
+  display: block;
+  font-size: 1.08rem;
+  line-height: 1.45;
+}
+
+.quick-translate-example-tr {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.quick-translate-status {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.ielts-review-dialog {
+  width: min(100%, 760px);
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+  --ielts-example: #2f7a4a;
+  --ielts-wrong: #c04545;
+}
+
+:root[data-theme="dark"] .ielts-review-dialog {
+  --ielts-example: #93d5ae;
+  --ielts-wrong: #e8a0a0;
+}
+
+.ielts-review-dialog .app-dialog-header {
+  padding: 22px 28px 0;
+}
+
+.ielts-review-dialog .app-dialog-title {
+  font-size: 1.45rem;
+}
+
+.ielts-review-dialog .app-dialog-desc {
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.ielts-review-dialog .app-dialog-footer {
+  padding: 16px 28px 20px;
+}
+
+.ielts-review-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 28px 8px;
+  gap: 16px;
+}
+
+.ielts-review-empty {
+  margin: 12px 0 8px;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+.ielts-review-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ielts-review-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.ielts-review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.ielts-review-scoreboard {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, auto) 1fr;
+  gap: 16px 20px;
+  align-items: stretch;
+}
+
+.ielts-review-scoreboard.is-pending {
+  opacity: 0.55;
+}
+
+.ielts-review-scoreboard.is-pending .ielts-review-overall-value,
+.ielts-review-scoreboard.is-pending .ielts-review-band-value {
+  animation: ielts-review-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes ielts-review-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.ielts-review-overall-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px 20px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--sidebar);
+}
+
+.ielts-review-overall-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ielts-review-overall-value {
+  margin-top: 2px;
+  color: var(--accent);
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.ielts-review-indicative {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ielts-review-band-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ielts-review-band {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--sidebar);
+}
+
+.ielts-review-band-name {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ielts-review-band-value {
+  margin-top: 4px;
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.ielts-review-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ielts-review-section-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ielts-review-issues,
+.ielts-review-tips {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ielts-review-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ielts-review-issues li {
+  margin: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sidebar);
+}
+
+.ielts-review-criterion {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.ielts-review-criterion-name {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ielts-review-quote {
+  display: block;
+  margin: 8px 0 6px;
+  color: var(--ielts-wrong);
+  font-family: var(--font-ui);
+  font-size: 1.08rem;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.ielts-review-problem {
+  display: block;
+  font-size: 1.08rem;
+  line-height: 1.5;
+}
+
+.ielts-review-fix {
+  display: block;
+  margin-top: 8px;
+  color: var(--ielts-example);
+  font-family: var(--font-ui);
+  font-size: 1.08rem;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.ielts-review-fix-label {
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--ielts-example);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ielts-review-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ielts-review-tips li {
+  margin: 0;
+  padding-left: 1.15em;
+  text-indent: -1.15em;
+  font-size: 1.08rem;
+  line-height: 1.5;
+}
+
+.ielts-review-tips li::before {
+  content: "· ";
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.ielts-review-rewrite {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sidebar);
+  color: var(--ielts-example);
+  font-family: var(--font-ui);
+  font-size: 1.12rem;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  .ielts-review-scoreboard {
+    grid-template-columns: 1fr;
+  }
 }
 
 :root[data-theme="dark"] .app-dialog-backdrop {
@@ -7434,6 +8088,7 @@ select {
 .chat-composer-toolbar .chat-project-picker,
 .chat-composer-toolbar .chat-model-picker,
 .chat-composer-toolbar .chat-mode-switch,
+.chat-composer-toolbar .chat-terminal-auto-allow,
 .chat-composer-toolbar .chat-context-meter {
   display: flex;
   align-items: center;
@@ -7644,6 +8299,36 @@ select {
 .chat-mode-switch button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.chat-terminal-auto-allow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.chat-terminal-auto-allow:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.chat-terminal-auto-allow:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chat-terminal-auto-allow svg {
+  display: block;
 }
 
 .gem-model-row {
@@ -9626,6 +10311,16 @@ select {
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 400;
+}
+
+.command-palette-item-shortcut {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .command-palette-empty {

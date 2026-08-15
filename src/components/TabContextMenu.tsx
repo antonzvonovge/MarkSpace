@@ -26,6 +26,8 @@ type Props = {
   onCloseToTheRight: () => void;
   /** When set, shows a “Copy path” item (e.g. chat thread JSON on disk). */
   onCopyPath?: () => void;
+  /** When set, shows “Rename…” and opens a dialog from the caller. */
+  onRename?: () => void;
   /** When set, shows Pin / Unpin. */
   onTogglePinned?: (pinned: boolean) => void;
 };
@@ -38,6 +40,7 @@ export function TabContextMenu({
   onCloseRemaining,
   onCloseToTheRight,
   onCopyPath,
+  onRename,
   onTogglePinned,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -66,7 +69,7 @@ export function TabContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 220);
-  const top = Math.min(menu.y, window.innerHeight - 280);
+  const top = Math.min(menu.y, window.innerHeight - 320);
 
   return createPortal(
     <div
@@ -75,6 +78,19 @@ export function TabContextMenu({
       role="menu"
       style={{ left, top }}
     >
+      {onRename ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={() => {
+            onClose();
+            onRename();
+          }}
+        >
+          <span>Rename…</span>
+        </button>
+      ) : null}
       {onCopyPath ? (
         <button
           type="button"
@@ -87,6 +103,9 @@ export function TabContextMenu({
         >
           <span>Copy path</span>
         </button>
+      ) : null}
+      {onRename || onCopyPath ? (
+        <div className="tree-context-sep" role="separator" />
       ) : null}
       <button
         type="button"

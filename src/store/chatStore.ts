@@ -111,7 +111,12 @@ function userText(message: UIMessage): string {
 }
 
 /** True while title is still the default or a truncated first user message. */
-function isProvisionalTitle(title: string | undefined, messages: UIMessage[]): boolean {
+function isProvisionalTitle(
+  title: string | undefined,
+  messages: UIMessage[],
+  titleLocked?: boolean | null,
+): boolean {
+  if (titleLocked) return false;
   if (!title || title === "New chat") return true;
   const firstUser = messages.find((m) => m.role === "user");
   if (!firstUser) return true;
@@ -210,6 +215,8 @@ type ChatStore = {
   reorderOpenTabs: (fromIndex: number, toIndex: number) => Promise<void>;
   setTabPinned: (threadId: string, pinned: boolean) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
+  /** Set a user-chosen title; further auto-rename is skipped. */
+  renameThread: (threadId: string, title: string) => Promise<void>;
   send: (text?: string) => Promise<void>;
   stop: () => void;
   clearError: () => void;
@@ -637,7 +644,7 @@ async function maybeRefreshTitle(
 ) {
   const state = useChatStore.getState();
   const meta = state.threads.find((t) => t.id === threadId);
-  if (!meta || !isProvisionalTitle(meta.title, messages)) return;
+  if (!meta || !isProvisionalTitle(meta.title, messages, meta.titleLocked)) return;
 
   const title = await generateChatTitle({
     messages,
@@ -648,7 +655,7 @@ async function maybeRefreshTitle(
 
   const latest = useChatStore.getState();
   const latestMeta = latest.threads.find((t) => t.id === threadId);
-  if (!latestMeta || !isProvisionalTitle(latestMeta.title, messages)) return;
+  if (!latestMeta || !isProvisionalTitle(latestMeta.title, messages, latestMeta.titleLocked)) return;
 
   const vaultPath = latest.vaultBound;
   if (!vaultPath) return;
@@ -1187,6 +1194,44 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
   },
 
+  renameThread: async (threadId, title) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const vaultPath = get().vaultBound ?? useVaultStore.getState().vaultPath;
+    if (!vaultPath) return;
+
+    const now = Date.now();
+    set({
+      threads: get().threads.map((t) =>
+        t.id === threadId
+          ? { ...t, title: trimmed, titleLocked: true, updatedAt: now }
+          : t,
+      ),
+    });
+
+    if (get().activeThreadId === threadId) {
+      await get().persistActive();
+      return;
+    }
+
+    try {
+      const file = await getChatThread(vaultPath, threadId);
+      await upsertChatThread(vaultPath, {
+        ...file,
+        title: trimmed,
+        titleLocked: true,
+        updatedAt: now,
+      });
+      const listed = await listChatThreads(vaultPath);
+      set({
+        threads: listed.threads,
+        ...applyListedTabs(listed),
+      });
+    } catch {
+      /* best-effort */
+    }
+  },
+
   persistActive: async () => {
     const {
       vaultBound,
@@ -1206,7 +1251,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const meta = threads.find((t) => t.id === activeThreadId);
     const now = Date.now();
     const title =
-      meta?.title && !isProvisionalTitle(meta.title, messages)
+      meta?.title && !isProvisionalTitle(meta.title, messages, meta.titleLocked)
         ? meta.title
         : (() => {
             const firstUser = messages.find((m) => m.role === "user");
@@ -1230,6 +1275,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       contextAnchorTokens,
       contextAnchorMessageCount,
       messages,
+      ...(meta?.titleLocked ? { titleLocked: true as const } : {}),
     };
     const updated = await upsertChatThread(vaultBound, file);
     const listed = await listChatThreads(vaultBound);
@@ -1447,7 +1493,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     };
     const messages = [...history, userMessage];
     const prevMeta = get().threads.find((t) => t.id === activeThreadId);
-    const provisional = isProvisionalTitle(prevMeta?.title, messages);
+    const provisional = isProvisionalTitle(
+      prevMeta?.title,
+      messages,
+      prevMeta?.titleLocked,
+    );
     const firstUser = messages.find((m) => m.role === "user");
     const title = provisional
       ? firstUser

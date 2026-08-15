@@ -85,6 +85,65 @@ export function formatDailyNoteStem(date: Date = new Date()): string {
   return `${dd}.${mmm}.${yyyy}`;
 }
 
+/** BCP 47 locales for native-language daily-note headings. */
+const DAILY_NOTE_HEADING_LOCALES: Record<string, string> = {
+  ru: "ru-RU",
+  en: "en-GB",
+  uk: "uk-UA",
+  de: "de-DE",
+  fr: "fr-FR",
+  es: "es-ES",
+  it: "it-IT",
+  pt: "pt-PT",
+  pl: "pl-PL",
+  ka: "ka-GE",
+  zh: "zh-CN",
+  ja: "ja-JP",
+  ko: "ko-KR",
+};
+
+const CJK_HEADING_LANGS = new Set(["zh", "ja", "ko"]);
+
+function capitalizeLocale(text: string, locale: string): string {
+  const first = [...text][0];
+  if (!first) return text;
+  return first.toLocaleUpperCase(locale) + text.slice(first.length);
+}
+
+/**
+ * H1 for a new daily note in the user's native language, e.g. `15 Августа 2026`.
+ * File name stays `dd.MMM.yyyy`.
+ */
+export function formatDailyNoteHeading(
+  date: Date,
+  language: string,
+): string {
+  const locale = DAILY_NOTE_HEADING_LOCALES[language] ?? language;
+  const options: Intl.DateTimeFormatOptions = {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  };
+  if (CJK_HEADING_LANGS.has(language)) {
+    return new Intl.DateTimeFormat(locale, options).format(date);
+  }
+  const parts = new Intl.DateTimeFormat(locale, options).formatToParts(date);
+  const day =
+    parts.find((p) => p.type === "day")?.value ?? String(date.getDate());
+  const monthRaw = parts.find((p) => p.type === "month")?.value ?? "";
+  const year =
+    parts.find((p) => p.type === "year")?.value ?? String(date.getFullYear());
+  return `${day} ${capitalizeLocale(monthRaw, locale)} ${year}`;
+}
+
+/** Seed markdown for a newly created daily note (`# {native heading}`). */
+export function dailyNoteOpeningMarkdown(
+  date: Date,
+  language: string,
+): string {
+  return `# ${formatDailyNoteHeading(date, language)}\n\n`;
+}
+
 /**
  * Relative path for a daily note:
  * `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md`
@@ -177,6 +236,14 @@ export function resolveDiaryProjectRoot(opts: {
   }
   const diaries = listDiaryProjectRoots(projectPropertiesByPath);
   return diaries.length === 1 ? diaries[0]! : null;
+}
+
+/** Local calendar day as `YYYY-MM-DD`. */
+export function isoDateOnly(date: Date): string {
+  const yyyy = String(date.getFullYear());
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 /** Stable key for a local calendar day (`YYYY-M-D`, month 0-based). */

@@ -1,0 +1,398 @@
+import { generateText } from "ai";
+import type { MddictItem } from "../lib/mddictFormat";
+import {
+  isNativeLanguageId,
+  nativeLanguageLabel,
+  NATIVE_LANGUAGE_OPTIONS,
+} from "../settings/types";
+import {
+  hasCredentialsForModel,
+  missingCredentialsMessage,
+  resolveLanguageModel,
+  type AiProviderCredentials,
+} from "./languageModel";
+
+/** Cheap model — same class as dictionary suggest / note title. */
+const TRANSLATE_MODEL = "openai/gpt-4.1-mini";
+
+/** Default foreign side of the pair (English ↔ native). */
+export const DEFAULT_FOREIGN_LANG = "en";
+
+export type QuickTranslateLang = string;
+
+export type QuickTranslateExample = {
+  text: string;
+  translation: string;
+};
+
+export type QuickTranslateResult = {
+  query: string;
+  queryLang: QuickTranslateLang;
+  lemma: string;
+  transcript: string;
+  translation: string;
+  translationTranscript: string;
+  forms: string[];
+  examples: QuickTranslateExample[];
+};
+
+export type QuickTranslateParams = {
+  query: string;
+  foreignLanguageCode: string;
+  foreignLanguageLabel: string;
+  nativeLanguageCode: string;
+  nativeLanguageLabel: string;
+  keys: AiProviderCredentials;
+  fallbackModelId?: string;
+  abortSignal?: AbortSignal;
+};
+
+export type QuickTranslatePair = {
+  foreign: string;
+  native: string;
+};
+
+function extractJsonObject(raw: string): unknown {
+  const trimmed = raw.trim();
+  const fence = /^```(?:json)?\s*([\s\S]*?)```$/i.exec(trimmed);
+  const body = fence ? fence[1]!.trim() : trimmed;
+  try {
+    return JSON.parse(body);
+  } catch {
+    const start = body.indexOf("{");
+    const end = body.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(body.slice(start, end + 1));
+    }
+    throw new Error("Model did not return JSON");
+  }
+}
+
+function normalizeLine(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/\s*\n+\s*/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function languageLabel(code: string): string {
+  const c = code.trim();
+  if (!c) return c;
+  return isNativeLanguageId(c) ? nativeLanguageLabel(c) : c;
+}
+
+function normalizeLang(
+  raw: unknown,
+  pair: QuickTranslatePair,
+): QuickTranslateLang {
+  const v = normalizeLine(raw).toLowerCase();
+  const foreign = pair.foreign.trim().toLowerCase() || DEFAULT_FOREIGN_LANG;
+  const native = pair.native.trim().toLowerCase();
+  if (!v) return foreign;
+  if (v === native || v === languageLabel(native).toLowerCase()) return native;
+  if (v === foreign || v === languageLabel(foreign).toLowerCase()) return foreign;
+  for (const opt of NATIVE_LANGUAGE_OPTIONS) {
+    if (v === opt.value || v === opt.label.toLowerCase()) return opt.value;
+  }
+  return foreign;
+}
+
+function normalizeStringList(raw: unknown, max: number): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const line = normalizeLine(item);
+    if (!line) continue;
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(line);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function normalizeExamples(raw: unknown): QuickTranslateExample[] {
+  if (!Array.isArray(raw)) return [];
+  const out: QuickTranslateExample[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as { text?: unknown; translation?: unknown };
+    const text = normalizeLine(rec.text);
+    const translation = normalizeLine(rec.translation);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ text, translation });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+export function parseQuickTranslateResponse(
+  raw: string,
+  query: string,
+  pair: QuickTranslatePair = {
+    foreign: DEFAULT_FOREIGN_LANG,
+    native: "ru",
+  },
+): QuickTranslateResult {
+  const parsed = extractJsonObject(raw) as {
+    queryLang?: unknown;
+    lemma?: unknown;
+    transcript?: unknown;
+    translation?: unknown;
+    translationTranscript?: unknown;
+    forms?: unknown;
+    examples?: unknown;
+  };
+  const lemma = normalizeLine(parsed.lemma) || query.trim();
+  const translation = normalizeLine(parsed.translation);
+  if (!translation) throw new Error("Model did not return a translation");
+  return {
+    query: query.trim(),
+    queryLang: normalizeLang(parsed.queryLang, pair),
+    lemma,
+    transcript: normalizeLine(parsed.transcript),
+    translation,
+    translationTranscript: normalizeLine(parsed.translationTranscript),
+    forms: normalizeStringList(parsed.forms, 8),
+    examples: normalizeExamples(parsed.examples),
+  };
+}
+
+function buildSystem(params: QuickTranslateParams): string {
+  const native = `${params.nativeLanguageLabel} (${params.nativeLanguageCode})`;
+  const foreign = `${params.foreignLanguageLabel} (${params.foreignLanguageCode})`;
+  const nativeCode = params.nativeLanguageCode.trim();
+  const foreignCode = params.foreignLanguageCode.trim() || DEFAULT_FOREIGN_LANG;
+  return `You are a bilingual ${params.foreignLanguageLabel} ↔ ${params.nativeLanguageLabel} dictionary for a notes app (user native language: ${native}).
+The user types a word or short expression in ${foreign} or ${native} (detect which).
+Everything useful — the head translation, inflections, and examples — must be in the OTHER language. Inverse of the query. Never inflect the queried word itself.
+
+Reply with JSON only, no markdown fences:
+{"queryLang":"${foreignCode}"|"${nativeCode}","lemma":"...","transcript":"...","translation":"...","translationTranscript":"...","forms":["..."],"examples":[{"text":"...","translation":"..."}]}
+
+- queryLang: ISO code of the user's query (${foreignCode} or ${nativeCode}).
+- lemma: citation form of the queried word, in queryLang.
+- transcript: pronunciation of the lemma. Empty if unknown.
+- translation: citation form in the OTHER language (${params.foreignLanguageLabel} if queryLang is ${nativeCode}, ${params.nativeLanguageLabel} if queryLang is ${foreignCode}). For English verbs: infinitive without "to" (go). For other verbs: the usual dictionary citation form.
+- translationTranscript: pronunciation of the translation. Empty if unknown.
+
+CRITICAL — forms and examples are always about the translation (the other language), never the query:
+- If queryLang is ${nativeCode}: forms = ${params.foreignLanguageLabel} inflections (English verbs: "goes · went · gone · going"; otherwise a compact paradigm). examples.text = ${params.foreignLanguageLabel} sentences; examples.translation = ${params.nativeLanguageLabel} gloss.
+- If queryLang is ${foreignCode}: forms = ${params.nativeLanguageLabel} inflections. examples.text = ${params.nativeLanguageLabel} sentences; examples.translation = ${params.foreignLanguageLabel} gloss.
+- If the translation is in the user's native language (${native}), leave forms as [] and translationTranscript as "" — they do not need a paradigm or transliteration in their own language.
+- 2–3 short examples that naturally include the translation (or a natural inflection). Keep each text under ~120 chars. Empty forms array if not useful.
+
+- Do not wrap values in extra quotes beyond JSON.`;
+}
+
+export async function quickTranslate(
+  params: QuickTranslateParams,
+): Promise<QuickTranslateResult> {
+  const query = params.query.trim();
+  if (!query) throw new Error("Word or expression is required");
+
+  const canRun =
+    hasCredentialsForModel(TRANSLATE_MODEL, params.keys) ||
+    (!!params.fallbackModelId?.trim() &&
+      hasCredentialsForModel(params.fallbackModelId, params.keys));
+  if (!canRun) {
+    throw new Error(
+      missingCredentialsMessage(
+        params.fallbackModelId?.trim() || TRANSLATE_MODEL,
+        params.keys,
+      ),
+    );
+  }
+
+  const prompt = `Query: ${query}`;
+
+  const tryModel = async (modelId: string) => {
+    const resolved = resolveLanguageModel({
+      modelId,
+      keys: params.keys,
+      enableReasoning: false,
+    });
+    const { text } = await generateText({
+      model: resolved.model,
+      system: buildSystem(params),
+      prompt,
+      maxOutputTokens: 800,
+      temperature: 0.3,
+      abortSignal: params.abortSignal,
+    });
+    return parseQuickTranslateResponse(text, query, {
+      foreign: params.foreignLanguageCode,
+      native: params.nativeLanguageCode,
+    });
+  };
+
+  if (hasCredentialsForModel(TRANSLATE_MODEL, params.keys)) {
+    try {
+      return await tryModel(TRANSLATE_MODEL);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      const fallback = params.fallbackModelId?.trim();
+      if (fallback && fallback !== TRANSLATE_MODEL) {
+        return await tryModel(fallback);
+      }
+      throw e;
+    }
+  }
+
+  const fallback = params.fallbackModelId?.trim();
+  if (!fallback) {
+    throw new Error(missingCredentialsMessage(TRANSLATE_MODEL, params.keys));
+  }
+  return await tryModel(fallback);
+}
+
+/** Headword language for .mddict: the foreign side of the pair. */
+export function dictHeadwordLang(
+  nativeLanguageCode: string,
+  foreignLanguageCode = DEFAULT_FOREIGN_LANG,
+): QuickTranslateLang {
+  const native = nativeLanguageCode.trim().toLowerCase();
+  const foreign =
+    foreignLanguageCode.trim().toLowerCase() || DEFAULT_FOREIGN_LANG;
+  if (foreign === native) return native === "en" ? "ru" : DEFAULT_FOREIGN_LANG;
+  return foreign;
+}
+
+/** Unique learning-language codes from language-learning projects, excluding native. */
+export function collectLearningLanguageCodes(
+  projects: Record<
+    string,
+    { projectType?: string; learningLanguage?: string }
+  >,
+  nativeLanguageCode: string,
+): string[] {
+  const native = nativeLanguageCode.trim().toLowerCase();
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const props of Object.values(projects)) {
+    if (props.projectType !== "languageLearning") continue;
+    const code = (props.learningLanguage ?? "").trim().toLowerCase();
+    if (!code || code === native || seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
+  }
+  out.sort((a, b) => languageLabel(a).localeCompare(languageLabel(b)));
+  return out;
+}
+
+/** Dropdown values: English first (when it isn't native), then project languages. */
+export function quickTranslatePairCodes(
+  learningLanguageCodes: string[],
+  nativeLanguageCode: string,
+): string[] {
+  const native = nativeLanguageCode.trim().toLowerCase();
+  const codes: string[] = [];
+  const add = (raw: string) => {
+    const code = raw.trim().toLowerCase();
+    if (!code || code === native || codes.includes(code)) return;
+    codes.push(code);
+  };
+  add(DEFAULT_FOREIGN_LANG);
+  for (const code of learningLanguageCodes) add(code);
+  return codes;
+}
+
+export function quickTranslatePairLabel(
+  foreignLanguageCode: string,
+  nativeLanguageCode: string,
+): string {
+  return `${languageLabel(foreignLanguageCode)} ↔ ${languageLabel(nativeLanguageCode)}`;
+}
+
+/** The other-language side of the card (inverse of the query). */
+export function quickTranslateTargetHead(result: QuickTranslateResult): {
+  word: string;
+  transcript: string;
+  gloss: string;
+} {
+  return {
+    word: result.translation.trim(),
+    transcript: result.translationTranscript.trim(),
+    gloss: result.lemma.trim() || result.query.trim(),
+  };
+}
+
+export function otherTranslateLang(
+  queryLang: QuickTranslateLang,
+  foreignLanguageCode: string,
+  nativeLanguageCode: string,
+): QuickTranslateLang {
+  const q = queryLang.trim().toLowerCase();
+  const native = nativeLanguageCode.trim().toLowerCase();
+  const foreign =
+    foreignLanguageCode.trim().toLowerCase() || DEFAULT_FOREIGN_LANG;
+  return q === native ? foreign : native;
+}
+
+/** Forms are for the foreign word, not a translation into the native language. */
+export function quickTranslateShowForms(
+  result: QuickTranslateResult,
+  nativeLanguageCode: string,
+): boolean {
+  return (
+    result.queryLang.trim().toLowerCase() ===
+    nativeLanguageCode.trim().toLowerCase()
+  );
+}
+
+export function dictItemFromQuickTranslate(
+  result: QuickTranslateResult,
+  nativeLanguageCode: string,
+  foreignLanguageCode = DEFAULT_FOREIGN_LANG,
+): MddictItem {
+  const headLang = dictHeadwordLang(nativeLanguageCode, foreignLanguageCode);
+  const queryIsHead = result.queryLang === headLang;
+  const word = queryIsHead
+    ? result.lemma.trim() || result.query.trim()
+    : result.translation.trim();
+  const translation = queryIsHead
+    ? result.translation.trim()
+    : result.lemma.trim() || result.query.trim();
+  const transcript = queryIsHead
+    ? result.transcript.trim()
+    : result.translationTranscript.trim();
+  const examples = result.examples
+    .map((ex) => (queryIsHead ? ex.translation : ex.text).trim())
+    .filter(Boolean);
+  return {
+    word,
+    transcript,
+    translation,
+    examples,
+    tags: [],
+    known: false,
+  };
+}
+
+export function formatQuickTranslateMarkdown(
+  result: QuickTranslateResult,
+  nativeLanguageCode?: string,
+): string {
+  const { word, transcript } = quickTranslateTargetHead(result);
+  const showLearningAids =
+    nativeLanguageCode == null ||
+    quickTranslateShowForms(result, nativeLanguageCode);
+  const head =
+    showLearningAids && transcript ? `${word} ${transcript}` : word;
+  const lines: string[] = [head];
+  if (showLearningAids && result.forms.length > 0) {
+    lines.push(`Forms: ${result.forms.join(", ")}`);
+  }
+  for (const ex of result.examples) {
+    if (ex.translation) {
+      lines.push(`- ${ex.text} — ${ex.translation}`);
+    } else {
+      lines.push(`- ${ex.text}`);
+    }
+  }
+  return lines.join("\n");
+}

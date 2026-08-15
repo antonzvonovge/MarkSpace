@@ -27,6 +27,7 @@ import {
   isValidSkillId,
   joinPath,
   listAllComments,
+  listDiaryDayMarkers,
   listDictionaryTags,
   listFavorites,
   listNoteComments,
@@ -87,10 +88,25 @@ import {
   saveDocCommentsOpen,
 } from "../lib/commentsUiState";
 import {
+  dailyNoteOpeningMarkdown,
   dailyNotePath,
+  dayKey,
   diaryProjectRootForPath,
+  parseDailyNoteDate,
+  parseIsoDateOnly,
 } from "../lib/diaryNotes";
-import { getNoteTags, setNoteTags } from "../lib/noteFrontmatter";
+import { normalizeDayMarkerId } from "../lib/dayMarkers";
+import {
+  getNoteDayMarker,
+  getNoteTags,
+  setNoteDayMarker,
+  setNoteTags,
+} from "../lib/noteFrontmatter";
+
+async function nativeLanguageFromPrefs(): Promise<string> {
+  const { usePrefsStore } = await import("./prefsStore");
+  return usePrefsStore.getState().prefs.nativeLanguage;
+}
 
 /** Coalesce UI tag-catalog refreshes after rapid saves. */
 const TAG_CATALOG_REFRESH_MS = 1_500;
@@ -185,6 +201,10 @@ type VaultStore = {
   vaultTags: string[];
   /** Unique tags from all `.mddict` files (separate bank; not in tag graph). */
   dictionaryTags: string[];
+  /** dayKey → marker id for `diaryDayMarkersProject`. */
+  diaryDayMarkers: Record<string, string>;
+  /** Diary project whose markers are currently cached. */
+  diaryDayMarkersProject: string | null;
   content: string;
   viewMode: ViewMode;
   dirty: boolean;
@@ -199,6 +219,19 @@ type VaultStore = {
   refreshVaultTags: () => Promise<void>;
   /** Reload dictionary tag bank from all `.mddict` files. */
   refreshDictionaryTags: () => Promise<void>;
+  /** Load YAML day markers for a diary project into `diaryDayMarkers`. */
+  loadDiaryDayMarkers: (project: string) => Promise<void>;
+  /** Patch the in-memory calendar marker map from a daily-note path + markdown. */
+  rememberDiaryDayMarker: (path: string, markdown: string) => void;
+  /**
+   * Set or clear a diary day marker. Creates the daily note when missing
+   * (does not open a tab).
+   */
+  setDailyNoteMarker: (
+    fromPath: string,
+    date: Date,
+    markerId: string,
+  ) => Promise<void>;
   /** Reload `.markspace/projects` markers into `projectPropertiesByPath`. */
   refreshProjectProperties: () => Promise<void>;
   /** Upsert one project's properties in the in-memory map (after dialog save). */
@@ -370,6 +403,36 @@ async function loadProjectPropertiesMap(): Promise<
   } catch {
     return {};
   }
+}
+
+function diaryMarkersFromList(
+  rows: { date: string; marker: string }[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    const date = parseIsoDateOnly(row.date);
+    const id = normalizeDayMarkerId(row.marker);
+    if (!date || !id) continue;
+    map[dayKey(date)] = id;
+  }
+  return map;
+}
+
+function patchDiaryMarkerMap(
+  current: Record<string, string>,
+  date: Date,
+  markerId: string,
+): Record<string, string> {
+  const key = dayKey(date);
+  const id = normalizeDayMarkerId(markerId);
+  if (!id) {
+    if (!(key in current)) return current;
+    const next = { ...current };
+    delete next[key];
+    return next;
+  }
+  if (current[key] === id) return current;
+  return { ...current, [key]: id };
 }
 
 function remapExpanded(expanded: string[], from: string, to: string): string[] {
@@ -854,6 +917,7 @@ async function persistDirtyTab(
       set({ tabs: withTabBody(latest.tabs, path, savedContent, false) });
     }
     if (isDrawioPath(path)) warmDrawioPreview(path, savedContent);
+    get().rememberDiaryDayMarker(path, savedContent);
     scheduleTagCatalogRefresh(() => get().refreshVaultTags());
     if (path.toLowerCase().endsWith(".mddict")) {
       void get().refreshDictionaryTags();
@@ -1128,6 +1192,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   activeNoteComments: [],
   vaultTags: [],
   dictionaryTags: [],
+  diaryDayMarkers: {},
+  diaryDayMarkersProject: null,
   content: "",
   viewMode: "live",
   showOutline: false,
@@ -1161,6 +1227,117 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ dictionaryTags });
     } catch {
       set({ dictionaryTags: [] });
+    }
+  },
+
+  loadDiaryDayMarkers: async (project) => {
+    const root = project.trim().replace(/^\/+|\/+$/g, "");
+    if (!root) {
+      set({ diaryDayMarkers: {}, diaryDayMarkersProject: null });
+      return;
+    }
+    try {
+      const rows = await listDiaryDayMarkers(root);
+      set({
+        diaryDayMarkers: diaryMarkersFromList(rows),
+        diaryDayMarkersProject: root,
+      });
+    } catch {
+      set({ diaryDayMarkers: {}, diaryDayMarkersProject: root });
+    }
+  },
+
+  rememberDiaryDayMarker: (path, markdown) => {
+    const st = get();
+    const project = diaryProjectRootForPath(path, st.projectPropertiesByPath);
+    if (!project || st.diaryDayMarkersProject !== project) return;
+    const date = parseDailyNoteDate(path);
+    if (!date) return;
+    const next = patchDiaryMarkerMap(
+      st.diaryDayMarkers,
+      date,
+      getNoteDayMarker(markdown),
+    );
+    if (next !== st.diaryDayMarkers) set({ diaryDayMarkers: next });
+  },
+
+  setDailyNoteMarker: async (fromPath, date, markerId) => {
+    const { projectPropertiesByPath } = get();
+    const projectRoot = diaryProjectRootForPath(
+      fromPath,
+      projectPropertiesByPath,
+    );
+    if (!projectRoot) {
+      set({
+        error:
+          "Select a diary project (or open a note in one) to use the calendar.",
+      });
+      return;
+    }
+    const normalized = normalizeDayMarkerId(markerId);
+    const rel = dailyNotePath(projectRoot, date);
+    const remember = (markdown: string) => {
+      const st = get();
+      if (st.diaryDayMarkersProject !== projectRoot) return;
+      const next = patchDiaryMarkerMap(
+        st.diaryDayMarkers,
+        date,
+        getNoteDayMarker(markdown),
+      );
+      if (next !== st.diaryDayMarkers) set({ diaryDayMarkers: next });
+    };
+
+    try {
+      if (get().activePath === rel) {
+        flushActiveEditorBuffer(get);
+      }
+      const buf = tabBuffer(get(), rel);
+      if (buf) {
+        const next = setNoteDayMarker(buf.body, normalized);
+        if (get().activePath === rel) {
+          get().setContent(next);
+        } else {
+          set({ tabs: withTabBody(get().tabs, rel, next, true) });
+          void persistDirtyTab(set, get, rel);
+        }
+        remember(next);
+        return;
+      }
+
+      let markdown: string | null = null;
+      try {
+        markdown = await readNote(rel);
+      } catch {
+        markdown = null;
+      }
+
+      if (markdown == null) {
+        if (!normalized) {
+          remember("");
+          return;
+        }
+        const createdPath = await createNote(rel);
+        const language = await nativeLanguageFromPrefs();
+        const tagged = setNoteTags(dailyNoteOpeningMarkdown(date, language), [
+          "diary",
+        ]);
+        const marked = setNoteDayMarker(tagged, normalized);
+        set({ suppressWatchUntil: Date.now() + 6_000 });
+        await writeNote(createdPath, marked);
+        await get().refreshTree();
+        void get().refreshVaultTags();
+        remember(marked);
+        return;
+      }
+
+      const next = setNoteDayMarker(markdown, normalized);
+      if (next !== markdown) {
+        set({ suppressWatchUntil: Date.now() + 6_000 });
+        await writeNote(rel, next);
+      }
+      remember(next);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
     }
   },
 
@@ -1245,6 +1422,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         projectPropertiesByPath,
         vaultTags: [],
         dictionaryTags: [],
+        diaryDayMarkers: {},
+        diaryDayMarkersProject: null,
         allComments: [],
         activeNoteComments: [],
         pendingCommentFocusId: null,
@@ -1328,6 +1507,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           if (pending) continue;
           void get().refreshAllComments();
           void get().loadActiveNoteComments();
+          const markerProject = get().diaryDayMarkersProject;
+          if (markerProject) void get().loadDiaryDayMarkers(markerProject);
         } catch (e) {
           if (pending) continue;
           set({ error: e instanceof Error ? e.message : String(e) });
@@ -1844,6 +2025,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         tabs: withTabBody(current.tabs, activePath, savedContent, false),
       });
       if (isDrawioPath(activePath)) warmDrawioPreview(activePath, savedContent);
+      get().rememberDiaryDayMarker(activePath, savedContent);
       // Tag index was already patched in write_note; refresh UI catalogs after
       // a short settle so rapid saves do not spam listVaultTags IPC.
       scheduleTagCatalogRefresh(() => get().refreshVaultTags());
@@ -1971,12 +2153,9 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
 
       const createdPath = await createNote(rel);
-      const initial = await readNote(createdPath);
-      const tagged = setNoteTags(initial, [
+      const language = await nativeLanguageFromPrefs();
+      const tagged = setNoteTags(dailyNoteOpeningMarkdown(day, language), [
         "diary",
-        ...getNoteTags(initial).filter(
-          (t) => t.toLowerCase() !== "diary",
-        ),
       ]);
       await writeNote(createdPath, tagged);
       await get().refreshTree();
@@ -2564,6 +2743,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       patch.dirty = false;
     }
     set(patch);
+    get().rememberDiaryDayMarker(path, content);
   },
 
   reloadOpenTabsFromDisk: async () => {

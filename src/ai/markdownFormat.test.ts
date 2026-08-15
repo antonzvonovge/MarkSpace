@@ -25,6 +25,7 @@ describe("markdownFormat", () => {
     expect(guide).toContain("plantuml");
     expect(guide).toContain("data-background-color");
     expect(guide).toContain("#multi-agent");
+    expect(guide).toContain("marker:");
     expect(guide).toMatch(/##\s+Inline tags/i);
     expect(guide).toMatch(/##\s+Math/i);
     expect(guide).toContain("$Cl^-$");
@@ -47,6 +48,12 @@ describe("markdownFormat", () => {
     const rules = markdownCoreRules().join("\n");
     expect(rules).toMatch(/inline tags/i);
     expect(rules).not.toMatch(/do \*\*not\*\* emit[\s\S]*inline `#tags`/i);
+  });
+
+  it("documents diary day markers in core rules", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/marker:/);
+    expect(rules).toMatch(/holiday/);
   });
 
   it("documents nested list indent rules in core and guide", () => {

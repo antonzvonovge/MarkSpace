@@ -1,6 +1,7 @@
 mod agent_memory;
 mod chat_history;
 mod comments;
+mod diary;
 mod dict_progress;
 mod embeddings;
 mod favorites;
@@ -177,6 +178,7 @@ pub fn run() {
             vault::write_file_bytes,
             vault::search_notes,
             vault::list_vault_tags,
+            vault::list_diary_day_markers,
             vault::list_dictionary_tags,
             vault::list_note_tags,
             vault::reindex_note_tags,
@@ -210,6 +212,8 @@ pub fn run() {
             agent_memory::update_agent_memory,
             agent_memory::delete_agent_memory,
             agent_memory::clear_agent_memory,
+            diary::get_diary_settings,
+            diary::set_diary_settings,
             http_fetch::http_fetch,
             http_fetch::http_fetch_bytes,
             terminal::run_terminal_command,

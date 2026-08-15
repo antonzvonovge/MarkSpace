@@ -11,6 +11,7 @@ import {
   lastPinnedIndex,
   type PinnableTab,
 } from "../../lib/editorTabs";
+import { PromptDialog } from "../AppDialog";
 import {
   TabContextMenu,
   type TabContextMenuState,
@@ -37,11 +38,13 @@ export function ChatTabBar() {
   const closeTabsToTheRight = useChatStore((s) => s.closeTabsToTheRight);
   const setTabPinned = useChatStore((s) => s.setTabPinned);
   const reorderOpenTabs = useChatStore((s) => s.reorderOpenTabs);
+  const renameThread = useChatStore((s) => s.renameThread);
   const newThread = useChatStore((s) => s.newThread);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<TabContextMenuState | null>(
     null,
   );
+  const [renameThreadId, setRenameThreadId] = useState<string | null>(null);
   const activeRef = useRef<HTMLDivElement>(null);
   const tabbarRef = useHorizontalWheelScroll<HTMLDivElement>();
 
@@ -294,8 +297,24 @@ export function ChatTabBar() {
           onTogglePinned={(pinned) =>
             void setTabPinned(contextMenu.targetId, pinned)
           }
+          onRename={() => setRenameThreadId(contextMenu.targetId)}
         />
       ) : null}
+      <PromptDialog
+        open={renameThreadId != null}
+        title="Rename chat"
+        label="Name"
+        defaultValue={
+          threads.find((t) => t.id === renameThreadId)?.title ?? ""
+        }
+        confirmLabel="Rename"
+        onCancel={() => setRenameThreadId(null)}
+        onConfirm={(value) => {
+          const id = renameThreadId;
+          setRenameThreadId(null);
+          if (id) void renameThread(id, value);
+        }}
+      />
     </div>
   );
 }

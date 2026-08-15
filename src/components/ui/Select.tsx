@@ -23,6 +23,7 @@ type Props<T extends string> = {
   options: SelectOption<T>[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  tabIndex?: number;
   /** "setting" — compact control in SettingRow; "field" — full-width form field. */
   variant?: "setting" | "field";
   /** Preferred menu direction. `auto` picks the side with more space. */
@@ -37,6 +38,7 @@ export function Select<T extends string>({
   options,
   onChange,
   disabled,
+  tabIndex,
   variant = "setting",
   menuPlacement = "auto",
   className,
@@ -176,6 +178,7 @@ export function Select<T extends string>({
         type="button"
         className="ms-select-trigger"
         disabled={disabled}
+        tabIndex={tabIndex}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}

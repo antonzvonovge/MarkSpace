@@ -16,6 +16,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. Prefer fenced ` ```d2 ` for richer architecture text-diagrams; also ` ```mermaid `, ` ```plantuml ` / ` ```puml `, ` ```dot ` / ` ```graphviz `, ` ```markmap `. For freeform rich graphics create/edit a `.drawio` and embed `![[path/diagram.drawio]]`. In Mermaid, quote subgraph/node labels that contain `(…)`, `<br/>`, or other special chars: `subgraph id ["Title (detail)"]`, `A["Label<br/>line2"]` — unquoted parentheses inside `[…]` cause parse errors.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
+- Diary daily notes may set YAML `marker:` to a catalog id from Settings → Diary (defaults include `holiday`, `important`, `sad`, …) so the sidebar calendar shows that day's emoji; omit the key (or leave it empty) to clear.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
 - Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
@@ -32,6 +33,7 @@ tags:
   - work
   - inbox
   - project/markspace
+marker: holiday
 ---
 
 # Note title
@@ -42,6 +44,7 @@ tags:
 - The UI always writes tags as a block list of plain strings; `tags: [work, inbox]` and `tags: work` are also read correctly.
 - Each item must be a scalar. Mapping items (`  - name: work`) are a mistake: they are tolerated on read (the `name` / `tag` value is used) but rewritten as plain strings on the next tag edit.
 - Tag names: no leading `#`, trimmed, case preserved, deduplicated case-insensitively. Nesting is just a `/` inside the name (`area/topic`).
+- Diary **daily notes** may include `marker:` — a single catalog id, not a free emoji. The catalog lives in this vault at `.markspace/diary.json` and is edited in Settings → Diary. Built-in defaults: `important` (⭐), `holiday` (🎉), `birthday` (🎂), `travel` (✈️), `work` (💼), `happy` (😊), `sad` (😢), `grief` (🖤), `love` (❤️), `deadline` (⚠️), `health` (🏥), `rest` (😴). Ids that are not in the catalog are ignored in the calendar (treated as unset) but kept in YAML until changed. Right-click a day in the sidebar calendar, or use the marker control next to page tags, to set or clear it. Clearing removes the key.
 - Other keys (e.g. `aliases`) are preserved when tags change; when the last key is removed the whole block is dropped.
 - Front-matter tags are edited from the tag overlay; the live editor loads only the markdown after the closing `---` and reattaches front-matter on save.
 - You may also use **inline tags** in the body (below); they are separate from front-matter and are not copied into `tags:` automatically.

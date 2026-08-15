@@ -76,6 +76,74 @@ function focusSoon(focus: () => void) {
   });
 }
 
+export function canInsertTextInActiveMarkdown(): boolean {
+  const { activePath, viewMode } = useVaultStore.getState();
+  if (!activePath || documentKind(activePath) !== "markdown") return false;
+  if (viewMode === "source") return sourceEditors.has(activePath);
+  const editor = liveEditors.get(activePath);
+  return Boolean(editor?.isEditable);
+}
+
+/** Selected text in the active markdown editor, or empty. */
+export function getActiveMarkdownSelection(): string {
+  const { activePath, viewMode } = useVaultStore.getState();
+  if (!activePath || documentKind(activePath) !== "markdown") return "";
+  if (viewMode === "source") {
+    const view = sourceEditors.get(activePath);
+    if (!view) return "";
+    const { from, to } = view.state.selection.main;
+    if (from === to) return "";
+    return view.state.sliceDoc(from, to);
+  }
+  const editor = liveEditors.get(activePath);
+  if (!editor) return "";
+  return editor.getSelectedText() ?? "";
+}
+
+/** Insert (or replace the selection) in the active markdown editor. */
+export function insertTextInActiveMarkdown(text: string): boolean {
+  if (!text) return false;
+  const { activePath, viewMode } = useVaultStore.getState();
+  if (!activePath || documentKind(activePath) !== "markdown") return false;
+
+  if (viewMode === "source") {
+    const view = sourceEditors.get(activePath);
+    if (!view) return false;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+      scrollIntoView: true,
+    });
+    focusSoon(() => view.focus());
+    return true;
+  }
+
+  const editor = liveEditors.get(activePath);
+  if (!editor || !editor.isEditable) return false;
+  editor.pasteText(text);
+  focusSoon(() => editor.focus());
+  return true;
+}
+
+/** Restore caret in the active markdown editor without moving the selection. */
+export function focusActiveMarkdownEditor(): boolean {
+  const { activePath, viewMode } = useVaultStore.getState();
+  if (!activePath || documentKind(activePath) !== "markdown") return false;
+
+  if (viewMode === "source") {
+    const view = sourceEditors.get(activePath);
+    if (!view) return false;
+    focusSoon(() => view.focus());
+    return true;
+  }
+
+  const editor = liveEditors.get(activePath);
+  if (!editor) return false;
+  focusSoon(() => editor.focus());
+  return true;
+}
+
 /**
  * Delete completed checkbox blocks in the active markdown editor.
  * Range selection → only items in that selection; otherwise the whole note.

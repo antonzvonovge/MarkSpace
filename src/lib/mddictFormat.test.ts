@@ -5,6 +5,7 @@ import {
   collectMddictDocTags,
   collectMddictTags,
   filterMddictItems,
+  mergeDictItem,
   parseMddict,
   serializeMddict,
 } from "./mddictFormat";
@@ -214,5 +215,38 @@ tags: noun
 
   it("rejects bad header", () => {
     expect(() => parseMddict("# wrong\n")).toThrow(/header/i);
+  });
+
+  it("appends or merges dictionary entries by word", () => {
+    const empty = parseMddict(EMPTY_MDDICT);
+    const added = mergeDictItem(empty, {
+      word: "apple",
+      transcript: "/ˈæp.əl/",
+      translation: "яблоко",
+      examples: ["I ate an apple."],
+      tags: [],
+      known: false,
+    });
+    expect(added.merged).toBe(false);
+    expect(added.doc.items).toHaveLength(1);
+
+    const updated = mergeDictItem(added.doc, {
+      word: "Apple",
+      transcript: "",
+      translation: "яблочко",
+      examples: ["Another."],
+      tags: ["fruit"],
+      known: true,
+    });
+    expect(updated.merged).toBe(true);
+    expect(updated.doc.items).toHaveLength(1);
+    expect(updated.doc.items[0]).toEqual({
+      word: "Apple",
+      transcript: "",
+      translation: "яблочко",
+      examples: ["Another."],
+      tags: [],
+      known: false,
+    });
   });
 });

@@ -112,17 +112,20 @@ export function EditContextMenu({
         </button>
       ) : null}
       {showComment ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="tree-context-item"
-          onClick={() => {
-            onClose();
-            onComment();
-          }}
-        >
-          <span>Comment</span>
-        </button>
+        <>
+          <div className="tree-context-sep" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onComment();
+            }}
+          >
+            <span>Comment</span>
+          </button>
+        </>
       ) : null}
     </div>,
     document.body,

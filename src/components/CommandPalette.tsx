@@ -8,16 +8,52 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { TreeNode } from "../lib/vaultApi";
-import { RECENT_FILES_LIMIT } from "../lib/settingsStore";
+import {
+  RECENT_COMMANDS_LIMIT,
+  RECENT_FILES_LIMIT,
+} from "../lib/settingsStore";
 
 export type CommandPaletteMode = "files" | "commands";
+
+export type PaletteShortcut = {
+  /** Ctrl on Windows/Linux, Cmd on macOS. */
+  mod?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  /** Display key, e.g. "T", ",". */
+  key: string;
+};
 
 export type PaletteCommand = {
   id: string;
   label: string;
   /** Extra text matched by substring search (not shown). */
   keywords?: string;
+  shortcut?: PaletteShortcut;
 };
+
+export function isApplePlatform(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const plat = navigator.platform || "";
+  const ua = navigator.userAgent || "";
+  return /Mac|iPhone|iPad|iPod/i.test(plat) || /Mac OS X/i.test(ua);
+}
+
+/** VS Code / Cursor-style label: `Ctrl+Shift+T` or `⌘⇧T`. */
+export function formatPaletteShortcut(
+  shortcut: PaletteShortcut,
+  apple = isApplePlatform(),
+): string {
+  if (apple) {
+    return `${shortcut.alt ? "⌥" : ""}${shortcut.shift ? "⇧" : ""}${shortcut.mod ? "⌘" : ""}${shortcut.key}`;
+  }
+  const parts: string[] = [];
+  if (shortcut.mod) parts.push("Ctrl");
+  if (shortcut.alt) parts.push("Alt");
+  if (shortcut.shift) parts.push("Shift");
+  parts.push(shortcut.key);
+  return parts.join("+");
+}
 
 type Props = {
   open: boolean;
@@ -25,6 +61,8 @@ type Props = {
   tree: TreeNode | null;
   recentPaths: string[];
   commands: PaletteCommand[];
+  /** Most recently run command ids first. */
+  recentCommandIds: string[];
   onClose: () => void;
   onOpenFile: (path: string) => void;
   onRunCommand: (id: string) => void;
@@ -59,12 +97,66 @@ function commandMatches(cmd: PaletteCommand, query: string): boolean {
   if (!q) return true;
   if (cmd.label.toLowerCase().includes(q)) return true;
   if (cmd.keywords?.toLowerCase().includes(q)) return true;
+  if (cmd.shortcut) {
+    const shown = formatPaletteShortcut(cmd.shortcut).toLowerCase();
+    if (shown.includes(q)) return true;
+    const parts = [
+      cmd.shortcut.mod ? "ctrl cmd" : "",
+      cmd.shortcut.alt ? "alt" : "",
+      cmd.shortcut.shift ? "shift" : "",
+      cmd.shortcut.key,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (parts.includes(q)) return true;
+  }
   return false;
+}
+
+/** Recently used commands first (unknown ids skipped); unused keep original order. */
+export function orderCommandsByRecentUse(
+  commands: PaletteCommand[],
+  recentIds: string[],
+): PaletteCommand[] {
+  const byId = new Map(commands.map((c) => [c.id, c]));
+  const seen = new Set<string>();
+  const out: PaletteCommand[] = [];
+  for (const id of recentIds) {
+    const cmd = byId.get(id);
+    if (!cmd || seen.has(id)) continue;
+    seen.add(id);
+    out.push(cmd);
+  }
+  for (const cmd of commands) {
+    if (seen.has(cmd.id)) continue;
+    out.push(cmd);
+  }
+  return out;
+}
+
+/** Empty query: top 10 by recency. Search: all matches, recents first. */
+export function listPaletteCommands(
+  commands: PaletteCommand[],
+  query: string,
+  recentIds: string[],
+): PaletteCommand[] {
+  const q = query.trim();
+  if (!q) {
+    return orderCommandsByRecentUse(commands, recentIds).slice(
+      0,
+      RECENT_COMMANDS_LIMIT,
+    );
+  }
+  return orderCommandsByRecentUse(
+    commands.filter((c) => commandMatches(c, q)),
+    recentIds,
+  );
 }
 
 type ListItem =
   | { kind: "file"; path: string }
-  | { kind: "command"; id: string; label: string }
+  | { kind: "command"; id: string; label: string; shortcut?: string }
   | { kind: "heading"; label: string };
 
 type SavedFocus = {
@@ -133,6 +225,7 @@ export function CommandPalette({
   tree,
   recentPaths,
   commands,
+  recentCommandIds,
   onClose,
   onOpenFile,
   onRunCommand,
@@ -160,13 +253,16 @@ export function CommandPalette({
 
   const items = useMemo((): ListItem[] => {
     if (mode === "commands") {
-      return commands
-        .filter((c) => commandMatches(c, query))
-        .map((c) => ({
+      return listPaletteCommands(commands, query, recentCommandIds).map(
+        (c) => ({
           kind: "command" as const,
           id: c.id,
           label: c.label,
-        }));
+          shortcut: c.shortcut
+            ? formatPaletteShortcut(c.shortcut)
+            : undefined,
+        }),
+      );
     }
 
     const q = query.trim();
@@ -190,7 +286,7 @@ export function CommandPalette({
       .filter((p) => pathMatches(p, q))
       .slice(0, FILE_RESULT_LIMIT)
       .map((path) => ({ kind: "file" as const, path }));
-  }, [allFiles, commands, fileSet, mode, query, recentPaths]);
+  }, [allFiles, commands, fileSet, mode, query, recentCommandIds, recentPaths]);
 
   const selectable = useMemo(
     () =>
@@ -400,6 +496,11 @@ export function CommandPalette({
                       ? "command-palette-item is-active"
                       : "command-palette-item"
                   }
+                  aria-label={
+                    item.shortcut
+                      ? `${item.label}, ${item.shortcut}`
+                      : undefined
+                  }
                   onMouseEnter={() => setSelectedIndex(idx)}
                   onClick={() => {
                     onRunCommand(item.id);
@@ -407,6 +508,11 @@ export function CommandPalette({
                   }}
                 >
                   <span className="command-palette-item-name">{item.label}</span>
+                  {item.shortcut ? (
+                    <span className="command-palette-item-shortcut">
+                      {item.shortcut}
+                    </span>
+                  ) : null}
                 </button>
               );
             })

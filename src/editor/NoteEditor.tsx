@@ -30,7 +30,7 @@ import {
   type EditContextMenuState,
 } from "../components/EditContextMenu";
 import { ImageLightbox } from "../components/ImageLightbox";
-import { PageTags } from "../components/PageTags";
+import { NotePageChrome } from "../components/NotePageChrome";
 import { writeClipboardText } from "../lib/clipboardText";
 import { registerLiveEditor } from "./completedTasksCommand";
 import { registerLiveEditorFlush } from "./liveEditorFlush";
@@ -1118,7 +1118,7 @@ export const NoteEditor = memo(function NoteEditor({
               }
               onContextMenu={openEditorContextMenu}
             >
-              <PageTags content={content} onChange={onChange} />
+              <NotePageChrome path={path} content={content} onChange={onChange} />
               <NoteFormattingToolbarProvider
                 notePath={path}
                 onComment={startCommentFromSelection}

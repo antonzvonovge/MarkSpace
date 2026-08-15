@@ -1,4 +1,5 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { normalizeDayMarkerId } from "./dayMarkers";
 
 export type FrontmatterData = Record<string, unknown>;
 
@@ -105,6 +106,40 @@ export function getNoteTags(markdown: string): string[] {
   const { data } = splitFrontmatter(markdown);
   if (!data) return [];
   return normalizeTags(data.tags);
+}
+
+/** Diary day-marker catalog id from YAML `marker:`, or empty when unset/invalid. */
+export function getNoteDayMarker(markdown: string): string {
+  const { data } = splitFrontmatter(markdown);
+  if (!data) return "";
+  return normalizeDayMarkerId(data.marker);
+}
+
+/**
+ * Return markdown with an updated `marker` id.
+ * Preserves other frontmatter keys. Removes the fence when nothing remains.
+ * When the existing fence has unparseable YAML, returns the original markdown
+ * unchanged (UI cannot safely rewrite it).
+ */
+export function setNoteDayMarker(markdown: string, markerId: string): string {
+  const split = splitFrontmatter(markdown);
+  const next = normalizeDayMarkerId(markerId);
+
+  if (split.hasFence && split.data === null) {
+    return markdown;
+  }
+
+  const data: FrontmatterData = { ...(split.data ?? {}) };
+  if (!next) {
+    delete data.marker;
+  } else {
+    data.marker = next;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return split.body;
+  }
+  return mergeFrontmatter(data, split.body);
 }
 
 function formatFrontmatterYaml(data: FrontmatterData): string {

@@ -15,17 +15,24 @@ import {
   type CommandPaletteMode,
 } from "./components/CommandPalette";
 import { ConfirmDialog } from "./components/AppDialog";
+import { IeltsGeneralReviewDialog } from "./components/IeltsGeneralReviewDialog";
+import { QuickTranslateDialog } from "./components/QuickTranslateDialog";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { StatusBar } from "./components/StatusBar";
 import { SyncConflictBanner } from "./components/SyncConflictBanner";
 import { EditorChrome } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { PageTags } from "./components/PageTags";
+import { NotePageChrome } from "./components/NotePageChrome";
 import { TagGraphView } from "./components/graph/TagGraphView";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { PlainSourceEditor } from "./editor/PlainSourceEditor";
-import { deleteCompletedTasksInActiveEditor } from "./editor/completedTasksCommand";
+import { startAutoTagActiveNote } from "./ai/autoTagNote";
+import { IELTS_REVIEW_MAX_CHARS } from "./ai/ieltsGeneralReview";
+import {
+  deleteCompletedTasksInActiveEditor,
+  getActiveMarkdownSelection,
+} from "./editor/completedTasksCommand";
 import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
@@ -41,6 +48,11 @@ import {
   toGroupLayout,
   type ShellLayout,
 } from "./lib/shellLayout";
+import {
+  loadRecentCommands,
+  pushRecentCommandId,
+  saveRecentCommands,
+} from "./lib/settingsStore";
 import { useAiSettingsStore } from "./store/aiSettingsStore";
 import { applyBackgroundJobPayload } from "./store/backgroundJobsStore";
 import { useChatUiStore } from "./store/chatUiStore";
@@ -233,7 +245,8 @@ const DocumentTab = memo(function DocumentTab({
           {isActive && viewMode === "source" ? (
             <div className="document-editor-slot is-active">
               <div className="source-editor-wrap">
-                <PageTags
+                <NotePageChrome
+                  path={path}
                   content={content}
                   onChange={(markdown) => onEditorChange(path, markdown)}
                 />
@@ -346,6 +359,11 @@ const MainPane = memo(function MainPane({
 
 const PALETTE_COMMANDS = [
   {
+    id: "auto-tag-note",
+    label: "Auto-tag note",
+    keywords: "tags tagging hashtag classify catalog frontmatter",
+  },
+  {
     id: "delete-completed-tasks",
     label: "Delete completed tasks",
     keywords: "checkbox checked done finished todo checklist remove",
@@ -354,6 +372,17 @@ const PALETTE_COMMANDS = [
     id: "open-word-trainer",
     label: "Open word trainer",
     keywords: "practice dictionary words mddict",
+  },
+  {
+    id: "quick-translate",
+    label: "Quick translation",
+    keywords: "translate dictionary word lookup russian english grisha",
+    shortcut: { mod: true, shift: true, key: "T" },
+  },
+  {
+    id: "ielts-general-writing-review",
+    label: "IELTS General writing review",
+    keywords: "ielts gt general training writing band essay letter",
   },
 ];
 
@@ -428,9 +457,14 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteMode, setPaletteMode] =
     useState<CommandPaletteMode>("files");
+  const [recentCommandIds, setRecentCommandIds] = useState<string[]>([]);
   const [practiceOpen, setPracticeOpen] = useState(false);
   const [practiceProjectPath, setPracticeProjectPath] = useState("");
   const [practiceBlockedOpen, setPracticeBlockedOpen] = useState(false);
+  const [quickTranslateOpen, setQuickTranslateOpen] = useState(false);
+  const [quickTranslateQuery, setQuickTranslateQuery] = useState("");
+  const [ieltsReviewOpen, setIeltsReviewOpen] = useState(false);
+  const [ieltsReviewQuery, setIeltsReviewQuery] = useState("");
   const timer = useRef<number | null>(null);
   const groupRef = useGroupRef();
   const applyingRef = useRef(false);
@@ -568,6 +602,7 @@ function App() {
   useEffect(() => {
     void hydratePrefs();
     void hydrateAi();
+    void loadRecentCommands().then(setRecentCommandIds);
   }, [hydratePrefs, hydrateAi]);
 
   useEffect(() => {
@@ -668,6 +703,16 @@ function App() {
         }
         toggleChat();
       }
+      if (e.shiftKey && code === "KeyT") {
+        if (!vaultPath) return;
+        e.preventDefault();
+        const selected = getActiveMarkdownSelection()
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 200);
+        setQuickTranslateQuery(selected);
+        setQuickTranslateOpen(true);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -675,8 +720,29 @@ function App() {
 
   const runPaletteCommand = useCallback(
     (id: string) => {
+      if (id === "auto-tag-note") {
+        startAutoTagActiveNote();
+        return;
+      }
       if (id === "delete-completed-tasks") {
         deleteCompletedTasksInActiveEditor();
+        return;
+      }
+      if (id === "quick-translate") {
+        const selected = getActiveMarkdownSelection()
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 200);
+        setQuickTranslateQuery(selected);
+        setQuickTranslateOpen(true);
+        return;
+      }
+      if (id === "ielts-general-writing-review") {
+        const selected = getActiveMarkdownSelection()
+          .trim()
+          .slice(0, IELTS_REVIEW_MAX_CHARS);
+        setIeltsReviewQuery(selected);
+        setIeltsReviewOpen(true);
         return;
       }
       if (id !== "open-word-trainer") return;
@@ -992,17 +1058,35 @@ function App() {
         tree={tree}
         recentPaths={recentPaths}
         commands={PALETTE_COMMANDS}
+        recentCommandIds={recentCommandIds}
         onClose={() => setPaletteOpen(false)}
         onOpenFile={(path) => {
           void openNote(path, { preview: true });
         }}
-        onRunCommand={runPaletteCommand}
+        onRunCommand={(id) => {
+          setRecentCommandIds((prev) => {
+            const next = pushRecentCommandId(prev, id);
+            void saveRecentCommands(next);
+            return next;
+          });
+          runPaletteCommand(id);
+        }}
       />
       <DictPracticeDialog
         open={practiceOpen}
         projectPath={practiceProjectPath}
         tree={tree}
         onClose={() => setPracticeOpen(false)}
+      />
+      <QuickTranslateDialog
+        open={quickTranslateOpen}
+        initialQuery={quickTranslateQuery}
+        onClose={() => setQuickTranslateOpen(false)}
+      />
+      <IeltsGeneralReviewDialog
+        open={ieltsReviewOpen}
+        initialText={ieltsReviewQuery}
+        onClose={() => setIeltsReviewOpen(false)}
       />
       <ConfirmDialog
         open={practiceBlockedOpen}

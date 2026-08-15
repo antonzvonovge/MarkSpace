@@ -2817,6 +2817,167 @@ fn replace_tag_index(state: &VaultState, index: TagIndex) {
     }
 }
 
+const MONTH_ABBR: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+fn month_abbr_index(abbr: &str) -> Option<u32> {
+    MONTH_ABBR
+        .iter()
+        .position(|a| a.eq_ignore_ascii_case(abbr))
+        .map(|i| i as u32)
+}
+
+fn is_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn days_in_month(year: i32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if is_leap_year(year) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 0,
+    }
+}
+
+/// Parse `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` → (year, month 1-based, day).
+fn parse_daily_note_date(rel: &str) -> Option<(i32, u32, u32)> {
+    let rel = rel.trim_start_matches('/');
+    let parts: Vec<&str> = rel.split('/').collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    let folder_year: i32 = parts[1].parse().ok()?;
+    let folder_month: u32 = parts[2].parse().ok()?;
+    if parts[2].len() != 2 || folder_month < 1 || folder_month > 12 {
+        return None;
+    }
+    let filename = parts[3];
+    if !filename.ends_with(".md") {
+        return None;
+    }
+    let stem = &filename[..filename.len() - 3];
+    let segs: Vec<&str> = stem.split('.').collect();
+    if segs.len() != 3 {
+        return None;
+    }
+    if segs[0].len() != 2 || segs[2].len() != 4 {
+        return None;
+    }
+    let day: u32 = segs[0].parse().ok()?;
+    let month_idx = month_abbr_index(segs[1])?;
+    let year: i32 = segs[2].parse().ok()?;
+    if folder_year != year || folder_month != month_idx + 1 {
+        return None;
+    }
+    if day < 1 || day > days_in_month(year, month_idx + 1) {
+        return None;
+    }
+    Some((year, month_idx + 1, day))
+}
+
+fn iso_date_ymd(year: i32, month: u32, day: u32) -> String {
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// Top-level YAML `marker:` scalar, if present and non-empty.
+fn marker_from_frontmatter_yaml(yaml: &str) -> Option<String> {
+    for raw_line in yaml.lines() {
+        if raw_line.starts_with(' ') || raw_line.starts_with('\t') {
+            continue;
+        }
+        let trimmed = raw_line.trim();
+        let Some(rest) = trimmed.strip_prefix("marker:") else {
+            continue;
+        };
+        let mut value = rest.trim();
+        if value.len() >= 2
+            && ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+        {
+            value = &value[1..value.len() - 1];
+        }
+        let value = value.trim();
+        if value.is_empty() {
+            return None;
+        }
+        return Some(value.to_string());
+    }
+    None
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct DiaryDayMarker {
+    pub date: String,
+    pub marker: String,
+}
+
+/// Walk a diary project for daily notes that have YAML `marker:`.
+#[tauri::command(async)]
+pub fn list_diary_day_markers(
+    project: String,
+    state: State<VaultState>,
+) -> Result<Vec<DiaryDayMarker>, String> {
+    let root = get_root(&state)?;
+    let rel = project.trim().trim_start_matches('/').to_string();
+    if rel.is_empty() || rel.contains("..") {
+        return Err("Diary project path required".into());
+    }
+    let project_dir = ensure_inside(&root, Path::new(&rel))?;
+    if !project_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut out: Vec<DiaryDayMarker> = Vec::new();
+    for entry in WalkDir::new(&project_dir)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            e.file_name()
+                .to_str()
+                .map(walk_entry_allowed)
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy();
+        if !is_markdown(&name) {
+            continue;
+        }
+        let note_rel = relative_to_root(&root, entry.path());
+        let Some((year, month, day)) = parse_daily_note_date(&note_rel) else {
+            continue;
+        };
+        let Ok(text) = fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        let Some(yaml) = frontmatter_yaml(&text) else {
+            continue;
+        };
+        let Some(marker) = marker_from_frontmatter_yaml(yaml) else {
+            continue;
+        };
+        out.push(DiaryDayMarker {
+            date: iso_date_ymd(year, month, day),
+            marker,
+        });
+    }
+    out.sort_by(|a, b| a.date.cmp(&b.date));
+    Ok(out)
+}
+
 #[tauri::command(async)]
 pub fn list_vault_tags(state: State<VaultState>) -> Result<Vec<String>, String> {
     let guard = state
@@ -3083,3 +3244,41 @@ pub fn write_file_bytes(
     write_order(&root, &order)?;
     Ok(created)
 }
+
+#[cfg(test)]
+mod diary_marker_tests {
+    use super::*;
+
+    #[test]
+    fn parse_daily_note_date_accepts_layout() {
+        assert_eq!(
+            parse_daily_note_date("Journal/2026/08/15.Aug.2026.md"),
+            Some((2026, 8, 15))
+        );
+        assert_eq!(
+            parse_daily_note_date("Journal/2026/01/09.Jan.2026.md"),
+            Some((2026, 1, 9))
+        );
+        assert_eq!(parse_daily_note_date("Journal/2026/08/15.Aug.2025.md"), None);
+        assert_eq!(parse_daily_note_date("Journal/2026/08/note.md"), None);
+        assert_eq!(parse_daily_note_date("Journal/2026/02/31.Feb.2026.md"), None);
+    }
+
+    #[test]
+    fn marker_from_yaml_reads_plain_and_quoted() {
+        assert_eq!(
+            marker_from_frontmatter_yaml("tags:\n  - diary\nmarker: holiday\n"),
+            Some("holiday".into())
+        );
+        assert_eq!(
+            marker_from_frontmatter_yaml("marker: \"sad\"\n"),
+            Some("sad".into())
+        );
+        assert_eq!(marker_from_frontmatter_yaml("marker: \n"), None);
+        assert_eq!(
+            marker_from_frontmatter_yaml("tags:\n  - marker: nested\n"),
+            None
+        );
+    }
+}
+

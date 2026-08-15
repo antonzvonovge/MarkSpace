@@ -312,6 +312,9 @@ export async function saveVaultSession(
 /** Max recent files shown in Quick Open when the query is empty. */
 export const RECENT_FILES_LIMIT = 10;
 
+/** Max commands shown in the command palette when the query is empty. */
+export const RECENT_COMMANDS_LIMIT = 10;
+
 const VAULT_RECENT_FILES_KEY = "vaultRecentFiles";
 
 function normalizeRecentPaths(raw: unknown): string[] {
@@ -371,6 +374,38 @@ export async function saveRecentFiles(
 /** Move `path` to the front of the vault MRU list (deduped, capped). */
 export function pushRecentPath(paths: string[], path: string): string[] {
   return normalizeRecentPaths([path, ...paths.filter((p) => p !== path)]);
+}
+
+const RECENT_COMMANDS_KEY = "recentCommands";
+
+function normalizeRecentCommandIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string" || !item || seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+    if (out.length >= RECENT_COMMANDS_LIMIT) break;
+  }
+  return out;
+}
+
+/** Move `id` to the front of the command MRU list (deduped, capped). */
+export function pushRecentCommandId(ids: string[], id: string): string[] {
+  if (!id) return normalizeRecentCommandIds(ids);
+  return normalizeRecentCommandIds([id, ...ids.filter((x) => x !== id)]);
+}
+
+export async function loadRecentCommands(): Promise<string[]> {
+  const store = await Store.load(STORE_FILE);
+  return normalizeRecentCommandIds(await store.get(RECENT_COMMANDS_KEY));
+}
+
+export async function saveRecentCommands(ids: string[]): Promise<void> {
+  const store = await Store.load(STORE_FILE);
+  await store.set(RECENT_COMMANDS_KEY, normalizeRecentCommandIds(ids));
+  await store.save();
 }
 
 export type AutoSyncMinutes = 0 | 5 | 15 | 30 | 60;

@@ -91,6 +91,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     system: [
       "You are a MarkSpace note editor. Create/edit markdown notes, folders, and assets.",
       "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, .mddict, or .mdhabit — those need other specialists.",
+      "To tag a note from its content, prefer auto_tag_note (reuses the vault tag catalog) over inventing tags in edit_note.",
       "Follow MarkSpace Markdown dialect; call read_format_guide when unsure.",
       "Diary daily notes: {project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md via open_or_create_daily_note.",
       "End with a summary and list changedPaths.",
@@ -117,6 +118,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "save_attachment",
       "write_asset",
       "open_or_create_daily_note",
+      "auto_tag_note",
       "translate_note",
       "clip_article",
       "read_file",
@@ -208,7 +210,9 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     writes: true,
     system: [
       "You are a MarkSpace terminal specialist. Run shell commands with run_terminal.",
+      "Match the Host OS / shell line in this prompt — do not guess Windows vs Unix.",
       "The user must approve each command unless they enabled Allow for this chat.",
+      "If the task is heavy, dangerous, or involves writing and running custom scripts, and it does not already say the user approved the plan: do not run commands; reply that you need confirmation of the plan (needs clarification).",
       "Do not edit notes, diagrams, .mdlnks, .mddict, or .mdhabit via the shell — other specialists own those.",
       "Prefer list_folder / read_note to inspect vault files. End with a summary of commands and results.",
     ].join(" "),

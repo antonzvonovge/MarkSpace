@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  pushRecentCommandId,
   pushRecentPath,
   remapRecentPathList,
+  RECENT_COMMANDS_LIMIT,
   RECENT_FILES_LIMIT,
 } from "./settingsStore";
 
@@ -15,6 +17,19 @@ describe("pushRecentPath", () => {
     const next = pushRecentPath(many, "new.md");
     expect(next).toHaveLength(RECENT_FILES_LIMIT);
     expect(next[0]).toBe("new.md");
+  });
+});
+
+describe("pushRecentCommandId", () => {
+  it("moves id to front and dedupes", () => {
+    expect(pushRecentCommandId(["a", "b"], "b")).toEqual(["b", "a"]);
+  });
+
+  it("caps at RECENT_COMMANDS_LIMIT", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `cmd-${i}`);
+    const next = pushRecentCommandId(many, "new");
+    expect(next).toHaveLength(RECENT_COMMANDS_LIMIT);
+    expect(next[0]).toBe("new");
   });
 });
 

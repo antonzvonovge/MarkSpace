@@ -207,3 +207,28 @@ export function emptyMddictItem(): MddictItem {
     known: false,
   };
 }
+
+/** Append or replace an entry by word (case-insensitive). Keeps tags/known on merge. */
+export function mergeDictItem(
+  doc: MddictDoc,
+  item: MddictItem,
+): { doc: MddictDoc; merged: boolean } {
+  const word = item.word.trim();
+  if (!word) return { doc, merged: false };
+  const key = word.toLowerCase();
+  const idx = doc.items.findIndex((it) => it.word.trim().toLowerCase() === key);
+  const nextItem: MddictItem = {
+    word,
+    transcript: item.transcript.trim(),
+    translation: item.translation.trim(),
+    examples: item.examples.map((e) => e.trim()).filter(Boolean),
+    tags: idx >= 0 ? doc.items[idx]!.tags : item.tags,
+    known: idx >= 0 ? doc.items[idx]!.known : item.known,
+  };
+  if (idx < 0) {
+    return { doc: { ...doc, items: [...doc.items, nextItem] }, merged: false };
+  }
+  const items = doc.items.slice();
+  items[idx] = nextItem;
+  return { doc: { ...doc, items }, merged: true };
+}

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { DayMarker } from "./dayMarkers";
 import { normalizeMarkdown } from "./normalizeMarkdown";
 import { stampNoteTimestamps } from "./noteFrontmatter";
 import { normalizeProjectColor } from "./projectColors";
@@ -357,6 +358,18 @@ export async function downloadEmbeddingModel(): Promise<EmbeddingModelStatus> {
 /** Unique note tags (frontmatter ∪ inline `#tags`) from the in-memory vault index. */
 export async function listVaultTags(): Promise<string[]> {
   return invoke("list_vault_tags");
+}
+
+export type DiaryDayMarker = {
+  date: string;
+  marker: string;
+};
+
+/** Daily-note YAML `marker:` values under a diary project. */
+export async function listDiaryDayMarkers(
+  project: string,
+): Promise<DiaryDayMarker[]> {
+  return invoke("list_diary_day_markers", { project });
 }
 
 /** Unique tags from all `.mddict` files (separate from note/PDF vault tags). */
@@ -740,6 +753,24 @@ export async function clearAgentMemory(
     },
   });
   return normalizeAgentMemoryDoc(raw);
+}
+
+export type DiarySettings = {
+  version: number;
+  /** `null`/`undefined` = use built-in defaults. */
+  markers?: DayMarker[] | null;
+};
+
+export async function getDiarySettings(): Promise<DiarySettings> {
+  return invoke<DiarySettings>("get_diary_settings");
+}
+
+export async function setDiarySettings(
+  markers: DayMarker[],
+): Promise<DiarySettings> {
+  return invoke<DiarySettings>("set_diary_settings", {
+    args: { markers },
+  });
 }
 
 function uint8ToBase64(bytes: Uint8Array): string {

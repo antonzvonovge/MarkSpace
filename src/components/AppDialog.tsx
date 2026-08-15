@@ -48,6 +48,8 @@ export function DialogShell({
   children,
   footer,
   wide = false,
+  nested = false,
+  className,
 }: {
   open: boolean;
   title: string;
@@ -56,6 +58,9 @@ export function DialogShell({
   children?: ReactNode;
   footer: ReactNode;
   wide?: boolean;
+  /** Stack above another dialog; Escape closes this layer first. */
+  nested?: boolean;
+  className?: string;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -63,28 +68,34 @@ export function DialogShell({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onCancel();
-      }
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      if (nested) e.stopImmediatePropagation();
+      onCancel();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
+    document.addEventListener("keydown", onKey, nested);
+    return () => document.removeEventListener("keydown", onKey, nested);
+  }, [open, onCancel, nested]);
 
   if (!open) return null;
 
   return createPortal(
-    <div className="app-dialog-root" role="presentation">
+    <div
+      className={nested ? "app-dialog-root is-nested" : "app-dialog-root"}
+      role="presentation"
+    >
       <button
         type="button"
         className="app-dialog-backdrop"
+        tabIndex={-1}
         aria-label="Close dialog"
         onClick={onCancel}
       />
       <div
         ref={panelRef}
-        className={wide ? "app-dialog is-wide" : "app-dialog"}
+        className={["app-dialog", wide ? "is-wide" : "", className]
+          .filter(Boolean)
+          .join(" ")}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

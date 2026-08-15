@@ -35,6 +35,11 @@ describe("toolPacks", () => {
     );
   });
 
+  it("edit_notes can auto-tag from the vault catalog", () => {
+    expect(SPECIALIST_PRESETS.edit_notes.toolNames).toContain("auto_tag_note");
+    expect(SPECIALIST_PRESETS.edit_notes.system).toContain("auto_tag_note");
+  });
+
   it("pickTools keeps only requested keys", () => {
     const picked = pickTools(
       { a: 1, b: 2, c: 3 },
@@ -48,6 +53,10 @@ describe("toolPacks", () => {
     expect(specialistLabel("edit_notes")).toBe("Editor");
     expect(specialistLabel("terminal")).toBe("Terminal");
     expect(SPECIALIST_PRESETS.terminal.toolNames).toContain("run_terminal");
+    expect(SPECIALIST_PRESETS.terminal.system).toContain("Host OS");
+    expect(SPECIALIST_PRESETS.terminal.system).toContain(
+      "needs clarification",
+    );
   });
 });
 

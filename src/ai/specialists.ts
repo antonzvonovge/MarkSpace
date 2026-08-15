@@ -16,6 +16,7 @@ import {
   type SpecialistKind,
 } from "./toolPacks";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { hostOsSystemPromptLine } from "../lib/hostOs";
 import { isAgentTerminalEnabled } from "./terminalTool";
 import {
   beginSpecialistWave,
@@ -253,6 +254,7 @@ function humanStatus(toolName: string): string {
     add_entry: "Adding entry…",
     clip_article: "Clipping article…",
     translate_note: "Translating…",
+    auto_tag_note: "Tagging note…",
     run_terminal: "Waiting for terminal…",
   };
   return map[toolName] ?? `Running ${toolName}…`;
@@ -359,6 +361,9 @@ export async function runSpecialist(params: {
     });
 
     const contextLines: string[] = [preset.system];
+    if (params.kind === "terminal") {
+      contextLines.push(hostOsSystemPromptLine(undefined, { terminalEnabled: true }));
+    }
     if (params.ctx.projectPath) {
       contextLines.push(`Active project: ${params.ctx.projectPath}`);
       if (params.ctx.projectAbout?.trim()) {

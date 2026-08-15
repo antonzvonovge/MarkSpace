@@ -191,7 +191,7 @@ export function normalizeAskUserInput(raw: AskUserInputRaw): AskUserInput {
 export function buildAskUserTool() {
   return tool({
     description:
-      "Ask the user a clarifying multiple-choice question (with optional free-text). Prefer this over listing choices in plain chat text when a decision is needed. Blocks until the user answers.",
+      "Ask the user a clarifying multiple-choice question (with optional free-text). Prefer this over listing choices in plain chat text when a decision is needed. Also use this to confirm a plan before heavy or dangerous terminal work or custom scripts. Blocks until the user answers.",
     inputSchema: askUserInputSchema,
     execute: async (input, { toolCallId, abortSignal }) => {
       const { questions } = normalizeAskUserInput(input);

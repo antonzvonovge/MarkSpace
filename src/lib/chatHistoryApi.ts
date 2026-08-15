@@ -13,6 +13,8 @@ export type ChatThreadMeta = {
   projectPath?: string | null;
   /** Gem id under `.markspace/gems/`, or omit/null for none. */
   gemId?: string | null;
+  /** When true, the user set the title and auto-rename must not replace it. */
+  titleLocked?: boolean | null;
 };
 
 export type ChatThreadFile = {
@@ -26,6 +28,8 @@ export type ChatThreadFile = {
   projectPath?: string | null;
   /** Gem id under `.markspace/gems/`, or omit/null for none. */
   gemId?: string | null;
+  /** When true, the user set the title and auto-rename must not replace it. */
+  titleLocked?: boolean | null;
   /**
    * Measured context baseline for the next prompt with an empty draft
    * (last API input tokens + trailing assistant text).
