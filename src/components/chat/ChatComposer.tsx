@@ -128,6 +128,7 @@ function isUsefulAttachFile(file: File): boolean {
 type DragKind = "vault" | "files";
 
 export function ChatComposer() {
+  const composerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const plusBtnRef = useRef<HTMLButtonElement>(null);
@@ -399,6 +400,29 @@ export function ChatComposer() {
     return null;
   };
 
+  const showDropHint = (kind: DragKind) => {
+    setDragOver((prev) => (prev === kind ? prev : kind));
+  };
+
+  const hideDropHint = () => setDragOver(null);
+
+  useEffect(() => {
+    if (!dragOver) return;
+    const onDragOver = (event: DragEvent) => {
+      const root = composerRef.current;
+      if (!root) return;
+      if (event.target instanceof Node && root.contains(event.target)) return;
+      setDragOver(null);
+    };
+    const onDragEnd = () => setDragOver(null);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragend", onDragEnd);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragend", onDragEnd);
+    };
+  }, [dragOver]);
+
   const clipboardImageInFlight = useRef(false);
   const [contextMenu, setContextMenu] = useState<EditContextMenuState | null>(
     null,
@@ -545,6 +569,7 @@ export function ChatComposer() {
 
   return (
     <div
+      ref={composerRef}
       className={
         dragOver ? "chat-composer is-drag-over" : "chat-composer"
       }
@@ -553,7 +578,7 @@ export function ChatComposer() {
         e.stopPropagation();
         if (streaming) return;
         const kind = dragKindFrom(e.dataTransfer);
-        if (kind) setDragOver(kind);
+        if (kind) showDropHint(kind);
       }}
       onDragOver={(e) => {
         e.preventDefault();
@@ -561,21 +586,14 @@ export function ChatComposer() {
         if (streaming) return;
         const kind = dragKindFrom(e.dataTransfer);
         if (kind) {
-          setDragOver(kind);
+          showDropHint(kind);
           e.dataTransfer.dropEffect = "copy";
         }
-      }}
-      onDragLeave={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const related = e.relatedTarget as Node | null;
-        if (related && e.currentTarget.contains(related)) return;
-        setDragOver(null);
       }}
       onDrop={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        setDragOver(null);
+        hideDropHint();
         if (streaming) return;
         const vaultPath = vaultPathFromDrop(e.dataTransfer);
         clearVaultTreeDrag();
@@ -593,11 +611,21 @@ export function ChatComposer() {
         }
       }}
     >
-      {dragOver && (
-        <div className="chat-composer-drop-hint" aria-hidden="true">
-          {dragOver === "vault" ? "Drop to link path" : "Drop files to attach"}
-        </div>
-      )}
+      <div
+        className={
+          dragOver
+            ? "chat-composer-drop-hint is-visible"
+            : "chat-composer-drop-hint"
+        }
+        aria-hidden="true"
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "copy";
+        }}
+      >
+        {dragOver === "files" ? "Drop files to attach" : "Drop to link path"}
+      </div>
 
       {draftAttachments.length > 0 && (
         <ul className="chat-attach-list" aria-label="Attachments">

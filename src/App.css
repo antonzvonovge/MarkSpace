@@ -6664,7 +6664,6 @@ select {
      creates a spurious vertical scrollbar on the composer shell. */
   overflow-x: clip;
   position: relative;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .chat-composer.is-drag-over {
@@ -6680,11 +6679,19 @@ select {
   align-items: center;
   justify-content: center;
   border-radius: 11px;
-  background: color-mix(in srgb, var(--editor-surface) 88%, var(--accent));
+  background: var(--editor-surface);
+  box-shadow: inset 0 0 0 2px var(--accent);
   color: var(--accent);
   font-size: 0.8125rem;
   font-weight: 600;
   pointer-events: none;
+  visibility: hidden;
+}
+
+.chat-composer-drop-hint.is-visible {
+  visibility: visible;
+  pointer-events: auto;
+  cursor: copy;
 }
 
 .chat-attach-list {
