@@ -4,6 +4,7 @@ import { noteEditorSchema, type NoteEditor } from "../editor/schema";
 import {
   markdownToNestedBlocks,
   nestedHtmlToMarkdown,
+  renestListChildren,
 } from "./nestedListMarkdown";
 import { normalizeMarkdown } from "./normalizeMarkdown";
 
@@ -207,5 +208,38 @@ describe("Tab-indented content inside list items", () => {
     ]);
 
     expect(markdown).toBe("# Section\n\nNested under heading\n");
+  });
+});
+
+describe("renesting skipped when nothing can move", () => {
+  const exportHtml = (blocks: unknown[]): string => {
+    const ed = withBlocks(blocks);
+    return ed.blocksToHTMLLossy(ed.document);
+  };
+
+  it("hands back flat markup verbatim, skipping parse and re-serialize", () => {
+    const html = exportHtml([
+      { type: "heading", content: "Title" },
+      { type: "paragraph", content: "Plain prose" },
+      { type: "bulletListItem", content: "One" },
+      { type: "bulletListItem", content: "Two" },
+    ]);
+
+    expect(html).not.toContain("data-nesting-level");
+    expect(renestListChildren(html)).toBe(html);
+  });
+
+  it("still renests a block the exporter lifted out of its item", () => {
+    const html = exportHtml([
+      {
+        type: "bulletListItem",
+        content: "Item",
+        children: [{ type: "paragraph", content: "Continuation" }],
+      },
+      { type: "bulletListItem", content: "Next" },
+    ]);
+
+    expect(html).toContain("data-nesting-level");
+    expect(renestListChildren(html)).not.toBe(html);
   });
 });

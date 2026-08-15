@@ -20,7 +20,6 @@ import {
   listVaultTags,
   parentPath,
   projectTypeLabel,
-  readNote,
   searchNotes,
   semanticSearchNotes,
   setFileTags,
@@ -42,6 +41,7 @@ import {
   findAttachmentFilePart,
 } from "./chatAttachments";
 import { buildAskUserTool } from "./askUser";
+import { readNoteBuffer } from "./noteBuffer";
 import { buildDrawioTools } from "./drawio/tools";
 import { buildMdlnksTools } from "./mdlnks/tools";
 import { mdlnksCoreRules } from "./mdlnksFormat";
@@ -479,7 +479,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           };
         }
 
-        const content = await readNote(rel);
+        const content = await readNoteBuffer(rel);
         const lines = content.split("\n");
         await yieldToUi();
         if (startLine != null || endLine != null) {
@@ -1080,7 +1080,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
         new_string: newString,
         replace_all: replaceAll,
       }) => {
-        const content = await readNote(path);
+        const content = await readNoteBuffer(path);
         const occurrences = content.split(oldString).length - 1;
         if (occurrences === 0) {
           return {

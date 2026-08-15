@@ -53,8 +53,10 @@ function listItemAtDepth(list: Element, depth: number): HTMLElement | null {
 /**
  * Rejoin lists of the same kind that ended up adjacent, so items keep counting
  * instead of restarting at `1.`. A list with an explicit `start` is left alone.
+ * Returns whether anything moved.
  */
-function mergeAdjacentLists(container: HTMLElement): void {
+function mergeAdjacentLists(container: HTMLElement): boolean {
+  let merged = false;
   let child = container.firstElementChild;
   while (child) {
     const next = child.nextElementSibling;
@@ -66,11 +68,23 @@ function mergeAdjacentLists(container: HTMLElement): void {
     ) {
       while (next.firstChild) child.appendChild(next.firstChild);
       next.remove();
+      merged = true;
       continue;
     }
     child = next;
   }
+  return merged;
 }
+
+/** The exporter only marks a block nested when it sits below the top level. */
+const NESTING_MARKER = "data-nesting-level";
+
+/**
+ * `</ul><ul …>` — same-kind lists left touching, which `mergeAdjacentLists`
+ * rejoins. Matches nested lists inside an `<li>` too; those merely fall through
+ * to the full pass, which leaves them alone.
+ */
+const ADJACENT_LISTS_RE = /<\/(ul|ol)>\s*<\1(?=[\s/>])/i;
 
 /**
  * How deep the exporter says this block sits. Lists carry the level on their
@@ -80,23 +94,41 @@ function nestingDepth(element: Element): number {
   const source = LIST_TAGS.has(element.tagName)
     ? element.querySelector(":scope > li")
     : element;
-  const depth = Number(source?.getAttribute("data-nesting-level"));
+  const depth = Number(source?.getAttribute(NESTING_MARKER));
   return Number.isFinite(depth) && depth >= 1 ? depth : 0;
 }
 
-/** Move un-nested list children back into their item. */
+/**
+ * Move un-nested list children back into their item.
+ *
+ * Parsing and re-serializing the whole document is the dominant cost of the
+ * Live→markdown export, so both halves are skipped when nothing can move. The
+ * result is then the caller's input verbatim, which may differ from a
+ * round-tripped copy by parser normalization — the exporter emits `<table>`
+ * with no `<tbody>`, for one. Harmless here: the only consumer hands the result
+ * to `cleanHTMLToMarkdown`, which parses it and so applies that same
+ * normalization anyway.
+ */
 export function renestListChildren(html: string): string {
+  // Nothing is nested, and the exporter only splits a list when it emits a
+  // nested block between the halves — so there is also nothing to rejoin.
+  if (!html.includes(NESTING_MARKER) && !ADJACENT_LISTS_RE.test(html)) {
+    return html;
+  }
+
   const container = document.createElement("div");
   container.innerHTML = html;
 
+  let moved = false;
   let list: Element | null = null;
   for (const child of Array.from(container.children)) {
     const depth = nestingDepth(child);
     const item = depth && list ? listItemAtDepth(list, depth) : null;
 
     if (item) {
-      child.removeAttribute("data-nesting-level");
+      child.removeAttribute(NESTING_MARKER);
       item.appendChild(child);
+      moved = true;
       continue;
     }
 
@@ -105,8 +137,8 @@ export function renestListChildren(html: string): string {
     list = LIST_TAGS.has(child.tagName) ? child : null;
   }
 
-  mergeAdjacentLists(container);
-  return container.innerHTML;
+  const merged = mergeAdjacentLists(container);
+  return moved || merged ? container.innerHTML : html;
 }
 
 /**

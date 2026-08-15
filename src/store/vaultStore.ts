@@ -848,6 +848,17 @@ function tabBuffer(
 }
 
 /**
+ * Unsaved body held for `path`, or `null` when the tab is clean or not open.
+ *
+ * Callers that need what the user currently sees must flush the editor buffers
+ * first — the store lags the Live editor by the serialize debounce.
+ */
+export function dirtyNoteBuffer(path: string): string | null {
+  const buffer = tabBuffer(useVaultStore.getState(), path);
+  return buffer?.dirty ? buffer.body : null;
+}
+
+/**
  * Persist a dirty tab from its in-memory buffer without requiring it to stay
  * active. Used after tab switches so save never blocks activation.
  */

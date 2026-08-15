@@ -214,8 +214,40 @@ type Props = {
   isActive?: boolean;
 };
 
-/** Delay Live→markdown export so keystrokes can paint before heavy serialize. */
-const LIVE_SERIALIZE_MS = 150;
+/**
+ * Delay Live→markdown export so keystrokes can paint before heavy serialize.
+ *
+ * The export re-serializes the whole document (BlockNote HTML → markdown), which
+ * costs ~50ms on a 15KB note and ~190ms on a 60KB one. At 150ms the timer landed
+ * inside ordinary pauses between words, so the editor hitched at nearly every
+ * word boundary. Every consumer of the store `content` goes through
+ * `flushLiveEditor` first (save, tab switch/close, Live↔Source, window close),
+ * so a longer debounce only delays derived UI, never persistence.
+ */
+const LIVE_SERIALIZE_MS = 1_000;
+
+/** Upper bound on the idle wait, so a busy main thread cannot starve the export. */
+const LIVE_SERIALIZE_IDLE_TIMEOUT_MS = 1_000;
+
+type IdleHandle =
+  | { kind: "idle"; id: number }
+  | { kind: "timeout"; id: number };
+
+/** `requestIdleCallback` with a deadline; falls back where it is unavailable. */
+function scheduleIdle(run: () => void, timeout: number): IdleHandle {
+  if (typeof window.requestIdleCallback === "function") {
+    return { kind: "idle", id: window.requestIdleCallback(run, { timeout }) };
+  }
+  return { kind: "timeout", id: window.setTimeout(run, 0) };
+}
+
+function cancelIdle(handle: IdleHandle): void {
+  if (handle.kind === "idle") {
+    window.cancelIdleCallback(handle.id);
+    return;
+  }
+  window.clearTimeout(handle.id);
+}
 
 const EMPTY_COMMENTS: NoteComment[] = [];
 
@@ -474,7 +506,19 @@ export const NoteEditor = memo(function NoteEditor({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const serializeTimerRef = useRef<number | null>(null);
+  const idleHandleRef = useRef<IdleHandle | null>(null);
   const pendingSerializeRef = useRef(false);
+
+  const cancelScheduledSerialize = useCallback(() => {
+    if (serializeTimerRef.current != null) {
+      window.clearTimeout(serializeTimerRef.current);
+      serializeTimerRef.current = null;
+    }
+    if (idleHandleRef.current != null) {
+      cancelIdle(idleHandleRef.current);
+      idleHandleRef.current = null;
+    }
+  }, []);
 
   const emitSerializedMarkdown = useCallback(
     (ed: typeof editor) => {
@@ -513,16 +557,13 @@ export const NoteEditor = memo(function NoteEditor({
   );
 
   const flushSerialize = useCallback(() => {
-    if (serializeTimerRef.current != null) {
-      window.clearTimeout(serializeTimerRef.current);
-      serializeTimerRef.current = null;
-    }
+    cancelScheduledSerialize();
     if (!pendingSerializeRef.current) return;
     pendingSerializeRef.current = false;
     const ed = editorRef.current;
     if (!ed) return;
     emitSerializedMarkdown(ed);
-  }, [emitSerializedMarkdown]);
+  }, [emitSerializedMarkdown, cancelScheduledSerialize]);
 
   useEffect(() => registerLiveEditorFlush(path, flushSerialize), [
     path,
@@ -533,24 +574,18 @@ export const NoteEditor = memo(function NoteEditor({
 
   useEffect(() => {
     return () => {
-      if (serializeTimerRef.current != null) {
-        window.clearTimeout(serializeTimerRef.current);
-        serializeTimerRef.current = null;
-      }
+      cancelScheduledSerialize();
       if (!pendingSerializeRef.current) return;
       pendingSerializeRef.current = false;
       const ed = editorRef.current;
       if (ed) emitSerializedMarkdown(ed);
     };
-  }, [editor, emitSerializedMarkdown]);
+  }, [editor, emitSerializedMarkdown, cancelScheduledSerialize]);
 
   useEditorChange((ed) => {
     // Load/replaceBlocks must adopt serialization synchronously.
     if (applyingRef.current || adoptNextChangeRef.current) {
-      if (serializeTimerRef.current != null) {
-        window.clearTimeout(serializeTimerRef.current);
-        serializeTimerRef.current = null;
-      }
+      cancelScheduledSerialize();
       pendingSerializeRef.current = false;
       emitSerializedMarkdown(ed);
       return;
@@ -559,15 +594,19 @@ export const NoteEditor = memo(function NoteEditor({
     if (!isActiveRef.current) return;
     pendingSerializeRef.current = true;
     markDirty();
-    if (serializeTimerRef.current != null) {
-      window.clearTimeout(serializeTimerRef.current);
-    }
+    cancelScheduledSerialize();
     serializeTimerRef.current = window.setTimeout(() => {
       serializeTimerRef.current = null;
       if (!pendingSerializeRef.current) return;
-      pendingSerializeRef.current = false;
-      const current = editorRef.current;
-      if (current) emitSerializedMarkdown(current);
+      // Typing may resume right as the debounce elapses; take an idle slot so
+      // the export yields to input and paint instead of blocking them.
+      idleHandleRef.current = scheduleIdle(() => {
+        idleHandleRef.current = null;
+        if (!pendingSerializeRef.current) return;
+        pendingSerializeRef.current = false;
+        const current = editorRef.current;
+        if (current) emitSerializedMarkdown(current);
+      }, LIVE_SERIALIZE_IDLE_TIMEOUT_MS);
     }, LIVE_SERIALIZE_MS);
   }, editor);
 
