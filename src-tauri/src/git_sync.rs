@@ -7,7 +7,6 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 use crate::order_merge::{self, ORDER_REL};
@@ -994,6 +993,7 @@ mod tests {
     use git2::Signature;
     use std::fs;
     use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn accept_both_keeps_both_hunks() {
