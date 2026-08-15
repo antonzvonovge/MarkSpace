@@ -12,7 +12,8 @@ const memory = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<string>>();
 
 export function drawioPreviewCacheKey(path: string, xml: string): string {
-  return `drawio:${path}:${hashXml(xml)}`;
+  // v2: UTF-8 decode of base64 SVG exports (v1 cached Latin-1 mojibake).
+  return `drawio:v2:${path}:${hashXml(xml)}`;
 }
 
 export function peekDrawioSvg(key: string): string | undefined {

@@ -25,6 +25,7 @@ import { PageTags } from "./components/PageTags";
 import { TagGraphView } from "./components/graph/TagGraphView";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { PlainSourceEditor } from "./editor/PlainSourceEditor";
+import { deleteCompletedTasksInActiveEditor } from "./editor/completedTasksCommand";
 import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
@@ -344,6 +345,11 @@ const MainPane = memo(function MainPane({
 });
 
 const PALETTE_COMMANDS = [
+  {
+    id: "delete-completed-tasks",
+    label: "Delete completed tasks",
+    keywords: "checkbox checked done finished todo checklist remove",
+  },
   {
     id: "open-word-trainer",
     label: "Open word trainer",
@@ -669,6 +675,10 @@ function App() {
 
   const runPaletteCommand = useCallback(
     (id: string) => {
+      if (id === "delete-completed-tasks") {
+        deleteCompletedTasksInActiveEditor();
+        return;
+      }
       if (id !== "open-word-trainer") return;
       const project = resolvePracticeProjectPath(
         useVaultStore.getState().activePath,

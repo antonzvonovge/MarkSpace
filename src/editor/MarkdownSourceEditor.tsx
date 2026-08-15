@@ -8,6 +8,7 @@ import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { useEffect, useRef } from "react";
+import { registerSourceEditor } from "./completedTasksCommand";
 
 type Props = {
   path: string;
@@ -159,8 +160,10 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
     viewRef.current = view;
     lastPathRef.current = path;
     lastExternalRef.current = content;
+    const unregister = registerSourceEditor(path, view);
 
     return () => {
+      unregister();
       view.destroy();
       viewRef.current = null;
     };

@@ -32,6 +32,7 @@ import {
 import { ImageLightbox } from "../components/ImageLightbox";
 import { PageTags } from "../components/PageTags";
 import { writeClipboardText } from "../lib/clipboardText";
+import { registerLiveEditor } from "./completedTasksCommand";
 import { registerLiveEditorFlush } from "./liveEditorFlush";
 import {
   NoteFormattingToolbar,
@@ -527,6 +528,8 @@ export const NoteEditor = memo(function NoteEditor({
     path,
     flushSerialize,
   ]);
+
+  useEffect(() => registerLiveEditor(path, editor), [path, editor]);
 
   useEffect(() => {
     return () => {

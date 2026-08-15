@@ -98,6 +98,14 @@ function pump() {
   });
 }
 
+/** Base64 → UTF-8. `atob` alone treats bytes as Latin-1 and garbles Cyrillic. */
+function decodeBase64Utf8(b64: string): string {
+  const binary = atob(b64.replace(/\s+/g, ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 /** Normalize draw.io export payload (raw SVG or data URI) for DOM injection. */
 export function normalizeExportedSvg(data: string): string {
   const trimmed = data.trim();
@@ -110,7 +118,7 @@ export function normalizeExportedSvg(data: string): string {
     const payload = trimmed.slice(comma + 1);
     try {
       const decoded = /;base64/i.test(meta)
-        ? atob(payload)
+        ? decodeBase64Utf8(payload)
         : decodeURIComponent(payload.replace(/\+/g, " "));
       return stripSvgWrapperNoise(decoded);
     } catch {
