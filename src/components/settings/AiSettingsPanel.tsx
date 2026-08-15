@@ -12,6 +12,12 @@ import {
   type EmbeddingModelStatus,
 } from "../../lib/vaultApi";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
+import { useVaultAiSettingsStore } from "../../store/vaultAiSettingsStore";
+import { useVaultStore } from "../../store/vaultStore";
+import {
+  effectiveChatModelId,
+  effectiveWorkerModelId,
+} from "../../lib/vaultAiSettings";
 import { ChatModelPicker } from "../chat/ChatModelPicker";
 import { Select } from "../ui/Select";
 
@@ -28,9 +34,21 @@ function formatBytes(bytes: number): string {
 export function AiSettingsPanel() {
   const settings = useAiSettingsStore((s) => s.settings);
   const setSettings = useAiSettingsStore((s) => s.setSettings);
+  const vaultPath = useVaultStore((s) => s.vaultPath);
+  const vaultAi = useVaultAiSettingsStore((s) => s.doc);
+  const hydrateVaultAi = useVaultAiSettingsStore((s) => s.hydrateForVault);
+  const setChatModelId = useVaultAiSettingsStore((s) => s.setChatModelId);
+  const setWorkerModelId = useVaultAiSettingsStore((s) => s.setWorkerModelId);
   const [embeddingModel, setEmbeddingModel] =
     useState<EmbeddingModelStatus | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
+
+  useEffect(() => {
+    void hydrateVaultAi(vaultPath);
+  }, [vaultPath, hydrateVaultAi]);
+
+  const chatModelId = effectiveChatModelId(vaultAi, settings.modelId);
+  const workerModelId = effectiveWorkerModelId(vaultAi);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -82,17 +100,8 @@ export function AiSettingsPanel() {
   return (
     <div className="sync-panel">
       <p className="sync-panel-lead">
-        Add provider API keys to call models directly. When a provider key is
-        set, chat uses that API and skips{" "}
-        <a
-          href="https://openrouter.ai/"
-          target="_blank"
-          rel="noreferrer"
-        >
-          OpenRouter
-        </a>
-        . Otherwise OpenRouter is used as a fallback. Keys stay on this machine
-        and are never written into the vault.
+        Choose models and agent behaviour. API keys live in Settings → API
+        keys and stay on this machine.
       </p>
 
       <section className="sync-block">
@@ -144,119 +153,38 @@ export function AiSettingsPanel() {
       </section>
 
       <section className="sync-block">
-        <h3 className="sync-block-title">OpenRouter API key</h3>
+        <h3 className="sync-block-title">Chat model</h3>
         <p className="sync-block-desc">
-          Fallback for any model when the matching provider key is empty.
-          Create a key at openrouter.ai → Keys.
-        </p>
-        <input
-          type="password"
-          className="sync-input"
-          value={settings.apiKey}
-          onChange={(e) => setSettings({ apiKey: e.target.value })}
-          placeholder="sk-or-…"
-          autoComplete="off"
-        />
-      </section>
-
-      <section className="sync-block">
-        <h3 className="sync-block-title">OpenAI API key</h3>
-        <p className="sync-block-desc">
-          Direct access for GPT and o-series models (bypasses OpenRouter).
-        </p>
-        <input
-          type="password"
-          className="sync-input"
-          value={settings.openaiApiKey}
-          onChange={(e) => setSettings({ openaiApiKey: e.target.value })}
-          placeholder="sk-…"
-          autoComplete="off"
-        />
-      </section>
-
-      <section className="sync-block">
-        <h3 className="sync-block-title">Anthropic API key</h3>
-        <p className="sync-block-desc">
-          Direct access for Claude models (bypasses OpenRouter).
-        </p>
-        <input
-          type="password"
-          className="sync-input"
-          value={settings.anthropicApiKey}
-          onChange={(e) => setSettings({ anthropicApiKey: e.target.value })}
-          placeholder="sk-ant-…"
-          autoComplete="off"
-        />
-      </section>
-
-      <section className="sync-block">
-        <h3 className="sync-block-title">Google AI API key</h3>
-        <p className="sync-block-desc">
-          Direct access for Gemini models (bypasses OpenRouter).
-        </p>
-        <input
-          type="password"
-          className="sync-input"
-          value={settings.googleApiKey}
-          onChange={(e) => setSettings({ googleApiKey: e.target.value })}
-          placeholder="AIza…"
-          autoComplete="off"
-        />
-      </section>
-
-      <section className="sync-block">
-        <h3 className="sync-block-title">Firecrawl API key</h3>
-        <p className="sync-block-desc">
-          Optional. Powers Firecrawl browser scrape from{" "}
-          <a href="https://www.firecrawl.dev" target="_blank" rel="noreferrer">
-            Firecrawl
-          </a>
-          : <code>scrape_url</code> (markdown only) and{" "}
-          <code>clip_article</code> with <code>provider=firecrawl</code> (note +
-          images). Not used by ordinary fetch_url / default clip_article.
-        </p>
-        <input
-          type="password"
-          className="sync-input"
-          value={settings.firecrawlApiKey}
-          onChange={(e) => setSettings({ firecrawlApiKey: e.target.value })}
-          placeholder="fc-…"
-          autoComplete="off"
-        />
-      </section>
-
-      <section className="sync-block">
-        <h3 className="sync-block-title">Tavily API key</h3>
-        <p className="sync-block-desc">
-          Optional. Without it, the agent uses free DuckDuckGo search + Jina
-          page fetch. With a key from{" "}
-          <a href="https://tavily.com" target="_blank" rel="noreferrer">
-            Tavily
-          </a>
-          , web_search, fetch_url, and clip_article default to Tavily (~1k free
-          credits/month).
-        </p>
-        <input
-          type="password"
-          className="sync-input"
-          value={settings.tavilyApiKey}
-          onChange={(e) => setSettings({ tavilyApiKey: e.target.value })}
-          placeholder="tvly-…"
-          autoComplete="off"
-        />
-      </section>
-
-      <section className="sync-block">
-        <h3 className="sync-block-title">Default model</h3>
-        <p className="sync-block-desc">
-          Used for new chats. Reasoning models think before answering (slower,
-          usually smarter).
+          Used for new chats. Stored in this vault (
+          <code>.markspace/ai.json</code>
+          ). You can still change the model per chat.
         </p>
         <ChatModelPicker
           models={settings.models}
-          value={settings.modelId}
+          value={chatModelId}
           variant="field"
-          onChange={(modelId) => setSettings({ modelId })}
+          disabled={!vaultPath}
+          onChange={(modelId) => {
+            void setChatModelId(modelId);
+          }}
+        />
+      </section>
+
+      <section className="sync-block">
+        <h3 className="sync-block-title">Worker model</h3>
+        <p className="sync-block-desc">
+          Used for agent specialists and helpers (translate, tags, titles,
+          dictionary, IELTS review, history compact). Prefer a cheaper, faster
+          model. Stored in this vault with the chat model.
+        </p>
+        <ChatModelPicker
+          models={settings.models}
+          value={workerModelId}
+          variant="field"
+          disabled={!vaultPath}
+          onChange={(modelId) => {
+            void setWorkerModelId(modelId);
+          }}
         />
       </section>
 

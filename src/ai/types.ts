@@ -4,14 +4,18 @@ export type ChatMode = "ask" | "agent";
 
 export type AiModelVendor = "openai" | "anthropic" | "google";
 
-/** How the model is meant to be used — shown in the chat model picker. */
+/** How the model is meant to be used — thinking tokens in the chat picker. */
 export type AiModelKind = "chat" | "reasoning";
+
+/** Cost / role class — Flagship for chats, Worker for specialists and helpers. */
+export type AiModelTier = "flagship" | "worker";
 
 export type AiModelOption = {
   id: string;
   label: string;
   vendor: AiModelVendor;
   kind: AiModelKind;
+  tier: AiModelTier;
   contextWindow?: number;
 };
 

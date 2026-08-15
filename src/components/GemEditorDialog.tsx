@@ -7,6 +7,7 @@ import {
   type Gem,
 } from "../lib/gemsApi";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { vaultChatModelId } from "../store/vaultAiSettingsStore";
 import { ConfirmDialog, DialogShell } from "./AppDialog";
 import { ChatModelPicker } from "./chat/ChatModelPicker";
 import { ReasoningToggle } from "./chat/ReasoningToggle";
@@ -39,7 +40,7 @@ export function GemEditorDialog({
 
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [modelId, setModelId] = useState(settings.modelId);
+  const [modelId, setModelId] = useState(vaultChatModelId());
   const [enableReasoning, setEnableReasoning] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +51,7 @@ export function GemEditorDialog({
   useEffect(() => {
     if (!open) return;
     const catalog = settings.models.length ? settings.models : [];
-    const nextModel = gem?.modelId || settings.modelId;
+    const nextModel = gem?.modelId || vaultChatModelId();
     setName(gem?.name ?? "");
     setInstructions(gem?.instructions ?? "");
     setModelId(nextModel);
@@ -67,7 +68,7 @@ export function GemEditorDialog({
       nameRef.current?.select();
     });
     return () => window.cancelAnimationFrame(id);
-  }, [open, gem, settings.modelId, settings.models]);
+  }, [open, gem, settings.models]);
 
   const modelOptions =
     modelId && !models.some((m) => m.id === modelId)
@@ -77,6 +78,7 @@ export function GemEditorDialog({
             label: modelId,
             vendor: "openai" as const,
             kind: "chat" as const,
+            tier: "flagship" as const,
           },
           ...models,
         ]

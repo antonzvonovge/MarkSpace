@@ -29,6 +29,7 @@ import {
   nativeLanguageLabel,
 } from "../../settings/types";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
+import { helperModelCallParams } from "../../store/vaultAiSettingsStore";
 import { usePrefsStore } from "../../store/prefsStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { DictAiFillDialog } from "./DictAiFillDialog";
@@ -331,7 +332,7 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
         nativeLanguageCode: nativeLanguage,
         nativeLanguageLabel: nativeLanguageLabel(nativeLanguage),
         keys: credentialsFromSettings(aiSettings),
-        fallbackModelId: aiSettings.modelId,
+        ...helperModelCallParams(),
         abortSignal: ac.signal,
         onProgress: (done, total) => {
           setAiFillDone(done);

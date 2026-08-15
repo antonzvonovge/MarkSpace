@@ -14,19 +14,18 @@ import {
   type NativeLanguageId,
 } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { useBackgroundJobsStore } from "../store/backgroundJobsStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
 import {
   credentialsFromSettings,
-  hasCredentialsForModel,
-  missingCredentialsMessage,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 
 /** Prefer a fast model; fall back to the user's chat model. */
-const TRANSLATE_MODEL = "openai/gpt-4.1-mini";
 const MAX_SOURCE_CHARS = 80_000;
 const TAG_PLACEHOLDER_RE = /⟦MS_TAG_(\d+)⟧/g;
 const ERROR_HIDE_MS = 8_000;
@@ -38,6 +37,7 @@ export type TranslateNoteParams = {
   sourcePath: string;
   targetLanguage: NativeLanguageId;
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
   onProgress?: (progress: number, detail?: string) => void;
@@ -172,6 +172,7 @@ async function translateMarkdownBody(params: {
   body: string;
   targetLanguage: NativeLanguageId;
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
   onProgress?: (progress: number) => void;
@@ -211,27 +212,12 @@ async function translateMarkdownBody(params: {
     return out;
   };
 
-  if (hasCredentialsForModel(TRANSLATE_MODEL, params.keys)) {
-    try {
-      return await tryModel(TRANSLATE_MODEL);
-    } catch (e) {
-      if (params.abortSignal?.aborted) throw e;
-      /* try fallback */
-    }
-  }
-
-  const fallback = params.fallbackModelId?.trim();
-  if (fallback && fallback !== TRANSLATE_MODEL) {
-    return await tryModel(fallback);
-  }
-
-  if (hasCredentialsForModel(TRANSLATE_MODEL, params.keys)) {
-    return await tryModel(TRANSLATE_MODEL);
-  }
-
-  throw new Error(
-    missingCredentialsMessage(fallback || TRANSLATE_MODEL, params.keys),
-  );
+  return await runWithModelFallback({
+    keys: params.keys,
+    modelId: params.modelId,
+    fallbackModelId: params.fallbackModelId,
+    run: tryModel,
+  });
 }
 
 /** Prepare body (mask tags) → LLM → restore tags; frontmatter never leaves this helper. */
@@ -249,6 +235,7 @@ export async function translateNoteMarkdown(
     body: protectedBody.text,
     targetLanguage: params.targetLanguage,
     keys: params.keys,
+    modelId: params.modelId,
     fallbackModelId: params.fallbackModelId,
     abortSignal: params.abortSignal,
     onProgress: params.onProgress
@@ -294,23 +281,11 @@ async function prepareTranslation(
     );
   }
 
-  const canTranslate =
-    hasCredentialsForModel(TRANSLATE_MODEL, params.keys) ||
-    (!!params.fallbackModelId?.trim() &&
-      hasCredentialsForModel(params.fallbackModelId, params.keys));
-  if (!canTranslate) {
-    throw new Error(
-      missingCredentialsMessage(
-        params.fallbackModelId?.trim() || TRANSLATE_MODEL,
-        params.keys,
-      ),
-    );
-  }
-
   params.onProgress?.(15, "Translating");
   const translated = await translateNoteMarkdown(content, {
     targetLanguage: params.targetLanguage,
     keys: params.keys,
+    modelId: params.modelId,
     fallbackModelId: params.fallbackModelId,
     abortSignal: params.abortSignal,
     onProgress: params.onProgress,
@@ -434,11 +409,13 @@ export function startTranslateNote(sourcePath: string): void {
   void (async () => {
     try {
       const aiSettings = useAiSettingsStore.getState().settings;
+      const helper = helperModelCallParams();
       await translateNoteToSibling({
         sourcePath: path,
         targetLanguage: language,
         keys: credentialsFromSettings(aiSettings),
-        fallbackModelId: aiSettings.modelId,
+        modelId: helper.modelId,
+        fallbackModelId: helper.fallbackModelId,
         abortSignal: ac.signal,
         onProgress: (progress, detail) => {
           if (ac.signal.aborted) return;
@@ -526,11 +503,13 @@ export async function translateNoteInPlaceWithJob(params: {
 
   try {
     const aiSettings = useAiSettingsStore.getState().settings;
+    const helper = helperModelCallParams();
     const result = await translateNoteInPlace({
       sourcePath: path,
       targetLanguage: language,
       keys: credentialsFromSettings(aiSettings),
-      fallbackModelId: aiSettings.modelId,
+      modelId: helper.modelId,
+      fallbackModelId: helper.fallbackModelId,
       abortSignal: ac.signal,
       preferEditor: true,
       onProgress: (progress, detail) => {

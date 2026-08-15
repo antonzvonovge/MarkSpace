@@ -14,6 +14,7 @@ mod pdf_text;
 mod projects;
 mod terminal;
 mod vault;
+mod vault_ai;
 
 use git_sync::SyncRuntime;
 use terminal::TerminalRuntime;
@@ -214,6 +215,8 @@ pub fn run() {
             agent_memory::clear_agent_memory,
             diary::get_diary_settings,
             diary::set_diary_settings,
+            vault_ai::get_vault_ai_settings,
+            vault_ai::set_vault_ai_settings,
             http_fetch::http_fetch,
             http_fetch::http_fetch_bytes,
             terminal::run_terminal_command,

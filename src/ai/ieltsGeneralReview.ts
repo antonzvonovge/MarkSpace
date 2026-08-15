@@ -1,14 +1,11 @@
 import { generateText } from "ai";
 import {
-  hasCredentialsForModel,
-  missingCredentialsMessage,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 
 /** Cheap model — same class as dictionary suggest / note title. */
-const REVIEW_MODEL = "openai/gpt-4.1-mini";
-
 export const IELTS_REVIEW_MAX_CHARS = 8000;
 const MAX_ISSUES = 7;
 const MAX_RECOMMENDATIONS = 5;
@@ -38,6 +35,7 @@ export type IeltsGeneralReviewParams = {
   nativeLanguageCode: string;
   nativeLanguageLabel: string;
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 };
@@ -216,19 +214,6 @@ export async function ieltsGeneralReview(
   const text = params.text.trim().slice(0, IELTS_REVIEW_MAX_CHARS);
   if (!text) throw new Error("English text is required");
 
-  const canRun =
-    hasCredentialsForModel(REVIEW_MODEL, params.keys) ||
-    (!!params.fallbackModelId?.trim() &&
-      hasCredentialsForModel(params.fallbackModelId, params.keys));
-  if (!canRun) {
-    throw new Error(
-      missingCredentialsMessage(
-        params.fallbackModelId?.trim() || REVIEW_MODEL,
-        params.keys,
-      ),
-    );
-  }
-
   const prompt = `English text to review:\n\n${text}`;
 
   const tryModel = async (modelId: string) => {
@@ -248,25 +233,12 @@ export async function ieltsGeneralReview(
     return parseIeltsGeneralReviewResponse(raw, text);
   };
 
-  if (hasCredentialsForModel(REVIEW_MODEL, params.keys)) {
-    try {
-      return await tryModel(REVIEW_MODEL);
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-      if (e instanceof Error && e.name === "AbortError") throw e;
-      const fallback = params.fallbackModelId?.trim();
-      if (fallback && fallback !== REVIEW_MODEL) {
-        return await tryModel(fallback);
-      }
-      throw e;
-    }
-  }
-
-  const fallback = params.fallbackModelId?.trim();
-  if (!fallback) {
-    throw new Error(missingCredentialsMessage(REVIEW_MODEL, params.keys));
-  }
-  return await tryModel(fallback);
+  return await runWithModelFallback({
+    keys: params.keys,
+    modelId: params.modelId,
+    fallbackModelId: params.fallbackModelId,
+    run: tryModel,
+  });
 }
 
 export function formatIeltsGeneralReviewMarkdown(

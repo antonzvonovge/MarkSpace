@@ -1,14 +1,11 @@
 import { generateText } from "ai";
 import {
-  hasCredentialsForModel,
-  missingCredentialsMessage,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 
 /** Cheap model — same class as single-entry dict suggest. */
-const FILL_MODEL = "openai/gpt-4.1-mini";
-
 const CHUNK_SIZE = 8;
 
 export type DictGapFields = {
@@ -25,6 +22,7 @@ export type FillDictGapsParams = {
   nativeLanguageCode: string;
   nativeLanguageLabel: string;
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
@@ -181,19 +179,6 @@ export async function fillDictGaps(
   const todo = params.entries.filter(entryNeedsGapFill);
   if (todo.length === 0) return [];
 
-  const canFill =
-    hasCredentialsForModel(FILL_MODEL, params.keys) ||
-    (!!params.fallbackModelId?.trim() &&
-      hasCredentialsForModel(params.fallbackModelId, params.keys));
-  if (!canFill) {
-    throw new Error(
-      missingCredentialsMessage(
-        params.fallbackModelId?.trim() || FILL_MODEL,
-        params.keys,
-      ),
-    );
-  }
-
   const total = todo.length;
   params.onProgress?.(0, total);
 
@@ -215,23 +200,12 @@ export async function fillDictGaps(
   };
 
   const runChunk = async (chunk: DictGapFields[]) => {
-    if (hasCredentialsForModel(FILL_MODEL, params.keys)) {
-      try {
-        return await tryModel(FILL_MODEL, chunk);
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") throw e;
-        const fallback = params.fallbackModelId?.trim();
-        if (fallback && fallback !== FILL_MODEL) {
-          return await tryModel(fallback, chunk);
-        }
-        throw e;
-      }
-    }
-    const fallback = params.fallbackModelId?.trim();
-    if (!fallback) {
-      throw new Error(missingCredentialsMessage(FILL_MODEL, params.keys));
-    }
-    return await tryModel(fallback, chunk);
+    return await runWithModelFallback({
+      keys: params.keys,
+      modelId: params.modelId,
+      fallbackModelId: params.fallbackModelId,
+      run: (modelId) => tryModel(modelId, chunk),
+    });
   };
 
   const out: DictGapFields[] = [];

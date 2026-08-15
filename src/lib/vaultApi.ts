@@ -773,6 +773,28 @@ export async function setDiarySettings(
   });
 }
 
+export type VaultAiSettingsDoc = {
+  version: number;
+  chatModelId?: string | null;
+  workerModelId?: string | null;
+};
+
+export async function getVaultAiSettings(): Promise<VaultAiSettingsDoc> {
+  return invoke<VaultAiSettingsDoc>("get_vault_ai_settings");
+}
+
+export async function setVaultAiSettings(args: {
+  chatModelId: string | null;
+  workerModelId: string | null;
+}): Promise<VaultAiSettingsDoc> {
+  return invoke<VaultAiSettingsDoc>("set_vault_ai_settings", {
+    args: {
+      chatModelId: args.chatModelId,
+      workerModelId: args.workerModelId,
+    },
+  });
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000;
   let binary = "";

@@ -39,6 +39,7 @@ import {
   vaultPathFromDrop,
 } from "../../lib/vaultTreeDrag";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
+import { vaultChatModelId } from "../../store/vaultAiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { isFileTab, useVaultStore } from "../../store/vaultStore";
 import {
@@ -203,6 +204,7 @@ export function ChatComposer() {
         label: modelId,
         vendor: "openai" as const,
         kind: "chat" as const,
+        tier: "flagship" as const,
       },
       ...models,
     ];
@@ -246,7 +248,7 @@ export function ChatComposer() {
     contextAnchorMessageCount,
   ]);
 
-  const limit = contextWindowForModel(settings, modelId || settings.modelId);
+  const limit = contextWindowForModel(settings, modelId || vaultChatModelId());
   const contextBlocked = wouldExceedContext(used, limit);
   const canSend =
     !streaming &&

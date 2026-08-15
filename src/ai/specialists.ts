@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 import {
   credentialsFromSettings,
+  pickWorkerModelId,
   resolveLanguageModel,
 } from "./languageModel";
 import {
@@ -16,6 +17,7 @@ import {
   type SpecialistKind,
 } from "./toolPacks";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { hostOsSystemPromptLine } from "../lib/hostOs";
 import { isAgentTerminalEnabled } from "./terminalTool";
 import {
@@ -353,10 +355,16 @@ export async function runSpecialist(params: {
     });
 
     const settings = useAiSettingsStore.getState().settings;
-    const modelId = (params.ctx.modelId?.trim() || settings.modelId).trim();
+    const helper = helperModelCallParams();
+    const keys = credentialsFromSettings(settings);
+    const modelId = pickWorkerModelId({
+      keys,
+      modelId: helper.modelId,
+      fallbackModelId: helper.fallbackModelId,
+    });
     const resolved = resolveLanguageModel({
       modelId,
-      keys: credentialsFromSettings(settings),
+      keys,
       enableReasoning: false,
     });
 

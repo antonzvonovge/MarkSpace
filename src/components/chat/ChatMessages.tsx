@@ -36,6 +36,7 @@ import { resolveModelId } from "../../ai/resolveModelId";
 import type { AiSettings } from "../../ai/types";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
+import { vaultChatModelId } from "../../store/vaultAiSettingsStore";
 import { EditContextMenu } from "../EditContextMenu";
 import { ChatAskUser } from "./ChatAskUser";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -124,7 +125,7 @@ function streamTargetLabel(
   settings: AiSettings,
 ): { model: string; via: string } | null {
   try {
-    const id = resolveModelId(settings.baseUrl, modelId || settings.modelId);
+    const id = resolveModelId(settings.baseUrl, modelId || vaultChatModelId());
     const plan = planModelRoute(id, credentialsFromSettings(settings));
     const model =
       findModel(OPENROUTER_MODELS, plan.catalogModelId)?.label ??

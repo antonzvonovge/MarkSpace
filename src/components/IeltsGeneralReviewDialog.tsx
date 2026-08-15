@@ -11,6 +11,7 @@ import {
 import { focusActiveMarkdownEditor } from "../editor/completedTasksCommand";
 import { nativeLanguageLabel } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { DialogShell } from "./AppDialog";
 
@@ -55,7 +56,7 @@ export function IeltsGeneralReviewDialog({
         nativeLanguageCode: nativeLanguage,
         nativeLanguageLabel: nativeLanguageLabel(nativeLanguage),
         keys: credentialsFromSettings(aiSettings),
-        fallbackModelId: aiSettings.modelId,
+        ...helperModelCallParams(),
         abortSignal: ac.signal,
       });
       if (ac.signal.aborted) return;

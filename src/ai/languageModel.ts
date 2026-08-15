@@ -7,6 +7,7 @@ import type { LanguageModel } from "ai";
 import { modelSupportsReasoning, VENDOR_LABEL } from "./models";
 import { resolveModelId } from "./resolveModelId";
 import type { AiModelVendor, AiSettings } from "./types";
+import { DEFAULT_WORKER_MODEL_ID } from "../lib/vaultAiSettings";
 
 export type AiProviderCredentials = {
   openrouterApiKey: string;
@@ -121,9 +122,9 @@ export function missingCredentialsMessage(
   const vendor = vendorFromModelId(modelId);
   const label = VENDOR_LABEL[vendor];
   if (!directKeyForVendor(vendor, keys) && !keys.openrouterApiKey) {
-    return `Add a ${label} or OpenRouter API key in Settings → AI`;
+    return `Add a ${label} or OpenRouter API key in Settings → API keys`;
   }
-  return `Add an API key in Settings → AI`;
+  return `Add an API key in Settings → API keys`;
 }
 
 /**
@@ -169,6 +170,70 @@ export function hasCredentialsForModel(
   } catch {
     return false;
   }
+}
+
+export function resolveHelperModelIds(params: {
+  keys: AiProviderCredentials;
+  modelId?: string;
+  fallbackModelId?: string;
+}): { primary: string; fallback?: string } {
+  const primary = params.modelId?.trim() || DEFAULT_WORKER_MODEL_ID;
+  const fallbackRaw = params.fallbackModelId?.trim();
+  const fallback =
+    fallbackRaw && fallbackRaw !== primary ? fallbackRaw : undefined;
+  return { primary, fallback };
+}
+
+/** Worker id if credentials exist, otherwise chat fallback. */
+export function pickWorkerModelId(params: {
+  keys: AiProviderCredentials;
+  modelId?: string;
+  fallbackModelId?: string;
+}): string {
+  const { primary, fallback } = resolveHelperModelIds(params);
+  if (hasCredentialsForModel(primary, params.keys)) return primary;
+  if (fallback && hasCredentialsForModel(fallback, params.keys)) return fallback;
+  return primary;
+}
+
+export function assertHelperModelCredentials(params: {
+  keys: AiProviderCredentials;
+  modelId?: string;
+  fallbackModelId?: string;
+}): void {
+  const { primary, fallback } = resolveHelperModelIds(params);
+  if (hasCredentialsForModel(primary, params.keys)) return;
+  if (fallback && hasCredentialsForModel(fallback, params.keys)) return;
+  throw new Error(missingCredentialsMessage(primary, params.keys));
+}
+
+export async function runWithModelFallback<T>(params: {
+  keys: AiProviderCredentials;
+  modelId?: string;
+  fallbackModelId?: string;
+  run: (modelId: string) => Promise<T>;
+  isEmpty?: (value: T) => boolean;
+}): Promise<T> {
+  assertHelperModelCredentials(params);
+  const { primary, fallback } = resolveHelperModelIds(params);
+  const canPrimary = hasCredentialsForModel(primary, params.keys);
+
+  if (canPrimary) {
+    try {
+      const result = await params.run(primary);
+      if (!params.isEmpty?.(result)) return result;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      if (e instanceof Error && e.name === "AbortError") throw e;
+      if (!fallback) throw e;
+    }
+  }
+
+  if (fallback) {
+    return await params.run(fallback);
+  }
+
+  return await params.run(primary);
 }
 
 function buildProviderOptions(

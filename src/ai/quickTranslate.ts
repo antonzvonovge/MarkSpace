@@ -6,15 +6,12 @@ import {
   NATIVE_LANGUAGE_OPTIONS,
 } from "../settings/types";
 import {
-  hasCredentialsForModel,
-  missingCredentialsMessage,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 
 /** Cheap model — same class as dictionary suggest / note title. */
-const TRANSLATE_MODEL = "openai/gpt-4.1-mini";
-
 /** Default foreign side of the pair (English ↔ native). */
 export const DEFAULT_FOREIGN_LANG = "en";
 
@@ -43,6 +40,7 @@ export type QuickTranslateParams = {
   nativeLanguageCode: string;
   nativeLanguageLabel: string;
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 };
@@ -195,19 +193,6 @@ export async function quickTranslate(
   const query = params.query.trim();
   if (!query) throw new Error("Word or expression is required");
 
-  const canRun =
-    hasCredentialsForModel(TRANSLATE_MODEL, params.keys) ||
-    (!!params.fallbackModelId?.trim() &&
-      hasCredentialsForModel(params.fallbackModelId, params.keys));
-  if (!canRun) {
-    throw new Error(
-      missingCredentialsMessage(
-        params.fallbackModelId?.trim() || TRANSLATE_MODEL,
-        params.keys,
-      ),
-    );
-  }
-
   const prompt = `Query: ${query}`;
 
   const tryModel = async (modelId: string) => {
@@ -230,24 +215,12 @@ export async function quickTranslate(
     });
   };
 
-  if (hasCredentialsForModel(TRANSLATE_MODEL, params.keys)) {
-    try {
-      return await tryModel(TRANSLATE_MODEL);
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-      const fallback = params.fallbackModelId?.trim();
-      if (fallback && fallback !== TRANSLATE_MODEL) {
-        return await tryModel(fallback);
-      }
-      throw e;
-    }
-  }
-
-  const fallback = params.fallbackModelId?.trim();
-  if (!fallback) {
-    throw new Error(missingCredentialsMessage(TRANSLATE_MODEL, params.keys));
-  }
-  return await tryModel(fallback);
+  return await runWithModelFallback({
+    keys: params.keys,
+    modelId: params.modelId,
+    fallbackModelId: params.fallbackModelId,
+    run: tryModel,
+  });
 }
 
 /** Headword language for .mddict: the foreign side of the pair. */

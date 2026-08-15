@@ -1,14 +1,12 @@
 import { generateText, type UIMessage } from "ai";
 import { unwrapComposerMarkers } from "../lib/chatComposerDom";
 import {
-  hasCredentialsForModel,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 
 /** Cheap, fast model for naming — falls back to chat model if needed. */
-const TITLE_MODEL = "openai/gpt-4.1-mini";
-
 const TITLE_SYSTEM = `You name chat threads for a notes app.
 Reply with ONLY a short title (3–7 words). Same language as the conversation.
 No quotes, no trailing punctuation, no emoji, no "Chat about".`;
@@ -55,7 +53,7 @@ function conversationSnippet(messages: UIMessage[], maxChars = 1200): string {
 export type GenerateChatTitleParams = {
   messages: UIMessage[];
   keys: AiProviderCredentials;
-  /** Prefer chat model if title model is unavailable. */
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 };
@@ -83,22 +81,15 @@ export async function generateChatTitle(
     return sanitizeTitle(text);
   };
 
-  if (hasCredentialsForModel(TITLE_MODEL, params.keys)) {
-    try {
-      const titled = await tryModel(TITLE_MODEL);
-      if (titled) return titled;
-    } catch {
-      /* try fallback */
-    }
+  try {
+    return await runWithModelFallback({
+      keys: params.keys,
+      modelId: params.modelId,
+      fallbackModelId: params.fallbackModelId,
+      isEmpty: (titled) => !titled,
+      run: tryModel,
+    });
+  } catch {
+    return null;
   }
-
-  const fallback = params.fallbackModelId?.trim();
-  if (fallback && fallback !== TITLE_MODEL) {
-    try {
-      return await tryModel(fallback);
-    } catch {
-      return null;
-    }
-  }
-  return null;
 }

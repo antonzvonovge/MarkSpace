@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { KIND_LABEL, VENDOR_LABEL } from "../../ai/models";
+import { KIND_LABEL, TIER_LABEL, VENDOR_LABEL } from "../../ai/models";
 import type { AiModelOption, AiModelVendor } from "../../ai/types";
 
 const VENDOR_ORDER: AiModelVendor[] = ["anthropic", "openai", "google"];
@@ -15,12 +15,36 @@ type Props = {
 };
 
 function ModelKindBadge({ kind }: { kind: AiModelOption["kind"] }) {
-  if (kind === "reasoning") {
-    return (
-      <em className="chat-model-kind is-reasoning">{KIND_LABEL[kind]}</em>
-    );
-  }
-  return <span className="chat-model-kind is-chat">{KIND_LABEL[kind]}</span>;
+  if (kind !== "reasoning") return null;
+  return (
+    <em className="chat-model-kind is-reasoning">{KIND_LABEL[kind]}</em>
+  );
+}
+
+function ModelTierDot({ model }: { model: AiModelOption | null }) {
+  if (!model) return null;
+  const tier = model.tier ?? "flagship";
+  return (
+    <span
+      className={
+        tier === "worker"
+          ? "chat-model-tier-dot is-worker"
+          : "chat-model-tier-dot is-flagship"
+      }
+      title={TIER_LABEL[tier]}
+      aria-label={TIER_LABEL[tier]}
+    />
+  );
+}
+
+function modelsForVendor(models: AiModelOption[], vendor: AiModelVendor) {
+  return models
+    .filter((m) => m.vendor === vendor)
+    .sort((a, b) => {
+      const ta = (a.tier ?? "flagship") === "worker" ? 1 : 0;
+      const tb = (b.tier ?? "flagship") === "worker" ? 1 : 0;
+      return ta - tb;
+    });
 }
 
 type MenuPos = {
@@ -132,7 +156,7 @@ export function ChatModelPicker({
             }}
           >
             {VENDOR_ORDER.map((vendor) => {
-              const group = models.filter((m) => m.vendor === vendor);
+              const group = modelsForVendor(models, vendor);
               if (!group.length) return null;
               return (
                 <div key={vendor} className="chat-model-group">
@@ -155,7 +179,12 @@ export function ChatModelPicker({
                         setOpen(false);
                       }}
                     >
-                      <span className="chat-model-option-name">{m.label}</span>
+                      <span className="chat-model-option-main">
+                        <ModelTierDot model={m} />
+                        <span className="chat-model-option-name">
+                          {m.label}
+                        </span>
+                      </span>
                       <ModelKindBadge kind={m.kind} />
                     </button>
                   ))}
@@ -182,9 +211,14 @@ export function ChatModelPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Model"
-        title={selected ? selected.label : value}
+        title={
+          selected
+            ? `${selected.label} · ${TIER_LABEL[selected.tier ?? "flagship"]}`
+            : value
+        }
         onClick={() => setOpen((v) => !v)}
       >
+        <ModelTierDot model={selected} />
         <span className="chat-model-trigger-label">
           {selected?.label ?? value}
         </span>

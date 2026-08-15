@@ -16,8 +16,8 @@ export { loadLastVault, saveLastVault };
 function SettingsGearIcon() {
   return (
     <svg
-      width="18"
-      height="18"
+      width="22"
+      height="22"
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -92,6 +92,13 @@ export const Sidebar = memo(function Sidebar() {
       {calendarOpen && <SidebarCalendar />}
 
       <footer className="sidebar-footer">
+        <button
+          type="button"
+          className="sidebar-footer-open"
+          onClick={() => void pickVault()}
+        >
+          Open vault…
+        </button>
         <div className="sidebar-footer-actions">
           <button
             type="button"
@@ -121,13 +128,6 @@ export const Sidebar = memo(function Sidebar() {
             <CalendarCheckIcon />
           </button>
         </div>
-        <button
-          type="button"
-          className="sidebar-footer-open"
-          onClick={() => void pickVault()}
-        >
-          Open folder…
-        </button>
       </footer>
     </aside>
   );

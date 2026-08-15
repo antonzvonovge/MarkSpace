@@ -7,6 +7,7 @@ import {
   type AiSettings,
   type AiModelKind,
   type AiModelOption,
+  type AiModelTier,
   type AiModelVendor,
   type ChatMode,
 } from "../ai/types";
@@ -16,6 +17,7 @@ const AI_KEY = "ai";
 
 const VENDORS: AiModelVendor[] = ["openai", "anthropic", "google"];
 const KINDS: AiModelKind[] = ["chat", "reasoning"];
+const TIERS: AiModelTier[] = ["flagship", "worker"];
 
 function vendorFromId(id: string): AiModelVendor {
   if (id.startsWith("anthropic/")) return "anthropic";
@@ -38,12 +40,18 @@ function kindFromId(id: string): AiModelKind {
   return "chat";
 }
 
+function tierFromId(id: string): AiModelTier {
+  if (/haiku|luna|flash-lite|(^|\/).*-mini(\b|$)/i.test(id)) return "worker";
+  return "flagship";
+}
+
 function coerceModel(raw: {
   id: string;
   label: string;
   contextWindow?: number;
   vendor?: string;
   kind?: string;
+  tier?: string;
 }): AiModelOption {
   const id = resolveModelId(OPENROUTER_BASE_URL, raw.id);
   const vendor =
@@ -55,11 +63,16 @@ function coerceModel(raw: {
     typeof raw.kind === "string" && KINDS.includes(raw.kind as AiModelKind)
       ? (raw.kind as AiModelKind)
       : kindFromId(id);
+  const tier =
+    typeof raw.tier === "string" && TIERS.includes(raw.tier as AiModelTier)
+      ? (raw.tier as AiModelTier)
+      : tierFromId(id);
   return {
     id,
     label: raw.label,
     vendor,
     kind,
+    tier,
     contextWindow:
       typeof raw.contextWindow === "number" && raw.contextWindow > 0
         ? Math.round(raw.contextWindow)
@@ -75,6 +88,7 @@ function normalizeModels(models: AiModelOption[]): AiModelOption[] {
       contextWindow: m.contextWindow,
       vendor: m.vendor,
       kind: m.kind,
+      tier: m.tier,
     }),
   );
   const seen = new Set<string>();
@@ -137,6 +151,7 @@ export function normalizeAiSettings(
                 : undefined,
             vendor: typeof m.vendor === "string" ? m.vendor : undefined,
             kind: typeof m.kind === "string" ? m.kind : undefined,
+            tier: typeof m.tier === "string" ? m.tier : undefined,
           }),
         )
     : null;

@@ -4,6 +4,7 @@ import { useAgentMemoryStore } from "../../store/agentMemoryStore";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { useDiarySettingsStore } from "../../store/diarySettingsStore";
+import { useVaultAiSettingsStore } from "../../store/vaultAiSettingsStore";
 import { usePrefsStore } from "../../store/prefsStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatComposer } from "./ChatComposer";
@@ -17,6 +18,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
   const hydrateForVault = useChatStore((s) => s.hydrateForVault);
   const hydrateMemory = useAgentMemoryStore((s) => s.hydrateForVault);
   const hydrateDiary = useDiarySettingsStore((s) => s.hydrateForVault);
+  const hydrateVaultAi = useVaultAiSettingsStore((s) => s.hydrateForVault);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const openTabIds = useChatStore((s) => s.openTabIds);
   const messages = useChatStore((s) => s.messages);
@@ -31,7 +33,8 @@ export const ChatSidebar = memo(function ChatSidebar() {
     void hydrateForVault(vaultPath);
     void hydrateMemory(vaultPath);
     void hydrateDiary(vaultPath);
-  }, [vaultPath, hydrateForVault, hydrateMemory, hydrateDiary]);
+    void hydrateVaultAi(vaultPath);
+  }, [vaultPath, hydrateForVault, hydrateMemory, hydrateDiary, hydrateVaultAi]);
 
   const hasOpenTabs = openTabIds.length > 0 && !!activeThreadId;
 
@@ -49,9 +52,9 @@ export const ChatSidebar = memo(function ChatSidebar() {
           <button
             type="button"
             className="chat-settings-link"
-            onClick={() => openSettings("ai")}
+            onClick={() => openSettings("keys")}
           >
-            Open AI settings
+            Open API keys
           </button>
         </div>
       ) : !hasOpenTabs ? (

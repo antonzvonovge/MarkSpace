@@ -4,7 +4,9 @@ import {
   hasAnyLlmCredentials,
   hasCredentialsForModel,
   missingCredentialsMessage,
+  pickWorkerModelId,
   planModelRoute,
+  runWithModelFallback,
   stripVendorPrefix,
   toDirectProviderModelId,
   vendorFromModelId,
@@ -142,5 +144,40 @@ describe("credential helpers", () => {
     expect(
       missingCredentialsMessage("anthropic/claude-sonnet-4.6", openaiOnly),
     ).toMatch(/Anthropic or OpenRouter/);
+  });
+
+  it("picks the worker model when credentials exist, else chat fallback", () => {
+    const openaiOnly = { ...emptyKeys, openaiApiKey: "sk" };
+    expect(
+      pickWorkerModelId({
+        keys: openaiOnly,
+        modelId: "openai/gpt-4.1-mini",
+        fallbackModelId: "anthropic/claude-sonnet-5",
+      }),
+    ).toBe("openai/gpt-4.1-mini");
+    expect(
+      pickWorkerModelId({
+        keys: openaiOnly,
+        modelId: "anthropic/claude-haiku-4.5",
+        fallbackModelId: "openai/gpt-5.6-sol",
+      }),
+    ).toBe("openai/gpt-5.6-sol");
+  });
+
+  it("runs the fallback model when the primary call fails", async () => {
+    const openaiOnly = { ...emptyKeys, openaiApiKey: "sk" };
+    const seen: string[] = [];
+    const result = await runWithModelFallback({
+      keys: openaiOnly,
+      modelId: "openai/gpt-4.1-mini",
+      fallbackModelId: "openai/gpt-5.6-sol",
+      run: async (modelId) => {
+        seen.push(modelId);
+        if (modelId === "openai/gpt-4.1-mini") throw new Error("primary down");
+        return "ok";
+      },
+    });
+    expect(result).toBe("ok");
+    expect(seen).toEqual(["openai/gpt-4.1-mini", "openai/gpt-5.6-sol"]);
   });
 });

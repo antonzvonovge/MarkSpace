@@ -1,16 +1,13 @@
 import { generateText } from "ai";
 import { sanitizeTagName } from "../lib/tagName";
 import {
-  hasCredentialsForModel,
-  missingCredentialsMessage,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 import { fetchUrlAsMarkdown } from "./webTools";
 
 /** Cheap model for link metadata — same class as chat titles. */
-const SUGGEST_MODEL = "openai/gpt-4.1-mini";
-
 export type SuggestLinkMetaResult = {
   description: string;
   tags: string[];
@@ -21,6 +18,7 @@ export type SuggestLinkMetaParams = {
   /** Existing vault + file tags — prefer these exact names. */
   tagCatalog: string[];
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 };
@@ -87,19 +85,6 @@ export async function suggestLinkMeta(
   const url = params.url.trim();
   if (!url) throw new Error("URL is required");
 
-  const canSuggest =
-    hasCredentialsForModel(SUGGEST_MODEL, params.keys) ||
-    (!!params.fallbackModelId?.trim() &&
-      hasCredentialsForModel(params.fallbackModelId, params.keys));
-  if (!canSuggest) {
-    throw new Error(
-      missingCredentialsMessage(
-        params.fallbackModelId?.trim() || SUGGEST_MODEL,
-        params.keys,
-      ),
-    );
-  }
-
   const page = await fetchUrlAsMarkdown(url, 12_000);
   if (params.abortSignal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
@@ -136,22 +121,10 @@ export async function suggestLinkMeta(
     };
   };
 
-  if (hasCredentialsForModel(SUGGEST_MODEL, params.keys)) {
-    try {
-      return await tryModel(SUGGEST_MODEL);
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-      const fallback = params.fallbackModelId?.trim();
-      if (fallback && fallback !== SUGGEST_MODEL) {
-        return await tryModel(fallback);
-      }
-      throw e;
-    }
-  }
-
-  const fallback = params.fallbackModelId?.trim();
-  if (!fallback) {
-    throw new Error(missingCredentialsMessage(SUGGEST_MODEL, params.keys));
-  }
-  return await tryModel(fallback);
+  return await runWithModelFallback({
+    keys: params.keys,
+    modelId: params.modelId,
+    fallbackModelId: params.fallbackModelId,
+    run: tryModel,
+  });
 }

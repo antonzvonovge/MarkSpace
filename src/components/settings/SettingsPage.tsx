@@ -9,6 +9,7 @@ import type { PrefKey } from "../../settings/types";
 import { usePrefsStore, useSettingsTabActive } from "../../store/prefsStore";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DiarySettingsPanel } from "./DiarySettingsPanel";
+import { KeysSettingsPanel } from "./KeysSettingsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
 import { SettingRow } from "./SettingRow";
 import { SyncSettingsPanel } from "./SyncSettingsPanel";
@@ -17,7 +18,7 @@ type Props = {
   onClose: () => void;
 };
 
-const PANEL_CATEGORIES = new Set(["sync", "ai", "memory", "diary"]);
+const PANEL_CATEGORIES = new Set(["sync", "keys", "ai", "memory", "diary"]);
 
 function queryMatchesSync(query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -32,6 +33,25 @@ function queryMatchesSync(query: string): boolean {
   );
 }
 
+function queryMatchesKeys(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    "keys".includes(q) ||
+    q.includes("key") ||
+    q.includes("api") ||
+    q.includes("api key") ||
+    q.includes("apikey") ||
+    q.includes("byok") ||
+    q.includes("openrouter") ||
+    q.includes("openai") ||
+    q.includes("anthropic") ||
+    q.includes("google") ||
+    q.includes("tavily") ||
+    q.includes("firecrawl")
+  );
+}
+
 function queryMatchesAi(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
@@ -40,22 +60,18 @@ function queryMatchesAi(query: string): boolean {
     q.includes("ai") ||
     q.includes("model") ||
     q.includes("openai") ||
-    q.includes("openrouter") ||
     q.includes("anthropic") ||
     q.includes("claude") ||
     q.includes("google") ||
     q.includes("gemini") ||
-    q.includes("api key") ||
-    q.includes("apikey") ||
-    q.includes("byok") ||
-    q.includes("tavily") ||
     q.includes("llm") ||
     q.includes("chat") ||
     q.includes("agent") ||
     q.includes("reasoning") ||
     q.includes("context") ||
     q.includes("embedding") ||
-    q.includes("firecrawl")
+    q.includes("worker") ||
+    q.includes("flagship")
   );
 }
 
@@ -103,6 +119,7 @@ export function SettingsPage({ onClose }: Props) {
 
   const searching = query.trim().length > 0;
   const showSyncInSearch = searching && queryMatchesSync(query);
+  const showKeysInSearch = searching && queryMatchesKeys(query);
   const showAiInSearch = searching && queryMatchesAi(query);
   const showMemoryInSearch = searching && queryMatchesMemory(query);
   const showDiaryInSearch = searching && queryMatchesDiary(query);
@@ -126,6 +143,7 @@ export function SettingsPage({ onClose }: Props) {
   }, [rows, searching]);
 
   const showSyncPanel = (!searching && category === "sync") || showSyncInSearch;
+  const showKeysPanel = (!searching && category === "keys") || showKeysInSearch;
   const showAiPanel = (!searching && category === "ai") || showAiInSearch;
   const showMemoryPanel =
     (!searching && category === "memory") || showMemoryInSearch;
@@ -187,6 +205,7 @@ export function SettingsPage({ onClose }: Props) {
         <div className="settings-list">
           {rows.length === 0 &&
             !showSyncPanel &&
+            !showKeysPanel &&
             !showAiPanel &&
             !showMemoryPanel &&
             !showDiaryPanel && (
@@ -209,6 +228,13 @@ export function SettingsPage({ onClose }: Props) {
                 ))}
               </section>
             ))}
+
+          {showKeysPanel && (
+            <section className="settings-section">
+              {searching && <h2 className="settings-section-title">API keys</h2>}
+              <KeysSettingsPanel />
+            </section>
+          )}
 
           {showAiPanel && (
             <section className="settings-section">

@@ -14,6 +14,7 @@ import {
   type NativeLanguageId,
 } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
 import { TagChipsInput } from "./TagChipsInput";
@@ -354,7 +355,7 @@ export function LinkItemDialog({
         url: trimmedUrl,
         tagCatalog: catalog,
         keys: credentialsFromSettings(aiSettings),
-        fallbackModelId: aiSettings.modelId,
+        ...helperModelCallParams(),
         abortSignal: ac.signal,
       });
       if (ac.signal.aborted) return;
@@ -539,7 +540,7 @@ export function AddWordDialog({
         nativeLanguageCode: nativeLanguage,
         nativeLanguageLabel: nativeLanguageLabel(nativeLanguage),
         keys: credentialsFromSettings(aiSettings),
-        fallbackModelId: aiSettings.modelId,
+        ...helperModelCallParams(),
         abortSignal: ac.signal,
       });
       if (ac.signal.aborted) return;

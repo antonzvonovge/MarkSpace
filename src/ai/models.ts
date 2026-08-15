@@ -1,38 +1,18 @@
 import type { AiModelOption } from "./types";
+import { DEFAULT_WORKER_MODEL_ID } from "../lib/vaultAiSettings";
 
 /**
  * Curated model catalog (`vendor/model` ids).
  * Routed via direct provider BYOK when that key is set, otherwise OpenRouter.
  */
 export const OPENROUTER_MODELS: AiModelOption[] = [
-  // OpenAI — chat
-  {
-    id: "openai/gpt-4.1",
-    label: "GPT-4.1",
-    vendor: "openai",
-    kind: "chat",
-    contextWindow: 1_047_576,
-  },
-  {
-    id: "openai/gpt-4.1-mini",
-    label: "GPT-4.1 Mini",
-    vendor: "openai",
-    kind: "chat",
-    contextWindow: 1_047_576,
-  },
-  {
-    id: "openai/gpt-5.2-chat",
-    label: "GPT-5.2 Chat",
-    vendor: "openai",
-    kind: "chat",
-    contextWindow: 128_000,
-  },
-  // OpenAI — reasoning
+  // OpenAI — flagship
   {
     id: "openai/gpt-5.6-sol",
     label: "GPT-5.6 Sol",
     vendor: "openai",
     kind: "reasoning",
+    tier: "flagship",
     contextWindow: 1_050_000,
   },
   {
@@ -40,21 +20,41 @@ export const OPENROUTER_MODELS: AiModelOption[] = [
     label: "GPT-5.6 Terra",
     vendor: "openai",
     kind: "reasoning",
+    tier: "flagship",
     contextWindow: 1_050_000,
   },
+  // OpenAI — worker
   {
     id: "openai/gpt-5.6-luna",
     label: "GPT-5.6 Luna",
     vendor: "openai",
     kind: "reasoning",
+    tier: "worker",
     contextWindow: 1_050_000,
   },
-  // Anthropic
+  {
+    id: DEFAULT_WORKER_MODEL_ID,
+    label: "GPT-4.1 Mini",
+    vendor: "openai",
+    kind: "chat",
+    tier: "worker",
+    contextWindow: 1_047_576,
+  },
+  // Anthropic — flagship
+  {
+    id: "anthropic/claude-fable-5",
+    label: "Claude Fable 5",
+    vendor: "anthropic",
+    kind: "reasoning",
+    tier: "flagship",
+    contextWindow: 1_000_000,
+  },
   {
     id: "anthropic/claude-opus-5",
     label: "Claude Opus 5",
     vendor: "anthropic",
     kind: "reasoning",
+    tier: "flagship",
     contextWindow: 1_000_000,
   },
   {
@@ -62,49 +62,42 @@ export const OPENROUTER_MODELS: AiModelOption[] = [
     label: "Claude Sonnet 5",
     vendor: "anthropic",
     kind: "reasoning",
+    tier: "flagship",
     contextWindow: 1_000_000,
   },
+  // Anthropic — worker
   {
     id: "anthropic/claude-haiku-4.5",
     label: "Claude Haiku 4.5",
     vendor: "anthropic",
     kind: "reasoning",
+    tier: "worker",
     contextWindow: 200_000,
   },
-  // Google
+  // Google — flagship
   {
     id: "google/gemini-3.1-pro-preview",
     label: "Gemini 3.1 Pro",
     vendor: "google",
     kind: "reasoning",
+    tier: "flagship",
     contextWindow: 1_048_576,
   },
   {
-    id: "google/gemini-3.6-flash",
-    label: "Gemini 3.6 Flash",
+    id: "google/gemini-3.7-flash",
+    label: "Gemini 3.7 Flash",
     vendor: "google",
     kind: "reasoning",
+    tier: "flagship",
     contextWindow: 1_048_576,
   },
+  // Google — worker
   {
     id: "google/gemini-3.5-flash-lite",
     label: "Gemini 3.5 Flash Lite",
     vendor: "google",
     kind: "chat",
-    contextWindow: 1_048_576,
-  },
-  {
-    id: "google/gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
-    vendor: "google",
-    kind: "reasoning",
-    contextWindow: 1_048_576,
-  },
-  {
-    id: "google/gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-    vendor: "google",
-    kind: "reasoning",
+    tier: "worker",
     contextWindow: 1_048_576,
   },
 ];
@@ -120,6 +113,11 @@ export const VENDOR_LABEL: Record<AiModelOption["vendor"], string> = {
 export const KIND_LABEL: Record<AiModelOption["kind"], string> = {
   chat: "Chat",
   reasoning: "Reasoning",
+};
+
+export const TIER_LABEL: Record<AiModelOption["tier"], string> = {
+  flagship: "Flagship",
+  worker: "Worker",
 };
 
 export function findModel(

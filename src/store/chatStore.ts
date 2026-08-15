@@ -69,6 +69,10 @@ import {
 } from "../lib/vaultApi";
 import { getGem } from "../lib/gemsApi";
 import { useAiSettingsStore } from "./aiSettingsStore";
+import {
+  helperModelCallParams,
+  vaultChatModelId,
+} from "./vaultAiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
 export type ChatStatus = "ready" | "streaming" | "compacting" | "error";
@@ -230,16 +234,17 @@ function defaultsFromSettings(): {
   enableReasoning: boolean;
 } {
   const s = useAiSettingsStore.getState().settings;
+  const modelId = vaultChatModelId();
   return {
     mode: s.defaultMode,
-    modelId: s.modelId,
-    enableReasoning: modelSupportsReasoning(s.modelId),
+    modelId,
+    enableReasoning: modelSupportsReasoning(modelId),
   };
 }
 
 function DEFAULT_MODEL_PLACEHOLDER(): string {
   try {
-    return useAiSettingsStore.getState().settings.modelId;
+    return vaultChatModelId();
   } catch {
     return "anthropic/claude-sonnet-5";
   }
@@ -649,7 +654,7 @@ async function maybeRefreshTitle(
   const title = await generateChatTitle({
     messages,
     keys: api.keys,
-    fallbackModelId: api.modelId,
+    ...helperModelCallParams(),
   });
   if (!title) return;
 
@@ -1310,7 +1315,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const keys = credentialsFromSettings(settings);
     const modelId = resolveModelId(
       settings.baseUrl,
-      get().modelId || settings.modelId,
+      get().modelId || vaultChatModelId(),
     );
     if (!hasCredentialsForModel(modelId, keys)) {
       set({
@@ -1411,7 +1416,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           await compactChatHistory({
             messages: history,
             keys,
-            fallbackModelId: modelId,
+            ...helperModelCallParams(),
             abortSignal: controller.signal,
           });
         if (!didCompact) {
@@ -1662,6 +1667,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
 export function activeContextWindow(): number {
   const settings = useAiSettingsStore.getState().settings;
-  const modelId = useChatStore.getState().modelId || settings.modelId;
+  const modelId = useChatStore.getState().modelId || vaultChatModelId();
   return contextWindowForModel(settings, modelId);
 }

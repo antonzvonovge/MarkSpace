@@ -1,14 +1,11 @@
 import { generateText } from "ai";
 import {
-  hasCredentialsForModel,
-  missingCredentialsMessage,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 
 /** Cheap model for dictionary entry fill — same class as link suggest. */
-const SUGGEST_MODEL = "openai/gpt-4.1-mini";
-
 export type SuggestDictEntryResult = {
   transcript: string;
   translation: string;
@@ -23,6 +20,7 @@ export type SuggestDictEntryParams = {
   nativeLanguageCode: string;
   nativeLanguageLabel: string;
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 };
@@ -89,19 +87,6 @@ export async function suggestDictEntry(
   const word = params.word.trim();
   if (!word) throw new Error("Word or expression is required");
 
-  const canSuggest =
-    hasCredentialsForModel(SUGGEST_MODEL, params.keys) ||
-    (!!params.fallbackModelId?.trim() &&
-      hasCredentialsForModel(params.fallbackModelId, params.keys));
-  if (!canSuggest) {
-    throw new Error(
-      missingCredentialsMessage(
-        params.fallbackModelId?.trim() || SUGGEST_MODEL,
-        params.keys,
-      ),
-    );
-  }
-
   const prompt = `Entry (word or expression): ${word}`;
 
   const tryModel = async (modelId: string) => {
@@ -130,22 +115,10 @@ export async function suggestDictEntry(
     };
   };
 
-  if (hasCredentialsForModel(SUGGEST_MODEL, params.keys)) {
-    try {
-      return await tryModel(SUGGEST_MODEL);
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-      const fallback = params.fallbackModelId?.trim();
-      if (fallback && fallback !== SUGGEST_MODEL) {
-        return await tryModel(fallback);
-      }
-      throw e;
-    }
-  }
-
-  const fallback = params.fallbackModelId?.trim();
-  if (!fallback) {
-    throw new Error(missingCredentialsMessage(SUGGEST_MODEL, params.keys));
-  }
-  return await tryModel(fallback);
+  return await runWithModelFallback({
+    keys: params.keys,
+    modelId: params.modelId,
+    fallbackModelId: params.fallbackModelId,
+    run: tryModel,
+  });
 }

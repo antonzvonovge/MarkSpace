@@ -4,18 +4,17 @@ import { getNoteTags, setNoteTags, splitFrontmatter } from "../lib/noteFrontmatt
 import { resolveSuggestedTags } from "../lib/tagName";
 import { listVaultTags, readNote, writeNote } from "../lib/vaultApi";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { useBackgroundJobsStore } from "../store/backgroundJobsStore";
 import { useVaultStore } from "../store/vaultStore";
 import {
   credentialsFromSettings,
-  hasCredentialsForModel,
-  missingCredentialsMessage,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 
 /** Cheap model — same class as chat titles / link tags. */
-const TAG_MODEL = "openai/gpt-4.1-mini";
 const MAX_SOURCE_CHARS = 24_000;
 const MAX_CATALOG = 500;
 const MAX_TAGS = 4;
@@ -27,6 +26,7 @@ const errorHideTimers = new Map<string, number>();
 export type AutoTagNoteParams = {
   sourcePath: string;
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
   onProgress?: (progress: number, detail?: string) => void;
@@ -164,22 +164,10 @@ export async function suggestNoteTags(params: {
   markdown: string;
   catalog: string[];
   keys: AiProviderCredentials;
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 }): Promise<string[]> {
-  const canSuggest =
-    hasCredentialsForModel(TAG_MODEL, params.keys) ||
-    (!!params.fallbackModelId?.trim() &&
-      hasCredentialsForModel(params.fallbackModelId, params.keys));
-  if (!canSuggest) {
-    throw new Error(
-      missingCredentialsMessage(
-        params.fallbackModelId?.trim() || TAG_MODEL,
-        params.keys,
-      ),
-    );
-  }
-
   const { body } = splitFrontmatter(params.markdown);
   const existingTags = getNoteTags(params.markdown);
   const inlineTags = extractInlineTags(body);
@@ -216,24 +204,12 @@ export async function suggestNoteTags(params: {
     return resolveSuggestedTags(tagsFromModelOutput(extractJsonValue(text)), catalog, MAX_TAGS);
   };
 
-  if (hasCredentialsForModel(TAG_MODEL, params.keys)) {
-    try {
-      return await tryModel(TAG_MODEL);
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-      const fallback = params.fallbackModelId?.trim();
-      if (fallback && fallback !== TAG_MODEL) {
-        return await tryModel(fallback);
-      }
-      throw e;
-    }
-  }
-
-  const fallback = params.fallbackModelId?.trim();
-  if (!fallback) {
-    throw new Error(missingCredentialsMessage(TAG_MODEL, params.keys));
-  }
-  return await tryModel(fallback);
+  return await runWithModelFallback({
+    keys: params.keys,
+    modelId: params.modelId,
+    fallbackModelId: params.fallbackModelId,
+    run: tryModel,
+  });
 }
 
 /**
@@ -267,6 +243,7 @@ export async function autoTagNote(
     markdown: content,
     catalog,
     keys: params.keys,
+    modelId: params.modelId,
     fallbackModelId: params.fallbackModelId,
     abortSignal: params.abortSignal,
   });
@@ -376,10 +353,12 @@ export async function autoTagNoteWithJob(params: {
 
   try {
     const aiSettings = useAiSettingsStore.getState().settings;
+    const helper = helperModelCallParams();
     const result = await autoTagNote({
       sourcePath: path,
       keys: credentialsFromSettings(aiSettings),
-      fallbackModelId: aiSettings.modelId,
+      modelId: helper.modelId,
+      fallbackModelId: helper.fallbackModelId,
       abortSignal: ac.signal,
       onProgress: (progress, detail) => {
         if (ac.signal.aborted) return;

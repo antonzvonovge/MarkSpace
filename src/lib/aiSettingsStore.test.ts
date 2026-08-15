@@ -11,13 +11,13 @@ describe("normalizeAiSettings", () => {
   it("keeps legacy openrouter apiKey and fills new BYOK fields", () => {
     const merged = normalizeAiSettings({
       apiKey: "sk-or-legacy",
-      modelId: "openai/gpt-4.1",
+      modelId: "openai/gpt-4.1-mini",
     });
     expect(merged.apiKey).toBe("sk-or-legacy");
     expect(merged.openaiApiKey).toBe("");
     expect(merged.anthropicApiKey).toBe("");
     expect(merged.googleApiKey).toBe("");
-    expect(merged.modelId).toBe("openai/gpt-4.1");
+    expect(merged.modelId).toBe("openai/gpt-4.1-mini");
     expect(merged.baseUrl).toContain("openrouter.ai");
   });
 
@@ -65,5 +65,24 @@ describe("normalizeAiSettings", () => {
         agentTerminalEnabled: "yes",
       }).agentTerminalEnabled,
     ).toBe(false);
+  });
+
+  it("infers worker tier for mini/haiku/luna/flash-lite custom ids", () => {
+    const merged = normalizeAiSettings({
+      models: [
+        {
+          id: "openai/custom-mini",
+          label: "Custom Mini",
+          vendor: "openai",
+          kind: "chat",
+        } as unknown as (typeof DEFAULT_AI_SETTINGS)["models"][number],
+      ],
+    });
+    const custom = merged.models.find((m) => m.id === "openai/custom-mini");
+    expect(custom?.tier).toBe("worker");
+    const haiku = merged.models.find((m) => m.id === "anthropic/claude-haiku-4.5");
+    expect(haiku?.tier).toBe("worker");
+    const sol = merged.models.find((m) => m.id === "openai/gpt-5.6-sol");
+    expect(sol?.tier).toBe("flagship");
   });
 });

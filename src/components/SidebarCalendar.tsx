@@ -81,8 +81,8 @@ function ChevronRightIcon() {
 export function CalendarCheckIcon() {
   return (
     <svg
-      width="18"
-      height="18"
+      width="22"
+      height="22"
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

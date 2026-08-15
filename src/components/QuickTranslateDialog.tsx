@@ -25,6 +25,7 @@ import {
 import { appendOrMergeDictEntry } from "../lib/mddictWrite";
 import { isNativeLanguageId, nativeLanguageLabel } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
 import { DialogShell } from "./AppDialog";
@@ -234,7 +235,7 @@ export function QuickTranslateDialog({
         nativeLanguageCode: nativeLanguage,
         nativeLanguageLabel: nativeLabel,
         keys: credentialsFromSettings(aiSettings),
-        fallbackModelId: aiSettings.modelId,
+        ...helperModelCallParams(),
         abortSignal: ac.signal,
       });
       if (ac.signal.aborted) return;

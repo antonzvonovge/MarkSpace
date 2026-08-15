@@ -8,6 +8,7 @@ export type SettingCategory =
   | "profile"
   | "appearance"
   | "editor"
+  | "keys"
   | "ai"
   | "memory"
   | "diary"
@@ -52,7 +53,8 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "profile", label: "Profile", scope: "app" },
   { id: "appearance", label: "Appearance", scope: "app" },
   { id: "editor", label: "Editor", scope: "app" },
-  { id: "ai", label: "AI", scope: "app", separatorBefore: true },
+  { id: "keys", label: "API keys", scope: "app", separatorBefore: true },
+  { id: "ai", label: "AI", scope: "app" },
   { id: "memory", label: "Memory", scope: "vault" },
   { id: "diary", label: "Diary", scope: "vault" },
   { id: "sync", label: "Sync", scope: "vault", separatorBefore: true },

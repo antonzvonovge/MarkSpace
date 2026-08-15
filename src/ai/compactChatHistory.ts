@@ -1,8 +1,8 @@
 import { generateText, isToolUIPart, type UIMessage } from "ai";
 import { unwrapComposerMarkers } from "../lib/chatComposerDom";
 import {
-  hasCredentialsForModel,
   resolveLanguageModel,
+  runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
 
@@ -10,8 +10,6 @@ import {
 export const KEEP_RECENT_MESSAGES = 2;
 
 /** Prefer a cheap model for the compaction call; fall back to the chat model. */
-const COMPACT_MODEL = "openai/gpt-4.1-mini";
-
 const COMPACT_SYSTEM = `You compact chat history for MarkSpace, a local Markdown vault assistant.
 Write a dense continuity brief that a future assistant turn will read instead of the older messages.
 
@@ -145,7 +143,7 @@ export function formatCompactionMessage(summary: string): UIMessage {
 export type CompactChatHistoryParams = {
   messages: UIMessage[];
   keys: AiProviderCredentials;
-  /** Prefer chat model if compact model is unavailable. */
+  modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 };
@@ -189,24 +187,13 @@ export async function compactChatHistory(
     return sanitizeSummary(text);
   };
 
-  let summary: string | null = null;
-  if (hasCredentialsForModel(COMPACT_MODEL, params.keys)) {
-    try {
-      summary = await tryModel(COMPACT_MODEL);
-    } catch {
-      /* try fallback */
-    }
-  }
-
-  if (!summary) {
-    const fallback = params.fallbackModelId?.trim();
-    if (fallback && fallback !== COMPACT_MODEL) {
-      summary = await tryModel(fallback);
-    } else if (!hasCredentialsForModel(COMPACT_MODEL, params.keys)) {
-      // No mini model — use whatever fallback was provided, or fail.
-      if (fallback) summary = await tryModel(fallback);
-    }
-  }
+  const summary = await runWithModelFallback({
+    keys: params.keys,
+    modelId: params.modelId,
+    fallbackModelId: params.fallbackModelId,
+    isEmpty: (text) => !text,
+    run: tryModel,
+  });
 
   if (!summary) {
     throw new Error("Could not compact conversation history");
