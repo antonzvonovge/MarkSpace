@@ -27,6 +27,7 @@ const TEXT_EXTS = new Set([
   "markdown",
   "mdlnks",
   "mddict",
+  "mdhabit",
   "txt",
   "json",
   "csv",

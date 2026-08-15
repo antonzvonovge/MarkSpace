@@ -5,6 +5,7 @@ export type SpecialistKind =
   | "diagram"
   | "links"
   | "dict"
+  | "habits"
   | "terminal";
 
 export type SpecialistPreset = {
@@ -75,6 +76,8 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "read_links",
       "read_mddict_format",
       "read_dictionary",
+      "read_mdhabit_format",
+      "read_habits",
       "web_search",
       "fetch_url",
       "scrape_url",
@@ -87,7 +90,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     writes: true,
     system: [
       "You are a MarkSpace note editor. Create/edit markdown notes, folders, and assets.",
-      "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, or .mddict — those need other specialists.",
+      "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, .mddict, or .mdhabit — those need other specialists.",
       "Follow MarkSpace Markdown dialect; call read_format_guide when unsure.",
       "Diary daily notes: {project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md via open_or_create_daily_note.",
       "End with a summary and list changedPaths.",
@@ -179,6 +182,26 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "set_dictionary_filter",
     ],
   },
+  habits: {
+    kind: "habits",
+    label: "Habits",
+    writes: true,
+    system: [
+      "You are a MarkSpace .mdhabit habit-tracker specialist. Use habits tools only — never raw edit_note on .mdhabit.",
+      "Call read_mdhabit_format when unsure. End with summary and changedPaths.",
+    ].join(" "),
+    toolNames: [
+      "list_folder",
+      "open_note",
+      "read_mdhabit_format",
+      "read_habits",
+      "create_habit_tracker",
+      "add_habit",
+      "update_habit",
+      "remove_habit",
+      "set_habit_day",
+    ],
+  },
   terminal: {
     kind: "terminal",
     label: "Terminal",
@@ -186,7 +209,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     system: [
       "You are a MarkSpace terminal specialist. Run shell commands with run_terminal.",
       "The user must approve each command unless they enabled Allow for this chat.",
-      "Do not edit notes, diagrams, .mdlnks, or .mddict via the shell — other specialists own those.",
+      "Do not edit notes, diagrams, .mdlnks, .mddict, or .mdhabit via the shell — other specialists own those.",
       "Prefer list_folder / read_note to inspect vault files. End with a summary of commands and results.",
     ].join(" "),
     toolNames: ["run_terminal", "list_folder", "read_note"],

@@ -785,3 +785,274 @@ export function ProjectPropertiesDialog({
     </DialogShell>
   );
 }
+
+export function ProjectColorPicker({
+  color,
+  onChange,
+  labelledBy,
+  disabled,
+}: {
+  color: string;
+  onChange: (hex: string) => void;
+  labelledBy: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div
+      className="project-color-picker"
+      role="radiogroup"
+      aria-labelledby={labelledBy}
+    >
+      <button
+        type="button"
+        role="radio"
+        aria-checked={color === ""}
+        aria-label="None"
+        title="None"
+        className={`project-color-swatch is-none${color === "" ? " is-selected" : ""}`}
+        disabled={disabled}
+        onClick={() => onChange("")}
+      >
+        <span className="project-color-swatch-none-x" aria-hidden>
+          ×
+        </span>
+      </button>
+      {PROJECT_COLOR_SWATCHES.map((swatch) => (
+        <button
+          key={swatch.id}
+          type="button"
+          role="radio"
+          aria-checked={color === swatch.hex}
+          aria-label={swatch.label}
+          title={swatch.label}
+          className={`project-color-swatch${color === swatch.hex ? " is-selected" : ""}`}
+          style={{ background: swatch.hex }}
+          disabled={disabled}
+          onClick={() => onChange(swatch.hex)}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function HabitTrackerCreateDialog({
+  open,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onConfirm: (name: string, year: number) => void;
+}) {
+  const nameId = useId();
+  const yearId = useId();
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState("Habits");
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+
+  useEffect(() => {
+    if (!open) return;
+    setName("Habits");
+    setYear(String(new Date().getFullYear()));
+    const id = window.requestAnimationFrame(() => {
+      nameRef.current?.focus();
+      nameRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open]);
+
+  const yearNum = Number.parseInt(year, 10);
+  const yearOk = Number.isInteger(yearNum) && yearNum >= 1 && yearNum <= 9999;
+  const canSubmit = Boolean(name.trim()) && yearOk;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    onConfirm(name.trim(), yearNum);
+  };
+
+  return (
+    <DialogShell
+      open={open}
+      title="New habit tracker"
+      description="Create a yearly habit tracker in the selected location."
+      onCancel={onCancel}
+      footer={
+        <>
+          <button type="button" className="app-dialog-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="app-dialog-btn is-primary"
+            disabled={!canSubmit}
+            onClick={submit}
+          >
+            Create
+          </button>
+        </>
+      }
+    >
+      <div className="app-dialog-body">
+        <label className="app-dialog-label" htmlFor={nameId}>
+          Name
+        </label>
+        <input
+          ref={nameRef}
+          id={nameId}
+          className="app-dialog-input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          spellCheck={false}
+          autoComplete="off"
+        />
+        <label className="app-dialog-label" htmlFor={yearId}>
+          Year
+        </label>
+        <input
+          id={yearId}
+          className="app-dialog-input"
+          type="number"
+          min={1}
+          max={9999}
+          value={year}
+          onChange={(e) => setYear(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
+      </div>
+    </DialogShell>
+  );
+}
+
+export type HabitFieldsValue = {
+  name: string;
+  question: string;
+  color: string;
+};
+
+export function HabitFieldsDialog({
+  open,
+  mode,
+  initial,
+  existingNames,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  mode: "add" | "edit";
+  initial: HabitFieldsValue;
+  existingNames: string[];
+  onCancel: () => void;
+  onConfirm: (value: HabitFieldsValue) => void;
+}) {
+  const nameId = useId();
+  const questionId = useId();
+  const colorGroupId = useId();
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState(initial.name);
+  const [question, setQuestion] = useState(initial.question);
+  const [color, setColor] = useState(initial.color);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(initial.name);
+    setQuestion(initial.question);
+    setColor(initial.color);
+    const id = window.requestAnimationFrame(() => {
+      nameRef.current?.focus();
+      nameRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open, initial.name, initial.question, initial.color]);
+
+  const taken = new Set(
+    existingNames
+      .map((n) => n.trim().toLowerCase())
+      .filter((n) => n && n !== initial.name.trim().toLowerCase()),
+  );
+  const nameKey = name.trim().toLowerCase();
+  const duplicate = Boolean(nameKey) && taken.has(nameKey);
+  const canSubmit =
+    Boolean(name.trim()) && Boolean(question.trim()) && !duplicate;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    onConfirm({ name: name.trim(), question: question.trim(), color });
+  };
+
+  return (
+    <DialogShell
+      open={open}
+      title={mode === "add" ? "Add habit" : "Edit habit"}
+      onCancel={onCancel}
+      footer={
+        <>
+          <button type="button" className="app-dialog-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="app-dialog-btn is-primary"
+            disabled={!canSubmit}
+            onClick={submit}
+          >
+            {mode === "add" ? "Add" : "Save"}
+          </button>
+        </>
+      }
+    >
+      <div className="app-dialog-body">
+        <label className="app-dialog-label" htmlFor={nameId}>
+          Name
+        </label>
+        <input
+          ref={nameRef}
+          id={nameId}
+          className="app-dialog-input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+        />
+        {duplicate ? (
+          <p className="app-dialog-desc">A habit with this name already exists.</p>
+        ) : null}
+        <label className="app-dialog-label" htmlFor={questionId}>
+          Question
+        </label>
+        <input
+          id={questionId}
+          className="app-dialog-input"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Did you…?"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
+        <div className="app-dialog-label" id={colorGroupId} role="presentation">
+          Color
+        </div>
+        <ProjectColorPicker
+          color={color}
+          onChange={setColor}
+          labelledBy={colorGroupId}
+        />
+      </div>
+    </DialogShell>
+  );
+}
+

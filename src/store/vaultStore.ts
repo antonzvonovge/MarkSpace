@@ -3,12 +3,14 @@ import { skillTemplate } from "../ai/skills";
 import { flushDrawioEditor } from "../editor/drawio/drawioEditorFlush";
 import { warmDrawioPreview } from "../editor/drawio/warmPreview";
 import { flushLiveEditor } from "../editor/liveEditorFlush";
+import { localIsoDate } from "../lib/mdhabitFormat";
 import type { TreeNode } from "../lib/vaultApi";
 import {
   addFavorite,
   createDrawio,
   createFolder,
   createMddict,
+  createMdhabit,
   createMdlnks,
   createNote,
   deleteNoteComment,
@@ -265,6 +267,7 @@ type VaultStore = {
   createDrawioInSelection: (name: string) => Promise<void>;
   createMdlnksInSelection: (name: string) => Promise<void>;
   createMddictInSelection: (name: string) => Promise<void>;
+  createMdhabitInSelection: (name: string, year: number) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
   /**
    * Open a daily note under a diary project, creating
@@ -436,6 +439,7 @@ function tabLabel(path: string, kind?: TabKind): string {
     .replace(/\.drawio$/i, "")
     .replace(/\.mdlnks$/i, "")
     .replace(/\.mddict$/i, "")
+    .replace(/\.mdhabit$/i, "")
     .replace(/\.pdf$/i, "");
 }
 
@@ -2008,6 +2012,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       .trim()
       .replace(/\.mdlnks$/i, "")
       .replace(/\.mddict$/i, "")
+      .replace(/\.mdhabit$/i, "")
       .replace(/\.drawio$/i, "")
       .replace(/\.md$/i, "");
     if (!trimmed) return;
@@ -2035,6 +2040,26 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       const created = await createMddict(rel);
       await get().refreshTree();
       void get().refreshDictionaryTags();
+      await get().openNote(created, { preview: false });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  createMdhabitInSelection: async (name, year) => {
+    const { selectedFolderPath } = get();
+    const trimmed = name
+      .trim()
+      .replace(/\.mdhabit$/i, "")
+      .replace(/\.mddict$/i, "")
+      .replace(/\.mdlnks$/i, "")
+      .replace(/\.drawio$/i, "")
+      .replace(/\.md$/i, "");
+    if (!trimmed) return;
+    try {
+      const rel = joinPath(selectedFolderPath, trimmed);
+      const created = await createMdhabit(rel, year, localIsoDate());
+      await get().refreshTree();
       await get().openNote(created, { preview: false });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -2322,6 +2347,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (to === from || to === from.replace(/\.mdlnks$/i, "")) return null;
     } else if (fromKind === "mddict") {
       if (to === from || to === from.replace(/\.mddict$/i, "")) return null;
+    } else if (fromKind === "mdhabit") {
+      if (to === from || to === from.replace(/\.mdhabit$/i, "")) return null;
     } else if (to === from || to === from.replace(/\.md$/i, "")) {
       return null;
     }

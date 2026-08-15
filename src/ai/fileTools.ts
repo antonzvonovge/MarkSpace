@@ -113,6 +113,8 @@ function mediaTypeFromExt(ext: string): string | null {
       return "text/plain";
     case "mddict":
       return "text/plain";
+    case "mdhabit":
+      return "text/plain";
     default:
       return null;
   }

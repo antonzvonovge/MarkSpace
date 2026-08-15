@@ -29,6 +29,7 @@ import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
 import { DictionaryEditor } from "./editor/mddict/DictionaryEditor";
+import { HabitTrackerEditor } from "./editor/mdhabit/HabitTrackerEditor";
 import { DictPracticeDialog } from "./editor/mddict/DictPracticeDialog";
 import { PdfViewer } from "./editor/pdf/PdfViewer";
 import type { VaultChange } from "./lib/vaultApi";
@@ -183,6 +184,33 @@ const DocumentTab = memo(function DocumentTab({
             </div>
           ) : null}
         </>
+      ) : docKind === "mdhabit" ? (
+        <>
+          <div
+            className={
+              liveSlotActive
+                ? "document-editor-slot is-active"
+                : "document-editor-slot"
+            }
+          >
+            <HabitTrackerEditor
+              path={path}
+              content={content}
+              onChange={(next) => onEditorChange(path, next)}
+            />
+          </div>
+          {isActive && viewMode === "source" ? (
+            <div className="document-editor-slot is-active">
+              <div className="source-editor-wrap">
+                <PlainSourceEditor
+                  path={path}
+                  content={content}
+                  onChange={(text) => onEditorChange(path, text)}
+                />
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <>
           <div
@@ -270,7 +298,8 @@ const MainPane = memo(function MainPane({
                   return (
                     (documentKind(activePath) === "markdown" ||
                       documentKind(activePath) === "mdlnks" ||
-                      documentKind(activePath) === "mddict") &&
+                      documentKind(activePath) === "mddict" ||
+                      documentKind(activePath) === "mdhabit") &&
                     viewMode === "source" ? (
                       <DocumentToolbar
                         showOutlineToggle={
@@ -617,7 +646,7 @@ function App() {
         const tab = st.tabs.find((t) => t.path === path);
         if (tab && !isFileTab(tab)) return;
         const kind = documentKind(path);
-        if (kind !== "markdown" && kind !== "mdlnks" && kind !== "mddict") return;
+        if (kind !== "markdown" && kind !== "mdlnks" && kind !== "mddict" && kind !== "mdhabit") return;
         toggleViewMode();
       }
       if (e.key === "," || code === "Comma") {

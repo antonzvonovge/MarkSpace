@@ -30,6 +30,20 @@ export function CloseIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+export function PencilIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM9.75 4.81L4.53 10.03a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.25.25 0 00.108-.064L11.19 6.25 9.75 4.81z" />
+    </svg>
+  );
+}
+
 /** Vertical thumbtack (VS Code / Cursor pinned tab). */
 export function PinIcon({ size = 14 }: { size?: number }) {
   return (
@@ -206,6 +220,35 @@ export function DictionaryIcon() {
         stroke="currentColor"
         strokeWidth="1.3"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function HabitTrackerIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="3.25"
+        width="11"
+        height="10.25"
+        rx="1.4"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M5.25 2.5v1.8M10.75 2.5v1.8M2.75 6.4h10.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5.6 9.1 7.15 10.6 10.4 7.6"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );

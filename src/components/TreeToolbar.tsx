@@ -7,6 +7,7 @@ import {
   DiagramIcon,
   DictionaryIcon,
   GraphIcon,
+  HabitTrackerIcon,
   LinksIcon,
   LocateIcon,
   PlusIcon,
@@ -14,7 +15,13 @@ import {
 } from "./treeIcons";
 import { GRAPH_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
 
-export type TreeCreateKind = "note" | "drawio" | "mdlnks" | "mddict" | "folder";
+export type TreeCreateKind =
+  | "note"
+  | "drawio"
+  | "mdlnks"
+  | "mddict"
+  | "mdhabit"
+  | "folder";
 
 function TreeCreateMenu({
   onCreate,
@@ -110,6 +117,15 @@ function TreeCreateMenu({
           >
             <DictionaryIcon />
             <span>New dictionary</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-create-item"
+            onClick={() => pick("mdhabit")}
+          >
+            <HabitTrackerIcon />
+            <span>New habit tracker</span>
           </button>
           <button
             type="button"

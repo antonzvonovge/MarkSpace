@@ -1,0 +1,11 @@
+---
+description: Keep docs/mdhabit-format.md in sync when .mdhabit format or tools change
+alwaysApply: false
+globs: src/lib/mdhabitFormat.ts,src/ai/mdhabit/**,src/editor/mdhabit/**,docs/mdhabit-format.md
+---
+
+# Habits format (`.mdhabit`)
+
+Spec: [`docs/mdhabit-format.md`](docs/mdhabit-format.md). Core rules live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
+
+If you change on-disk syntax, parse/serialize, or agent tools for habit-tracker files, **update `docs/mdhabit-format.md` in the same change** (including the core-rules block when agent-critical).

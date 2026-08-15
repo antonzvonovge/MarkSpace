@@ -109,6 +109,10 @@ fn is_mddict(name: &str) -> bool {
     name.ends_with(".mddict")
 }
 
+fn is_mdhabit(name: &str) -> bool {
+    name.ends_with(".mdhabit")
+}
+
 fn is_pdf(name: &str) -> bool {
     name.ends_with(".pdf")
 }
@@ -118,6 +122,7 @@ fn is_vault_document(name: &str) -> bool {
         || is_drawio(name)
         || is_mdlnks(name)
         || is_mddict(name)
+        || is_mdhabit(name)
         || is_pdf(name)
 }
 
@@ -627,6 +632,8 @@ fn strip_known_doc_ext(rel: &mut String) {
         rel.truncate(rel.len() - 7);
     } else if rel.ends_with(".mddict") {
         rel.truncate(rel.len() - 7);
+    } else if rel.ends_with(".mdhabit") {
+        rel.truncate(rel.len() - 8);
     } else if rel.ends_with(".pdf") {
         rel.truncate(rel.len() - 4);
     }
@@ -662,6 +669,13 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         }
         return to_rel;
     }
+    if is_mdhabit(&from_name) {
+        if !to_rel.ends_with(".mdhabit") {
+            strip_known_doc_ext(&mut to_rel);
+            to_rel.push_str(".mdhabit");
+        }
+        return to_rel;
+    }
     if is_pdf(&from_name) {
         if !to_rel.ends_with(".pdf") {
             strip_known_doc_ext(&mut to_rel);
@@ -674,6 +688,7 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         && !to_rel.ends_with(".drawio")
         && !to_rel.ends_with(".mdlnks")
         && !to_rel.ends_with(".mddict")
+        && !to_rel.ends_with(".mdhabit")
         && !to_rel.ends_with(".pdf")
     {
         to_rel.push_str(".md");
@@ -1233,6 +1248,56 @@ pub fn create_mddict(path: String, state: State<VaultState>) -> Result<String, S
     Ok(created)
 }
 
+fn valid_iso_date(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 10
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b[0..4].iter().all(u8::is_ascii_digit)
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[8..10].iter().all(u8::is_ascii_digit)
+}
+
+#[tauri::command(async)]
+pub fn create_mdhabit(
+    path: String,
+    year: i32,
+    created: String,
+    state: State<VaultState>,
+) -> Result<String, String> {
+    if !(1..=9999).contains(&year) {
+        return Err("Invalid year".into());
+    }
+    let created = created.trim().to_string();
+    if !valid_iso_date(&created) {
+        return Err("Invalid created date (expected YYYY-MM-DD)".into());
+    }
+    let root = get_root(&state)?;
+    let mut rel = path.trim().trim_start_matches('/').to_string();
+    if !rel.ends_with(".mdhabit") {
+        strip_known_doc_ext(&mut rel);
+        rel.push_str(".mdhabit");
+    }
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    if full.exists() {
+        return Err("Habit tracker already exists".into());
+    }
+    if let Some(parent) = full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
+    }
+    let seed = format!("# MarkSpace habits v1\nyear: {year}\ncreated: {created}\n");
+    fs::write(&full, seed).map_err(|e| format!("Cannot create habit tracker: {e}"))?;
+
+    let created_path = relative_to_root(&root, &full);
+    let parent = parent_rel(&created_path);
+    let name = entry_name(&created_path);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent, &name, None);
+    write_order(&root, &order)?;
+
+    Ok(created_path)
+}
+
 /// Resolve a .drawio path for embedding next to a note.
 /// If `source` is already inside the vault, returns its vault-relative path.
 /// Otherwise copies the file into the note's folder and returns the new relative path.
@@ -1296,7 +1361,7 @@ pub fn import_drawio(
 }
 
 /// Copy external files/folders (from OS clipboard / explorer) into a vault folder.
-/// Vault documents (`.md` / `.drawio` / `.mdlnks` / `.mddict` / `.pdf`) are imported;
+/// Vault documents (`.md` / `.drawio` / `.mdlnks` / `.mddict` / `.mdhabit` / `.pdf`) are imported;
 /// directory structure is preserved. When `overwrite` is false, name conflicts get a
 /// unique sibling (`note-1.md`). When true, existing files are replaced and folders merge.
 #[tauri::command(async)]
@@ -1473,7 +1538,9 @@ pub fn import_document_bytes(
     let parent_rel = parent.trim().trim_start_matches('/').to_string();
     let name = sanitize_asset_filename(&file_name);
     if !is_vault_document(&name) {
-        return Err("Only .md, .drawio, .mdlnks, .mddict, and .pdf files can be imported".into());
+        return Err(
+            "Only .md, .drawio, .mdlnks, .mddict, .mdhabit, and .pdf files can be imported".into(),
+        );
     }
 
     let data = STANDARD
@@ -2065,6 +2132,7 @@ pub fn resolve_wiki_target(
         || lower.ends_with(".drawio")
         || lower.ends_with(".mdlnks")
         || lower.ends_with(".mddict")
+        || lower.ends_with(".mdhabit")
     {
         target.to_string()
     } else {
@@ -2082,6 +2150,7 @@ pub fn resolve_wiki_target(
         || lower.ends_with(".drawio")
         || lower.ends_with(".mdlnks")
         || lower.ends_with(".mddict")
+        || lower.ends_with(".mdhabit")
     {
         None
     } else if lower.ends_with(".md") {
@@ -2114,6 +2183,8 @@ pub fn resolve_wiki_target(
         Some("mddict")
     } else if lower.ends_with(".mdlnks") {
         Some("mdlnks")
+    } else if lower.ends_with(".mdhabit") {
+        Some("mdhabit")
     } else if lower.ends_with(".drawio") {
         Some("drawio")
     } else if lower.ends_with(".md") {
@@ -2190,6 +2261,7 @@ pub fn resolve_wiki_target(
                     || ext.eq_ignore_ascii_case("drawio")
                     || ext.eq_ignore_ascii_case("mdlnks")
                     || ext.eq_ignore_ascii_case("mddict")
+                    || ext.eq_ignore_ascii_case("mdhabit")
             }
         };
         if !ext_ok {

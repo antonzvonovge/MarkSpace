@@ -23,7 +23,8 @@ export async function fileFromVaultPath(path: string): Promise<File> {
     kind === "text" ||
     name.toLowerCase().endsWith(".drawio") ||
     name.toLowerCase().endsWith(".mdlnks") ||
-    name.toLowerCase().endsWith(".mddict")
+    name.toLowerCase().endsWith(".mddict") ||
+    name.toLowerCase().endsWith(".mdhabit")
   ) {
     const content = await readNote(path);
     return new File([content], name, {

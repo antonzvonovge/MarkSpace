@@ -7,7 +7,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 
 <!-- core-rules:start -->
 - Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported). A wiki target that names an existing **folder** resolves to that folder’s hidden overview note `{folder}/.folder.md` (created on open if missing).
-- In **chat replies**, reference vault files with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — also `.mddict`, `.mdlnks`, `.drawio`, and `.pdf` paths. All render as a clickable file link that opens the document. Mention a file this way whenever you create, open, or cite one.
+- In **chat replies**, reference vault files with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — also `.mddict`, `.mdlnks`, `.mdhabit`, `.drawio`, and `.pdf` paths. All render as a clickable file link that opens the document. Mention a file this way whenever you create, open, or cite one.
 - Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
 - Tables: use GFM pipe tables (`| col |`). Never draw ASCII / box-drawing tables (`+---`, `│`, monospace grids) and never put a table inside a plain-text / untitled code fence — those stay unrendered junk. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
@@ -91,6 +91,7 @@ link text. Clicking opens the note or activates its existing editor tab.
 | `![[vault/path/Note.md]]` | Same as the plain `[[…]]` form (not an embed) |
 | `[[vault/path/Dict.mddict\|Dictionary]]` | Opens a `.mddict` dictionary |
 | `[[vault/path/Links.mdlnks]]` | Opens a `.mdlnks` links collection |
+| `[[vault/path/Habits.mdhabit]]` | Opens a `.mdhabit` yearly habit tracker |
 
 Use this whenever you create, open, or cite a note, so the user can jump to it.
 Targets are vault-relative and must not contain `|` in the path segment. A literal `#` in a folder or file name is allowed.

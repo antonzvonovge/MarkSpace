@@ -1,5 +1,5 @@
 import { useCallback, useState, type CSSProperties } from "react";
-import { FcDocument, FcLink, FcPlanner, FcReading } from "react-icons/fc";
+import { FcCalendar, FcDocument, FcLink, FcPlanner, FcReading } from "react-icons/fc";
 import {
   useVaultStore,
   tabLabel,
@@ -85,6 +85,8 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
         <FcLink size={14} />
       ) : kind === "mddict" ? (
         <FcReading size={14} />
+      ) : kind === "mdhabit" ? (
+        <FcCalendar size={14} />
       ) : kind === "pdf" ? (
         <PdfIcon />
       ) : (

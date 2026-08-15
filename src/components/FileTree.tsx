@@ -51,6 +51,7 @@ import { useChatStore } from "../store/chatStore";
 import {
   PromptDialog,
   ConfirmDialog,
+  HabitTrackerCreateDialog,
   ProjectPropertiesDialog,
 } from "./AppDialog";
 import { CommentsInboxSection } from "./CommentsInboxSection";
@@ -60,6 +61,7 @@ import {
   saveFavoritesSectionCollapsed,
 } from "../lib/favoritesUiState";
 import {
+  FcCalendar,
   FcDocument,
   FcFolder,
   FcLink,
@@ -92,6 +94,7 @@ import {
   DiagramIcon,
   DictionaryIcon,
   FavoritesSectionIcon,
+  HabitTrackerIcon,
   LinksIcon,
   PdfIcon,
   PlusIcon,
@@ -554,6 +557,7 @@ function TreeContextMenu({
   onNewDiagram,
   onNewLinks,
   onNewDictionary,
+  onNewHabitTracker,
   onNewFolder,
   onTurnIntoFolder,
   onNewSkill,
@@ -578,6 +582,7 @@ function TreeContextMenu({
   onNewDiagram: () => void;
   onNewLinks: () => void;
   onNewDictionary: () => void;
+  onNewHabitTracker: () => void;
   onNewFolder: () => void;
   onTurnIntoFolder: () => void;
   onNewSkill: () => void;
@@ -786,6 +791,18 @@ function TreeContextMenu({
             >
               <DictionaryIcon />
               <span>New dictionary</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-context-item"
+              onClick={() => {
+                onClose();
+                onNewHabitTracker();
+              }}
+            >
+              <HabitTrackerIcon />
+              <span>New habit tracker</span>
             </button>
             {showNewFolder ? (
               <button
@@ -1085,6 +1102,7 @@ function FavoritesTreeRows({
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
         const isMdlnks = !isDir && path.toLowerCase().endsWith(".mdlnks");
         const isMddict = !isDir && path.toLowerCase().endsWith(".mddict");
+        const isMdhabit = !isDir && path.toLowerCase().endsWith(".mdhabit");
         const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
         const selected =
           treeSelectionVisible &&
@@ -1221,6 +1239,8 @@ function FavoritesTreeRows({
                   <FcLink size={20} />
                 ) : isMddict ? (
                   <FcReading size={20} />
+                ) : isMdhabit ? (
+                  <FcCalendar size={20} />
                 ) : isPdf ? (
                   <span className="tree-pdf-icon">
                     <PdfIcon />
@@ -1292,6 +1312,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const createDrawioInSelection = useVaultStore((s) => s.createDrawioInSelection);
   const createMdlnksInSelection = useVaultStore((s) => s.createMdlnksInSelection);
   const createMddictInSelection = useVaultStore((s) => s.createMddictInSelection);
+  const createMdhabitInSelection = useVaultStore((s) => s.createMdhabitInSelection);
   const createFolderInSelection = useVaultStore((s) => s.createFolderInSelection);
   const createSkill = useVaultStore((s) => s.createSkill);
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
@@ -1873,6 +1894,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       void createMddictInSelection(name).then(revealActiveInTree);
       return;
     }
+    if (kind === "mdhabit") {
+      return;
+    }
     void createFolderInSelection(name).then(() => {
       revealPathInTree(useVaultStore.getState().selectedFolderPath, {
         isDir: true,
@@ -1883,7 +1907,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   return (
     <div className="file-tree">
       <PromptDialog
-        open={promptKind !== null}
+        open={promptKind !== null && promptKind !== "mdhabit"}
         title={
           promptKind === "folder"
             ? "New folder"
@@ -1927,6 +1951,15 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         confirmLabel="Create"
         onCancel={() => setPromptKind(null)}
         onConfirm={submitCreate}
+      />
+
+      <HabitTrackerCreateDialog
+        open={promptKind === "mdhabit"}
+        onCancel={() => setPromptKind(null)}
+        onConfirm={(name, year) => {
+          setPromptKind(null);
+          void createMdhabitInSelection(name, year).then(revealActiveInTree);
+        }}
       />
 
       <PromptDialog
@@ -1987,6 +2020,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
             );
             setPromptKind("mddict");
+          }}
+          onNewHabitTracker={() => {
+            selectFolder(
+              contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
+            );
+            setPromptKind("mdhabit");
           }}
           onNewFolder={() => {
             selectFolder(
@@ -2074,7 +2113,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 ? "Delete links"
                 : deleteTarget?.path.endsWith(".mddict")
                   ? "Delete dictionary"
-                  : deleteTarget?.path.endsWith(".pdf")
+                  : deleteTarget?.path.endsWith(".mdhabit")
+                    ? "Delete habit tracker"
+                    : deleteTarget?.path.endsWith(".pdf")
                     ? "Delete PDF"
                     : "Delete note"
         }
@@ -2353,6 +2394,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   !isDir && path.toLowerCase().endsWith(".mdlnks");
                 const isMddict =
                   !isDir && path.toLowerCase().endsWith(".mddict");
+                const isMdhabit =
+                  !isDir && path.toLowerCase().endsWith(".mdhabit");
                 const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
                 const selected =
                   treeSelectionVisible &&
@@ -2515,6 +2558,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         <FcLink size={20} />
                       ) : isMddict ? (
                         <FcReading size={20} />
+                      ) : isMdhabit ? (
+                        <FcCalendar size={20} />
                       ) : isPdf ? (
                         <span className="tree-pdf-icon">
                           <PdfIcon />

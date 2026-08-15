@@ -28,7 +28,8 @@ function skipMarkdownNormalize(path: string): boolean {
   return (
     lower.endsWith(".drawio") ||
     lower.endsWith(".mdlnks") ||
-    lower.endsWith(".mddict")
+    lower.endsWith(".mddict") ||
+    lower.endsWith(".mdhabit")
   );
 }
 
@@ -69,6 +70,14 @@ export async function createMddict(path: string): Promise<string> {
   return invoke("create_mddict", { path });
 }
 
+export async function createMdhabit(
+  path: string,
+  year: number,
+  created: string,
+): Promise<string> {
+  return invoke("create_mdhabit", { path, year, created });
+}
+
 /** Embed path for a .drawio: vault-relative if already inside, else copy next to the note. */
 export async function importDrawio(
   notePath: string,
@@ -86,7 +95,7 @@ export async function importPaths(
   return invoke("import_paths", { parent, sources, overwrite });
 }
 
-/** Write a .md / .drawio / .mdlnks / .mddict / .pdf from bytes into a vault folder. */
+/** Write a .md / .drawio / .mdlnks / .mddict / .mdhabit / .pdf from bytes into a vault folder. */
 export async function importDocumentBytes(
   parent: string,
   fileName: string,
@@ -833,13 +842,20 @@ export function listVaultProjects(
     .map((n) => ({ path: n.path, name: n.name }));
 }
 
-export type DocumentKind = "markdown" | "drawio" | "mdlnks" | "mddict" | "pdf";
+export type DocumentKind =
+  | "markdown"
+  | "drawio"
+  | "mdlnks"
+  | "mddict"
+  | "mdhabit"
+  | "pdf";
 
 export function documentKind(path: string): DocumentKind {
   const lower = path.toLowerCase();
   if (lower.endsWith(".drawio")) return "drawio";
   if (lower.endsWith(".mdlnks")) return "mdlnks";
   if (lower.endsWith(".mddict")) return "mddict";
+  if (lower.endsWith(".mdhabit")) return "mdhabit";
   if (lower.endsWith(".pdf")) return "pdf";
   return "markdown";
 }
@@ -854,6 +870,10 @@ export function isMdlnksPath(path: string): boolean {
 
 export function isMddictPath(path: string): boolean {
   return documentKind(path) === "mddict";
+}
+
+export function isMdhabitPath(path: string): boolean {
+  return documentKind(path) === "mdhabit";
 }
 
 export function isPdfPath(path: string): boolean {
