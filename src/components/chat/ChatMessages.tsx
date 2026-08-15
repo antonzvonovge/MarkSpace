@@ -14,7 +14,6 @@ import {
   type FileUIPart,
   type UIMessage,
 } from "ai";
-import { FcComments } from "react-icons/fc";
 import {
   attachedDocNamesFromUserMessage,
   displayTextFromUserMessage,
@@ -267,9 +266,6 @@ function CommentChip({
           setExpanded((v) => !v);
         }}
       >
-        <span className="chat-comment-chip-mark" aria-hidden>
-          <FcComments size={12} />
-        </span>
         <span className="chat-comment-chip-label">{label}</span>
         {pathLabel ? (
           <span className="chat-comment-chip-path">{pathLabel}</span>

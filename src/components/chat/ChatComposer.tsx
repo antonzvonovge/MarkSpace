@@ -19,6 +19,7 @@ import {
   readTextFromSystemClipboard,
 } from "../../editor/pasteImages";
 import {
+  chipLabelForPath,
   focusComposerEnd,
   getComposerAtQuery,
   getComposerSlashQuery,
@@ -39,6 +40,7 @@ import {
 } from "../../lib/vaultTreeDrag";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
+import { isFileTab, useVaultStore } from "../../store/vaultStore";
 import {
   EditContextMenu,
   type EditContextMenuState,
@@ -175,6 +177,13 @@ export function ChatComposer() {
     (s) => s.contextAnchorMessageCount,
   );
   const settings = useAiSettingsStore((s) => s.settings);
+  const activePath = useVaultStore((s) => s.activePath);
+  const tabs = useVaultStore((s) => s.tabs);
+  const activeFilePath = useMemo(() => {
+    if (!activePath) return null;
+    const tab = tabs.find((t) => t.path === activePath);
+    return tab && isFileTab(tab) ? activePath : null;
+  }, [activePath, tabs]);
 
   const streaming = status === "streaming" || status === "compacting";
   const models: AiModelOption[] = settings.models.length
@@ -318,6 +327,36 @@ export function ChatComposer() {
     syncDraftFromDom();
     focusInput();
   };
+
+  const applyActiveFileChip = () => {
+    const el = inputRef.current;
+    const path = useVaultStore.getState().activePath;
+    if (!el || !path) return;
+    const tab = useVaultStore.getState().tabs.find((t) => t.path === path);
+    if (!tab || !isFileTab(tab)) return;
+    insertPathChip(el, path);
+    closeSkillMenus();
+    syncDraftFromDom();
+    focusInput();
+  };
+
+  const plusFooterActions = useMemo(
+    () =>
+      skillPickerRect
+        ? [
+            {
+              id: "active-file",
+              label: "Add current file",
+              description: activeFilePath
+                ? chipLabelForPath(activeFilePath)
+                : "No file open",
+              title: activeFilePath ?? undefined,
+              disabled: !activeFilePath,
+            },
+          ]
+        : undefined,
+    [skillPickerRect, activeFilePath],
+  );
 
   const openSkillPicker = () => {
     if (streaming) return;
@@ -616,6 +655,7 @@ export function ChatComposer() {
         aria-multiline="true"
         aria-label="Message"
         contentEditable={!streaming}
+        spellCheck={false}
         suppressContentEditableWarning
         data-placeholder={streaming ? "Streaming…" : "Message…"}
         onFocus={() => {
@@ -703,6 +743,10 @@ export function ChatComposer() {
           onSelect={
             slashMenu ? applySkillChipFromSlash : applySkillChipInsert
           }
+          footerActions={plusFooterActions}
+          onFooterSelect={(id) => {
+            if (id === "active-file") applyActiveFileChip();
+          }}
         />
       ) : null}
       {contextMenu ? (
@@ -794,8 +838,8 @@ export function ChatComposer() {
             if (skillPickerRect) closeSkillMenus();
             else openSkillPicker();
           }}
-          title="Add skill"
-          aria-label="Add skill"
+          title="Add skill or file"
+          aria-label="Add skill or file"
           aria-expanded={skillPickerRect != null}
           aria-haspopup="listbox"
         >

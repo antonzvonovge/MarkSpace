@@ -446,7 +446,7 @@ export function LinkItemDialog({
             }
           }}
           placeholder="Short note about this link"
-          spellCheck
+          spellCheck={false}
           autoComplete="off"
           disabled={suggesting}
         />
@@ -606,7 +606,7 @@ export function AddWordDialog({
             }
           }}
           placeholder="e.g. sprechen / auf Wiedersehen"
-          spellCheck
+          spellCheck={false}
           autoComplete="off"
           disabled={busy}
         />
@@ -779,7 +779,7 @@ export function ProjectPropertiesDialog({
             }
           }}
           placeholder="Briefly describe what this project is about…"
-          spellCheck
+          spellCheck={false}
         />
       </div>
     </DialogShell>

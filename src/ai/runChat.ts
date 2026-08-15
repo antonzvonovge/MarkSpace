@@ -18,11 +18,10 @@ import {
   settleIncompleteToolCalls,
 } from "./incompleteToolCalls";
 import {
-  estimateModelMessagesTokens,
   estimateTokensFromText,
   estimateToolSchemaTokens,
-  wouldExceedContext,
 } from "./estimateTokens";
+import { applySlidingWindow } from "./slidingWindow";
 import {
   resolveLanguageModel,
   type AiProviderCredentials,
@@ -85,7 +84,7 @@ export type RunChatParams = {
   skills?: SkillMeta[] | null;
   forcedSkills?: LoadedSkill[] | null;
   forcedTools?: string[] | null;
-  /** Model context window — used to abort mid-loop before a hard provider error. */
+  /** Model context window — sliding window + abort if the latest turn still cannot fit. */
   contextWindow?: number;
   /**
    * Max model↔tool rounds for this user send. Defaults to settings default.
@@ -377,6 +376,7 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
   const contextWindow = params.contextWindow;
   const toolSchemaTokens = estimateToolSchemaTokens(params.mode);
   const systemTokens = estimateTokensFromText(system);
+  const extraTokens = systemTokens + toolSchemaTokens;
   const maxSteps = clampAgentMaxSteps(params.maxSteps ?? DEFAULT_AGENT_MAX_STEPS);
 
   const toModelMessages = async (messages: UIMessage[]) => {
@@ -417,7 +417,15 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
             { id: assistantId, role: "assistant", parts: [...parts] },
           ]
         : inputMessages;
-    const modelMessages = await toModelMessages(conversation);
+    const rawModelMessages = await toModelMessages(conversation);
+    const modelMessages =
+      contextWindow != null && contextWindow > 0
+        ? applySlidingWindow({
+            messages: rawModelMessages,
+            contextWindow,
+            extraTokens,
+          })
+        : rawModelMessages;
     const result = streamText({
       model: resolved.model,
       system,
@@ -425,24 +433,17 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
       tools,
       stopWhen: stepCountIs(remainingSteps),
       abortSignal: params.abortSignal,
-      prepareStep: ({ messages, stepNumber, steps }) => {
-        if (contextWindow == null || contextWindow <= 0 || stepNumber === 0) {
+      prepareStep: ({ messages }) => {
+        if (contextWindow == null || contextWindow <= 0) {
           return {};
         }
-        let used =
-          systemTokens + toolSchemaTokens + estimateModelMessagesTokens(messages);
-        const prev = steps.length > 0 ? steps[steps.length - 1] : undefined;
-        const prevIn = prev?.usage?.inputTokens;
-        const prevOut = prev?.usage?.outputTokens;
-        if (prevIn != null && prevIn > 0) {
-          used = Math.max(used, prevIn + (prevOut ?? 0));
-        }
-        if (wouldExceedContext(used, contextWindow)) {
-          throw new Error(
-            "Context window is full (during tool use). Start a new chat or shorten the conversation.",
-          );
-        }
-        return {};
+        return {
+          messages: applySlidingWindow({
+            messages,
+            contextWindow,
+            extraTokens,
+          }),
+        };
       },
       ...(resolved.providerOptions
         ? { providerOptions: resolved.providerOptions }

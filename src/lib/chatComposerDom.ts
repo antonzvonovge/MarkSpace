@@ -146,6 +146,7 @@ export function createPathChipElement(path: string): HTMLSpanElement {
     : "chat-path-chip";
   span.contentEditable = "false";
   span.dataset.vaultPath = path;
+  span.title = path;
   span.textContent = chipLabelForPath(path);
   return span;
 }
@@ -155,6 +156,7 @@ export function createSkillChipElement(id: string): HTMLSpanElement {
   span.className = "chat-path-chip chat-skill-chip";
   span.contentEditable = "false";
   span.dataset.skillId = id;
+  span.title = `/${id}`;
   span.textContent = `/${id}`;
   return span;
 }
@@ -164,6 +166,7 @@ export function createToolChipElement(id: string): HTMLSpanElement {
   span.className = "chat-path-chip chat-tool-chip";
   span.contentEditable = "false";
   span.dataset.toolId = id;
+  span.title = `@${id}`;
   span.textContent = `@${id}`;
   return span;
 }

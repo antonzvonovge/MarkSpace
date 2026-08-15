@@ -14,6 +14,14 @@ export type ChatMentionItem = {
   description: string;
 };
 
+export type ChatSlashFooterAction = {
+  id: string;
+  label: string;
+  description?: string;
+  title?: string;
+  disabled?: boolean;
+};
+
 type Props = {
   items: ChatMentionItem[];
   query: string;
@@ -29,7 +37,12 @@ type Props = {
   ariaLabel?: string;
   emptyNoItems?: string;
   emptyNoMatch?: string;
+  /** Extra actions after a separator (plus-button picker only). */
+  footerActions?: ChatSlashFooterAction[];
+  onFooterSelect?: (id: string) => void;
 };
+
+const EMPTY_FOOTER_ACTIONS: ChatSlashFooterAction[] = [];
 
 export function ChatSkillSlashMenu({
   items,
@@ -43,6 +56,8 @@ export function ChatSkillSlashMenu({
   ariaLabel = "Skills",
   emptyNoItems = "No skills yet — create one in Skills/",
   emptyNoMatch = "No matching skills",
+  footerActions,
+  onFooterSelect,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
@@ -57,6 +72,9 @@ export function ChatSkillSlashMenu({
     return limit != null ? list.slice(0, limit) : list;
   }, [items, q, limit]);
 
+  const actions = footerActions ?? EMPTY_FOOTER_ACTIONS;
+  const navCount = filtered.length + actions.length;
+
   const [selectedIndex, setSelectedIndex] = useState(0);
   const selectedIndexRef = useRef(0);
   selectedIndexRef.current = selectedIndex;
@@ -66,9 +84,9 @@ export function ChatSkillSlashMenu({
   }, [q, items]);
 
   useEffect(() => {
-    if (filtered.length === 0) return;
-    setSelectedIndex((i) => Math.min(i, filtered.length - 1));
-  }, [filtered.length]);
+    if (navCount === 0) return;
+    setSelectedIndex((i) => Math.min(i, navCount - 1));
+  }, [navCount]);
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -77,6 +95,16 @@ export function ChatSkillSlashMenu({
       if (excludeCloseRef?.current?.contains(t)) return;
       onClose();
     };
+    const pick = (index: number) => {
+      if (index < filtered.length) {
+        const choice = filtered[index];
+        if (choice) onSelect(choice.id);
+        return;
+      }
+      const action = actions[index - filtered.length];
+      if (!action || action.disabled) return;
+      onFooterSelect?.(action.id);
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -84,26 +112,23 @@ export function ChatSkillSlashMenu({
         onClose();
         return;
       }
-      if (filtered.length === 0) return;
+      if (navCount === 0) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
-        setSelectedIndex((i) => (i + 1) % filtered.length);
+        setSelectedIndex((i) => (i + 1) % navCount);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();
-        setSelectedIndex((i) => (i - 1 + filtered.length) % filtered.length);
+        setSelectedIndex((i) => (i - 1 + navCount) % navCount);
         return;
       }
       if (e.key === "Enter" && !e.shiftKey) {
-        const choice =
-          filtered[selectedIndexRef.current] ?? filtered[0];
-        if (!choice) return;
         e.preventDefault();
         e.stopPropagation();
-        onSelect(choice.id);
+        pick(selectedIndexRef.current);
       }
     };
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -112,7 +137,15 @@ export function ChatSkillSlashMenu({
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [excludeCloseRef, filtered, onClose, onSelect]);
+  }, [
+    actions,
+    excludeCloseRef,
+    filtered,
+    navCount,
+    onClose,
+    onFooterSelect,
+    onSelect,
+  ]);
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -174,6 +207,45 @@ export function ChatSkillSlashMenu({
           ))}
         </ul>
       )}
+      {actions.length > 0 ? (
+        <>
+          <div className="chat-skill-slash-separator" role="separator" />
+          <ul className="chat-skill-slash-list">
+            {actions.map((action, i) => {
+              const index = filtered.length + i;
+              return (
+                <li key={action.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index === selectedIndex}
+                    disabled={action.disabled}
+                    title={action.title}
+                    className={
+                      index === selectedIndex
+                        ? "chat-skill-slash-item chat-skill-slash-action is-active"
+                        : "chat-skill-slash-item chat-skill-slash-action"
+                    }
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    onMouseDown={(e) => {
+                      if (action.disabled) return;
+                      e.preventDefault();
+                      onFooterSelect?.(action.id);
+                    }}
+                  >
+                    <span className="chat-skill-slash-id">{action.label}</span>
+                    {action.description ? (
+                      <span className="chat-skill-slash-desc">
+                        {action.description}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : null}
     </div>,
     document.body,
   );

@@ -330,6 +330,11 @@ export async function runSpecialist(params: {
     if (params.abortSignal?.aborted) throw abortError();
 
     const { buildVaultTools } = await import("./vaultTools");
+    const { applySlidingWindow } = await import("./slidingWindow");
+    const { estimateTokensFromText, estimateToolSchemaTokens } = await import(
+      "./estimateTokens"
+    );
+    const { contextWindowForModel } = await import("./types");
     const tools = buildVaultTools("agent", {
       projectPath: params.ctx.projectPath,
       getMessages: () => [] as UIMessage[],
@@ -365,13 +370,29 @@ export async function runSpecialist(params: {
 
     patchLive(params.toolCallId, { status: "Working…" });
 
+    const system = contextLines.join("\n");
+    const contextWindow = contextWindowForModel(settings, modelId);
+    const extraTokens =
+      estimateTokensFromText(system) +
+      estimateToolSchemaTokens("agent", [...preset.toolNames]);
+
     const result = streamText({
       model: resolved.model,
-      system: contextLines.join("\n"),
+      system,
       messages: [{ role: "user", content: userParts }],
       tools,
       stopWhen: stepCountIs(SPECIALIST_WORKER_MAX_STEPS),
       abortSignal: params.abortSignal,
+      prepareStep: ({ messages }) => {
+        if (contextWindow <= 0) return {};
+        return {
+          messages: applySlidingWindow({
+            messages,
+            contextWindow,
+            extraTokens,
+          }),
+        };
+      },
       ...(resolved.providerOptions
         ? { providerOptions: resolved.providerOptions }
         : {}),

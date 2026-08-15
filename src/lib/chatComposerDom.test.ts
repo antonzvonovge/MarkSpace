@@ -112,7 +112,7 @@ describe("serialize / render composer", () => {
       "Folder/very-long-document-name-here.md",
     );
     expect(chip.contentEditable).toBe("false");
-    expect(chip.title).toBe("");
+    expect(chip.title).toBe("Folder/very-long-document-name-here.md");
     expect(chip.dataset.vaultPath).toBe(
       "Folder/very-long-document-name-here.md",
     );

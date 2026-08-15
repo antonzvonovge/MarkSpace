@@ -126,6 +126,8 @@ pub fn run() {
                         let webview = platform.inner();
                         if let Some(context) = webview.context() {
                             context.set_use_system_appearance_for_scrollbars(true);
+                            // Native Enchant/hunspell underlines ignore HTML spellcheck="false".
+                            context.set_spell_checking_enabled(false);
                         }
                     });
                 }
