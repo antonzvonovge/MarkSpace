@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { groupChatHistory } from "../../lib/chatHistoryGroups";
 import { useChatStore } from "../../store/chatStore";
 
 type Props = {
@@ -23,6 +24,7 @@ export function ChatHistoryMenu({ open, onClose }: Props) {
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const selectThread = useChatStore((s) => s.selectThread);
   const deleteThread = useChatStore((s) => s.deleteThread);
+  const groups = groupChatHistory(threads);
 
   useEffect(() => {
     if (!open) return;
@@ -47,39 +49,48 @@ export function ChatHistoryMenu({ open, onClose }: Props) {
       {threads.length === 0 && (
         <div className="chat-history-empty">No chats yet</div>
       )}
-      {threads.map((t) => (
-        <div
-          key={t.id}
-          className={
-            t.id === activeThreadId
-              ? "chat-history-item is-active"
-              : "chat-history-item"
-          }
-        >
-          <button
-            type="button"
-            className="chat-history-item-main"
-            role="menuitem"
-            onClick={() => {
-              void selectThread(t.id);
-              onClose();
-            }}
-          >
-            <span className="chat-history-title">{t.title}</span>
-            <span className="chat-history-time">{relativeTime(t.updatedAt)}</span>
-          </button>
-          <button
-            type="button"
-            className="chat-history-delete"
-            title="Delete chat"
-            aria-label={`Delete ${t.title}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              void deleteThread(t.id);
-            }}
-          >
-            ×
-          </button>
+      {groups.map((group) => (
+        <div key={group.id} className="chat-history-group">
+          {group.label ? (
+            <div className="chat-history-group-label">{group.label}</div>
+          ) : null}
+          {group.items.map((t) => (
+            <div
+              key={t.id}
+              className={
+                t.id === activeThreadId
+                  ? "chat-history-item is-active"
+                  : "chat-history-item"
+              }
+            >
+              <button
+                type="button"
+                className="chat-history-item-main"
+                role="menuitem"
+                onClick={() => {
+                  void selectThread(t.id);
+                  onClose();
+                }}
+              >
+                <span className="chat-history-title">{t.title}</span>
+                <span className="chat-history-time">
+                  {relativeTime(t.updatedAt)}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="chat-history-delete"
+                title="Delete chat"
+                aria-label={`Delete ${t.title}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void deleteThread(t.id);
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
         </div>
       ))}
     </div>
