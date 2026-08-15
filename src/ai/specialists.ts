@@ -17,6 +17,13 @@ import {
 } from "./toolPacks";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { isAgentTerminalEnabled } from "./terminalTool";
+import {
+  beginSpecialistWave,
+  waitingStatusForDeps,
+  withPredecessorContext,
+  type SpecialistDepResult,
+  type SpecialistWaveHandle,
+} from "./specialistDeps";
 
 export const SPECIALIST_WORKER_MAX_STEPS = 8;
 
@@ -517,6 +524,46 @@ export async function runSpecialist(params: {
   }
 }
 
+function runSpecialistDescription(terminalOn: boolean): string {
+  const kinds = terminalOn
+    ? "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, or a terminal command sequence"
+    : "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, or .mddict dictionaries";
+  return [
+    `Delegate a focused subtask to a specialist worker with a limited tool set. Use for ${kinds}.`,
+    "Independent tasks: emit multiple run_specialist calls in ONE response.",
+    "Dependent tasks: one specialist, or the same response with id + depends_on (the later worker waits and receives the earlier summary).",
+    "Never split create and edits of one .drawio across diagram specialists — one kind=diagram does create_diagram and all mutate_diagram.",
+    "Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known.",
+  ].join(" ");
+}
+
+function toDepResult(result: RunSpecialistResult): SpecialistDepResult {
+  return {
+    ok: result.ok,
+    kind: result.kind,
+    title: result.title,
+    summary: result.summary,
+    changedPaths: result.changedPaths,
+    ...(result.error ? { error: result.error } : {}),
+  };
+}
+
+function specialistFailResult(
+  kind: SpecialistKind,
+  title: string,
+  message: string,
+): RunSpecialistResult {
+  return {
+    ok: false,
+    kind,
+    title,
+    summary: message,
+    changedPaths: [],
+    steps: [],
+    error: message,
+  };
+}
+
 export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
   const terminalOn = isAgentTerminalEnabled();
   const kindEnum = terminalOn
@@ -531,9 +578,7 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
     : z.enum(["research", "edit_notes", "diagram", "links", "dict"]);
 
   return tool({
-    description: terminalOn
-      ? "Delegate a focused subtask to a specialist worker with a limited tool set. Use for research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, or a terminal command sequence. Emit multiple run_specialist calls in ONE response when tasks are independent. Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known."
-      : "Delegate a focused subtask to a specialist worker with a limited tool set. Use for research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, or .mddict dictionaries. Emit multiple run_specialist calls in ONE response when tasks are independent. Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known.",
+    description: runSpecialistDescription(terminalOn),
     inputSchema: z.object({
       kind: kindEnum.describe("Specialist preset"),
       title: z
@@ -549,33 +594,103 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
         .array(z.string())
         .optional()
         .describe("Optional focus / write paths (vault-relative)"),
+      id: z
+        .string()
+        .min(1)
+        .max(40)
+        .optional()
+        .describe(
+          "Short id for this call so other specialists in THIS response can wait via depends_on (e.g. diag)",
+        ),
+      depends_on: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Ids of specialists in this same response that must finish first. Their summaries and changedPaths are prepended to the task.",
+        ),
     }),
     execute: async (
-      { kind, title, task, paths },
+      { kind, title, task, paths, id, depends_on },
       { toolCallId, abortSignal },
     ) => {
-      if (!isSpecialistKind(kind)) {
+      const cardTitle = title.trim();
+      const waveId = id?.trim() || toolCallId;
+      const dependsOn = depends_on ?? [];
+      let handle: SpecialistWaveHandle;
+      try {
+        handle = beginSpecialistWave({
+          id: waveId,
+          title: cardTitle,
+          dependsOn,
+          signal: abortSignal,
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
         return {
           ok: false as const,
-          error: `Unknown specialist kind: ${kind}`,
+          error: message,
         };
+      }
+
+      const releaseFail = (result: RunSpecialistResult) => {
+        handle.release(toDepResult(result));
+        return result;
+      };
+
+      if (!isSpecialistKind(kind)) {
+        return releaseFail(
+          specialistFailResult(
+            "research",
+            cardTitle || "Specialist",
+            `Unknown specialist kind: ${kind}`,
+          ),
+        );
       }
       if (String(kind) === "terminal" && !isAgentTerminalEnabled()) {
-        return {
-          ok: false as const,
-          error:
+        return releaseFail(
+          specialistFailResult(
+            kind,
+            cardTitle || SPECIALIST_PRESETS[kind].label,
             "Terminal is disabled. The user can enable it in Settings → AI → Allow agent terminal.",
-        };
+          ),
+        );
       }
-      return runSpecialist({
+
+      const liveTitle = cardTitle || SPECIALIST_PRESETS[kind].label;
+      let workTask = task;
+      try {
+        if (dependsOn.length > 0) {
+          setLive({
+            toolCallId,
+            kind,
+            title: liveTitle,
+            status: waitingStatusForDeps(handle.depTitles()),
+            running: true,
+            steps: [],
+          });
+          const preds = await handle.waitForDeps();
+          workTask = withPredecessorContext(task, preds);
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        const aborted = e instanceof Error && e.name === "AbortError";
+        const summary = aborted ? "Cancelled." : message;
+        patchLive(toolCallId, { running: false, status: summary });
+        window.setTimeout(() => clearLive(toolCallId), 30_000);
+        return releaseFail(specialistFailResult(kind, liveTitle, summary));
+      }
+
+      const result = await runSpecialist({
         toolCallId,
         kind,
         title,
-        task,
+        task: workTask,
         paths,
         abortSignal,
         ctx,
       });
+      handle.release(toDepResult(result));
+      return result;
     },
   });
 }

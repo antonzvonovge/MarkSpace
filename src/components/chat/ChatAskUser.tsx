@@ -246,11 +246,7 @@ function ChatAskUserInner({ part }: Props) {
 
   return (
     <div className={`chat-ask-user is-done${err ? " is-error" : ""}`}>
-      {input.title ? (
-        <div className="chat-ask-user-title">{input.title}</div>
-      ) : (
-        <div className="chat-ask-user-title">Answered</div>
-      )}
+      <div className="chat-ask-user-title">Answer</div>
       {err ? (
         <div className="chat-ask-user-error">{err}</div>
       ) : (
@@ -259,7 +255,9 @@ function ChatAskUserInner({ part }: Props) {
             const ans = output?.answers.find((a) => a.questionId === q.id);
             return (
               <li key={q.id}>
-                <span className="chat-ask-user-summary-q">{q.prompt}</span>
+                <span className="chat-ask-user-summary-q" title={q.prompt}>
+                  {q.prompt}
+                </span>
                 <span className="chat-ask-user-summary-a">
                   {answerSummary(q, ans)}
                 </span>

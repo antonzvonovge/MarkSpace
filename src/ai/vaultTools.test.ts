@@ -123,6 +123,8 @@ describe("vault agent tools", () => {
     expect(agentPrompt).toContain("run_specialist");
     expect(agentPrompt).toContain("edit_notes");
     expect(agentPrompt).toContain("parallel specialists");
+    expect(agentPrompt).toContain("depends_on");
+    expect(agentPrompt).toContain("single kind=diagram specialist");
     expect(agentPrompt).toContain("list_folder");
     expect(agentPrompt).not.toContain("prefer edit_note");
     expect(agentPrompt).not.toContain("move_path");

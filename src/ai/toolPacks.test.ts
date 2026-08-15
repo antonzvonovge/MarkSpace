@@ -30,6 +30,9 @@ describe("toolPacks", () => {
     expect(names).toContain("mutate_diagram");
     expect(names).not.toContain("add_diagram_node");
     expect(names).not.toContain("update_diagram_element");
+    expect(SPECIALIST_PRESETS.diagram.system).toContain(
+      "do not assume another diagram specialist will continue",
+    );
   });
 
   it("pickTools keeps only requested keys", () => {

@@ -124,7 +124,8 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     label: "Diagram",
     writes: true,
     system: [
-      "You are a MarkSpace Draw.io specialist. Use mutate_diagram for batch edits (never many parallel single-element updates).",
+      "You are a MarkSpace Draw.io specialist. Create and fully edit one .drawio in this worker (create_diagram then mutate_diagram); do not assume another diagram specialist will continue.",
+      "Use mutate_diagram for batch edits (never many parallel single-element updates).",
       "Omit x/y for new multi-shape layouts (auto layout). Never raw-edit diagram XML via edit_note.",
       "End with a summary and changedPaths.",
     ].join(" "),

@@ -6435,6 +6435,7 @@ select {
 .chat-ask-user {
   margin: 6px 0 10px;
   padding: 10px 12px;
+  min-width: 0;
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
   border-radius: 10px;
   background: color-mix(in srgb, var(--accent) 5%, var(--editor-surface));
@@ -6442,9 +6443,9 @@ select {
 }
 
 .chat-ask-user.is-done {
-  opacity: 0.85;
+  opacity: 1;
   border-color: var(--line);
-  background: transparent;
+  background: color-mix(in srgb, var(--text) 4%, var(--editor-surface));
 }
 
 .chat-ask-user.is-error {
@@ -6461,7 +6462,10 @@ select {
 
 .chat-ask-user.is-done .chat-ask-user-title {
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 400;
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  margin-bottom: 4px;
 }
 
 .chat-ask-user-q {
@@ -6785,13 +6789,19 @@ select {
 .chat-ask-user-summary li {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
   font-size: 0.8125rem;
+  line-height: 1.4;
 }
 
 .chat-ask-user-summary-q {
+  display: block;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-ask-user-summary-a {
