@@ -60,6 +60,9 @@ struct ChatIndex {
     /// Open chat tabs (Cursor-style). Closing a tab removes it here but keeps history.
     #[serde(default)]
     open_tab_ids: Vec<String>,
+    /// Pinned open tabs (subset of `open_tab_ids`).
+    #[serde(default)]
+    pinned_tab_ids: Vec<String>,
 }
 
 fn vault_key(vault_path: &str) -> String {
@@ -101,6 +104,9 @@ fn sanitize_open_tabs(index: &mut ChatIndex) {
     let known: std::collections::HashSet<&str> =
         index.threads.iter().map(|t| t.id.as_str()).collect();
     index.open_tab_ids.retain(|id| known.contains(id.as_str()));
+    index
+        .pinned_tab_ids
+        .retain(|id| index.open_tab_ids.iter().any(|t| t == id));
 
     // Migrate older indexes that only had activeThreadId.
     if index.open_tab_ids.is_empty() {
@@ -146,6 +152,8 @@ pub struct ChatThreadsResponse {
     pub threads: Vec<ChatThreadMeta>,
     pub active_thread_id: Option<String>,
     pub open_tab_ids: Vec<String>,
+    #[serde(default)]
+    pub pinned_tab_ids: Vec<String>,
 }
 
 #[tauri::command(async)]
@@ -159,6 +167,7 @@ pub fn list_chat_threads(
         threads: index.threads,
         active_thread_id: index.active_thread_id,
         open_tab_ids: index.open_tab_ids,
+        pinned_tab_ids: index.pinned_tab_ids,
     })
 }
 
@@ -245,6 +254,7 @@ pub fn delete_chat_thread(
     let mut index = read_index(&dir)?;
     index.threads.retain(|t| t.id != thread_id);
     index.open_tab_ids.retain(|id| id != &thread_id);
+    index.pinned_tab_ids.retain(|id| id != &thread_id);
     if index.active_thread_id.as_deref() == Some(thread_id.as_str()) {
         index.active_thread_id = index.open_tab_ids.first().cloned();
     }
@@ -278,6 +288,7 @@ pub fn set_open_chat_tabs(
     vault_path: String,
     open_tab_ids: Vec<String>,
     active_thread_id: Option<String>,
+    pinned_tab_ids: Vec<String>,
     app: AppHandle,
 ) -> Result<ChatThreadsResponse, String> {
     let dir = vault_dir(&app, &vault_path)?;
@@ -288,9 +299,14 @@ pub fn set_open_chat_tabs(
         .into_iter()
         .filter(|id| known.contains(id))
         .collect();
+    index.pinned_tab_ids = pinned_tab_ids
+        .into_iter()
+        .filter(|id| index.open_tab_ids.iter().any(|t| t == id))
+        .collect();
 
     if index.open_tab_ids.is_empty() {
         index.active_thread_id = None;
+        index.pinned_tab_ids.clear();
     } else {
         index.active_thread_id = match active_thread_id {
             Some(id) if index.open_tab_ids.iter().any(|t| t == &id) => Some(id),
@@ -303,5 +319,6 @@ pub fn set_open_chat_tabs(
         threads: index.threads,
         active_thread_id: index.active_thread_id,
         open_tab_ids: index.open_tab_ids,
+        pinned_tab_ids: index.pinned_tab_ids,
     })
 }

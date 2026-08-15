@@ -9,6 +9,12 @@ export type TabContextMenuState = {
   /** Index of the tab that was right-clicked. */
   index: number;
   tabCount: number;
+  /** Cursor-style sticky pin. */
+  pinned?: boolean;
+  /** Unpinned tabs besides the clicked one (Close Others / Close Remaining). */
+  canCloseOthers?: boolean;
+  /** Unpinned tabs to the right of the clicked one. */
+  canCloseToTheRight?: boolean;
 };
 
 type Props = {
@@ -16,9 +22,12 @@ type Props = {
   onClose: () => void;
   onCloseTab: () => void;
   onCloseOthers: () => void;
+  onCloseRemaining: () => void;
   onCloseToTheRight: () => void;
   /** When set, shows a “Copy path” item (e.g. chat thread JSON on disk). */
   onCopyPath?: () => void;
+  /** When set, shows Pin / Unpin. */
+  onTogglePinned?: (pinned: boolean) => void;
 };
 
 export function TabContextMenu({
@@ -26,12 +35,17 @@ export function TabContextMenu({
   onClose,
   onCloseTab,
   onCloseOthers,
+  onCloseRemaining,
   onCloseToTheRight,
   onCopyPath,
+  onTogglePinned,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const hasOthers = menu.tabCount > 1;
-  const hasToTheRight = menu.index < menu.tabCount - 1;
+  const hasOthers = menu.canCloseOthers ?? menu.tabCount > 1;
+  const hasRemaining = hasOthers;
+  const hasToTheRight =
+    menu.canCloseToTheRight ?? menu.index < menu.tabCount - 1;
+  const showPin = Boolean(onTogglePinned);
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -52,7 +66,7 @@ export function TabContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 220);
-  const top = Math.min(menu.y, window.innerHeight - 200);
+  const top = Math.min(menu.y, window.innerHeight - 280);
 
   return createPortal(
     <div
@@ -102,6 +116,19 @@ export function TabContextMenu({
         type="button"
         role="menuitem"
         className="tree-context-item"
+        disabled={!hasRemaining}
+        onClick={() => {
+          if (!hasRemaining) return;
+          onClose();
+          onCloseRemaining();
+        }}
+      >
+        <span>Close Remaining</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
         disabled={!hasToTheRight}
         onClick={() => {
           if (!hasToTheRight) return;
@@ -111,6 +138,22 @@ export function TabContextMenu({
       >
         <span>Close to the Right</span>
       </button>
+      {showPin ? (
+        <>
+          <div className="tree-context-sep" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onTogglePinned?.(!menu.pinned);
+            }}
+          >
+            <span>{menu.pinned ? "Unpin Tab" : "Pin Tab"}</span>
+          </button>
+        </>
+      ) : null}
     </div>,
     document.body,
   );

@@ -54,7 +54,7 @@ export function useTabReorder(
         draggable: true,
         className: classes,
         onDragStart: (e) => {
-          if ((e.target as HTMLElement).closest(".editor-tab-close")) {
+          if ((e.target as HTMLElement).closest(".editor-tab-close, .editor-tab-pin")) {
             e.preventDefault();
             return;
           }

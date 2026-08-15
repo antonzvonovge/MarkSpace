@@ -16,6 +16,7 @@ import { useFocusUiStore } from "../store/focusUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useHorizontalWheelScroll } from "../hooks/useHorizontalWheelScroll";
 import { useTabReorder } from "../hooks/useTabReorder";
+import { lastPinnedIndex, hasCloseableOthers, hasCloseableToTheRight } from "../lib/editorTabs";
 import {
   TabContextMenu,
   type TabContextMenuState,
@@ -25,6 +26,7 @@ import {
   DiagramIcon,
   GraphIcon,
   PdfIcon,
+  PinIcon,
 } from "./treeIcons";
 
 function SettingsTabIcon({ size = 14 }: { size?: number }) {
@@ -96,18 +98,25 @@ function TabItem({
   tab,
   index,
   tabCount,
+  lastPinned,
+  canCloseOthers,
+  canCloseToTheRight,
   bindReorder,
   onOpenContextMenu,
 }: {
   tab: EditorTab;
   index: number;
   tabCount: number;
+  lastPinned: boolean;
+  canCloseOthers: boolean;
+  canCloseToTheRight: boolean;
   bindReorder: ReturnType<typeof useTabReorder>;
   onOpenContextMenu: (menu: TabContextMenuState) => void;
 }) {
   const activePath = useVaultStore((s) => s.activePath);
   const openNote = useVaultStore((s) => s.openNote);
   const pinTab = useVaultStore((s) => s.pinTab);
+  const setTabPinned = useVaultStore((s) => s.setTabPinned);
   const closeTab = useVaultStore((s) => s.closeTab);
   const projectPropertiesByPath = useVaultStore(
     (s) => s.projectPropertiesByPath,
@@ -126,6 +135,7 @@ function TabItem({
     : isSettingsTab(tab)
       ? "Settings"
       : tab.path;
+  const label = tabLabel(tab.path, tab.kind);
 
   return (
     <div
@@ -133,6 +143,8 @@ function TabItem({
         "editor-tab",
         active ? "is-active" : "",
         tab.preview ? "is-preview" : "",
+        tab.pinned ? "is-pinned" : "",
+        lastPinned ? "is-last-pinned" : "",
         projectColor ? "has-project-color" : "",
         reorder.className,
       ]
@@ -152,7 +164,7 @@ function TabItem({
       onDrop={reorder.onDrop}
       onMouseDown={(e) => {
         if (e.button !== 0) return;
-        if ((e.target as HTMLElement).closest(".editor-tab-close")) return;
+        if ((e.target as HTMLElement).closest(".editor-tab-close, .editor-tab-pin")) return;
         // Activate on press (VS Code-style) so HTML5 DnD does not eat the click.
         // Pin preview tabs on the second press of a double-click here — not in
         // onDoubleClick — because preventDefault() cancels the dblclick event.
@@ -182,28 +194,47 @@ function TabItem({
           targetId: tab.path,
           index,
           tabCount,
+          pinned: Boolean(tab.pinned),
+          canCloseOthers,
+          canCloseToTheRight,
         });
       }}
       role="tab"
       aria-selected={active}
     >
       <TabFileIcon tab={tab} />
-      <span className="editor-tab-label">
-        {tabLabel(tab.path, tab.kind)}
+      <span className="editor-tab-label">{label}</span>
+      <span className="editor-tab-trailing">
+        {tab.pinned ? (
+          <button
+            type="button"
+            className="editor-tab-pin"
+            title="Unpin"
+            aria-label={`Unpin ${label}`}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setTabPinned(tab.path, false);
+            }}
+          >
+            <PinIcon />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="editor-tab-close"
+            title="Close"
+            aria-label={`Close ${label}`}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              void closeTab(tab.path);
+            }}
+          >
+            <CloseIcon />
+          </button>
+        )}
       </span>
-      <button
-        type="button"
-        className="editor-tab-close"
-        title="Close"
-        aria-label={`Close ${tabLabel(tab.path, tab.kind)}`}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          void closeTab(tab.path);
-        }}
-      >
-        <CloseIcon />
-      </button>
     </div>
   );
 }
@@ -214,6 +245,7 @@ export function EditorChrome() {
   const closeTab = useVaultStore((s) => s.closeTab);
   const closeOtherTabs = useVaultStore((s) => s.closeOtherTabs);
   const closeTabsToTheRight = useVaultStore((s) => s.closeTabsToTheRight);
+  const setTabPinned = useVaultStore((s) => s.setTabPinned);
   const navHistory = useVaultStore((s) => s.navHistory);
   const navIndex = useVaultStore((s) => s.navIndex);
   const goBack = useVaultStore((s) => s.goBack);
@@ -243,6 +275,7 @@ export function EditorChrome() {
   );
   const bindReorder = useTabReorder(tabs.length, onReorder);
   const tabbarRef = useHorizontalWheelScroll<HTMLDivElement>();
+  const pinnedEnd = lastPinnedIndex(tabs);
 
   return (
     <div className="editor-chrome">
@@ -321,6 +354,13 @@ export function EditorChrome() {
             tab={tab}
             index={index}
             tabCount={tabs.length}
+            lastPinned={
+              Boolean(tab.pinned) &&
+              index === pinnedEnd &&
+              pinnedEnd < tabs.length - 1
+            }
+            canCloseOthers={hasCloseableOthers(tabs, tab.path)}
+            canCloseToTheRight={hasCloseableToTheRight(tabs, tab.path)}
             bindReorder={bindReorder}
             onOpenContextMenu={setContextMenu}
           />
@@ -387,8 +427,12 @@ export function EditorChrome() {
           onClose={() => setContextMenu(null)}
           onCloseTab={() => void closeTab(contextMenu.targetId)}
           onCloseOthers={() => void closeOtherTabs(contextMenu.targetId)}
+          onCloseRemaining={() => void closeOtherTabs(contextMenu.targetId)}
           onCloseToTheRight={() =>
             void closeTabsToTheRight(contextMenu.targetId)
+          }
+          onTogglePinned={(pinned) =>
+            setTabPinned(contextMenu.targetId, pinned)
           }
         />
       ) : null}

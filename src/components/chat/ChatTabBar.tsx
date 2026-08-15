@@ -6,10 +6,16 @@ import { useVaultStore } from "../../store/vaultStore";
 import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
 import { useTabReorder } from "../../hooks/useTabReorder";
 import {
+  hasCloseableOthers,
+  hasCloseableToTheRight,
+  lastPinnedIndex,
+  type PinnableTab,
+} from "../../lib/editorTabs";
+import {
   TabContextMenu,
   type TabContextMenuState,
 } from "../TabContextMenu";
-import { CloseIcon } from "../treeIcons";
+import { CloseIcon, PinIcon } from "../treeIcons";
 import { ChatHistoryMenu } from "./ChatHistoryMenu";
 import { ChatGemsMenu } from "./ChatGemsMenu";
 import { ChatGemIcon } from "./ChatGemIcon";
@@ -21,6 +27,7 @@ export function ChatTabBar() {
   );
   const threads = useChatStore((s) => s.threads);
   const openTabIds = useChatStore((s) => s.openTabIds);
+  const pinnedTabIds = useChatStore((s) => s.pinnedTabIds);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const activeProjectPath = useChatStore((s) => s.projectPath);
   const attentionThreadIds = useChatStore((s) => s.attentionThreadIds);
@@ -28,6 +35,7 @@ export function ChatTabBar() {
   const closeTab = useChatStore((s) => s.closeTab);
   const closeOtherTabs = useChatStore((s) => s.closeOtherTabs);
   const closeTabsToTheRight = useChatStore((s) => s.closeTabsToTheRight);
+  const setTabPinned = useChatStore((s) => s.setTabPinned);
   const reorderOpenTabs = useChatStore((s) => s.reorderOpenTabs);
   const newThread = useChatStore((s) => s.newThread);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -39,10 +47,21 @@ export function ChatTabBar() {
 
   const tabs = useMemo(() => {
     const byId = new Map(threads.map((t) => [t.id, t]));
+    const pinned = new Set(pinnedTabIds);
     return openTabIds
-      .map((id) => byId.get(id))
+      .map((id) => {
+        const thread = byId.get(id);
+        if (!thread) return null;
+        return { ...thread, pinned: pinned.has(id) };
+      })
       .filter((t): t is NonNullable<typeof t> => !!t);
-  }, [threads, openTabIds]);
+  }, [threads, openTabIds, pinnedTabIds]);
+
+  const pinnableTabs: PinnableTab[] = useMemo(
+    () => tabs.map((t) => ({ path: t.id, pinned: t.pinned })),
+    [tabs],
+  );
+  const pinnedEnd = lastPinnedIndex(pinnableTabs);
 
   const attentionSet = useMemo(
     () => new Set(attentionThreadIds),
@@ -98,6 +117,10 @@ export function ChatTabBar() {
           const projectColor = projectPath
             ? (projectPropertiesByPath[projectPath]?.color ?? "")
             : "";
+          const lastPinned =
+            Boolean(tab.pinned) &&
+            index === pinnedEnd &&
+            pinnedEnd < tabs.length - 1;
           return (
             <div
               key={tab.id}
@@ -106,6 +129,8 @@ export function ChatTabBar() {
                 "editor-tab",
                 active ? "is-active" : "",
                 attention ? "has-attention" : "",
+                tab.pinned ? "is-pinned" : "",
+                lastPinned ? "is-last-pinned" : "",
                 projectColor ? "has-project-color" : "",
                 reorder.className,
               ]
@@ -129,7 +154,7 @@ export function ChatTabBar() {
               onDrop={reorder.onDrop}
               onMouseDown={(e) => {
                 if (e.button !== 0) return;
-                if ((e.target as HTMLElement).closest(".editor-tab-close")) return;
+                if ((e.target as HTMLElement).closest(".editor-tab-close, .editor-tab-pin")) return;
                 // Activate on press so HTML5 DnD does not eat the click.
                 if (e.detail > 1) e.preventDefault();
                 void selectThread(tab.id);
@@ -153,6 +178,12 @@ export function ChatTabBar() {
                   targetId: tab.id,
                   index,
                   tabCount: tabs.length,
+                  pinned: Boolean(tab.pinned),
+                  canCloseOthers: hasCloseableOthers(pinnableTabs, tab.id),
+                  canCloseToTheRight: hasCloseableToTheRight(
+                    pinnableTabs,
+                    tab.id,
+                  ),
                 });
               }}
             >
@@ -173,19 +204,37 @@ export function ChatTabBar() {
                 </span>
               ) : null}
               <span className="editor-tab-label">{tab.title}</span>
-              <button
-                type="button"
-                className="editor-tab-close"
-                title="Close"
-                aria-label={`Close ${tab.title}`}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void closeTab(tab.id);
-                }}
-              >
-                <CloseIcon />
-              </button>
+              <span className="editor-tab-trailing">
+                {tab.pinned ? (
+                  <button
+                    type="button"
+                    className="editor-tab-pin"
+                    title="Unpin"
+                    aria-label={`Unpin ${tab.title}`}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void setTabPinned(tab.id, false);
+                    }}
+                  >
+                    <PinIcon />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="editor-tab-close"
+                    title="Close"
+                    aria-label={`Close ${tab.title}`}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void closeTab(tab.id);
+                    }}
+                  >
+                    <CloseIcon />
+                  </button>
+                )}
+              </span>
             </div>
           );
         })}
@@ -238,8 +287,12 @@ export function ChatTabBar() {
           onCopyPath={() => void copyThreadPath(contextMenu.targetId)}
           onCloseTab={() => void closeTab(contextMenu.targetId)}
           onCloseOthers={() => void closeOtherTabs(contextMenu.targetId)}
+          onCloseRemaining={() => void closeOtherTabs(contextMenu.targetId)}
           onCloseToTheRight={() =>
             void closeTabsToTheRight(contextMenu.targetId)
+          }
+          onTogglePinned={(pinned) =>
+            void setTabPinned(contextMenu.targetId, pinned)
           }
         />
       ) : null}

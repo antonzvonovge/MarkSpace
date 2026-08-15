@@ -47,6 +47,7 @@ export type ChatThreadsResponse = {
   threads: ChatThreadMeta[];
   activeThreadId: string | null;
   openTabIds: string[];
+  pinnedTabIds?: string[];
 };
 
 export async function listChatThreads(
@@ -95,10 +96,12 @@ export async function setOpenChatTabs(
   vaultPath: string,
   openTabIds: string[],
   activeThreadId: string | null,
+  pinnedTabIds: string[] = [],
 ): Promise<ChatThreadsResponse> {
   return invoke("set_open_chat_tabs", {
     vaultPath,
     openTabIds,
     activeThreadId,
+    pinnedTabIds,
   });
 }

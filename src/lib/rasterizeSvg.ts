@@ -213,6 +213,29 @@ export async function rasterizeSvgElementToPng(
   return canvasToPngBytes(canvas);
 }
 
+/** Rasterize a bitmap to PNG bytes, capped so huge canvases don't freeze WebKitGTK. */
+export async function rasterizeHtmlImageToPng(
+  image: HTMLImageElement,
+): Promise<Uint8Array> {
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  if (!(width > 0) || !(height > 0)) {
+    throw new Error("Invalid image size");
+  }
+  const scale = clipboardScale(width, height);
+  const outW = Math.max(1, Math.min(MAX_EDGE, Math.round(width * scale)));
+  const outH = Math.max(1, Math.min(MAX_EDGE, Math.round(height * scale)));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas is unavailable");
+  context.drawImage(image, 0, 0, outW, outH);
+  await new Promise<void>((r) => window.setTimeout(r, 0));
+  return canvasToPngBytes(canvas);
+}
+
 /** @deprecated Prefer rasterizeSvgElementToPng — kept for tests of size helpers. */
 export async function rasterizeSvgElement(
   svg: SVGSVGElement,

@@ -8,7 +8,8 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { writeClipboardImageData } from "../lib/clipboardImage";
+import { writeClipboardPng } from "../lib/clipboardImage";
+import { rasterizeHtmlImageToPng } from "../lib/rasterizeSvg";
 
 const ZOOM_LEVELS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5];
 const ZOOM_MAX = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
@@ -33,10 +34,19 @@ export function ImageLightbox({ src, alt, onClose }: Props) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const panRef = useRef({ x: 0, y: 0, left: 0, top: 0 });
   const copiedTimerRef = useRef<number | undefined>(undefined);
+  const copyInFlightRef = useRef(false);
   const [zoom, setZoom] = useState(1);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [panning, setPanning] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current !== undefined) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setZoom(1);
@@ -66,9 +76,6 @@ export function ImageLightbox({ src, alt, onClose }: Props) {
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       window.cancelAnimationFrame(focusId);
-      if (copiedTimerRef.current !== undefined) {
-        window.clearTimeout(copiedTimerRef.current);
-      }
     };
   }, [onClose]);
 
@@ -124,22 +131,27 @@ export function ImageLightbox({ src, alt, onClose }: Props) {
 
   const copyImage = useCallback(async () => {
     const image = imageRef.current;
-    if (!image || !image.naturalWidth || !image.naturalHeight) return;
-
-    try {
-      const canvas = document.createElement("canvas");
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Canvas is unavailable");
-      context.drawImage(image, 0, 0);
-      const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-      await writeClipboardImageData(pixels);
-      setCopyState("copied");
-    } catch {
-      setCopyState("error");
+    if (
+      !image ||
+      !image.naturalWidth ||
+      !image.naturalHeight ||
+      copyInFlightRef.current
+    ) {
+      return;
     }
-
+    copyInFlightRef.current = true;
+    // Yield so the click can paint before heavy canvas work (avoids "frozen" UI).
+    await new Promise<void>((r) => window.setTimeout(r, 0));
+    try {
+      const png = await rasterizeHtmlImageToPng(image);
+      await writeClipboardPng(png);
+      setCopyState("copied");
+    } catch (err) {
+      console.warn("image clipboard copy failed", err);
+      setCopyState("error");
+    } finally {
+      copyInFlightRef.current = false;
+    }
     if (copiedTimerRef.current !== undefined) {
       window.clearTimeout(copiedTimerRef.current);
     }
@@ -201,6 +213,7 @@ export function ImageLightbox({ src, alt, onClose }: Props) {
               className={`image-lightbox__btn image-lightbox__icon-btn is-${copyState}`}
               aria-label={copyLabel}
               title={copyLabel}
+              disabled={!size.width}
               onClick={() => void copyImage()}
             >
               {copyState === "copied" ? (

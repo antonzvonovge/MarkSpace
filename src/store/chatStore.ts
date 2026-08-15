@@ -42,7 +42,14 @@ import {
   upsertChatThread,
   type ChatThreadMeta,
 } from "../lib/chatHistoryApi";
-import { arrayMove } from "../lib/arrayMove";
+import {
+  groupPinnedTabs,
+  keepForCloseOthers,
+  keepForCloseToTheRight,
+  reorderEditorTabs,
+  setTabPinned as applyTabPinned,
+  type PinnableTab,
+} from "../lib/editorTabs";
 import {
   extractSkillIdsFromDraft,
   extractToolIdsFromDraft,
@@ -115,6 +122,8 @@ type ChatStore = {
   threads: ChatThreadMeta[];
   /** Ordered open chat tabs (may be empty). */
   openTabIds: string[];
+  /** Pinned open chat tabs (subset of `openTabIds`). */
+  pinnedTabIds: string[];
   activeThreadId: string | null;
   messages: UIMessage[];
   mode: ChatMode;
@@ -199,6 +208,7 @@ type ChatStore = {
   closeOtherTabs: (threadId: string) => Promise<void>;
   closeTabsToTheRight: (threadId: string) => Promise<void>;
   reorderOpenTabs: (fromIndex: number, toIndex: number) => Promise<void>;
+  setTabPinned: (threadId: string, pinned: boolean) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
   send: (text?: string) => Promise<void>;
   stop: () => void;
@@ -233,6 +243,7 @@ function emptySession(vaultBound: string | null = null) {
     vaultBound,
     threads: [] as ChatThreadMeta[],
     openTabIds: [] as string[],
+    pinnedTabIds: [] as string[],
     activeThreadId: null as string | null,
     messages: [] as UIMessage[],
     status: "ready" as ChatStatus,
@@ -257,6 +268,43 @@ function emptySession(vaultBound: string | null = null) {
     terminalAllowForChat: false,
     ...defaultsFromSettings(),
   };
+}
+
+function applyListedTabs(listed: {
+  openTabIds: string[];
+  pinnedTabIds?: string[];
+}): { openTabIds: string[]; pinnedTabIds: string[] } {
+  const pinned = new Set(listed.pinnedTabIds ?? []);
+  const grouped = groupPinnedTabs(
+    listed.openTabIds.map((path) => ({ path, pinned: pinned.has(path) })),
+  );
+  return {
+    openTabIds: grouped.map((t) => t.path),
+    pinnedTabIds: grouped.filter((t) => t.pinned).map((t) => t.path),
+  };
+}
+
+function chatPinnableTabs(
+  openTabIds: string[],
+  pinnedTabIds: string[],
+): PinnableTab[] {
+  const pinned = new Set(pinnedTabIds);
+  return openTabIds.map((path) => ({ path, pinned: pinned.has(path) }));
+}
+
+async function persistChatTabs(
+  get: () => ChatStore,
+  openTabIds: string[],
+  activeThreadId: string | null,
+  pinnedTabIds?: string[],
+) {
+  const vaultPath =
+    get().vaultBound ?? useVaultStore.getState().vaultPath;
+  if (!vaultPath) return null;
+  const pinned = (pinnedTabIds ?? get().pinnedTabIds).filter((id) =>
+    openTabIds.includes(id),
+  );
+  return setOpenChatTabs(vaultPath, openTabIds, activeThreadId, pinned);
 }
 
 /** Drop selection texts whose chip was deleted from the draft. */
@@ -400,12 +448,12 @@ async function createNewThread(
   setTerminalThreadAutoAllow(false);
   const meta = await upsertChatThread(vaultPath, empty);
   const openTabIds = [...get().openTabIds.filter((t) => t !== id), id];
-  await setOpenChatTabs(vaultPath, openTabIds, id);
+  await persistChatTabs(get, openTabIds, id);
   const listed = await listChatThreads(vaultPath);
   set({
     vaultBound: vaultPath,
     threads: listed.threads,
-    openTabIds: listed.openTabIds,
+    ...applyListedTabs(listed),
     activeThreadId: id,
     messages: [],
     mode: meta.mode === "agent" ? "agent" : "ask",
@@ -434,6 +482,7 @@ async function loadThreadIntoState(
   threadId: string,
   threads: ChatThreadMeta[],
   openTabIds: string[],
+  pinnedTabIds?: string[],
 ) {
   const { modelId } = defaultsFromSettings();
   const baseUrl = useAiSettingsStore.getState().settings.baseUrl;
@@ -464,10 +513,12 @@ async function loadThreadIntoState(
   if (messages !== rawMessages) {
     void upsertChatThread(vaultPath, { ...thread, messages });
   }
+  const tabs = applyListedTabs({ openTabIds, pinnedTabIds });
   return {
     vaultBound: vaultPath,
     threads,
-    openTabIds,
+    openTabIds: tabs.openTabIds,
+    pinnedTabIds: tabs.pinnedTabIds,
     activeThreadId: threadId,
     messages,
     mode: thread.mode === "agent" ? ("agent" as const) : ("ask" as const),
@@ -524,7 +575,8 @@ async function closeChatTabsKeeping(
       : openTabIds[0] ?? null;
 
   const closedIds = prevTabs.filter((id) => !keepIds.has(id));
-  const listed = await setOpenChatTabs(vaultPath, openTabIds, nextActive);
+  const listed = await persistChatTabs(get, openTabIds, nextActive);
+  if (!listed) return;
 
   let attention = get().attentionThreadIds;
   for (const id of closedIds) {
@@ -534,7 +586,7 @@ async function closeChatTabsKeeping(
   if (!nextActive) {
     set({
       threads: listed.threads,
-      openTabIds: listed.openTabIds,
+      ...applyListedTabs(listed),
       activeThreadId: null,
       messages: [],
       status: "ready",
@@ -548,13 +600,15 @@ async function closeChatTabsKeeping(
     return;
   }
 
+  const tabs = applyListedTabs(listed);
   if (closingActive) {
     set(
       await loadThreadIntoState(
         vaultPath,
         nextActive,
         listed.threads,
-        listed.openTabIds,
+        tabs.openTabIds,
+        tabs.pinnedTabIds,
       ),
     );
     set({
@@ -565,7 +619,7 @@ async function closeChatTabsKeeping(
   } else {
     set({
       threads: listed.threads,
-      openTabIds: listed.openTabIds,
+      ...tabs,
       activeThreadId: listed.activeThreadId,
       attentionThreadIds: attention,
     });
@@ -618,7 +672,7 @@ async function maybeRefreshTitle(
     const listed = await listChatThreads(vaultPath);
     useChatStore.setState({
       threads: listed.threads,
-      openTabIds: listed.openTabIds,
+      ...applyListedTabs(listed),
     });
   } catch {
     /* best-effort */
@@ -628,6 +682,7 @@ async function maybeRefreshTitle(
 export const useChatStore = create<ChatStore>((set, get) => ({
   threads: [],
   openTabIds: [],
+  pinnedTabIds: [],
   activeThreadId: null,
   messages: [],
   mode: "ask",
@@ -664,21 +719,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return;
     }
     try {
-      const { threads, activeThreadId, openTabIds } =
-        await listChatThreads(vaultPath);
-      const tabs = openTabIds.filter((id) => threads.some((t) => t.id === id));
+      const listed = await listChatThreads(vaultPath);
+      const tabs = applyListedTabs(listed);
+      const openIds = tabs.openTabIds.filter((id) =>
+        listed.threads.some((t) => t.id === id),
+      );
       const active =
-        activeThreadId && tabs.includes(activeThreadId)
-          ? activeThreadId
-          : tabs[0] ?? null;
+        listed.activeThreadId && openIds.includes(listed.activeThreadId)
+          ? listed.activeThreadId
+          : openIds[0] ?? null;
 
       if (active) {
-        set(await loadThreadIntoState(vaultPath, active, threads, tabs));
+        set(
+          await loadThreadIntoState(
+            vaultPath,
+            active,
+            listed.threads,
+            openIds,
+            tabs.pinnedTabIds,
+          ),
+        );
       } else {
         set({
           ...emptySession(vaultPath),
-          threads,
-          openTabIds: tabs,
+          threads: listed.threads,
+          openTabIds: openIds,
+          pinnedTabIds: tabs.pinnedTabIds,
         });
       }
       void get().refreshSkillsCatalog();
@@ -898,14 +964,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (!openTabIds.includes(threadId)) {
       openTabIds = [...openTabIds, threadId];
     }
-    await setOpenChatTabs(vaultPath, openTabIds, threadId);
+    await persistChatTabs(get, openTabIds, threadId);
     const listed = await listChatThreads(vaultPath);
+    const tabs = applyListedTabs(listed);
     set(
       await loadThreadIntoState(
         vaultPath,
         threadId,
         listed.threads,
-        listed.openTabIds,
+        tabs.openTabIds,
+        tabs.pinnedTabIds,
       ),
     );
     set({
@@ -933,12 +1001,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ? currentActive
         : openTabIds[0] ?? null;
 
-    const listed = await setOpenChatTabs(vaultPath, openTabIds, nextActive);
+    const listed = await persistChatTabs(get, openTabIds, nextActive);
+    if (!listed) return;
 
     if (!nextActive) {
       set({
         threads: listed.threads,
-        openTabIds: listed.openTabIds,
+        ...applyListedTabs(listed),
         activeThreadId: null,
         messages: [],
         status: "ready",
@@ -956,12 +1025,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     if (wasActive) {
+      const tabs = applyListedTabs(listed);
       set(
         await loadThreadIntoState(
           vaultPath,
           nextActive,
           listed.threads,
-          listed.openTabIds,
+          tabs.openTabIds,
+          tabs.pinnedTabIds,
         ),
       );
       set({
@@ -975,7 +1046,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     } else {
       set({
         threads: listed.threads,
-        openTabIds: listed.openTabIds,
+        ...applyListedTabs(listed),
         activeThreadId: listed.activeThreadId,
         attentionThreadIds: withoutAttention(
           get().attentionThreadIds,
@@ -986,31 +1057,82 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   closeOtherTabs: async (threadId) => {
-    await closeChatTabsKeeping(get, set, new Set([threadId]));
+    const tabs = chatPinnableTabs(get().openTabIds, get().pinnedTabIds);
+    await closeChatTabsKeeping(get, set, keepForCloseOthers(tabs, threadId));
   },
 
   closeTabsToTheRight: async (threadId) => {
-    const prev = get().openTabIds;
-    const idx = prev.indexOf(threadId);
-    if (idx < 0) return;
-    await closeChatTabsKeeping(get, set, new Set(prev.slice(0, idx + 1)));
+    const tabs = chatPinnableTabs(get().openTabIds, get().pinnedTabIds);
+    if (!tabs.some((t) => t.path === threadId)) return;
+    await closeChatTabsKeeping(
+      get,
+      set,
+      keepForCloseToTheRight(tabs, threadId),
+    );
+  },
+
+  setTabPinned: async (threadId, pinned) => {
+    const vaultPath = get().vaultBound;
+    if (!vaultPath) return;
+    const next = applyTabPinned(
+      chatPinnableTabs(get().openTabIds, get().pinnedTabIds),
+      threadId,
+      pinned,
+    );
+    const openTabIds = next.map((t) => t.path);
+    const pinnedTabIds = next.filter((t) => t.pinned).map((t) => t.path);
+    if (
+      openTabIds.length === get().openTabIds.length &&
+      openTabIds.every((id, i) => id === get().openTabIds[i]) &&
+      pinnedTabIds.length === get().pinnedTabIds.length &&
+      pinnedTabIds.every((id, i) => id === get().pinnedTabIds[i])
+    ) {
+      return;
+    }
+    set({ openTabIds, pinnedTabIds });
+    const listed = await persistChatTabs(
+      get,
+      openTabIds,
+      get().activeThreadId,
+      pinnedTabIds,
+    );
+    if (!listed) return;
+    set({
+      threads: listed.threads,
+      ...applyListedTabs(listed),
+      activeThreadId: listed.activeThreadId,
+    });
   },
 
   reorderOpenTabs: async (fromIndex, toIndex) => {
     const vaultPath = get().vaultBound;
     if (!vaultPath) return;
-    const prev = get().openTabIds;
-    const openTabIds = arrayMove(prev, fromIndex, toIndex);
-    if (openTabIds === prev) return;
-    set({ openTabIds });
-    const listed = await setOpenChatTabs(
-      vaultPath,
+    const next = reorderEditorTabs(
+      chatPinnableTabs(get().openTabIds, get().pinnedTabIds),
+      fromIndex,
+      toIndex,
+    );
+    const openTabIds = next.map((t) => t.path);
+    const pinnedTabIds = next.filter((t) => t.pinned).map((t) => t.path);
+    if (
+      openTabIds.length === get().openTabIds.length &&
+      openTabIds.every((id, i) => id === get().openTabIds[i]) &&
+      pinnedTabIds.length === get().pinnedTabIds.length &&
+      pinnedTabIds.every((id, i) => id === get().pinnedTabIds[i])
+    ) {
+      return;
+    }
+    set({ openTabIds, pinnedTabIds });
+    const listed = await persistChatTabs(
+      get,
       openTabIds,
       get().activeThreadId,
+      pinnedTabIds,
     );
+    if (!listed) return;
     set({
       threads: listed.threads,
-      openTabIds: listed.openTabIds,
+      ...applyListedTabs(listed),
       activeThreadId: listed.activeThreadId,
     });
   },
@@ -1023,13 +1145,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     await deleteChatThread(vaultPath, threadId);
     const listed = await listChatThreads(vaultPath);
-    const openTabIds = listed.openTabIds;
+    const tabs = applyListedTabs(listed);
     const active = listed.activeThreadId;
 
     if (!active) {
       set({
         threads: listed.threads,
-        openTabIds,
+        ...tabs,
         activeThreadId: null,
         messages: [],
         status: "ready",
@@ -1051,7 +1173,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         vaultPath,
         active,
         listed.threads,
-        openTabIds,
+        tabs.openTabIds,
+        tabs.pinnedTabIds,
       ),
     );
     set({
@@ -1112,7 +1235,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const listed = await listChatThreads(vaultBound);
     set({
       threads: listed.threads,
-      openTabIds: listed.openTabIds,
+      ...applyListedTabs(listed),
       activeThreadId: updated.id,
     });
   },

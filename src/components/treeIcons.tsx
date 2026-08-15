@@ -30,6 +30,25 @@ export function CloseIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+/** Vertical thumbtack (VS Code / Cursor pinned tab). */
+export function PinIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M5.5 1.5 5 2v4.5L3.5 8.5v1h4V15h1V9.5h4v-1L11 6.5V2l-.5-.5h-5ZM6 2.5h4v4.2l1.5 1.8h-7L6 6.7V2.5Z"
+      />
+    </svg>
+  );
+}
+
 export function RefreshIcon({ spinning }: { spinning?: boolean }) {
   return (
     <svg

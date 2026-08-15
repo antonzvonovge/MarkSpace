@@ -60,7 +60,13 @@ import {
   saveRecentFiles,
   saveVaultSession,
 } from "../lib/settingsStore";
-import { arrayMove } from "../lib/arrayMove";
+import {
+  groupPinnedTabs,
+  reorderEditorTabs,
+  setTabPinned as applyTabPinned,
+  keepForCloseOthers,
+  keepForCloseToTheRight,
+} from "../lib/editorTabs";
 import {
   canGoBack,
   canGoForward,
@@ -110,6 +116,11 @@ export type EditorTab = {
   path: string;
   kind: TabKind;
   preview: boolean;
+  /**
+   * Cursor-style sticky pin: tab stays in the left group and is kept by
+   * Close Others. Distinct from `preview` / `pinTab` (keep-open).
+   */
+  pinned?: boolean;
   /**
    * In-memory copy while the tab is open. Absent until first load.
    * Keeps tab switches instant (no disk re-read).
@@ -210,6 +221,8 @@ type VaultStore = {
   /** Go to the next document in browse history. */
   goForward: () => Promise<void>;
   pinTab: (path: string) => void;
+  /** Cursor-style sticky pin (left group). Distinct from `pinTab`. */
+  setTabPinned: (path: string, pinned: boolean) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   closeTab: (path: string) => Promise<void>;
   closeOtherTabs: (path: string) => Promise<void>;
@@ -584,6 +597,7 @@ function persistSession(state: {
       path: t.path,
       preview: t.preview,
       kind: t.kind,
+      pinned: Boolean(t.pinned),
     })),
     activePath: state.activePath,
   });
@@ -1189,21 +1203,24 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       ]);
       const files = new Set(collectFilePaths(tree));
       const dirs = new Set(collectDirPaths(tree));
-      const restoredTabs: EditorTab[] = (session?.tabs ?? [])
-        .filter(
-          (t) =>
-            isVirtualTab({ kind: t.kind ?? "file", path: t.path }) ||
-            tabPathExistsInTree(t.path, files, dirs),
-        )
-        .map((t) => ({
-          path: t.path,
-          preview: Boolean(t.preview),
-          kind: isGraphTab({ kind: t.kind ?? "file", path: t.path })
-            ? "graph"
-            : isSettingsTab({ kind: t.kind ?? "file", path: t.path })
-              ? "settings"
-              : "file",
-        }));
+      const restoredTabs: EditorTab[] = groupPinnedTabs(
+        (session?.tabs ?? [])
+          .filter(
+            (t) =>
+              isVirtualTab({ kind: t.kind ?? "file", path: t.path }) ||
+              tabPathExistsInTree(t.path, files, dirs),
+          )
+          .map((t) => ({
+            path: t.path,
+            preview: Boolean(t.preview) && !Boolean(t.pinned),
+            kind: isGraphTab({ kind: t.kind ?? "file", path: t.path })
+              ? "graph"
+              : isSettingsTab({ kind: t.kind ?? "file", path: t.path })
+                ? "settings"
+                : "file",
+            pinned: Boolean(t.pinned),
+          })),
+      );
 
       const clearedNav = emptyNavHistory();
       set({
@@ -1568,9 +1585,17 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     persistSession(get());
   },
 
+  setTabPinned: (path, pinned) => {
+    const { tabs } = get();
+    const nextTabs = applyTabPinned(tabs, path, pinned);
+    if (nextTabs === tabs) return;
+    set({ tabs: nextTabs });
+    persistSession(get());
+  },
+
   reorderTabs: (fromIndex, toIndex) => {
     const { tabs } = get();
-    const nextTabs = arrayMove(tabs, fromIndex, toIndex);
+    const nextTabs = reorderEditorTabs(tabs, fromIndex, toIndex);
     if (nextTabs === tabs) return;
     set({ tabs: nextTabs });
     persistSession(get());
@@ -1615,18 +1640,14 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   closeOtherTabs: async (path) => {
-    await closeTabsKeeping(set, get, new Set([path]));
+    const { tabs } = get();
+    await closeTabsKeeping(set, get, keepForCloseOthers(tabs, path));
   },
 
   closeTabsToTheRight: async (path) => {
     const { tabs } = get();
-    const index = tabs.findIndex((t) => t.path === path);
-    if (index < 0) return;
-    await closeTabsKeeping(
-      set,
-      get,
-      new Set(tabs.slice(0, index + 1).map((t) => t.path)),
-    );
+    if (!tabs.some((t) => t.path === path)) return;
+    await closeTabsKeeping(set, get, keepForCloseToTheRight(tabs, path));
   },
 
   setContent: (content) => {
@@ -1638,7 +1659,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       patch.tabs = tabs.map((t) => {
         if (t.path !== activePath) return t;
         if (t.body === content && t.dirty) return t;
-        // Session only stores path/preview/kind — persist when preview clears.
+        // Session only stores path/preview/kind/pinned — persist when preview clears.
         if (t.preview) sessionNeedsPersist = true;
         return {
           ...t,

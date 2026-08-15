@@ -2098,7 +2098,7 @@ select {
   max-width: 180px;
   min-width: 90px;
   height: 100%;
-  padding: 0 8px 0 10px;
+  padding: 0 4px 0 10px;
   border: 0;
   border-right: 1px solid var(--line);
   border-radius: 0;
@@ -2238,17 +2238,62 @@ select {
   pointer-events: none;
 }
 
-.editor-tab:hover .editor-tab-close {
+.editor-tab-trailing {
+  position: relative;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.editor-tab-trailing .editor-tab-close,
+.editor-tab-trailing .editor-tab-pin {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.editor-tab-pin {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0.75;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.editor-tab.is-pinned {
+  min-width: 72px;
+  max-width: 140px;
+  padding-left: 8px;
+}
+
+.editor-tab.is-pinned.is-last-pinned {
+  margin-right: 6px;
+  box-shadow:
+    4px 0 0 0 var(--chrome-muted),
+    5px 0 0 0 var(--line);
+}
+
+.editor-tab:hover .editor-tab-close,
+.editor-tab:hover .editor-tab-pin {
   opacity: 1;
   pointer-events: auto;
 }
 
-.editor-tab-close:hover {
+.editor-tab-close:hover,
+.editor-tab-pin:hover {
   background: rgba(0, 0, 0, 0.1);
   color: var(--text);
 }
 
-:root[data-theme="dark"] .editor-tab-close:hover {
+:root[data-theme="dark"] .editor-tab-close:hover,
+:root[data-theme="dark"] .editor-tab-pin:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 

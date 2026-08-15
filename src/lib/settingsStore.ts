@@ -239,6 +239,8 @@ export type SavedEditorTab = {
   path: string;
   preview: boolean;
   kind?: SavedTabKind;
+  /** Cursor-style sticky pin (left group). Distinct from preview keep-open. */
+  pinned?: boolean;
 };
 
 export type VaultSession = {
@@ -272,8 +274,9 @@ export async function loadVaultSession(
     )
     .map((t) => ({
       path: t.path,
-      preview: Boolean(t.preview),
+      preview: Boolean(t.preview) && !Boolean(t.pinned),
       kind: normalizeSavedTabKind(t.kind, t.path),
+      pinned: Boolean(t.pinned),
     }));
   // A saved session with no tabs means the user closed everything: keep it
   // distinct from "no session at all" so the caller skips the welcome note.
@@ -296,8 +299,9 @@ export async function saveVaultSession(
   map[vaultPath] = {
     tabs: session.tabs.map((t) => ({
       path: t.path,
-      preview: Boolean(t.preview),
+      preview: Boolean(t.preview) && !Boolean(t.pinned),
       kind: normalizeSavedTabKind(t.kind, t.path),
+      pinned: Boolean(t.pinned),
     })),
     activePath: session.activePath,
   };
