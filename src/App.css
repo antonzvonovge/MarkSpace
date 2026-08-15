@@ -7366,6 +7366,15 @@ select {
   min-height: 28px;
 }
 
+.chat-composer-toolbar .chat-project-picker,
+.chat-composer-toolbar .chat-model-picker,
+.chat-composer-toolbar .chat-mode-switch,
+.chat-composer-toolbar .chat-context-meter {
+  display: flex;
+  align-items: center;
+  line-height: 1.2;
+}
+
 .chat-project-picker {
   position: relative;
   flex-shrink: 1;
@@ -7374,7 +7383,7 @@ select {
 }
 
 .chat-project-trigger {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
   max-width: 100%;
@@ -7383,11 +7392,14 @@ select {
   color: var(--muted);
   font: inherit;
   font-size: 0.6875rem;
-  padding: 2px 4px;
+  line-height: 1.2;
+  padding: 0 4px;
   margin: 0;
   border-radius: 6px;
   cursor: pointer;
   min-width: 0;
+  height: 22px;
+  box-sizing: border-box;
   position: relative;
 }
 
@@ -7533,21 +7545,29 @@ select {
 }
 
 .chat-mode-switch {
-  display: inline-flex;
+  display: flex;
+  align-items: center;
   border: 1px solid var(--line);
   border-radius: 7px;
   overflow: hidden;
   flex-shrink: 0;
+  height: 22px;
+  box-sizing: border-box;
 }
 
 .chat-mode-switch button {
+  display: flex;
+  align-items: center;
   border: 0;
   background: transparent;
   color: var(--muted);
   font: inherit;
   font-size: 0.6875rem;
   font-weight: 600;
-  padding: 4px 8px;
+  line-height: 1.2;
+  padding: 0 8px;
+  height: 100%;
+  box-sizing: border-box;
   cursor: pointer;
 }
 
@@ -7586,8 +7606,8 @@ select {
 }
 
 .chat-model-trigger {
-  display: inline-flex;
-  align-items: baseline;
+  display: flex;
+  align-items: center;
   gap: 4px;
   max-width: 100%;
   border: 0;
@@ -7595,11 +7615,14 @@ select {
   color: var(--muted);
   font: inherit;
   font-size: 0.6875rem;
-  padding: 2px 4px;
+  line-height: 1.2;
+  padding: 0 4px;
   margin: 0;
   border-radius: 6px;
   cursor: pointer;
   min-width: 0;
+  height: 22px;
+  box-sizing: border-box;
 }
 
 .chat-model-trigger:hover:not(:disabled) {
@@ -7622,11 +7645,13 @@ select {
   align-items: center;
   gap: 6px;
   width: 100%;
+  height: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--editor-surface);
   color: var(--text);
   font-size: inherit;
+  line-height: inherit;
   padding: 8px 10px;
   text-align: left;
 }
@@ -7779,9 +7804,15 @@ select {
 }
 
 .chat-context-meter {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  height: 22px;
+}
+
+.chat-context-meter svg {
+  display: block;
 }
 
 .chat-context-meter-track {
