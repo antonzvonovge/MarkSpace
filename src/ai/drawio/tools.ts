@@ -3,6 +3,8 @@ import { z } from "zod";
 import { createDrawio, readNote, writeNote } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
 import type { ChatMode } from "../types";
+import { DRAWIO_MERMAID_REFERENCE, DRAWIO_XML_REFERENCE } from "./format";
+import { convertMermaidToMxfile } from "./importMermaid";
 import {
   mutateDiagram,
   summarizeDrawio,
@@ -10,6 +12,14 @@ import {
   type DrawioRelation,
   type MutateDiagramInput,
 } from "./model";
+import {
+  listPageMeta,
+  mxfilePageIsEmpty,
+  readPageXmlFromText,
+  wrapContentAsMxfile,
+  writePageXmlInText,
+} from "./pages";
+import { searchDrawioShapes } from "./shapeSearch";
 import { DRAWIO_RELATIONS, DRAWIO_SHAPES } from "./shapes";
 
 const shapeSchema = z
@@ -223,9 +233,47 @@ async function saveXml(path: string, xml: string) {
   });
 }
 
+export const EMPTY_FIRST_PAINT_ERROR =
+  "This diagram page is empty. First paint must use create_diagram with mermaid (flowcharts, sequence, ER, org charts) or xml — not mutate_diagram.";
+
+function isContentMutation(input: MutateDiagramInput): boolean {
+  return (
+    (input.remove?.length ?? 0) > 0 ||
+    (input.updates?.length ?? 0) > 0 ||
+    (input.add_nodes?.length ?? 0) > 0 ||
+    (input.add_edges?.length ?? 0) > 0
+  );
+}
+
+export async function assertNotEmptyContentMutate(
+  xml: string,
+  input: MutateDiagramInput,
+): Promise<void> {
+  if (!isContentMutation(input)) return;
+  const pageRef = input.page?.trim() || "0";
+  if (await mxfilePageIsEmpty(xml, pageRef)) {
+    throw new Error(EMPTY_FIRST_PAINT_ERROR);
+  }
+}
+
+async function firstPaintMxfile(opts: {
+  mermaid?: string;
+  xml?: string;
+}): Promise<string | null> {
+  const mermaid = opts.mermaid?.trim();
+  const xml = opts.xml?.trim();
+  if (mermaid && xml) {
+    throw new Error("Pass mermaid or xml, not both");
+  }
+  if (mermaid) return convertMermaidToMxfile(mermaid);
+  if (xml) return wrapContentAsMxfile(xml);
+  return null;
+}
+
 async function runMutate(path: string, input: MutateDiagramInput) {
   return withPathLock(path, async () => {
     const xml = await loadXml(path);
+    await assertNotEmptyContentMutate(xml, input);
     const result = await mutateDiagram(xml, input);
     await saveXml(path, result.xml);
     return {
@@ -260,9 +308,25 @@ function mapNode<T extends { shape?: string }>(n: T) {
 
 export function buildDrawioTools(mode: ChatMode) {
   const readTools = {
+    read_drawio_format: tool({
+      description:
+        "Draw.io generation guide from the official xml/mermaid references. Call section=mermaid before create_diagram(mermaid); section=xml before writing mxGraph XML (create_diagram xml or set_page).",
+      inputSchema: z.object({
+        section: z
+          .enum(["xml", "mermaid"])
+          .describe("Which reference to return"),
+      }),
+      execute: async ({ section }) => ({
+        section,
+        guide:
+          section === "mermaid"
+            ? DRAWIO_MERMAID_REFERENCE
+            : DRAWIO_XML_REFERENCE,
+      }),
+    }),
     read_diagram: tool({
       description:
-        "Read a .drawio diagram as a semantic summary (pages + settings, nodes/edges with ids/labels/geometry/colors/align/sketch, ArchiMate styles, waypoints). Prefer this over read_note for diagrams.",
+        "Read a .drawio diagram as a semantic summary (pages + settings, nodes/edges with ids/labels/geometry/colors/align/sketch, ArchiMate styles, waypoints). Prefer this over read_note for diagrams. Use before mutate_diagram so you have cell ids.",
       inputSchema: z.object({
         path: z.string().describe("Vault-relative .drawio path"),
         page: z
@@ -302,6 +366,73 @@ export function buildDrawioTools(mode: ChatMode) {
         }
       },
     }),
+    list_pages: tool({
+      description:
+        "List pages in a vault .drawio (index, id, name, size) without loading page XML. Call before get_page/set_page on multi-page files.",
+      inputSchema: z.object({
+        path: z.string().describe("Vault-relative .drawio path"),
+      }),
+      execute: async ({ path }) => {
+        try {
+          const xml = await loadXml(path);
+          return {
+            ok: true as const,
+            path: assertDrawioPath(path),
+            pages: listPageMeta(xml),
+          };
+        } catch (e) {
+          return fail(path, e);
+        }
+      },
+    }),
+    get_page: tool({
+      description:
+        "Read one page of a .drawio as raw mxGraphModel XML (decompresses if needed). Prefer read_diagram for incremental edits.",
+      inputSchema: z.object({
+        path: z.string(),
+        page: z
+          .string()
+          .describe("Zero-based index, exact page name, or page id"),
+      }),
+      execute: async ({ path, page }) => {
+        try {
+          const file = await loadXml(path);
+          const result = await readPageXmlFromText(file, page);
+          return {
+            ok: true as const,
+            path: assertDrawioPath(path),
+            ...result,
+          };
+        } catch (e) {
+          return fail(path, e);
+        }
+      },
+    }),
+    search_shapes: tool({
+      description:
+        "Search the draw.io shape library (~10,000 stencils: AWS, Azure, Cisco, Kubernetes, BPMN, …). Returns style/w/h/title for mxCell styles. Use ONLY before XML first paint that needs industry/branded icons. Skip for flowcharts, UML, ERD, org charts.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe("Space-separated keywords, e.g. aws lambda"),
+        limit: z.number().int().positive().optional(),
+      }),
+      execute: async ({ query, limit }) => {
+        try {
+          const results = await searchDrawioShapes(query, limit ?? 10);
+          if (results.length === 0) {
+            return { ok: true as const, results, message: `No shapes found for query: ${query}` };
+          }
+          return { ok: true as const, results };
+        } catch (e) {
+          return {
+            ok: false as const,
+            error: e instanceof Error ? e.message : String(e),
+            query,
+          };
+        }
+      },
+    }),
   };
 
   if (mode === "ask") return readTools;
@@ -310,15 +441,58 @@ export function buildDrawioTools(mode: ChatMode) {
     ...readTools,
     create_diagram: tool({
       description:
-        "Create a new empty .drawio diagram in the vault (adds .drawio if missing).",
+        "Create a new .drawio in the vault. FIRST PAINT belongs here: pass mermaid (preferred for flowcharts, sequence, ER, org charts) or xml (mxGraphModel or mxfile; use for precise layout, ArchiMate, cloud icons after search_shapes). Do not create an empty file and fill it with mutate_diagram. Adds .drawio if missing.",
       inputSchema: z.object({
         path: z.string().describe("Desired path, e.g. Diagrams/Auth.drawio"),
+        mermaid: z
+          .string()
+          .optional()
+          .describe("Mermaid source for first paint (not together with xml)"),
+        xml: z
+          .string()
+          .optional()
+          .describe("mxGraphModel or mxfile XML for first paint (not together with mermaid)"),
       }),
-      execute: async ({ path }) => {
+      execute: async ({ path, mermaid, xml }) => {
         try {
+          const painted = await firstPaintMxfile({ mermaid, xml });
           const created = await createDrawio(path);
+          if (painted) await saveXml(created, painted);
           await useVaultStore.getState().refreshTree();
-          return { ok: true as const, path: created };
+          return {
+            ok: true as const,
+            path: created,
+            painted: painted != null,
+          };
+        } catch (e) {
+          return fail(path, e);
+        }
+      },
+    }),
+    set_page: tool({
+      description:
+        "Replace one page's mxGraphModel XML, leaving other pages untouched. Rare full redraw — prefer mutate_diagram for incremental edits. Content must be a single <mxGraphModel>, not an mxfile.",
+      inputSchema: z.object({
+        path: z.string(),
+        page: z
+          .string()
+          .describe("Zero-based index, exact page name, or page id"),
+        content: z.string().describe("Plain <mxGraphModel> XML for that page"),
+      }),
+      execute: async ({ path, page, content }) => {
+        try {
+          return await withPathLock(path, async () => {
+            const file = await loadXml(path);
+            const result = await writePageXmlInText(file, page, content);
+            await saveXml(path, result.xml);
+            return {
+              ok: true as const,
+              path: assertDrawioPath(path),
+              index: result.index,
+              id: result.id,
+              name: result.name,
+            };
+          });
         } catch (e) {
           return fail(path, e);
         }
@@ -326,7 +500,7 @@ export function buildDrawioTools(mode: ChatMode) {
     }),
     mutate_diagram: tool({
       description:
-        "PREFERRED diagram editor: atomic batch edit. Order: add_pages/rename_pages → page_settings → remove → updates → add_nodes → add_edges → layout. Multi-node creates AUTO-LAYOUT top-down (ArchiMate by layer). Omit x/y for new diagrams. layout.type=none to keep coordinates; layout.type=archimate|hierarchical|grid|auto to force. Supports ArchiMate shapes/relations, text align, sketch, page_settings, groups, waypoints, ports.",
+        "Incremental edit of an ALREADY DRAWN diagram (not first paint). Rejects add/update/remove on an empty page — use create_diagram(mermaid|xml) instead. Order: add_pages/rename_pages → page_settings → remove → updates → add_nodes → add_edges → layout. Call read_diagram first for ids.",
       inputSchema: z.object({
         path: z.string(),
         page: z.string().optional(),

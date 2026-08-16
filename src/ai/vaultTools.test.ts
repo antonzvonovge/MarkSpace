@@ -27,6 +27,9 @@ describe("vault agent tools", () => {
 
     expect(askTools).toHaveProperty("list_tags");
     expect(askTools).toHaveProperty("list_folder");
+    expect(askTools).toHaveProperty("list_pages");
+    expect(askTools).toHaveProperty("read_drawio_format");
+    expect(askTools).toHaveProperty("search_shapes");
     expect(askTools).not.toHaveProperty("move_path");
     expect(askTools).not.toHaveProperty("delete_path");
     expect(askTools).not.toHaveProperty("ensure_folder");
@@ -100,6 +103,10 @@ describe("vault agent tools", () => {
     });
     expect(diagram).toHaveProperty("mutate_diagram");
     expect(diagram).toHaveProperty("create_diagram");
+    expect(diagram).toHaveProperty("search_shapes");
+    expect(diagram).toHaveProperty("read_drawio_format");
+    expect(diagram).toHaveProperty("list_pages");
+    expect(diagram).toHaveProperty("set_page");
     expect(diagram).not.toHaveProperty("add_diagram_node");
 
     const terminal = buildVaultTools("agent", {

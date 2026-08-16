@@ -253,6 +253,11 @@ function humanStatus(toolName: string): string {
     mutate_diagram: "Editing diagram…",
     create_diagram: "Creating diagram…",
     read_diagram: "Reading diagram…",
+    list_pages: "Listing diagram pages…",
+    get_page: "Reading diagram page…",
+    set_page: "Updating diagram page…",
+    search_shapes: "Searching shapes…",
+    read_drawio_format: "Reading Draw.io format…",
     add_link: "Adding link…",
     add_entry: "Adding entry…",
     clip_article: "Clipping article…",
@@ -548,7 +553,7 @@ function runSpecialistDescription(terminalOn: boolean): string {
     `Delegate a focused subtask to a specialist worker with a limited tool set. Use for ${kinds}.`,
     "Independent tasks: emit multiple run_specialist calls in ONE response.",
     "Dependent tasks: one specialist, or the same response with id + depends_on (the later worker waits and receives the earlier summary).",
-    "Never split create and edits of one .drawio across diagram specialists — one kind=diagram does create_diagram and all mutate_diagram.",
+    "Never split create and edits of one .drawio across diagram specialists — one kind=diagram does create_diagram (with mermaid or xml) and any later mutate_diagram.",
     "Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known.",
   ].join(" ");
 }

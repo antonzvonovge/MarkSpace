@@ -10,6 +10,7 @@
     "tauri": "tauri",
     "test": "vitest run --environment jsdom",
     "drawio:download": "node scripts/download-drawio.mjs",
+    "drawio:sync-mcp": "node scripts/sync-drawio-mcp.mjs",
     "postinstall": "node scripts/download-drawio.mjs && rm -rf node_modules/.vite"
   },
   "dependencies": {

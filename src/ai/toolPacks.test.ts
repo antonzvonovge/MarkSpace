@@ -25,13 +25,21 @@ describe("toolPacks", () => {
     ]);
   });
 
-  it("diagram preset omits granular shape tools", () => {
+  it("diagram preset omits granular shape tools and uses first-paint create", () => {
     const names = SPECIALIST_PRESETS.diagram.toolNames;
     expect(names).toContain("mutate_diagram");
+    expect(names).toContain("create_diagram");
+    expect(names).toContain("search_shapes");
+    expect(names).toContain("read_drawio_format");
+    expect(names).toContain("list_pages");
+    expect(names).toContain("set_page");
     expect(names).not.toContain("add_diagram_node");
     expect(names).not.toContain("update_diagram_element");
     expect(SPECIALIST_PRESETS.diagram.system).toContain(
       "do not assume another diagram specialist will continue",
+    );
+    expect(SPECIALIST_PRESETS.diagram.system).toContain(
+      "Never create an empty file and fill it with mutate_diagram",
     );
   });
 
