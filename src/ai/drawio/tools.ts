@@ -4,7 +4,7 @@ import { createDrawio, readNote, writeNote } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
 import type { ChatMode } from "../types";
 import { DRAWIO_MERMAID_REFERENCE, DRAWIO_XML_REFERENCE } from "./format";
-import { convertMermaidToMxfile } from "./importMermaid";
+import { convertMermaidToMxfile, convertXmlToMxfile } from "./importMermaid";
 import {
   mutateDiagram,
   summarizeDrawio,
@@ -16,7 +16,6 @@ import {
   listPageMeta,
   mxfilePageIsEmpty,
   readPageXmlFromText,
-  wrapContentAsMxfile,
   writePageXmlInText,
 } from "./pages";
 import { searchDrawioShapes } from "./shapeSearch";
@@ -266,7 +265,7 @@ async function firstPaintMxfile(opts: {
     throw new Error("Pass mermaid or xml, not both");
   }
   if (mermaid) return convertMermaidToMxfile(mermaid);
-  if (xml) return wrapContentAsMxfile(xml);
+  if (xml) return convertXmlToMxfile(xml);
   return null;
 }
 
@@ -441,7 +440,7 @@ export function buildDrawioTools(mode: ChatMode) {
     ...readTools,
     create_diagram: tool({
       description:
-        "Create a new .drawio in the vault. FIRST PAINT belongs here: pass mermaid (preferred for flowcharts, sequence, ER, org charts) or xml (mxGraphModel or mxfile; use for precise layout, ArchiMate, cloud icons after search_shapes). Do not create an empty file and fill it with mutate_diagram. Adds .drawio if missing.",
+        "Create a new .drawio in the vault. FIRST PAINT belongs here: pass mermaid (preferred for flowcharts, sequence, ER, org charts) or xml (mxGraphModel or mxfile; use for precise layout, ArchiMate, cloud icons after search_shapes). Flowcharts get ELK layout automatically. Returns an error instead of an empty page if conversion yields no shapes. Do not create an empty file and fill it with mutate_diagram. Adds .drawio if missing.",
       inputSchema: z.object({
         path: z.string().describe("Desired path, e.g. Diagrams/Auth.drawio"),
         mermaid: z

@@ -11,7 +11,16 @@ import {
   wrapContentAsMxfile,
   writePageXmlInText,
 } from "./pages";
-import { mermaidLoadAction } from "./importMermaid";
+import {
+  assertPaintedMxfile,
+  classifyMermaid,
+  elkLayeredLayout,
+  EMPTY_PAINT_ERROR,
+  mermaidFlowDirection,
+  mermaidLoadAction,
+  prepareMermaidSource,
+  SEQUENCE_WRAP_CONFIG,
+} from "./importMermaid";
 import {
   assertNotEmptyContentMutate,
   EMPTY_FIRST_PAINT_ERROR,
@@ -87,6 +96,14 @@ describe("drawio page helpers", () => {
   });
 });
 
+describe("first-paint emptiness", () => {
+  it("rejects the empty template as a successful paint", async () => {
+    await expect(assertPaintedMxfile(EMPTY_DRAWIO_XML)).rejects.toThrow(
+      EMPTY_PAINT_ERROR,
+    );
+  });
+});
+
 describe("first-paint mutate guard", () => {
   it("rejects add_nodes on an empty page", async () => {
     await expect(
@@ -109,15 +126,45 @@ describe("first-paint mutate guard", () => {
 });
 
 describe("mermaid embed protocol", () => {
-  it("sends a mermaid descriptor load action", () => {
+  it("classifies flow vs sequence", () => {
+    expect(classifyMermaid("graph TD; A-->B;")).toBe("flow");
+    expect(classifyMermaid("flowchart LR\n  A-->B")).toBe("flow");
+    expect(classifyMermaid("sequenceDiagram\n  A->>B: hi")).toBe("fixed");
+    expect(classifyMermaid("gantt\n  title Plan")).toBe("fixed");
+  });
+
+  it("picks ELK direction from flowchart heading", () => {
+    expect(mermaidFlowDirection("flowchart LR\nA-->B")).toBe("RIGHT");
+    expect(mermaidFlowDirection("graph TD; A-->B;")).toBe("DOWN");
+  });
+
+  it("sends ELK layout for flowcharts", () => {
     const action = mermaidLoadAction("graph TD; A-->B;");
-    expect(action).toEqual({
-      action: "load",
-      descriptor: {
-        format: "mermaid",
-        data: "graph TD; A-->B;",
-        wrap: false,
-      },
-    });
+    expect(action.action).toBe("load");
+    const descriptor = action.descriptor as { format: string; data: string };
+    expect(descriptor.format).toBe("mermaid");
+    expect(descriptor.data).toContain("defaultRenderer");
+    expect(descriptor.data).toContain("graph TD; A-->B;");
+    expect(action.layout).toEqual(elkLayeredLayout("DOWN"));
+  });
+
+  it("injects mermaid-elk for flowcharts even without the embed descriptor", () => {
+    expect(prepareMermaidSource("graph TD; A-->B;")).toContain("defaultRenderer");
+  });
+
+  it("wraps sequence messages instead of stretching lifelines", () => {
+    const prepared = prepareMermaidSource("sequenceDiagram\n  A->>B: hi");
+    expect(prepared).toContain('"wrap":true');
+    expect(prepared).toContain("sequenceDiagram");
+    expect(prepared).toContain(String(SEQUENCE_WRAP_CONFIG.actorMargin));
+  });
+
+  it("does not re-layout sequence diagrams", () => {
+    const action = mermaidLoadAction("sequenceDiagram\n  A->>B: hi");
+    expect(action.layout).toBeUndefined();
+    const descriptor = action.descriptor as { data: string };
+    expect(descriptor.data).toContain("sequenceDiagram");
+    expect(descriptor.data).toContain('"wrap":true');
+    expect(descriptor.data).toContain(`"width":${SEQUENCE_WRAP_CONFIG.width}`);
   });
 });
