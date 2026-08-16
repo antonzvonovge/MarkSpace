@@ -9,6 +9,7 @@ mod filemeta;
 mod gems;
 mod git_sync;
 mod http_fetch;
+mod mcp;
 mod order_merge;
 mod pdf_text;
 mod projects;
@@ -17,6 +18,7 @@ mod vault;
 mod vault_ai;
 
 use git_sync::SyncRuntime;
+use mcp::McpRuntime;
 use terminal::TerminalRuntime;
 use vault::VaultState;
 
@@ -149,6 +151,7 @@ pub fn run() {
         .manage(VaultState::default())
         .manage(SyncRuntime::default())
         .manage(TerminalRuntime::default())
+        .manage(McpRuntime::default())
         .invoke_handler(tauri::generate_handler![
             vault::open_vault,
             vault::list_tree,
@@ -217,6 +220,13 @@ pub fn run() {
             diary::set_diary_settings,
             vault_ai::get_vault_ai_settings,
             vault_ai::set_vault_ai_settings,
+            mcp::mcp_list_snapshot,
+            mcp::mcp_sync,
+            mcp::mcp_get_vault,
+            mcp::mcp_set_vault,
+            mcp::mcp_reload,
+            mcp::mcp_reload_server,
+            mcp::mcp_call_tool,
             http_fetch::http_fetch,
             http_fetch::http_fetch_bytes,
             terminal::run_terminal_command,

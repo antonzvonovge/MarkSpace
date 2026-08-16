@@ -54,6 +54,7 @@ import {
   saveRecentCommands,
 } from "./lib/settingsStore";
 import { useAiSettingsStore } from "./store/aiSettingsStore";
+import { useMcpStore } from "./store/mcpStore";
 import { applyBackgroundJobPayload } from "./store/backgroundJobsStore";
 import { useChatUiStore } from "./store/chatUiStore";
 import { useFocusUiStore } from "./store/focusUiStore";
@@ -445,6 +446,9 @@ function App() {
   const toggleSettings = usePrefsStore((s) => s.toggleSettings);
   const hydratePrefs = usePrefsStore((s) => s.hydrate);
   const hydrateAi = useAiSettingsStore((s) => s.hydrate);
+  const hydrateMcp = useMcpStore((s) => s.hydrate);
+  const hydrateMcpVault = useMcpStore((s) => s.hydrateForVault);
+  const mcpHydrated = useMcpStore((s) => s.hydrated);
   const refreshSyncStatus = useSyncStore((s) => s.refreshStatus);
   const sidebarOpen = useSidebarUiStore((s) => s.open);
   const chatOpen = useChatUiStore((s) => s.open);
@@ -602,8 +606,14 @@ function App() {
   useEffect(() => {
     void hydratePrefs();
     void hydrateAi();
+    void hydrateMcp();
     void loadRecentCommands().then(setRecentCommandIds);
-  }, [hydratePrefs, hydrateAi]);
+  }, [hydratePrefs, hydrateAi, hydrateMcp]);
+
+  useEffect(() => {
+    if (!mcpHydrated) return;
+    void hydrateMcpVault(vaultPath);
+  }, [vaultPath, mcpHydrated, hydrateMcpVault]);
 
   useEffect(() => {
     void (async () => {

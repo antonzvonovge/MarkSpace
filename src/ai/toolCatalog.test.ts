@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { formatForcedToolsLines, listChatTools } from "./toolCatalog";
 import { ORCHESTRATOR_TOOL_NAMES } from "./toolPacks";
+import { useMcpStore } from "../store/mcpStore";
+
+beforeEach(() => {
+  useMcpStore.setState({ snapshots: [] });
+});
 
 describe("listChatTools", () => {
   it("lists ask tools without agent-only writes", () => {

@@ -11,6 +11,7 @@ import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DiarySettingsPanel } from "./DiarySettingsPanel";
 import { KeysSettingsPanel } from "./KeysSettingsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
+import { McpSettingsPanel } from "./McpSettingsPanel";
 import { SettingRow } from "./SettingRow";
 import { SyncSettingsPanel } from "./SyncSettingsPanel";
 
@@ -18,7 +19,7 @@ type Props = {
   onClose: () => void;
 };
 
-const PANEL_CATEGORIES = new Set(["sync", "keys", "ai", "memory", "diary"]);
+const PANEL_CATEGORIES = new Set(["sync", "keys", "ai", "mcp", "memory", "diary"]);
 
 function queryMatchesSync(query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -100,6 +101,18 @@ function queryMatchesDiary(query: string): boolean {
   );
 }
 
+function queryMatchesMcp(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    "mcp".includes(q) ||
+    q.includes("mcp") ||
+    q.includes("model context") ||
+    q.includes("stdio") ||
+    q.includes("server")
+  );
+}
+
 export function SettingsPage({ onClose }: Props) {
   const prefs = usePrefsStore((s) => s.prefs);
   const setPref = usePrefsStore((s) => s.setPref);
@@ -121,6 +134,7 @@ export function SettingsPage({ onClose }: Props) {
   const showSyncInSearch = searching && queryMatchesSync(query);
   const showKeysInSearch = searching && queryMatchesKeys(query);
   const showAiInSearch = searching && queryMatchesAi(query);
+  const showMcpInSearch = searching && queryMatchesMcp(query);
   const showMemoryInSearch = searching && queryMatchesMemory(query);
   const showDiaryInSearch = searching && queryMatchesDiary(query);
 
@@ -145,6 +159,7 @@ export function SettingsPage({ onClose }: Props) {
   const showSyncPanel = (!searching && category === "sync") || showSyncInSearch;
   const showKeysPanel = (!searching && category === "keys") || showKeysInSearch;
   const showAiPanel = (!searching && category === "ai") || showAiInSearch;
+  const showMcpPanel = (!searching && category === "mcp") || showMcpInSearch;
   const showMemoryPanel =
     (!searching && category === "memory") || showMemoryInSearch;
   const showDiaryPanel =
@@ -207,6 +222,7 @@ export function SettingsPage({ onClose }: Props) {
             !showSyncPanel &&
             !showKeysPanel &&
             !showAiPanel &&
+            !showMcpPanel &&
             !showMemoryPanel &&
             !showDiaryPanel && (
               <div className="settings-empty">
@@ -240,6 +256,13 @@ export function SettingsPage({ onClose }: Props) {
             <section className="settings-section">
               {searching && <h2 className="settings-section-title">AI</h2>}
               <AiSettingsPanel />
+            </section>
+          )}
+
+          {showMcpPanel && (
+            <section className="settings-section">
+              {searching && <h2 className="settings-section-title">MCP</h2>}
+              <McpSettingsPanel />
             </section>
           )}
 

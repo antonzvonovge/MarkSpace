@@ -19,6 +19,7 @@ import {
 import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { hostOsSystemPromptLine } from "../lib/hostOs";
+import { formatMcpWorkerPromptLines } from "./mcpTools";
 import { isAgentTerminalEnabled } from "./terminalTool";
 import {
   beginSpecialistWave,
@@ -352,6 +353,7 @@ export async function runSpecialist(params: {
       projectPath: params.ctx.projectPath,
       getMessages: () => [] as UIMessage[],
       toolNames: [...preset.toolNames],
+      specialistKind: params.kind,
     });
 
     const settings = useAiSettingsStore.getState().settings;
@@ -378,6 +380,7 @@ export async function runSpecialist(params: {
         contextLines.push(`Project about: ${params.ctx.projectAbout.trim()}`);
       }
     }
+    contextLines.push(...formatMcpWorkerPromptLines(params.kind));
     contextLines.push(
       "When finished, reply with a concise plain-text summary of what you found or changed.",
       "If you need a user decision, say what clarification you need (the parent will ask the user).",
@@ -396,7 +399,7 @@ export async function runSpecialist(params: {
     const contextWindow = contextWindowForModel(settings, modelId);
     const extraTokens =
       estimateTokensFromText(system) +
-      estimateToolSchemaTokens("agent", [...preset.toolNames]);
+      estimateToolSchemaTokens("agent", [...preset.toolNames], params.kind);
 
     const result = streamText({
       model: resolved.model,

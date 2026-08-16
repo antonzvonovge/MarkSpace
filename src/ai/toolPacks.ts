@@ -8,6 +8,16 @@ export type SpecialistKind =
   | "habits"
   | "terminal";
 
+export const SPECIALIST_KIND_ORDER: readonly SpecialistKind[] = [
+  "research",
+  "edit_notes",
+  "diagram",
+  "links",
+  "dict",
+  "habits",
+  "terminal",
+];
+
 export type SpecialistPreset = {
   kind: SpecialistKind;
   /** English UI label on the specialist card. */

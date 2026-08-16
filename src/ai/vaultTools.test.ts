@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import type { TreeNode } from "../lib/vaultApi";
 import { SPECIALIST_PRESETS } from "./toolPacks";
 import { _test, buildSystemPrompt, buildVaultTools } from "./vaultTools";
+import { useMcpStore } from "../store/mcpStore";
+
+beforeEach(() => {
+  useMcpStore.setState({ snapshots: [] });
+});
 
 function folder(
   name: string,

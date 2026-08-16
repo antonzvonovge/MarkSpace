@@ -10,6 +10,7 @@ export type SettingCategory =
   | "editor"
   | "keys"
   | "ai"
+  | "mcp"
   | "memory"
   | "diary"
   | "sync";
@@ -55,6 +56,7 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "editor", label: "Editor", scope: "app" },
   { id: "keys", label: "API keys", scope: "app", separatorBefore: true },
   { id: "ai", label: "AI", scope: "app" },
+  { id: "mcp", label: "MCP", scope: "app" },
   { id: "memory", label: "Memory", scope: "vault" },
   { id: "diary", label: "Diary", scope: "vault" },
   { id: "sync", label: "Sync", scope: "vault", separatorBefore: true },

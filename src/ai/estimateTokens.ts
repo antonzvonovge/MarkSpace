@@ -9,6 +9,8 @@ import { buildVaultTools } from "./vaultTools";
 import { orchestratorToolNames, packCacheKey } from "./toolPacks";
 import { isAgentTerminalEnabled } from "./terminalTool";
 import type { ChatMode } from "./types";
+import { mcpCacheKey } from "./mcpTools";
+import type { SpecialistKind } from "./toolPacks";
 
 export type ContextAnchor = {
   /** Tokens for the next prompt with an empty draft (system + tools + history). */
@@ -68,17 +70,29 @@ export function estimateMessagesTokens(messages: UIMessage[]): number {
 export function estimateToolSchemaTokens(
   mode: ChatMode,
   toolNames?: readonly string[] | null,
+  specialistKind?: SpecialistKind,
 ): number {
   const names =
     toolNames ??
     (mode === "agent"
       ? [...orchestratorToolNames(isAgentTerminalEnabled())]
       : null);
-  const key = packCacheKey(mode, names);
+  const mcpKey =
+    mode === "agent"
+      ? mcpCacheKey(specialistKind ?? "orchestrator")
+      : mcpCacheKey("ask");
+  const key = `${packCacheKey(mode, names)}::${mcpKey}`;
   const cached = toolSchemaTokenCache.get(key);
   if (cached != null) return cached;
 
-  const tools = buildVaultTools(mode, names ? { toolNames: [...names] } : undefined);
+  const tools = buildVaultTools(
+    mode,
+    names
+      ? { toolNames: [...names], specialistKind }
+      : specialistKind
+        ? { specialistKind }
+        : undefined,
+  );
   let chars = 0;
   let count = 0;
   for (const [name, t] of Object.entries(tools)) {
