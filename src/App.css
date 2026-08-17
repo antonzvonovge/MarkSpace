@@ -6309,6 +6309,36 @@ select {
   word-break: break-word;
 }
 
+.chat-msg-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.chat-msg-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
+  cursor: pointer;
+}
+
+.chat-msg-action-btn:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.chat-msg-action-btn.is-saved {
+  color: var(--accent);
+}
+
 .chat-md {
   font-size: 0.875rem;
   line-height: 1.5;

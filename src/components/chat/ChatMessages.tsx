@@ -33,10 +33,16 @@ import { writeClipboardText } from "../../lib/clipboardText";
 import { findModel, OPENROUTER_MODELS } from "../../ai/models";
 import { isAgentStepLimitNotice } from "../../ai/runChat";
 import { resolveModelId } from "../../ai/resolveModelId";
+import {
+  saveAssistantMessageAsNote,
+  suggestedNoteNameFromMarkdown,
+} from "../../lib/saveChatMessage";
 import type { AiSettings } from "../../ai/types";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
+import { useVaultStore } from "../../store/vaultStore";
 import { vaultChatModelId } from "../../store/vaultAiSettingsStore";
+import { PromptDialog } from "../AppDialog";
 import { EditContextMenu } from "../EditContextMenu";
 import { ChatAskUser } from "./ChatAskUser";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -46,6 +52,12 @@ import { ChatSpecialistCard } from "./ChatSpecialistCard";
 import { ChatTerminalCall } from "./ChatTerminalCall";
 
 type CopyMenuState = { x: number; y: number; text: string };
+
+type SavePromptState = {
+  messageId: string;
+  content: string;
+  defaultName: string;
+};
 
 /** Selected text if the selection is inside `el`, otherwise "". */
 function selectionTextIn(el: HTMLElement): string {
@@ -63,11 +75,28 @@ type Props = {
   compacting?: boolean;
 };
 
+function isErrorText(text: string): boolean {
+  return text.startsWith("Error:");
+}
+
 function textFrom(message: UIMessage): string {
   return (message.parts ?? [])
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
     .map((p) => p.text)
     .join("");
+}
+
+function saveTextFrom(message: UIMessage): string {
+  return (message.parts ?? [])
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text.trim())
+    .filter(
+      (text) =>
+        text.length > 0 &&
+        !isErrorText(text) &&
+        !isAgentStepLimitNotice(text),
+    )
+    .join("\n\n");
 }
 
 function filePartsFrom(message: UIMessage): FileUIPart[] {
@@ -106,10 +135,6 @@ function lastStickyUserIndex(messages: UIMessage[]): number {
     if (isStickyUserCandidate(messages[i]!)) return i;
   }
   return -1;
-}
-
-function isErrorText(text: string): boolean {
-  return text.startsWith("Error:");
 }
 
 function formatElapsed(ms: number): string {
@@ -399,18 +424,45 @@ const UserMessageRow = memo(function UserMessageRow({
   );
 });
 
+function SaveNoteIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M3.5 2h7.44L14 5.06V12.5A1.5 1.5 0 0112.5 14h-9A1.5 1.5 0 012 12.5v-9A1.5 1.5 0 013.5 2zm1 1.5v2.75h5V3.5h-5zM4.25 11a.75.75 0 000 1.5h7.5a.75.75 0 000-1.5h-7.5z"
+      />
+    </svg>
+  );
+}
+
+function SavedNoteIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M6.5 11.2L3.3 8l1.06-1.06L6.5 9.08l5.14-5.14L12.7 5 6.5 11.2z"
+      />
+    </svg>
+  );
+}
+
 type AssistantRowProps = {
   message: UIMessage;
   streaming: boolean;
   isLast: boolean;
+  saved: boolean;
   onOpenCopyMenu: (e: ReactMouseEvent, fullText: string) => void;
+  onSave: (messageId: string, content: string) => void;
 };
 
 const AssistantMessageRow = memo(function AssistantMessageRow({
   message,
   streaming,
   isLast,
+  saved,
   onOpenCopyMenu,
+  onSave,
 }: AssistantRowProps) {
   const msgParts = message.parts ?? [];
   const hasAnswerText = msgParts.some(
@@ -418,6 +470,8 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   );
   const streamingThis = streaming && isLast;
   const copyText = textFrom(message);
+  const saveText = saveTextFrom(message);
+  const showSave = !streamingThis && saveText.length > 0;
 
   return (
     <div
@@ -511,6 +565,24 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         }
         return null;
       })}
+      {showSave ? (
+        <div className="chat-msg-actions">
+          <button
+            type="button"
+            className={
+              saved ? "chat-msg-action-btn is-saved" : "chat-msg-action-btn"
+            }
+            title={saved ? "Saved" : "Save as note"}
+            aria-label={saved ? "Saved" : "Save as note"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSave(message.id, saveText);
+            }}
+          >
+            {saved ? <SavedNoteIcon /> : <SaveNoteIcon />}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 });
@@ -522,6 +594,18 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
   const followBottomRef = useRef(true);
   const ignoreScrollRef = useRef(false);
   const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
+  const [savePrompt, setSavePrompt] = useState<SavePromptState | null>(null);
+  const [savedMessageId, setSavedMessageId] = useState<string | null>(null);
+  const savedClearRef = useRef<number | null>(null);
+  const projectPath = useChatStore((s) => s.projectPath);
+
+  useEffect(() => {
+    return () => {
+      if (savedClearRef.current != null) {
+        window.clearTimeout(savedClearRef.current);
+      }
+    };
+  }, []);
 
   const openCopyMenu = useCallback(
     (e: ReactMouseEvent, fullText: string) => {
@@ -534,6 +618,14 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
     },
     [],
   );
+
+  const requestSave = useCallback((messageId: string, content: string) => {
+    setSavePrompt({
+      messageId,
+      content,
+      defaultName: suggestedNoteNameFromMarkdown(content),
+    });
+  }, []);
 
   const stickyIdx = lastStickyUserIndex(messages);
   const stickyId = stickyIdx >= 0 ? messages[stickyIdx]!.id : null;
@@ -647,7 +739,9 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
             message={message}
             streaming={streaming}
             isLast={message.id === last?.id}
+            saved={message.id === savedMessageId}
             onOpenCopyMenu={openCopyMenu}
+            onSave={requestSave}
           />
         );
       })}
@@ -663,6 +757,46 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
           onCopy={() => void writeClipboardText(copyMenu.text)}
         />
       ) : null}
+      <PromptDialog
+        open={savePrompt != null}
+        title="Save as note"
+        description={
+          projectPath
+            ? `Create a markdown note in ${projectPath}.`
+            : "Create a markdown note in the vault root."
+        }
+        label="Name"
+        defaultValue={savePrompt?.defaultName ?? "Untitled"}
+        confirmLabel="Save"
+        onCancel={() => setSavePrompt(null)}
+        onConfirm={(value) => {
+          const payload = savePrompt;
+          setSavePrompt(null);
+          if (!payload) return;
+          void saveAssistantMessageAsNote({
+            name: value,
+            content: payload.content,
+            projectPath,
+          })
+            .then(() => {
+              if (savedClearRef.current != null) {
+                window.clearTimeout(savedClearRef.current);
+              }
+              setSavedMessageId(payload.messageId);
+              savedClearRef.current = window.setTimeout(() => {
+                setSavedMessageId((id) =>
+                  id === payload.messageId ? null : id,
+                );
+                savedClearRef.current = null;
+              }, 2000);
+            })
+            .catch((e) => {
+              useVaultStore.setState({
+                error: e instanceof Error ? e.message : String(e),
+              });
+            });
+        }}
+      />
     </div>
   );
 }
