@@ -33,6 +33,26 @@ export function registerSourceEditor(
   };
 }
 
+export function getLiveEditor(path: string): NoteEditor | undefined {
+  return liveEditors.get(path);
+}
+
+export function getSourceEditor(path: string): EditorView | undefined {
+  return sourceEditors.get(path);
+}
+
+export function forEachLiveEditor(
+  fn: (path: string, editor: NoteEditor) => void,
+): void {
+  for (const [path, editor] of liveEditors) fn(path, editor);
+}
+
+export function forEachSourceEditor(
+  fn: (path: string, view: EditorView) => void,
+): void {
+  for (const [path, view] of sourceEditors) fn(path, view);
+}
+
 export function deleteCompletedTasksFromLiveEditor(editor: AnyEditor): number {
   if (!editor.isEditable) return 0;
   const selection = editor.getSelection();

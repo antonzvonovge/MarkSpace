@@ -1,5 +1,8 @@
 import { formatToolbarPath } from "../lib/documentPath";
+import { documentKind } from "../lib/vaultApi";
+import { useDocumentFindStore } from "../store/documentFindStore";
 import { useVaultStore, type ViewMode } from "../store/vaultStore";
+import { DocumentFindBar } from "./DocumentFindBar";
 
 const MODES: { mode: ViewMode; label: string }[] = [
   { mode: "live", label: "Live" },
@@ -57,10 +60,17 @@ export function DocumentToolbar({
     (s) => s.activeNoteComments.filter((c) => !c.resolved).length,
   );
 
+  const findOpen = useDocumentFindStore((s) => s.open);
+
   const pathLabel =
     activePath && !activePath.startsWith("markspace:")
       ? formatToolbarPath(activePath)
       : null;
+  const showFind =
+    findOpen &&
+    Boolean(activePath) &&
+    !activePath?.startsWith("markspace:") &&
+    documentKind(activePath!) === "markdown";
 
   const liveMode = viewMode === "live";
   const showOutlineBtn = liveMode && showOutlineToggle;
@@ -91,7 +101,9 @@ export function DocumentToolbar({
           <OutlineIcon />
         </button>
       ) : null}
-      {pathLabel ? (
+      {showFind ? (
+        <DocumentFindBar />
+      ) : pathLabel ? (
         <div className="document-toolbar-path" title={activePath ?? undefined}>
           {pathLabel}
         </div>

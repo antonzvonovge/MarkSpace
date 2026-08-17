@@ -1860,6 +1860,105 @@ select {
   visibility: hidden;
 }
 
+.document-find-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  align-self: stretch;
+  padding: 4px 6px 4px 8px;
+}
+
+.document-toolbar:has(.document-toolbar-btn.is-outline) .document-find-bar {
+  padding-left: 6px;
+}
+
+.document-find-input {
+  flex: 1;
+  min-width: 6rem;
+  height: 26px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--editor-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.document-find-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.document-find-status {
+  flex-shrink: 0;
+  min-width: 4.5rem;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.document-find-status.is-empty {
+  color: var(--danger, #c0392b);
+}
+
+.document-find-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.document-find-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text);
+}
+
+:root[data-theme="dark"] .document-find-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.document-find-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.document-find-btn.is-toggle {
+  width: 28px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.document-find-btn.is-toggle.is-active {
+  color: var(--accent);
+  background: var(--sidebar-active);
+}
+
+.document-find-case-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .document-toolbar-actions {
   display: flex;
   align-items: center;
@@ -2724,6 +2823,23 @@ select {
 .note-comment-mark.is-active {
   background: rgba(203, 17, 171, 0.28);
   border-bottom-color: var(--accent);
+}
+
+.note-find-match {
+  background: rgba(255, 213, 0, 0.45);
+  border-radius: 1px;
+}
+
+.note-find-match.is-current {
+  background: rgba(255, 152, 0, 0.7);
+}
+
+:root[data-theme="dark"] .note-find-match {
+  background: rgba(255, 200, 40, 0.38);
+}
+
+:root[data-theme="dark"] .note-find-match.is-current {
+  background: rgba(255, 160, 40, 0.62);
 }
 
 .note-comment-mark.note-comment-node {

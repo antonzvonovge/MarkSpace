@@ -9,6 +9,8 @@ import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { useEffect, useRef } from "react";
 import { registerSourceEditor } from "./completedTasksCommand";
+import { refreshDocumentFindIfOpen } from "./find/documentFindController";
+import { sourceFindField } from "./find/sourceFind";
 
 type Props = {
   path: string;
@@ -121,6 +123,7 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
         markdown(),
         syntaxHighlighting(markdownHighlightStyle),
         markspaceTheme,
+        sourceFindField,
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ spellcheck: "false" }),
         keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -147,11 +150,14 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
           }),
         ),
         EditorView.updateListener.of((update) => {
-          if (!update.docChanged || applyingRef.current) return;
-          const next = update.state.doc.toString();
-          if (next === lastExternalRef.current) return;
-          lastExternalRef.current = next;
-          onChange(next);
+          if (update.docChanged && !applyingRef.current) {
+            const next = update.state.doc.toString();
+            if (next !== lastExternalRef.current) {
+              lastExternalRef.current = next;
+              onChange(next);
+            }
+          }
+          if (update.docChanged) refreshDocumentFindIfOpen();
         }),
       ],
     });
@@ -161,6 +167,7 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
     lastPathRef.current = path;
     lastExternalRef.current = content;
     const unregister = registerSourceEditor(path, view);
+    refreshDocumentFindIfOpen();
 
     return () => {
       unregister();

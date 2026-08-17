@@ -111,6 +111,8 @@ import {
   scrollToCommentRange,
   setCommentDecorationsMeta,
 } from "./comment/commentDecorations";
+import { refreshDocumentFindIfOpen } from "./find/documentFindController";
+import { createFindDecorationExtension } from "./find/findDecorations";
 import { createHashtagDecorationExtension } from "./tag/tagDecorations";
 import { createCodeBlockCopyExtension } from "./codeBlockCopy";
 import { getTagMenuItems, shouldOpenTagMenu } from "./tag/tagSuggestion";
@@ -464,6 +466,7 @@ export const NoteEditor = memo(function NoteEditor({
       }),
     [],
   );
+  const findDecorations = useMemo(() => createFindDecorationExtension(), []);
 
   const editor = useCreateBlockNote(
     {
@@ -496,6 +499,7 @@ export const NoteEditor = memo(function NoteEditor({
           hashtagDecorations,
           codeBlockCopy,
           commentDecorations,
+          findDecorations,
         ],
       },
     },
@@ -570,7 +574,11 @@ export const NoteEditor = memo(function NoteEditor({
     flushSerialize,
   ]);
 
-  useEffect(() => registerLiveEditor(path, editor), [path, editor]);
+  useEffect(() => {
+    const unreg = registerLiveEditor(path, editor);
+    refreshDocumentFindIfOpen();
+    return unreg;
+  }, [path, editor]);
 
   useEffect(() => {
     return () => {
@@ -583,6 +591,7 @@ export const NoteEditor = memo(function NoteEditor({
   }, [editor, emitSerializedMarkdown, cancelScheduledSerialize]);
 
   useEditorChange((ed) => {
+    if (isActiveRef.current) refreshDocumentFindIfOpen();
     // Load/replaceBlocks must adopt serialization synchronously.
     if (applyingRef.current || adoptNextChangeRef.current) {
       cancelScheduledSerialize();

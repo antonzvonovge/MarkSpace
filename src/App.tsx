@@ -33,6 +33,13 @@ import {
   deleteCompletedTasksInActiveEditor,
   getActiveMarkdownSelection,
 } from "./editor/completedTasksCommand";
+import {
+  closeDocumentFind,
+  isActiveMarkdownFile,
+  openDocumentFind,
+  stepDocumentFind,
+  subscribeDocumentFind,
+} from "./editor/find/documentFindController";
 import { NoteEditor } from "./editor/NoteEditor";
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
@@ -57,6 +64,7 @@ import { useAiSettingsStore } from "./store/aiSettingsStore";
 import { useMcpStore } from "./store/mcpStore";
 import { applyBackgroundJobPayload } from "./store/backgroundJobsStore";
 import { useChatUiStore } from "./store/chatUiStore";
+import { useDocumentFindStore } from "./store/documentFindStore";
 import { useFocusUiStore } from "./store/focusUiStore";
 import { usePrefsStore } from "./store/prefsStore";
 import { useSidebarUiStore } from "./store/sidebarUiStore";
@@ -647,6 +655,48 @@ function App() {
     const id = requestAnimationFrame(apply);
     return () => cancelAnimationFrame(id);
   }, [chatOpen, sidebarOpen, groupRef]);
+
+  useEffect(() => subscribeDocumentFind(), []);
+
+  useEffect(() => {
+    const modalOpen = () =>
+      Boolean(
+        document.querySelector(".command-palette-root, [role='dialog']"),
+      );
+
+    const onFindKey = (e: KeyboardEvent) => {
+      if (paletteOpen || modalOpen()) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.code === "KeyF" && !e.shiftKey && !e.altKey) {
+        if (!isActiveMarkdownFile()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openDocumentFind();
+        return;
+      }
+      if (e.code === "F3" && !mod && !e.altKey) {
+        if (!isActiveMarkdownFile()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        stepDocumentFind(e.shiftKey ? -1 : 1);
+      }
+    };
+
+    const onFindEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (paletteOpen || modalOpen()) return;
+      if (!useDocumentFindStore.getState().open) return;
+      e.preventDefault();
+      closeDocumentFind();
+    };
+
+    window.addEventListener("keydown", onFindKey, true);
+    window.addEventListener("keydown", onFindEsc);
+    return () => {
+      window.removeEventListener("keydown", onFindKey, true);
+      window.removeEventListener("keydown", onFindEsc);
+    };
+  }, [paletteOpen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
