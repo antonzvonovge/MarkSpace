@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   intrinsicSvgSize,
+  isPngBytes,
+  pngPixelSize,
   prepareSvgForClipboard,
+  rasterizeImageBytesToPng,
 } from "./rasterizeSvg";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -67,5 +70,35 @@ describe("rasterizeSvg", () => {
     const text = prepared.querySelector("text");
     expect(text?.textContent).toBe("Start");
     expect(text?.getAttribute("text-anchor")).toBe("middle");
+  });
+});
+
+const TINY_PNG = Uint8Array.from(
+  atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  ),
+  (c) => c.charCodeAt(0),
+);
+
+describe("rasterizeImageBytesToPng", () => {
+  it("detects PNG magic", () => {
+    expect(isPngBytes(TINY_PNG)).toBe(true);
+    expect(isPngBytes(new Uint8Array([0xff, 0xd8, 0xff]))).toBe(false);
+  });
+
+  it("reads pixel size from IHDR", () => {
+    expect(pngPixelSize(TINY_PNG)).toEqual({ width: 1, height: 1 });
+    expect(pngPixelSize(new Uint8Array([0xff, 0xd8, 0xff]))).toBeNull();
+    const oversized = new Uint8Array(TINY_PNG);
+    const view = new DataView(oversized.buffer, oversized.byteOffset, oversized.byteLength);
+    view.setUint32(16, 4000);
+    view.setUint32(20, 3000);
+    expect(pngPixelSize(oversized)).toEqual({ width: 4000, height: 3000 });
+  });
+
+  it("returns a small PNG as-is (no canvas recode)", async () => {
+    const out = await rasterizeImageBytesToPng(TINY_PNG);
+    expect(out).toEqual(TINY_PNG);
+    expect(out).not.toBe(TINY_PNG);
   });
 });

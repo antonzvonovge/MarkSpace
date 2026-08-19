@@ -8,8 +8,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { writeClipboardPng } from "../lib/clipboardImage";
-import { rasterizeHtmlImageToPng } from "../lib/rasterizeSvg";
+import { pngBytesFromHtmlImage, writeClipboardPng } from "../lib/clipboardImage";
 
 const ZOOM_LEVELS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5];
 const ZOOM_MAX = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
@@ -50,8 +49,16 @@ export function ImageLightbox({ src, alt, onClose }: Props) {
 
   useEffect(() => {
     setZoom(1);
-    setSize({ width: 0, height: 0 });
     setCopyState("idle");
+    const image = imageRef.current;
+    if (image?.complete && image.naturalWidth) {
+      setSize({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+    } else {
+      setSize({ width: 0, height: 0 });
+    }
   }, [src]);
 
   useEffect(() => {
@@ -143,7 +150,7 @@ export function ImageLightbox({ src, alt, onClose }: Props) {
     // Yield so the click can paint before heavy canvas work (avoids "frozen" UI).
     await new Promise<void>((r) => window.setTimeout(r, 0));
     try {
-      const png = await rasterizeHtmlImageToPng(image);
+      const png = await pngBytesFromHtmlImage(image);
       await writeClipboardPng(png);
       setCopyState("copied");
     } catch (err) {

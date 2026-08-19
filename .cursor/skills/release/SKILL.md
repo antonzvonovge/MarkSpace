@@ -2,7 +2,7 @@
 name: release
 description: >-
   Ships a MarkSpace GitHub release: bumps version, commits Ship, tags vX.Y.Z,
-  and pushes so Actions builds Linux/Windows installers. Use when the user asks
+  and pushes so Actions builds Linux/Windows/macOS installers. Use when the user asks
   to release, ship, publish, cut a version, сделать релиз, новый релиз, or
   запуш и сделай релиз.
 ---
@@ -11,7 +11,7 @@ description: >-
 
 Не создавать GitHub Release вручную (`gh release create`). Релиз делает `.github/workflows/release.yml` по пушу тега `v*`.
 
-Платформы: Ubuntu + Windows. macOS нет. Сборка обычно 15–20 минут.
+Платформы: Ubuntu + Windows + macOS (Apple Silicon и Intel). Сборка обычно 15–20 минут.
 
 ## Когда запускать
 

@@ -124,6 +124,12 @@ export function prepareSvgForClipboard(
   return clone;
 }
 
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
+}
+
 function clipboardScale(width: number, height: number): number {
   const maxDim = Math.max(width, height);
   if (!(maxDim > 0) || !Number.isFinite(maxDim)) return 1;
@@ -132,30 +138,108 @@ function clipboardScale(width: number, height: number): number {
   return Math.max(0.25, MAX_EDGE / maxDim);
 }
 
-function loadSvgImage(markup: string): Promise<HTMLImageElement> {
-  // Blob URL avoids encodeURIComponent freezing on large Mermaid markup.
-  const blob = new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
+/** Bitmaps: never upscale (unlike SVG). Only shrink so the canvas stays ≤ MAX_EDGE. */
+function bitmapClipboardScale(width: number, height: number): number {
+  const maxDim = Math.max(width, height);
+  if (!(maxDim > 0) || !Number.isFinite(maxDim) || maxDim <= MAX_EDGE) return 1;
+  return MAX_EDGE / maxDim;
+}
+
+function loadImageFromUrl(
+  url: string,
+  revokeUrl: boolean,
+  errorMessage: string,
+): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const timer = window.setTimeout(() => {
       image.onload = null;
       image.onerror = null;
-      URL.revokeObjectURL(url);
-      reject(new Error("SVG rasterize timed out"));
+      if (revokeUrl) URL.revokeObjectURL(url);
+      reject(new Error("Image rasterize timed out"));
     }, LOAD_TIMEOUT_MS);
     image.onload = () => {
       window.clearTimeout(timer);
-      URL.revokeObjectURL(url);
+      if (revokeUrl) URL.revokeObjectURL(url);
       resolve(image);
     };
     image.onerror = () => {
       window.clearTimeout(timer);
-      URL.revokeObjectURL(url);
-      reject(new Error("Failed to rasterize SVG"));
+      if (revokeUrl) URL.revokeObjectURL(url);
+      reject(new Error(errorMessage));
     };
     image.src = url;
   });
+}
+
+function loadSvgImage(markup: string): Promise<HTMLImageElement> {
+  // Blob URL avoids encodeURIComponent freezing on large Mermaid markup.
+  const blob = new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  return loadImageFromUrl(url, true, "Failed to rasterize SVG");
+}
+
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+export function isPngBytes(bytes: Uint8Array): boolean {
+  if (bytes.length < PNG_MAGIC.length) return false;
+  return PNG_MAGIC.every((b, i) => bytes[i] === b);
+}
+
+/** Width/height from PNG IHDR — no decode, so huge files stay off the canvas path. */
+export function pngPixelSize(
+  bytes: Uint8Array,
+): { width: number; height: number } | null {
+  if (!isPngBytes(bytes) || bytes.length < 24) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  if (!(width > 0) || !(height > 0)) return null;
+  return { width, height };
+}
+
+function sniffImageMime(bytes: Uint8Array): string {
+  if (isPngBytes(bytes)) return "image/png";
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46
+  ) {
+    return "image/gif";
+  }
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  const head = new TextDecoder("utf-8", { fatal: false })
+    .decode(bytes.slice(0, 256))
+    .trimStart()
+    .toLowerCase();
+  if (head.startsWith("<svg") || head.startsWith("<?xml")) {
+    return "image/svg+xml";
+  }
+  return "application/octet-stream";
+}
+
+function copyBytes(bytes: Uint8Array): Uint8Array {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy;
 }
 
 function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
@@ -189,7 +273,7 @@ export async function rasterizeSvgElementToPng(
   const prepared = prepareSvgForClipboard(svg, scale);
   const markup = new XMLSerializer().serializeToString(prepared);
   // Let the UI breathe between sync clone/serialize and image decode.
-  await new Promise<void>((r) => window.setTimeout(r, 0));
+  await yieldToUi();
   const image = await loadSvgImage(markup);
 
   const outW = Math.max(
@@ -209,7 +293,7 @@ export async function rasterizeSvgElementToPng(
   context.fillStyle = opts?.background ?? "#ffffff";
   context.fillRect(0, 0, outW, outH);
   context.drawImage(image, 0, 0, outW, outH);
-  await new Promise<void>((r) => window.setTimeout(r, 0));
+  await yieldToUi();
   return canvasToPngBytes(canvas);
 }
 
@@ -222,18 +306,42 @@ export async function rasterizeHtmlImageToPng(
   if (!(width > 0) || !(height > 0)) {
     throw new Error("Invalid image size");
   }
-  const scale = clipboardScale(width, height);
+  const scale = bitmapClipboardScale(width, height);
   const outW = Math.max(1, Math.min(MAX_EDGE, Math.round(width * scale)));
   const outH = Math.max(1, Math.min(MAX_EDGE, Math.round(height * scale)));
 
+  await yieldToUi();
   const canvas = document.createElement("canvas");
   canvas.width = outW;
   canvas.height = outH;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas is unavailable");
   context.drawImage(image, 0, 0, outW, outH);
-  await new Promise<void>((r) => window.setTimeout(r, 0));
+  await yieldToUi();
   return canvasToPngBytes(canvas);
+}
+
+/**
+ * Encode file bytes as PNG for the clipboard.
+ * Asset-protocol images taint canvas if drawn directly; a blob URL does not.
+ * Huge sources are downscaled to MAX_EDGE — same cap as diagram copy.
+ */
+export async function rasterizeImageBytesToPng(
+  bytes: Uint8Array,
+): Promise<Uint8Array> {
+  const png = pngPixelSize(bytes);
+  if (png && Math.max(png.width, png.height) <= MAX_EDGE) {
+    return copyBytes(bytes);
+  }
+
+  await yieldToUi();
+  const mime = sniffImageMime(bytes);
+  const blob = new Blob([copyBytes(bytes)], {
+    type: mime === "application/octet-stream" ? "image/png" : mime,
+  });
+  const url = URL.createObjectURL(blob);
+  const image = await loadImageFromUrl(url, true, "Failed to decode image");
+  return rasterizeHtmlImageToPng(image);
 }
 
 /** @deprecated Prefer rasterizeSvgElementToPng — kept for tests of size helpers. */

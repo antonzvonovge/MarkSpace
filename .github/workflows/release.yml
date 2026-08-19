@@ -14,6 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
           - platform: ubuntu-22.04
             args: ''
           - platform: windows-latest
@@ -36,11 +40,14 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+          key: ${{ matrix.args }}
 
       - name: Install frontend dependencies
         run: npm ci
@@ -61,6 +68,7 @@ jobs:
 
             Windows: prefer the installer (`.msi` / setup `.exe`).
             `MarkSpace_*_x64-portable.zip` is a portable build (requires WebView2; no auto-update).
+            macOS: `.dmg` for Apple Silicon (`aarch64`) or Intel (`x86_64`). Unsigned builds may need System Settings → Privacy & Security → Open Anyway.
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true
