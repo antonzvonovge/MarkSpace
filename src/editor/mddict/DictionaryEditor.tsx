@@ -511,6 +511,7 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
               autoAddRow={!filtering}
               tagCatalog={dictionaryTags}
               tagExtraCatalog={fileTags}
+              notePath={path}
               correctCountByWord={correctCountByWord}
               onSetKnown={(row, known) => {
                 void onSetKnown(row, known);

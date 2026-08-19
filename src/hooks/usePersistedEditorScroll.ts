@@ -55,14 +55,16 @@ export function usePersistedEditorScroll(
   const restoringRef = useRef(false);
   const skippedRestoreRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
+  const enabled = Boolean(path);
 
   useLayoutEffect(() => {
+    if (!enabled) return;
     lastGoodRef.current = loadDocEditorScroll(vaultPath, path, pane);
     skippedRestoreRef.current = false;
-  }, [vaultPath, path, pane]);
+  }, [enabled, vaultPath, path, pane]);
 
   useEffect(() => {
-    if (!scroller) return;
+    if (!enabled || !scroller) return;
 
     const persist = (top: number, immediate: boolean) => {
       lastGoodRef.current = top;
@@ -102,19 +104,19 @@ export function usePersistedEditorScroll(
       document.removeEventListener("visibilitychange", flush);
       flush();
     };
-  }, [scroller, vaultPath, path, pane]);
+  }, [enabled, scroller, vaultPath, path, pane]);
 
   useEffect(() => {
-    if (active) return;
+    if (!enabled || active) return;
     if (saveTimerRef.current != null) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
     saveDocEditorScroll(vaultPath, path, pane, lastGoodRef.current);
-  }, [active, vaultPath, path, pane]);
+  }, [enabled, active, vaultPath, path, pane]);
 
   useLayoutEffect(() => {
-    if (!scroller || !active) return;
+    if (!enabled || !scroller || !active) return;
     if (skipRestore) {
       skippedRestoreRef.current = true;
       return;
@@ -141,8 +143,8 @@ export function usePersistedEditorScroll(
         const max = maxScrollTop(scroller);
         if (max >= saved || frames >= 12) {
           applyScrollTop(scroller, saved);
-          lastGoodRef.current = scroller.scrollTop;
           if (max >= saved || frames >= RESTORE_MAX_FRAMES) {
+            lastGoodRef.current = scroller.scrollTop;
             restoringRef.current = false;
             return;
           }
@@ -161,5 +163,5 @@ export function usePersistedEditorScroll(
       cancelled = true;
       restoringRef.current = false;
     };
-  }, [scroller, active, skipRestore, vaultPath, path, pane]);
+  }, [enabled, scroller, active, skipRestore, vaultPath, path, pane]);
 }

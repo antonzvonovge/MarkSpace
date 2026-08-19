@@ -1466,10 +1466,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   /** Expand every folder on the way to `path` (plus itself for folders) and scroll to it. */
   const revealPathInTree = useCallback(
     (path: string, options?: { isDir?: boolean }) => {
-      if (!path) return;
       const { vaultPath: vp, expandedPaths } = useVaultStore.getState();
-      const toOpen = ancestorFolderPaths(path);
-      if (options?.isDir) toOpen.push(path);
+      const toOpen = path ? ancestorFolderPaths(path) : [];
+      if (path && options?.isDir) toOpen.push(path);
 
       const missing = toOpen.filter((a) => !expandedPaths.includes(a));
       if (missing.length > 0) {
@@ -1478,23 +1477,20 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         if (vp) void saveExpandedPaths(vp, next);
       }
 
-      treeRef.current?.open(VAULT_ID);
-      for (const a of toOpen) {
-        treeRef.current?.open(toNodeId(a));
-      }
+      // One call: looped open() hits stale openIds (same as collapseAll).
+      treeRef.current?.open([VAULT_ID, ...toOpen.map(toNodeId)]);
 
       let attempts = 0;
       const scrollToRow = () => {
         const root = treeFocusRef.current;
-        if (!root) return;
-        const el = root.querySelector(
+        const el = root?.querySelector(
           `[data-vault-path="${CSS.escape(path)}"]`,
         ) as HTMLElement | null;
         if (el) {
           el.scrollIntoView({ block: "nearest", behavior: "smooth" });
           return;
         }
-        if (attempts++ < 12) requestAnimationFrame(scrollToRow);
+        if (attempts++ < 24) requestAnimationFrame(scrollToRow);
       };
       requestAnimationFrame(scrollToRow);
     },

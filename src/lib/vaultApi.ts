@@ -846,7 +846,8 @@ export function treeRevealTarget(path: string): {
 } | null {
   if (!path) return null;
   const folder = folderPathFromFolderNote(path);
-  if (folder) return { treePath: folder, isDir: true };
+  // `""` is the vault root (e.g. `.folder.md` at the vault root).
+  if (folder != null) return { treePath: folder, isDir: true };
   return { treePath: path, isDir: false };
 }
 

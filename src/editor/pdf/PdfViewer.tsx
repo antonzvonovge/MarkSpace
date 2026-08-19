@@ -27,6 +27,8 @@ import {
   saveDocPdfZoom,
 } from "../../lib/pdfUiState";
 import { useVaultStore } from "../../store/vaultStore";
+import { usePersistedEditorScroll } from "../../hooks/usePersistedEditorScroll";
+import { loadDocEditorScroll } from "../../lib/editorScrollState";
 import { PdfDocumentTags } from "./PdfDocumentTags";
 
 type OutlineItem = {
@@ -143,7 +145,12 @@ export function PdfViewer({ path, isActive = true }: Props) {
   const takePendingPdfPage = useVaultStore((s) => s.takePendingPdfPage);
   const pendingPdfPage = useVaultStore((s) => s.pendingPdfPage);
   const vaultPath = useVaultStore((s) => s.vaultPath);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  scrollRef.current = scrollEl;
+  const [skipPdfScrollRestore, setSkipPdfScrollRestore] = useState(
+    () => useVaultStore.getState().pendingPdfPage != null,
+  );
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const docRef = useRef<PDFDocumentProxy | null>(null);
   const renderToken = useRef(0);
@@ -176,6 +183,11 @@ export function PdfViewer({ path, isActive = true }: Props) {
   const [findQuery, setFindQuery] = useState("");
   const [findStatus, setFindStatus] = useState("");
   const findInputRef = useRef<HTMLInputElement>(null);
+
+  usePersistedEditorScroll(scrollEl, path, "live", {
+    active: isActive && !loading,
+    skipRestore: skipPdfScrollRestore,
+  });
 
   scaleRef.current = scale;
   fitWidthRef.current = fitWidth;
@@ -600,11 +612,13 @@ export function PdfViewer({ path, isActive = true }: Props) {
         const pending = takePendingPdfPage();
         if (pending != null) {
           restorePageRef.current = null;
+          setSkipPdfScrollRestore(true);
           jumpToPage(pending, { persist: true });
         } else {
           const restore = restorePageRef.current;
           restorePageRef.current = null;
-          if (restore != null && restore > 1) {
+          const pixel = loadDocEditorScroll(vaultPath, path, "live");
+          if (pixel <= 0 && restore != null && restore > 1) {
             jumpToPage(restore, { persist: false });
           }
         }
@@ -646,7 +660,10 @@ export function PdfViewer({ path, isActive = true }: Props) {
   useEffect(() => {
     if (pendingPdfPage == null || loading || numPages < 1) return;
     const pageNum = takePendingPdfPage();
-    if (pageNum != null) jumpToPage(pageNum, { persist: true });
+    if (pageNum != null) {
+      setSkipPdfScrollRestore(true);
+      jumpToPage(pageNum, { persist: true });
+    }
   }, [pendingPdfPage, loading, numPages, takePendingPdfPage, jumpToPage]);
 
   useEffect(() => {
@@ -886,7 +903,7 @@ export function PdfViewer({ path, isActive = true }: Props) {
             />
           </>
         ) : null}
-        <div className="pdf-viewer__scroll" ref={scrollRef}>
+        <div className="pdf-viewer__scroll" ref={setScrollEl}>
           {loading ? (
             <div className="pdf-viewer__status">Loading PDF…</div>
           ) : null}

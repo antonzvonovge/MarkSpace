@@ -7,6 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { usePersistedEditorScroll } from "../../hooks/usePersistedEditorScroll";
 import { TagChipsInput } from "../../components/TagChipsInput";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { DICT_KNOWN_THRESHOLD } from "../../lib/dictProgress";
@@ -38,6 +39,7 @@ export type DictGridProps = {
   autoAddRow: boolean;
   tagCatalog: string[];
   tagExtraCatalog: string[];
+  notePath?: string;
   /** Lowercase word → correct-answer count from practice sidecar. */
   correctCountByWord?: Record<string, number>;
   onSetKnown?: (row: GridRow, known: boolean) => void;
@@ -328,10 +330,15 @@ export function DictGrid({
   autoAddRow,
   tagCatalog,
   tagExtraCatalog,
+  notePath,
   correctCountByWord,
   onSetKnown,
 }: DictGridProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  usePersistedEditorScroll(scrollEl, notePath ?? "", "live", {
+    active: Boolean(notePath),
+  });
   const [active, setActive] = useState<ActiveCell | null>(null);
   const [editing, setEditing] = useState(false);
   const [menu, setMenu] = useState<{
@@ -708,7 +715,7 @@ export function DictGrid({
         })}
       </div>
 
-      <div className="dict-grid-body" role="rowgroup">
+      <div className="dict-grid-body" role="rowgroup" ref={setScrollEl}>
         {displayRows.map((row, rowIndex) => {
           const wordKey = row.word.trim().toLowerCase();
           const correctCount =

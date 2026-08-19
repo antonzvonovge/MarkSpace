@@ -111,6 +111,7 @@ const DocumentTab = memo(function DocumentTab({
           isActive ? "document-instance is-active" : "document-instance"
         }
         aria-hidden={!isActive}
+        inert={!isActive}
       >
         <SettingsPage onClose={onCloseSettings} />
       </div>
@@ -126,6 +127,7 @@ const DocumentTab = memo(function DocumentTab({
             : "document-instance document-instance-graph"
         }
         aria-hidden={!isActive}
+        inert={!isActive}
       >
         {/* Keep mounted: WebGL survives visibility:hidden,
             but is lost under display:none. */}
@@ -143,6 +145,7 @@ const DocumentTab = memo(function DocumentTab({
         isActive ? "document-instance is-active" : "document-instance"
       }
       aria-hidden={!isActive}
+      inert={!isActive}
     >
       {docKind === "drawio" ? (
         <DrawioEditor

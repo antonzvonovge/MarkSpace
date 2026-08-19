@@ -10,12 +10,12 @@
 // The harness below mirrors FileTree.tsx: scoped backend, memoized initialOpen
 // (recomputed only on vault change / remount after rename), onChangeOpen writing
 // to parent state, and a STABLE ref (`ref={setDndRoot}`).
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { cleanup, render, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { Tree, type NodeModel } from "@minoru/react-dnd-treeview";
+import { Tree, type NodeModel, type TreeMethods } from "@minoru/react-dnd-treeview";
 
 afterEach(cleanup);
 
@@ -276,5 +276,138 @@ describe("tree expand/collapse", () => {
 
     expect(queryByTestId("row-Folder/note.md")).toBeNull();
     expect(queryByTestId("row-Renamed/note.md")).not.toBeNull();
+  });
+});
+
+const nestedFlatTree: NodeModel<NodeData>[] = [
+  {
+    id: VAULT_ID,
+    parent: TREE_ROOT,
+    text: "Vault",
+    droppable: true,
+    data: { path: "", isDir: true },
+  },
+  {
+    id: "Folder",
+    parent: VAULT_ID,
+    text: "Folder",
+    droppable: true,
+    data: { path: "Folder", isDir: true },
+  },
+  {
+    id: "Folder/Nested",
+    parent: "Folder",
+    text: "Nested",
+    droppable: true,
+    data: { path: "Folder/Nested", isDir: true },
+  },
+  {
+    id: "Folder/Nested/note.md",
+    parent: "Folder/Nested",
+    text: "note",
+    droppable: false,
+    data: { path: "Folder/Nested/note.md", isDir: false },
+  },
+];
+
+/** Mirrors FileTree reveal: Tree ref + open() of ancestor folders. */
+function RevealHarness() {
+  const treeRef = useRef<TreeMethods>(null);
+  const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
+  const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
+
+  const backendOptions = useMemo(
+    () => (dndRoot ? { rootElement: dndRoot } : null),
+    [dndRoot],
+  );
+
+  const initialOpen = useMemo(
+    () => [VAULT_ID, ...expandedPaths],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    ["vault"],
+  );
+
+  return (
+    <div ref={setDndRoot}>
+      <button
+        type="button"
+        data-testid="reveal-loop"
+        onClick={() => {
+          treeRef.current?.open(VAULT_ID);
+          treeRef.current?.open("Folder");
+          treeRef.current?.open("Folder/Nested");
+        }}
+      >
+        Reveal loop
+      </button>
+      <button
+        type="button"
+        data-testid="reveal-batch"
+        onClick={() => {
+          treeRef.current?.open([VAULT_ID, "Folder", "Folder/Nested"]);
+        }}
+      >
+        Reveal batch
+      </button>
+      {backendOptions ? (
+        <DndProvider backend={HTML5Backend} options={backendOptions}>
+          <Tree
+            ref={treeRef}
+            key="vault"
+            tree={nestedFlatTree}
+            rootId={TREE_ROOT}
+            sort={false}
+            insertDroppableFirst={false}
+            dropTargetOffset={10}
+            initialOpen={initialOpen}
+            canDrag={(node) => node?.id !== VAULT_ID}
+            onChangeOpen={(openIds) => {
+              setExpandedPaths(
+                openIds.map(String).filter((id) => id !== VAULT_ID),
+              );
+            }}
+            onDrop={() => {}}
+            render={(node, { isOpen, onToggle }) => {
+              const isDir = Boolean(node.droppable);
+              return (
+                <div data-testid={`row-${node.id}`}>
+                  {isDir ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      data-testid={`chevron-${node.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle();
+                      }}
+                    >
+                      {isOpen ? "v" : ">"}
+                    </span>
+                  ) : null}
+                  <span>{node.text}</span>
+                </div>
+              );
+            }}
+          />
+        </DndProvider>
+      ) : null}
+    </div>
+  );
+}
+
+describe("tree reveal open()", () => {
+  it("does not reveal a nested file when open() is called per ancestor", () => {
+    const { queryByTestId, getByTestId } = render(<RevealHarness />);
+
+    expect(queryByTestId("row-Folder/Nested/note.md")).toBeNull();
+    fireEvent.click(getByTestId("reveal-loop"));
+    expect(queryByTestId("row-Folder/Nested/note.md")).toBeNull();
+  });
+
+  it("reveals a nested file when ancestors are opened in one call", () => {
+    const { queryByTestId, getByTestId } = render(<RevealHarness />);
+
+    fireEvent.click(getByTestId("reveal-batch"));
+    expect(queryByTestId("row-Folder/Nested/note.md")).not.toBeNull();
   });
 });

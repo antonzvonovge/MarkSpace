@@ -15,6 +15,10 @@ describe("treeRevealTarget", () => {
       treePath: "Projects/ideas",
       isDir: true,
     });
+    expect(treeRevealTarget(".folder.md")).toEqual({
+      treePath: "",
+      isDir: true,
+    });
   });
 
   it("leaves ordinary files as file rows", () => {
