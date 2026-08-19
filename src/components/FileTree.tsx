@@ -32,6 +32,7 @@ import {
   joinPath,
   parentPath,
   setProjectProperties,
+  treeRevealTarget,
   type ProjectProperties,
 } from "../lib/vaultApi";
 import { diaryProjectRootForPath, vaultProjectRootOf } from "../lib/diaryNotes";
@@ -255,6 +256,20 @@ function ancestorFolderPaths(filePath: string): string[] {
     out.push(parts.slice(0, i + 1).join("/"));
   }
   return out;
+}
+
+/** Prefer the folder-note mapping; also treat vault tree directories as folders. */
+function resolveTreeReveal(
+  path: string,
+  tree: TreeNode | null,
+): { treePath: string; isDir: boolean } | null {
+  const mapped = treeRevealTarget(path);
+  if (!mapped) return null;
+  if (mapped.isDir) return mapped;
+  return {
+    treePath: mapped.treePath,
+    isDir: Boolean(findTreeNode(tree, mapped.treePath)?.isDir),
+  };
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -1487,14 +1502,18 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   );
 
   const revealActiveInTree = useCallback(() => {
-    const path = useVaultStore.getState().activePath;
-    if (!path) return;
+    const { activePath, tree } = useVaultStore.getState();
+    if (!activePath) return;
+    const target = resolveTreeReveal(activePath, tree);
+    if (!target) return;
     useVaultStore.setState({
-      selectedFolderExplicit: false,
-      selectedFolderPath: parentPath(path),
+      selectedFolderExplicit: target.isDir,
+      selectedFolderPath: target.isDir
+        ? target.treePath
+        : parentPath(activePath),
       treeSelectionVisible: true,
     });
-    revealPathInTree(path);
+    revealPathInTree(target.treePath, target.isDir ? { isDir: true } : undefined);
   }, [revealPathInTree]);
 
   /** Vault root stays open; all nested folders close (first level only). */
@@ -1523,12 +1542,19 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
 
   useEffect(() => {
     if (!treeRevealRequest) return;
+    const target = resolveTreeReveal(
+      treeRevealRequest.path,
+      useVaultStore.getState().tree,
+    );
+    if (!target) return;
     useVaultStore.setState({
-      selectedFolderExplicit: false,
-      selectedFolderPath: parentPath(treeRevealRequest.path),
+      selectedFolderExplicit: target.isDir,
+      selectedFolderPath: target.isDir
+        ? target.treePath
+        : parentPath(treeRevealRequest.path),
       treeSelectionVisible: true,
     });
-    revealPathInTree(treeRevealRequest.path);
+    revealPathInTree(target.treePath, target.isDir ? { isDir: true } : undefined);
   }, [revealPathInTree, treeRevealRequest]);
 
   useImperativeHandle(ref, () => ({

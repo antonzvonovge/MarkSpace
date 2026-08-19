@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePersistedEditorScroll } from "../../hooks/usePersistedEditorScroll";
 import { createPortal } from "react-dom";
 import {
   ConfirmDialog,
@@ -113,7 +114,7 @@ function cellLook(
   return done > 0 ? "done" : "missed";
 }
 
-export function HabitTrackerEditor({ path: _path, content, onChange }: Props) {
+export function HabitTrackerEditor({ path, content, onChange }: Props) {
   const { doc, error } = useMemo(() => safeParse(content), [content]);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [habitDialog, setHabitDialog] = useState<
@@ -129,6 +130,8 @@ export function HabitTrackerEditor({ path: _path, content, onChange }: Props) {
   } | null>(null);
   const selectTimer = useRef<number | null>(null);
   const pendingSelectName = useRef<string | null>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  usePersistedEditorScroll(scrollEl, path, "live");
 
   useEffect(() => {
     return () => {
@@ -199,7 +202,7 @@ export function HabitTrackerEditor({ path: _path, content, onChange }: Props) {
     return (
       <div className="habit-tracker-column">
         <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
-        <div className="habit-tracker">
+        <div className="habit-tracker" ref={setScrollEl}>
           <div className="links-editor-error">
             <h2>Invalid habit tracker</h2>
             <p>{error}</p>
@@ -216,7 +219,7 @@ export function HabitTrackerEditor({ path: _path, content, onChange }: Props) {
   return (
     <div className="habit-tracker-column">
       <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
-      <div className="habit-tracker">
+      <div className="habit-tracker" ref={setScrollEl}>
         <div className="habit-tracker-main">
           <h1 className="habit-tracker-year">{doc.year}</h1>
           <div className="habit-tracker-months">

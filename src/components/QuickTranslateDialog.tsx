@@ -218,8 +218,8 @@ export function QuickTranslateDialog({
     el.select();
   }, [open, busy, result, error]);
 
-  const lookup = async () => {
-    const trimmed = query.trim();
+  const lookup = async (rawQuery = query) => {
+    const trimmed = rawQuery.replace(/\s+/g, " ").trim().slice(0, QUERY_MAX);
     if (!trimmed || busy) return;
     abortRef.current?.abort();
     const ac = new AbortController();
@@ -278,6 +278,14 @@ export function QuickTranslateDialog({
     );
     setPickerError(null);
     setPickerOpen(true);
+  };
+
+  const lookupSynonym = (word: string) => {
+    const next = word.replace(/\s+/g, " ").trim().slice(0, QUERY_MAX);
+    if (!next || busy) return;
+    setQuery(next);
+    setResult(null);
+    void lookup(next);
   };
 
   const addToDictionary = async () => {
@@ -427,39 +435,63 @@ export function QuickTranslateDialog({
 
           {result && targetHead ? (
             <div className="quick-translate-card" aria-live="polite">
-              <p className="quick-translate-lemma">{targetHead.word}</p>
-              {targetHead.transcript &&
-              quickTranslateShowForms(result, nativeLanguage) ? (
-                <p className="quick-translate-transcript">
-                  {targetHead.transcript}
-                </p>
+              <header className="quick-translate-head">
+                <p className="quick-translate-lemma">{targetHead.word}</p>
+                {targetHead.transcript &&
+                quickTranslateShowForms(result, nativeLanguage) ? (
+                  <p className="quick-translate-transcript">
+                    {targetHead.transcript}
+                  </p>
+                ) : null}
+              </header>
+              {result.synonyms.length > 0 ? (
+                <div className="quick-translate-section">
+                  <div className="quick-translate-section-label">Synonyms</div>
+                  <ul className="quick-translate-synonyms" aria-label="Synonyms">
+                    {result.synonyms.map((word) => (
+                      <li key={word}>
+                        <button
+                          type="button"
+                          className="quick-translate-synonym"
+                          disabled={busy}
+                          title={`Look up ${word}`}
+                          onClick={() => lookupSynonym(word)}
+                        >
+                          {word}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
               {result.forms.length > 0 &&
               quickTranslateShowForms(result, nativeLanguage) ? (
                 <div className="quick-translate-section">
                   <div className="quick-translate-section-label">Forms</div>
-                  <p className="quick-translate-forms">
-                    {result.forms.join(" · ")}
-                  </p>
+                  <ul className="quick-translate-forms">
+                    {result.forms.map((form) => (
+                      <li key={form} className="quick-translate-form">
+                        {form}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
               {result.examples.length > 0 ? (
                 <div className="quick-translate-section">
                   <div className="quick-translate-section-label">Examples</div>
-                  <ol className="quick-translate-examples">
+                  <ul className="quick-translate-examples">
                     {result.examples.map((ex) => (
                       <li key={ex.text}>
-                        <span className="quick-translate-example-text">
-                          {ex.text}
-                        </span>
+                        <p className="quick-translate-example-text">{ex.text}</p>
                         {ex.translation ? (
-                          <span className="quick-translate-example-tr">
+                          <p className="quick-translate-example-tr">
                             {ex.translation}
-                          </span>
+                          </p>
                         ) : null}
                       </li>
                     ))}
-                  </ol>
+                  </ul>
                 </div>
               ) : null}
             </div>

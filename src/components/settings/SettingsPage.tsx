@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePersistedEditorScroll } from "../../hooks/usePersistedEditorScroll";
+import { SETTINGS_TAB_PATH } from "../../store/vaultStore";
 import {
   CATEGORIES,
   SETTINGS_REGISTRY,
@@ -121,6 +123,10 @@ export function SettingsPage({ onClose }: Props) {
   const settingsActive = useSettingsTabActive();
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
+  usePersistedEditorScroll(listEl, SETTINGS_TAB_PATH, "live", {
+    active: settingsActive,
+  });
 
   useEffect(() => {
     if (!settingsActive) return;
@@ -217,7 +223,7 @@ export function SettingsPage({ onClose }: Props) {
           </nav>
         )}
 
-        <div className="settings-list">
+        <div className="settings-list" ref={setListEl}>
           {rows.length === 0 &&
             !showSyncPanel &&
             !showKeysPanel &&

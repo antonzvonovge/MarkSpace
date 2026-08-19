@@ -4,6 +4,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { usePersistedEditorScroll } from "../../hooks/usePersistedEditorScroll";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ConfirmDialog,
@@ -89,11 +90,13 @@ function DragHandleIcon() {
   );
 }
 
-export function LinksEditor({ path: _path, content, onChange }: Props) {
+export function LinksEditor({ path, content, onChange }: Props) {
   const { doc, error } = useMemo(() => safeParse(content), [content]);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  usePersistedEditorScroll(scrollEl, path, "live");
 
   const emit = useCallback(
     (next: MdlnksDoc) => {
@@ -204,7 +207,7 @@ export function LinksEditor({ path: _path, content, onChange }: Props) {
     return (
       <div className="links-editor-column">
         <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
-        <div className="links-editor">
+        <div className="links-editor" ref={setScrollEl}>
           <div className="links-editor-error">
             <h2>Invalid links file</h2>
             <p>{error}</p>
@@ -221,7 +224,7 @@ export function LinksEditor({ path: _path, content, onChange }: Props) {
   return (
     <div className="links-editor-column">
       <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
-      <div className="links-editor">
+      <div className="links-editor" ref={setScrollEl}>
         <div className="links-editor-toolbar">
           <div className="links-editor-filter">
             <span className="links-editor-filter-label">Filter</span>

@@ -30,6 +30,7 @@ export type QuickTranslateResult = {
   translation: string;
   translationTranscript: string;
   forms: string[];
+  synonyms: string[];
   examples: QuickTranslateExample[];
 };
 
@@ -109,6 +110,13 @@ function normalizeStringList(raw: unknown, max: number): string[] {
   return out;
 }
 
+function normalizeSynonyms(raw: unknown, translation: string): string[] {
+  const transKey = translation.trim().toLowerCase();
+  return normalizeStringList(raw, 6).filter(
+    (item) => item.toLowerCase() !== transKey,
+  );
+}
+
 function normalizeExamples(raw: unknown): QuickTranslateExample[] {
   if (!Array.isArray(raw)) return [];
   const out: QuickTranslateExample[] = [];
@@ -143,6 +151,7 @@ export function parseQuickTranslateResponse(
     translation?: unknown;
     translationTranscript?: unknown;
     forms?: unknown;
+    synonyms?: unknown;
     examples?: unknown;
   };
   const lemma = normalizeLine(parsed.lemma) || query.trim();
@@ -156,6 +165,7 @@ export function parseQuickTranslateResponse(
     translation,
     translationTranscript: normalizeLine(parsed.translationTranscript),
     forms: normalizeStringList(parsed.forms, 8),
+    synonyms: normalizeSynonyms(parsed.synonyms, translation),
     examples: normalizeExamples(parsed.examples),
   };
 }
@@ -170,7 +180,7 @@ The user types a word or short expression in ${foreign} or ${native} (detect whi
 Everything useful — the head translation, inflections, and examples — must be in the OTHER language. Inverse of the query. Never inflect the queried word itself.
 
 Reply with JSON only, no markdown fences:
-{"queryLang":"${foreignCode}"|"${nativeCode}","lemma":"...","transcript":"...","translation":"...","translationTranscript":"...","forms":["..."],"examples":[{"text":"...","translation":"..."}]}
+{"queryLang":"${foreignCode}"|"${nativeCode}","lemma":"...","transcript":"...","translation":"...","translationTranscript":"...","forms":["..."],"synonyms":["..."],"examples":[{"text":"...","translation":"..."}]}
 
 - queryLang: ISO code of the user's query (${foreignCode} or ${nativeCode}).
 - lemma: citation form of the queried word, in queryLang.
@@ -178,10 +188,11 @@ Reply with JSON only, no markdown fences:
 - translation: citation form in the OTHER language (${params.foreignLanguageLabel} if queryLang is ${nativeCode}, ${params.nativeLanguageLabel} if queryLang is ${foreignCode}). For English verbs: infinitive without "to" (go). For other verbs: the usual dictionary citation form.
 - translationTranscript: pronunciation of the translation. Empty if unknown.
 
-CRITICAL — forms and examples are always about the translation (the other language), never the query:
-- If queryLang is ${nativeCode}: forms = ${params.foreignLanguageLabel} inflections (English verbs: "goes · went · gone · going"; otherwise a compact paradigm). examples.text = ${params.foreignLanguageLabel} sentences; examples.translation = ${params.nativeLanguageLabel} gloss.
-- If queryLang is ${foreignCode}: forms = ${params.nativeLanguageLabel} inflections. examples.text = ${params.nativeLanguageLabel} sentences; examples.translation = ${params.foreignLanguageLabel} gloss.
+CRITICAL — forms, synonyms, and examples are always about the translation (the other language), never the query:
+- If queryLang is ${nativeCode}: forms = ${params.foreignLanguageLabel} inflections (English verbs: "goes · went · gone · going"; otherwise a compact paradigm). synonyms = close ${params.foreignLanguageLabel} synonyms of the translation. examples.text = ${params.foreignLanguageLabel} sentences; examples.translation = ${params.nativeLanguageLabel} gloss.
+- If queryLang is ${foreignCode}: forms = ${params.nativeLanguageLabel} inflections. synonyms = close ${params.nativeLanguageLabel} synonyms of the translation. examples.text = ${params.nativeLanguageLabel} sentences; examples.translation = ${params.foreignLanguageLabel} gloss.
 - If the translation is in the user's native language (${native}), leave forms as [] and translationTranscript as "" — they do not need a paradigm or transliteration in their own language.
+- synonyms: 3–6 near-synonyms of the translation, same language and citation form as translation. Single words or short expressions. Do not repeat the translation itself. Empty array if none are useful.
 - 2–3 short examples that naturally include the translation (or a natural inflection). Keep each text under ~120 chars. Empty forms array if not useful.
 
 - Do not wrap values in extra quotes beyond JSON.`;
@@ -205,7 +216,7 @@ export async function quickTranslate(
       model: resolved.model,
       system: buildSystem(params),
       prompt,
-      maxOutputTokens: 800,
+      maxOutputTokens: 1000,
       temperature: 0.3,
       abortSignal: params.abortSignal,
     });

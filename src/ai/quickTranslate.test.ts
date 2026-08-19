@@ -21,6 +21,7 @@ const enQuery: QuickTranslateResult = {
   translation: "яблоко",
   translationTranscript: "ˈjabləkə",
   forms: ["яблоки (мн.)"],
+  synonyms: [],
   examples: [
     {
       text: "Я съел яблоко.",
@@ -38,6 +39,7 @@ const ruQuery: QuickTranslateResult = {
   translation: "rat",
   translationTranscript: "/ræt/",
   forms: ["rats (pl)"],
+  synonyms: ["mouse"],
   examples: [
     {
       text: "The rat escaped from the cage.",
@@ -55,6 +57,7 @@ describe("parseQuickTranslateResponse", () => {
       translation: "apple",
       translationTranscript: "/ˈæp.əl/",
       forms: ["apples (pl)"],
+      synonyms: ["fruit", "apple", "pome", "fruit"],
       examples: [
         { text: "Eat an apple.", translation: "Ешь яблоко." },
         { text: "Eat an apple.", translation: "duplicate" },
@@ -68,6 +71,7 @@ describe("parseQuickTranslateResponse", () => {
       translation: "apple",
       translationTranscript: "/ˈæp.əl/",
       forms: ["apples (pl)"],
+      synonyms: ["fruit", "pome"],
       examples: [{ text: "Eat an apple.", translation: "Ешь яблоко." }],
     });
   });
@@ -78,6 +82,7 @@ describe("parseQuickTranslateResponse", () => {
     expect(parsed.queryLang).toBe("en");
     expect(parsed.lemma).toBe("cat");
     expect(parsed.translation).toBe("кот");
+    expect(parsed.synonyms).toEqual([]);
   });
 
   it("throws when translation is missing", () => {

@@ -140,6 +140,7 @@ import {
   type StructuralAnchor,
 } from "../lib/commentAnchors";
 import { CommentConnectors } from "../components/CommentConnectors";
+import { usePersistedEditorScroll } from "../hooks/usePersistedEditorScroll";
 
 function buildEditorTheme(
   theme: ThemeId,
@@ -281,6 +282,14 @@ export const NoteEditor = memo(function NoteEditor({
   const takePendingCommentFocus = useVaultStore(
     (s) => s.takePendingCommentFocus,
   );
+  const pendingCommentFocusId = useVaultStore((s) =>
+    isActive ? s.pendingCommentFocusId : null,
+  );
+  const [editorMainEl, setEditorMainEl] = useState<HTMLDivElement | null>(null);
+  usePersistedEditorScroll(editorMainEl, path, "live", {
+    active: isActive,
+    skipRestore: Boolean(pendingCommentFocusId),
+  });
   const theme = usePrefsStore((s) => s.prefs.theme);
   const liveFontFamily = usePrefsStore((s) => s.prefs.liveFontFamily);
   const liveFontSize = usePrefsStore((s) => s.prefs.liveFontSize);
@@ -1155,7 +1164,11 @@ export const NoteEditor = memo(function NoteEditor({
             `editable` or the controllers makes BlockNote re-mount the
             ProseMirror view on every tab switch. */}
         <DocumentToolbar />
-        <div className="editor-main" onMouseDown={handleEmptyCanvasMouseDown}>
+        <div
+          className="editor-main"
+          ref={setEditorMainEl}
+          onMouseDown={handleEmptyCanvasMouseDown}
+        >
           <div className="editor-canvas-wrap">
             <div
               className="editor-canvas"

@@ -836,6 +836,20 @@ export function folderPathFromFolderNote(path: string): string | null {
   return parentPath(path);
 }
 
+/**
+ * Sidebar tree row to reveal for an open editor path.
+ * Hidden folder notes (`{folder}/.folder.md`) are not listed in the tree.
+ */
+export function treeRevealTarget(path: string): {
+  treePath: string;
+  isDir: boolean;
+} | null {
+  if (!path) return null;
+  const folder = folderPathFromFolderNote(path);
+  if (folder) return { treePath: folder, isDir: true };
+  return { treePath: path, isDir: false };
+}
+
 /** Create `{folder}/.folder.md` if missing; return its vault-relative path. */
 export async function ensureFolderNote(folder: string): Promise<string> {
   return invoke("ensure_folder_note", { folder });

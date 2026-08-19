@@ -8,6 +8,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { usePersistedEditorScroll } from "../hooks/usePersistedEditorScroll";
 import {
   EditContextMenu,
   type EditContextMenuState,
@@ -79,9 +80,11 @@ export function PlainSourceEditor({ path, content, onChange }: Props) {
   const applyingRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
   const lastExternalRef = useRef(content);
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
   const [contextMenu, setContextMenu] = useState<EditContextMenuState | null>(
     null,
   );
+  usePersistedEditorScroll(scrollEl, path, "source");
 
   useEffect(() => {
     const container = containerRef.current;
@@ -127,10 +130,12 @@ export function PlainSourceEditor({ path, content, onChange }: Props) {
 
     const view = new EditorView({ state, parent: container });
     viewRef.current = view;
+    setScrollEl(view.scrollDOM);
     lastPathRef.current = path;
     lastExternalRef.current = content;
 
     return () => {
+      setScrollEl(null);
       view.destroy();
       viewRef.current = null;
     };

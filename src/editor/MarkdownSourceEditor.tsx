@@ -7,7 +7,8 @@ import {
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usePersistedEditorScroll } from "../hooks/usePersistedEditorScroll";
 import { registerSourceEditor } from "./completedTasksCommand";
 import { refreshDocumentFindIfOpen } from "./find/documentFindController";
 import { sourceFindField } from "./find/sourceFind";
@@ -110,6 +111,8 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
   const applyingRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
   const lastExternalRef = useRef(content);
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
+  usePersistedEditorScroll(scrollEl, path, "source");
 
   useEffect(() => {
     const container = containerRef.current;
@@ -164,6 +167,7 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
 
     const view = new EditorView({ state, parent: container });
     viewRef.current = view;
+    setScrollEl(view.scrollDOM);
     lastPathRef.current = path;
     lastExternalRef.current = content;
     const unregister = registerSourceEditor(path, view);
@@ -171,6 +175,7 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
 
     return () => {
       unregister();
+      setScrollEl(null);
       view.destroy();
       viewRef.current = null;
     };

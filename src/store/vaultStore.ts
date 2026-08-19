@@ -210,6 +210,7 @@ type VaultStore = {
   saving: boolean;
   loading: boolean;
   error: string | null;
+  clearError: () => void;
   /** 1-based page requested when opening a PDF; consumed by PdfViewer. */
   pendingPdfPage: number | null;
   suppressWatchUntil: number;
@@ -1213,6 +1214,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   saving: false,
   loading: false,
   error: null,
+  clearError: () => set({ error: null }),
   pendingPdfPage: null,
   suppressWatchUntil: 0,
 

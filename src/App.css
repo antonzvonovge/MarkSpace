@@ -1630,6 +1630,7 @@ select {
 }
 
 .main-pane {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -2076,45 +2077,46 @@ select {
 }
 
 .document-instance {
-  display: none;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  width: 100%;
-  flex-direction: column;
-}
-
-.document-instance.is-active {
-  display: flex;
-}
-
-/* Graph keeps its WebGL surface alive while other tabs are shown. */
-.document-instance-graph {
   display: flex;
   position: absolute;
   inset: 0;
   visibility: hidden;
   pointer-events: none;
   z-index: 0;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
-.document-instance-graph.is-active {
+.document-instance.is-active {
   visibility: visible;
   pointer-events: auto;
   z-index: 1;
 }
 
+/* Graph uses the same hide strategy so WebGL survives tab switches
+   (`display: none` resets scroll and loses the GL surface). */
+
 .document-editor-slot {
-  display: none;
-  flex: 1;
+  display: flex;
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+  flex-direction: column;
   min-height: 0;
   min-width: 0;
   width: 100%;
-  flex-direction: column;
+  overflow: hidden;
 }
 
 .document-editor-slot.is-active {
-  display: flex;
+  visibility: visible;
+  pointer-events: auto;
+  z-index: 1;
 }
 
 .note-path {
@@ -2466,13 +2468,95 @@ select {
   line-height: 1.5;
 }
 
-.error-banner {
-  margin: 12px 28px 0;
-  padding: 10px 12px;
+.error-toast-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: calc(var(--editor-chrome-height, 35px) + 10px) 16px 0;
+  pointer-events: none;
+}
+
+.error-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, 100%);
+  padding: 10px 6px 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--line));
   border-radius: 10px;
-  background: rgba(180, 72, 72, 0.1);
+  background: color-mix(in srgb, var(--danger) 10%, var(--editor-surface));
   color: var(--danger);
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.18);
   font-size: 0.9rem;
+  line-height: 1.35;
+  pointer-events: auto;
+  animation: error-toast-in 0.22s ease-out;
+}
+
+.error-toast.is-leaving {
+  animation: error-toast-out 0.16s ease-in forwards;
+}
+
+.error-toast-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.error-toast-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.error-toast-dismiss:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+@keyframes error-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes error-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error-toast,
+  .error-toast.is-leaving {
+    animation: none;
+  }
+
+  .error-toast.is-leaving {
+    opacity: 0;
+  }
 }
 
 .editor-shell {
@@ -5456,32 +5540,40 @@ select {
 }
 
 .quick-translate-card {
-  margin-top: 10px;
+  margin-top: 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
   max-height: min(62vh, 520px);
   overflow-y: auto;
-  padding: 16px 18px 18px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--sidebar);
+  padding: 2px 2px 6px;
+  background: transparent;
+}
+
+.quick-translate-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--line);
 }
 
 .quick-translate-lemma {
   margin: 0;
-  font-size: 1.55rem;
-  font-weight: 650;
-  letter-spacing: -0.03em;
-  line-height: 1.25;
+  color: var(--heading-1);
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.15;
 }
 
 .quick-translate-transcript {
-  margin: -8px 0 0;
+  margin: 0;
   color: var(--muted);
-  font-size: 1.05rem;
+  font-size: 0.92rem;
   font-weight: 500;
   font-style: italic;
+  letter-spacing: 0.01em;
   line-height: 1.35;
 }
 
@@ -5493,43 +5585,107 @@ select {
 
 .quick-translate-section-label {
   color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .quick-translate-forms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0;
-  font-size: 1.08rem;
-  line-height: 1.5;
+  padding: 0;
+  list-style: none;
+}
+
+.quick-translate-form {
+  max-width: 100%;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 5.5%, var(--editor-surface));
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.quick-translate-synonyms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quick-translate-synonym {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 11%, var(--editor-surface));
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.quick-translate-synonym:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.quick-translate-synonym:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.quick-translate-synonym:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+:root[data-theme="dark"] .quick-translate-synonym {
+  background: color-mix(in srgb, var(--accent) 20%, var(--editor-surface));
+  color: color-mix(in srgb, var(--accent) 38%, #fff);
 }
 
 .quick-translate-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: 0;
-  padding: 0 0 0 1.6em;
-  list-style: decimal;
+  padding: 0;
+  list-style: none;
 }
 
 .quick-translate-examples li {
-  padding-left: 0.3em;
-}
-
-.quick-translate-examples li + li {
-  margin-top: 12px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 3.5%, var(--editor-surface));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .quick-translate-example-text {
-  display: block;
-  font-size: 1.08rem;
+  margin: 0;
+  font-size: 0.95rem;
   line-height: 1.45;
 }
 
 .quick-translate-example-tr {
-  display: block;
-  margin-top: 4px;
+  margin: 5px 0 0;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 0.84rem;
   line-height: 1.4;
 }
 

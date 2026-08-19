@@ -20,6 +20,7 @@ import { QuickTranslateDialog } from "./components/QuickTranslateDialog";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { StatusBar } from "./components/StatusBar";
+import { ErrorToast } from "./components/ErrorToast";
 import { SyncConflictBanner } from "./components/SyncConflictBanner";
 import { EditorChrome } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -286,13 +287,12 @@ const MainPane = memo(function MainPane({
   const tabs = useVaultStore((s) => s.tabs);
   const activePath = useVaultStore((s) => s.activePath);
   const viewMode = useVaultStore((s) => s.viewMode);
-  const error = useVaultStore((s) => s.error);
   const closeSettings = usePrefsStore((s) => s.closeSettings);
   const warmLivePaths = useWarmLiveMarkdownPaths(tabs, activePath);
 
   return (
     <main className="main-pane">
-      {error && <div className="error-banner">{error}</div>}
+      <ErrorToast />
       <SyncConflictBanner />
       <div className="main-pane-body">
         {!vaultPath && tabs.length === 0 && (
