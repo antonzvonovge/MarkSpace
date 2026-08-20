@@ -13,7 +13,7 @@ import {
   PlusIcon,
   RefreshIcon,
 } from "./treeIcons";
-import { GRAPH_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
+import { GRAPH_TAB_PATH, INCOMING_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
 
 export type TreeCreateKind =
   | "note"
@@ -237,7 +237,8 @@ export function WorkspaceHeaderActions({
   const canLocate =
     Boolean(activePath) &&
     activePath !== GRAPH_TAB_PATH &&
-    activePath !== SETTINGS_TAB_PATH;
+    activePath !== SETTINGS_TAB_PATH &&
+    activePath !== INCOMING_TAB_PATH;
   const createDisabled = isUnderDiaryProject(
     selectedFolderPath,
     projectPropertiesByPath,

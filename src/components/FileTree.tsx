@@ -56,6 +56,7 @@ import {
   ProjectPropertiesDialog,
 } from "./AppDialog";
 import { CommentsInboxSection } from "./CommentsInboxSection";
+import { IncomingSection } from "./IncomingSection";
 import { buildUnresolvedCommentCounts } from "../lib/commentCounts";
 import {
   loadFavoritesSectionCollapsed,
@@ -2239,6 +2240,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           beginOsImport(parent, e.dataTransfer);
         }}
       >
+        <IncomingSection />
         {favoriteNodes.length > 0 ? (
           <div className="favorites-section">
             <div className="favorites-header">

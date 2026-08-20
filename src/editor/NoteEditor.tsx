@@ -83,7 +83,7 @@ import { isUnderDiaryProject } from "../lib/diaryNotes";
 import { editorFontStack } from "../settings/applyPrefs";
 import type { ThemeId } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";
-import { useVaultStore } from "../store/vaultStore";
+import { isIncomingTab, useVaultStore } from "../store/vaultStore";
 import { createLayoutAgnosticKeymapExtension } from "./layoutAgnosticKeymap";
 import { createListOnlyNestingExtension } from "./listOnlyNesting";
 import { NoteSlashSuggestionMenu } from "./NoteSlashSuggestionMenu";
@@ -265,12 +265,18 @@ export const NoteEditor = memo(function NoteEditor({
   const markDirty = useVaultStore((s) => s.markDirty);
   const vaultPath = useVaultStore((s) => s.vaultPath);
   // Inactive keep-alive tabs must not follow the active note's outline/comments.
-  const showOutline = useVaultStore((s) =>
-    isActive ? s.showOutline : false,
-  );
-  const showComments = useVaultStore((s) =>
-    isActive ? s.showComments : false,
-  );
+  const showOutline = useVaultStore((s) => {
+    if (!isActive) return false;
+    const tab = s.tabs.find((t) => t.path === s.activePath);
+    if (tab && isIncomingTab(tab)) return false;
+    return s.showOutline;
+  });
+  const showComments = useVaultStore((s) => {
+    if (!isActive) return false;
+    const tab = s.tabs.find((t) => t.path === s.activePath);
+    if (tab && isIncomingTab(tab)) return false;
+    return s.showComments;
+  });
   const activeNoteComments = useVaultStore((s) =>
     isActive ? s.activeNoteComments : EMPTY_COMMENTS,
   );

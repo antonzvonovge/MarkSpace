@@ -321,6 +321,26 @@ export function VaultSectionIcon() {
   );
 }
 
+/** Sidebar Incoming section — inbox tray, same weight as vault/comments. */
+export function IncomingSectionIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 8.25 4.15 4.7A1.4 1.4 0 0 1 5.4 4h5.2a1.4 1.4 0 0 1 1.25.7L13.5 8.25v3.5A1.25 1.25 0 0 1 12.25 13h-8.5A1.25 1.25 0 0 1 2.5 11.75v-3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.5 8.25h2.35l.85 1.6h4.6l.85-1.6H13.5"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** Sidebar Favorites section — outline star, same weight as vault/comments. */
 export function FavoritesSectionIcon() {
   return (

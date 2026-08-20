@@ -110,10 +110,15 @@ function normalizeStringList(raw: unknown, max: number): string[] {
   return out;
 }
 
-function normalizeSynonyms(raw: unknown, translation: string): string[] {
-  const transKey = translation.trim().toLowerCase();
+function normalizeSynonyms(
+  raw: unknown,
+  ...exclude: string[]
+): string[] {
+  const skip = new Set(
+    exclude.map((s) => s.trim().toLowerCase()).filter(Boolean),
+  );
   return normalizeStringList(raw, 6).filter(
-    (item) => item.toLowerCase() !== transKey,
+    (item) => !skip.has(item.toLowerCase()),
   );
 }
 
@@ -165,7 +170,7 @@ export function parseQuickTranslateResponse(
     translation,
     translationTranscript: normalizeLine(parsed.translationTranscript),
     forms: normalizeStringList(parsed.forms, 8),
-    synonyms: normalizeSynonyms(parsed.synonyms, translation),
+    synonyms: normalizeSynonyms(parsed.synonyms, translation, lemma),
     examples: normalizeExamples(parsed.examples),
   };
 }
@@ -177,7 +182,7 @@ function buildSystem(params: QuickTranslateParams): string {
   const foreignCode = params.foreignLanguageCode.trim() || DEFAULT_FOREIGN_LANG;
   return `You are a bilingual ${params.foreignLanguageLabel} ↔ ${params.nativeLanguageLabel} dictionary for a notes app (user native language: ${native}).
 The user types a word or short expression in ${foreign} or ${native} (detect which).
-Everything useful — the head translation, inflections, and examples — must be in the OTHER language. Inverse of the query. Never inflect the queried word itself.
+The head translation is in the OTHER language (inverse of the query). Learning aids — synonyms, inflections, and example sentences — are always in ${params.foreignLanguageLabel}, never in the user's native language.
 
 Reply with JSON only, no markdown fences:
 {"queryLang":"${foreignCode}"|"${nativeCode}","lemma":"...","transcript":"...","translation":"...","translationTranscript":"...","forms":["..."],"synonyms":["..."],"examples":[{"text":"...","translation":"..."}]}
@@ -188,12 +193,11 @@ Reply with JSON only, no markdown fences:
 - translation: citation form in the OTHER language (${params.foreignLanguageLabel} if queryLang is ${nativeCode}, ${params.nativeLanguageLabel} if queryLang is ${foreignCode}). For English verbs: infinitive without "to" (go). For other verbs: the usual dictionary citation form.
 - translationTranscript: pronunciation of the translation. Empty if unknown.
 
-CRITICAL — forms, synonyms, and examples are always about the translation (the other language), never the query:
-- If queryLang is ${nativeCode}: forms = ${params.foreignLanguageLabel} inflections (English verbs: "goes · went · gone · going"; otherwise a compact paradigm). synonyms = close ${params.foreignLanguageLabel} synonyms of the translation. examples.text = ${params.foreignLanguageLabel} sentences; examples.translation = ${params.nativeLanguageLabel} gloss.
-- If queryLang is ${foreignCode}: forms = ${params.nativeLanguageLabel} inflections. synonyms = close ${params.nativeLanguageLabel} synonyms of the translation. examples.text = ${params.nativeLanguageLabel} sentences; examples.translation = ${params.foreignLanguageLabel} gloss.
-- If the translation is in the user's native language (${native}), leave forms as [] and translationTranscript as "" — they do not need a paradigm or transliteration in their own language.
-- synonyms: 3–6 near-synonyms of the translation, same language and citation form as translation. Single words or short expressions. Do not repeat the translation itself. Empty array if none are useful.
-- 2–3 short examples that naturally include the translation (or a natural inflection). Keep each text under ~120 chars. Empty forms array if not useful.
+CRITICAL — never give ${params.nativeLanguageLabel} synonyms, inflections, or example sentences. The user already knows ${params.nativeLanguageLabel}.
+- If queryLang is ${nativeCode}: forms = ${params.foreignLanguageLabel} inflections of the translation (English verbs: "goes · went · gone · going"; otherwise a compact paradigm). synonyms = close ${params.foreignLanguageLabel} synonyms of the translation. examples.text = ${params.foreignLanguageLabel} sentences that use the translation; examples.translation = ${params.nativeLanguageLabel} gloss.
+- If queryLang is ${foreignCode}: forms = [] and translationTranscript = "". synonyms = close ${params.foreignLanguageLabel} synonyms of the lemma (the queried word), not of the ${params.nativeLanguageLabel} translation. examples.text = ${params.foreignLanguageLabel} sentences that use the lemma; examples.translation = ${params.nativeLanguageLabel} gloss.
+- synonyms: 3–6 near-synonyms in ${params.foreignLanguageLabel}, citation form. Single words or short expressions. Do not repeat the lemma or the translation. Empty array if none are useful.
+- 2–3 short examples. Keep each text under ~120 chars. Empty forms array if not useful.
 
 - Do not wrap values in extra quotes beyond JSON.`;
 }

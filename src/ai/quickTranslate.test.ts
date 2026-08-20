@@ -57,7 +57,7 @@ describe("parseQuickTranslateResponse", () => {
       translation: "apple",
       translationTranscript: "/ˈæp.əl/",
       forms: ["apples (pl)"],
-      synonyms: ["fruit", "apple", "pome", "fruit"],
+      synonyms: ["fruit", "apple", "pome", "яблоко", "fruit"],
       examples: [
         { text: "Eat an apple.", translation: "Ешь яблоко." },
         { text: "Eat an apple.", translation: "duplicate" },

@@ -814,6 +814,59 @@ select {
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
+.incoming-section {
+  flex-shrink: 0;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="dark"] .incoming-section {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.incoming-section-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--tree-row-gap);
+  width: 100%;
+  min-height: var(--tree-row-height);
+  padding: 2px var(--tree-pad-x);
+  border: 0;
+  background: transparent;
+  color: var(--sidebar-text);
+  font-size: var(--tree-label-size);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.incoming-section-btn:hover {
+  background: var(--sidebar-hover);
+}
+
+.incoming-section-btn.is-active {
+  background: var(--sidebar-active);
+}
+
+.incoming-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--tree-icon-size);
+  height: var(--tree-icon-size);
+  color: inherit;
+}
+
+.incoming-section-icon svg {
+  display: block;
+  width: var(--tree-icon-size);
+  height: var(--tree-icon-size);
+}
+
 :root[data-theme="dark"] .favorites-section {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
@@ -1239,7 +1292,8 @@ select {
 
 /* Keep Favorites / Comments headers aligned with the vault root row. */
 :root[data-density="compact"] .favorites-header,
-:root[data-density="compact"] .comments-inbox-header {
+:root[data-density="compact"] .comments-inbox-header,
+:root[data-density="compact"] .incoming-section-btn {
   --tree-row-height: 28px;
   --tree-row-gap: 6px;
   --tree-icon-size: 20px;
@@ -2094,6 +2148,11 @@ select {
   visibility: visible;
   pointer-events: auto;
   z-index: 1;
+}
+
+.incoming-empty-wrap {
+  align-items: center;
+  justify-content: center;
 }
 
 /* Graph uses the same hide strategy so WebGL survives tab switches
@@ -3673,6 +3732,12 @@ select {
   border-left: 3px solid rgba(203, 17, 171, 0.45);
   color: var(--muted);
   margin: 0.85em 0;
+  padding-left: 0.85em;
+}
+
+/* Empty quote + BlockNote placeholder ::after are flex siblings; don't shrink the bar. */
+.editor-canvas .bn-block-content[data-content-type="quote"] > blockquote {
+  flex-shrink: 0;
 }
 
 /* Light syntax-highlighted code blocks (override BlockNote’s #161616 chrome). */
@@ -6428,10 +6493,20 @@ select {
 }
 
 .chat-bubble.is-clamped {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  max-height: calc(1.45em * 8 + 16px);
   overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 calc(100% - 2.6em),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 calc(100% - 2.6em),
+    transparent 100%
+  );
 }
 
 .chat-bubble-toggle {

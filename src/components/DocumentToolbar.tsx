@@ -1,7 +1,7 @@
 import { formatToolbarPath } from "../lib/documentPath";
 import { documentKind } from "../lib/vaultApi";
 import { useDocumentFindStore } from "../store/documentFindStore";
-import { useVaultStore, type ViewMode } from "../store/vaultStore";
+import { useVaultStore, type ViewMode, isIncomingTab } from "../store/vaultStore";
 import { DocumentFindBar } from "./DocumentFindBar";
 
 const MODES: { mode: ViewMode; label: string }[] = [
@@ -59,6 +59,10 @@ export function DocumentToolbar({
   const unresolvedCommentCount = useVaultStore(
     (s) => s.activeNoteComments.filter((c) => !c.resolved).length,
   );
+  const incomingActive = useVaultStore((s) => {
+    const tab = s.tabs.find((t) => t.path === s.activePath);
+    return Boolean(tab && isIncomingTab(tab));
+  });
 
   const findOpen = useDocumentFindStore((s) => s.open);
 
@@ -73,8 +77,8 @@ export function DocumentToolbar({
     documentKind(activePath!) === "markdown";
 
   const liveMode = viewMode === "live";
-  const showOutlineBtn = liveMode && showOutlineToggle;
-  const showCommentsBtn = liveMode && showCommentsToggle;
+  const showOutlineBtn = liveMode && showOutlineToggle && !incomingActive;
+  const showCommentsBtn = liveMode && showCommentsToggle && !incomingActive;
 
   const commentsBadge =
     unresolvedCommentCount > 99
@@ -111,6 +115,7 @@ export function DocumentToolbar({
         <div className="document-toolbar-path is-empty" />
       )}
       <div className="document-toolbar-actions">
+        {incomingActive ? null : (
         <div
           className="view-mode-switch"
           role="radiogroup"
@@ -134,6 +139,7 @@ export function DocumentToolbar({
             </button>
           ))}
         </div>
+        )}
       </div>
       {showCommentsBtn ? (
         <button

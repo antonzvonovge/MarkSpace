@@ -238,6 +238,21 @@ export function resolveDiaryProjectRoot(opts: {
   return diaries.length === 1 ? diaries[0]! : null;
 }
 
+/**
+ * Diary project for Incoming / daily-note home:
+ * same as `resolveDiaryProjectRoot`, then the first diary if several exist.
+ */
+export function preferredDiaryProjectRoot(opts: {
+  selectedFolderPath: string;
+  activePath: string | null | undefined;
+  chatProjectPath: string | null | undefined;
+  projectPropertiesByPath: Record<string, ProjectProperties>;
+}): string | null {
+  const resolved = resolveDiaryProjectRoot(opts);
+  if (resolved) return resolved;
+  return listDiaryProjectRoots(opts.projectPropertiesByPath)[0] ?? null;
+}
+
 /** Local calendar day as `YYYY-MM-DD`. */
 export function isoDateOnly(date: Date): string {
   const yyyy = String(date.getFullYear());

@@ -25,6 +25,7 @@ import { SyncConflictBanner } from "./components/SyncConflictBanner";
 import { EditorChrome } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { NotePageChrome } from "./components/NotePageChrome";
+import { IncomingView } from "./components/IncomingView";
 import { TagGraphView } from "./components/graph/TagGraphView";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { PlainSourceEditor } from "./editor/PlainSourceEditor";
@@ -70,7 +71,7 @@ import { useFocusUiStore } from "./store/focusUiStore";
 import { usePrefsStore } from "./store/prefsStore";
 import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
-import { isFileTab, isSettingsTab, useVaultStore } from "./store/vaultStore";
+import { isFileTab, isGraphTab, isIncomingTab, isSettingsTab, useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import { useWarmLiveMarkdownPaths } from "./hooks/useWarmLiveMarkdownPaths";
 import { getEmbeddingsIndexStatus } from "./lib/vaultApi";
@@ -89,7 +90,7 @@ const DocumentTab = memo(function DocumentTab({
   onCloseSettings,
 }: {
   path: string;
-  kind: "settings" | "graph" | "file";
+  kind: "settings" | "graph" | "incoming" | "file";
   isActive: boolean;
   /** LRU keep-alive for Live markdown (BlockNote). */
   keepLiveMounted: boolean;
@@ -102,7 +103,29 @@ const DocumentTab = memo(function DocumentTab({
       : (s.tabs.find((t) => t.path === path)?.body ?? ""),
   );
   // Inactive tabs stay on a warm Live instance; ignore global viewMode flips.
-  const viewMode = useVaultStore((s) => (isActive ? s.viewMode : "live"));
+  const viewMode = useVaultStore((s) =>
+    isActive && kind !== "incoming" ? s.viewMode : "live",
+  );
+
+  if (kind === "incoming") {
+    return (
+      <div
+        className={
+          isActive ? "document-instance is-active" : "document-instance"
+        }
+        aria-hidden={!isActive}
+        inert={!isActive}
+      >
+        <IncomingView
+          path={path}
+          content={content}
+          isActive={isActive}
+          keepLiveMounted={keepLiveMounted}
+          onChange={(markdown) => onEditorChange(path, markdown)}
+        />
+      </div>
+    );
+  }
 
   if (kind === "settings") {
     return (
@@ -321,6 +344,7 @@ const MainPane = memo(function MainPane({
                 {(() => {
                   const activeTab = tabs.find((t) => t.path === activePath);
                   if (activeTab && !isFileTab(activeTab)) return null;
+                  if (activeTab && isIncomingTab(activeTab)) return null;
                   return (
                     (documentKind(activePath) === "markdown" ||
                       documentKind(activePath) === "mdlnks" ||
@@ -340,9 +364,11 @@ const MainPane = memo(function MainPane({
                   {tabs.map((tab) => {
                     const tabKind = isSettingsTab(tab)
                       ? ("settings" as const)
-                      : !isFileTab(tab)
+                      : isGraphTab(tab)
                         ? ("graph" as const)
-                        : ("file" as const);
+                        : isIncomingTab(tab)
+                          ? ("incoming" as const)
+                          : ("file" as const);
                     return (
                       <DocumentTab
                         key={tab.path}
@@ -749,6 +775,7 @@ function App() {
         if (!path) return;
         const tab = st.tabs.find((t) => t.path === path);
         if (tab && !isFileTab(tab)) return;
+        if (tab && isIncomingTab(tab)) return;
         const kind = documentKind(path);
         if (kind !== "markdown" && kind !== "mdlnks" && kind !== "mddict" && kind !== "mdhabit") return;
         toggleViewMode();

@@ -12,6 +12,7 @@ import {
   isUnderDiaryProject,
   parseDailyNoteDate,
   parseIsoDateOnly,
+  preferredDiaryProjectRoot,
   resolveDiaryProjectRoot,
   vaultProjectRootOf,
 } from "./diaryNotes";
@@ -207,5 +208,28 @@ describe("resolveDiaryProjectRoot", () => {
         projectPropertiesByPath: twoDiaries,
       }),
     ).toBeNull();
+  });
+});
+
+describe("preferredDiaryProjectRoot", () => {
+  it("falls back to the first diary when several exist", () => {
+    const twoDiaries = {
+      ...diaryProps,
+      Diary2: {
+        path: "Diary2",
+        about: "",
+        projectType: "diary" as const,
+        learningLanguage: "",
+        color: "",
+      },
+    };
+    expect(
+      preferredDiaryProjectRoot({
+        selectedFolderPath: "",
+        activePath: null,
+        chatProjectPath: null,
+        projectPropertiesByPath: twoDiaries,
+      }),
+    ).toBe("Diary2");
   });
 });

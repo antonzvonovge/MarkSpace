@@ -94,6 +94,7 @@ import {
   diaryProjectRootForPath,
   parseDailyNoteDate,
   parseIsoDateOnly,
+  preferredDiaryProjectRoot,
 } from "../lib/diaryNotes";
 import { normalizeDayMarkerId } from "../lib/dayMarkers";
 import {
@@ -121,13 +122,16 @@ function scheduleTagCatalogRefresh(refresh: () => Promise<void>) {
   }, TAG_CATALOG_REFRESH_MS);
 }
 
-export type TabKind = "file" | "graph" | "settings";
+export type TabKind = "file" | "graph" | "settings" | "incoming";
 
 /** Singleton virtual path for the tag graph tab (never a vault-relative file). */
 export const GRAPH_TAB_PATH = "markspace:graph";
 
 /** Singleton virtual path for the settings tab. */
 export const SETTINGS_TAB_PATH = "markspace:settings";
+
+/** Singleton virtual path for Incoming when no diary project exists. */
+export const INCOMING_TAB_PATH = "markspace:incoming";
 
 export type EditorTab = {
   path: string;
@@ -248,6 +252,11 @@ type VaultStore = {
   }) => Promise<void>;
   /** Open (or focus) the singleton settings tab. */
   openSettingsTab: (options?: {
+    syncTreeSelection?: boolean;
+    skipNavHistory?: boolean;
+  }) => Promise<void>;
+  /** Open Incoming: today's daily note in Live, if a diary project exists. */
+  openIncomingTab: (options?: {
     syncTreeSelection?: boolean;
     skipNavHistory?: boolean;
   }) => Promise<void>;
@@ -373,9 +382,20 @@ export function isSettingsTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
   return tab.kind === "settings" || tab.path === SETTINGS_TAB_PATH;
 }
 
-/** Tabs backed by app UI instead of a vault file (graph, settings). */
+export function isIncomingTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
+  return tab.kind === "incoming" || tab.path === INCOMING_TAB_PATH;
+}
+
+/** Incoming with no daily-note file (no diary project). */
+export function isIncomingPlaceholder(
+  tab: Pick<EditorTab, "kind" | "path">,
+): boolean {
+  return isIncomingTab(tab) && tab.path === INCOMING_TAB_PATH;
+}
+
+/** Tabs backed by app UI instead of a vault file (graph, settings, empty Incoming). */
 export function isVirtualTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
-  return isGraphTab(tab) || isSettingsTab(tab);
+  return isGraphTab(tab) || isSettingsTab(tab) || isIncomingPlaceholder(tab);
 }
 
 export function isFileTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
@@ -492,6 +512,7 @@ function flushActiveEditorBuffer(get: () => VaultStore): void {
 function tabLabel(path: string, kind?: TabKind): string {
   if (kind === "graph" || path === GRAPH_TAB_PATH) return "Graph";
   if (kind === "settings" || path === SETTINGS_TAB_PATH) return "Settings";
+  if (kind === "incoming" || path === INCOMING_TAB_PATH) return "Incoming";
   if (isFolderNotePath(path)) {
     const folder = parentPath(path);
     return folder.split("/").pop() || folder || "Folder";
@@ -683,7 +704,14 @@ function recordRecentFile(
   get: () => VaultStore,
   path: string,
 ) {
-  if (!path || path === GRAPH_TAB_PATH || path === SETTINGS_TAB_PATH) return;
+  if (
+    !path ||
+    path === GRAPH_TAB_PATH ||
+    path === SETTINGS_TAB_PATH ||
+    path === INCOMING_TAB_PATH
+  ) {
+    return;
+  }
   const vaultPath = get().vaultPath;
   if (!vaultPath) return;
   const recentPaths = pushRecentPath(get().recentPaths, path);
@@ -1410,7 +1438,9 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
               ? "graph"
               : isSettingsTab({ kind: t.kind ?? "file", path: t.path })
                 ? "settings"
-                : "file",
+                : isIncomingTab({ kind: t.kind ?? "file", path: t.path })
+                  ? "incoming"
+                  : "file",
             pinned: Boolean(t.pinned),
           })),
       );
@@ -1452,6 +1482,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
             ? session.activePath
             : restoredTabs[0].path;
         const activeTab = restoredTabs.find((t) => t.path === active);
+        if (activeTab && isIncomingTab(activeTab)) {
+          await get().openIncomingTab({ syncTreeSelection: false });
+          return;
+        }
         if (activeTab && isVirtualTab(activeTab)) {
           await get().openNote(activeTab.path, { syncTreeSelection: false });
           return;
@@ -1544,6 +1578,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     if (path === SETTINGS_TAB_PATH) {
       await get().openSettingsTab({
+        syncTreeSelection: options?.syncTreeSelection,
+        skipNavHistory: options?.skipNavHistory,
+      });
+      return;
+    }
+    if (path === INCOMING_TAB_PATH) {
+      await get().openIncomingTab({
         syncTreeSelection: options?.syncTreeSelection,
         skipNavHistory: options?.skipNavHistory,
       });
@@ -1737,6 +1778,135 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       options?.syncTreeSelection !== false,
       options?.skipNavHistory === true,
     );
+  },
+
+  openIncomingTab: async (options) => {
+    const syncTreeSelection = options?.syncTreeSelection === true;
+    const skipNavHistory = options?.skipNavHistory === true;
+    const st = get();
+    let chatProjectPath: string | null = null;
+    try {
+      const { useChatStore } = await import("./chatStore");
+      chatProjectPath = useChatStore.getState().projectPath;
+    } catch {
+      chatProjectPath = null;
+    }
+    const projectRoot = preferredDiaryProjectRoot({
+      selectedFolderPath: st.selectedFolderPath,
+      activePath: st.activePath,
+      chatProjectPath,
+      projectPropertiesByPath: st.projectPropertiesByPath,
+    });
+
+    if (!projectRoot) {
+      await openSingletonTab(
+        set,
+        get,
+        INCOMING_TAB_PATH,
+        "incoming",
+        syncTreeSelection,
+        skipNavHistory,
+      );
+      set({ viewMode: "live", showOutline: false, showComments: false });
+      return;
+    }
+
+    const day = new Date();
+    const rel = dailyNotePath(projectRoot, day);
+    try {
+      try {
+        await readNote(rel);
+      } catch {
+        const createdPath = await createNote(rel);
+        const language = await nativeLanguageFromPrefs();
+        const tagged = setNoteTags(dailyNoteOpeningMarkdown(day, language), [
+          "diary",
+        ]);
+        await writeNote(createdPath, tagged);
+        await get().refreshTree();
+        void get().refreshVaultTags();
+      }
+
+      flushActiveEditorBuffer(get);
+      const leavingPath = get().activePath;
+      const stashed = stashActiveIntoTabs(
+        get().tabs,
+        leavingPath,
+        get().content,
+        get().dirty,
+      );
+      if (stashed !== get().tabs) {
+        set({ tabs: stashed });
+      }
+
+      const leavingDirty =
+        leavingPath != null &&
+        leavingPath !== rel &&
+        Boolean(get().tabs.find((t) => t.path === leavingPath)?.dirty);
+
+      const tabs = get().tabs;
+      const outgoing = tabs.filter(
+        (t) => isIncomingTab(t) && t.path !== rel,
+      );
+      for (const tab of outgoing) {
+        if (tab.dirty) void persistDirtyTab(set, get, tab.path);
+      }
+
+      let nextTabs = tabs.filter((t) => !isIncomingTab(t) || t.path === rel);
+      if (!nextTabs.some((t) => t.path === rel)) {
+        nextTabs = [
+          ...nextTabs,
+          { path: rel, kind: "incoming", preview: false },
+        ];
+      } else {
+        nextTabs = nextTabs.map((t) =>
+          t.path === rel ? { ...t, kind: "incoming", preview: false } : t,
+        );
+      }
+
+      const existing = nextTabs.find((t) => t.path === rel);
+      if (get().activePath === rel && existing && isIncomingTab(existing)) {
+        set({
+          tabs: nextTabs,
+          viewMode: "live",
+          showOutline: false,
+          showComments: false,
+          ...(syncTreeSelection
+            ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+            : { treeSelectionVisible: false }),
+        });
+        persistSession(get());
+        return;
+      }
+
+      const loadBody = async (): Promise<{ body: string; dirty: boolean }> => {
+        if (existing?.body !== undefined) {
+          return { body: existing.body, dirty: Boolean(existing.dirty) };
+        }
+        return { body: await readNote(rel), dirty: false };
+      };
+
+      const { body, dirty } = await loadBody();
+      activateLoaded(
+        set,
+        get().vaultPath,
+        rel,
+        body,
+        nextTabs,
+        dirty,
+        syncTreeSelection,
+      );
+      set({ viewMode: "live", showOutline: false, showComments: false });
+      persistSession(get());
+      recordRecentFile(set, get, rel);
+      if (!skipNavHistory) recordNavVisit(set, get, rel);
+      void get().loadActiveNoteComments();
+      if (leavingDirty && leavingPath) {
+        void persistDirtyTab(set, get, leavingPath);
+      }
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
   },
 
   goBack: async () => {
