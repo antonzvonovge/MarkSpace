@@ -14,7 +14,8 @@ export type SettingCategory =
   | "memory"
   | "diary"
   | "indexing"
-  | "sync";
+  | "sync"
+  | "about";
 
 export type SettingControl =
   | {
@@ -62,6 +63,7 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "diary", label: "Diary", scope: "vault" },
   { id: "indexing", label: "Indexing", scope: "app" },
   { id: "sync", label: "Sync", scope: "vault", separatorBefore: true },
+  { id: "about", label: "About", scope: "app", separatorBefore: true },
 ];
 
 const FONT_FAMILY_OPTIONS = [

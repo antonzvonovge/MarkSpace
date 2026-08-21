@@ -5130,6 +5130,22 @@ button.status-bar-item.status-bar-timer-time:hover {
   background: var(--accent-strong);
 }
 
+.about-version {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.about-update-status {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.about-update-status.is-error {
+  color: var(--danger);
+}
+
 .agent-memory-toggle {
   display: flex;
   align-items: center;

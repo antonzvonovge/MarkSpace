@@ -9,6 +9,7 @@ import {
 } from "../../settings/registry";
 import type { PrefKey } from "../../settings/types";
 import { usePrefsStore, useSettingsTabActive } from "../../store/prefsStore";
+import { AboutSettingsPanel } from "./AboutSettingsPanel";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DiarySettingsPanel } from "./DiarySettingsPanel";
 import { IndexingSettingsPanel } from "./IndexingSettingsPanel";
@@ -30,6 +31,7 @@ const PANEL_CATEGORIES = new Set([
   "memory",
   "diary",
   "indexing",
+  "about",
 ]);
 
 function queryMatchesSync(query: string): boolean {
@@ -137,6 +139,19 @@ function queryMatchesMcp(query: string): boolean {
   );
 }
 
+function queryMatchesAbout(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    "about".includes(q) ||
+    q.includes("about") ||
+    q.includes("version") ||
+    q.includes("update") ||
+    q.includes("upgrade") ||
+    q.includes("release")
+  );
+}
+
 export function SettingsPage({ onClose }: Props) {
   const prefs = usePrefsStore((s) => s.prefs);
   const setPref = usePrefsStore((s) => s.setPref);
@@ -166,6 +181,7 @@ export function SettingsPage({ onClose }: Props) {
   const showMemoryInSearch = searching && queryMatchesMemory(query);
   const showDiaryInSearch = searching && queryMatchesDiary(query);
   const showIndexingInSearch = searching && queryMatchesIndexing(query);
+  const showAboutInSearch = searching && queryMatchesAbout(query);
 
   const rows = useMemo(() => {
     if (searching) {
@@ -195,6 +211,8 @@ export function SettingsPage({ onClose }: Props) {
     (!searching && category === "diary") || showDiaryInSearch;
   const showIndexingPanel =
     (!searching && category === "indexing") || showIndexingInSearch;
+  const showAboutPanel =
+    (!searching && category === "about") || showAboutInSearch;
 
   return (
     <div className="settings-page">
@@ -256,7 +274,8 @@ export function SettingsPage({ onClose }: Props) {
             !showMcpPanel &&
             !showMemoryPanel &&
             !showDiaryPanel &&
-            !showIndexingPanel && (
+            !showIndexingPanel &&
+            !showAboutPanel && (
               <div className="settings-empty">
                 No settings match “{query.trim()}”
               </div>
@@ -325,6 +344,13 @@ export function SettingsPage({ onClose }: Props) {
             <section className="settings-section">
               {searching && <h2 className="settings-section-title">Sync</h2>}
               <SyncSettingsPanel />
+            </section>
+          )}
+
+          {showAboutPanel && (
+            <section className="settings-section">
+              {searching && <h2 className="settings-section-title">About</h2>}
+              <AboutSettingsPanel />
             </section>
           )}
 
