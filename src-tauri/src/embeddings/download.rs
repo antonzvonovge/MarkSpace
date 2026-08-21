@@ -132,7 +132,7 @@ pub fn download_embedding_model(app: AppHandle) -> Result<EmbeddingModelStatus, 
                         error: None,
                     };
                     emit_status(&app, done);
-                    super::worker::notify_model_available(dir);
+                    super::host::notify_model_available(dir);
                 }
                 Err(error) => {
                     let failed = EmbeddingModelStatus {

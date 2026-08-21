@@ -8,6 +8,8 @@
     "build": "npm run drawio:download && tsc && node --max-old-space-size=8192 ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "sidecar:stage": "node scripts/stage-embeddings-sidecar.mjs",
+    "sidecar:stage:release": "node scripts/stage-embeddings-sidecar.mjs --release",
     "test": "vitest run --environment jsdom",
     "drawio:download": "node scripts/download-drawio.mjs",
     "drawio:sync-mcp": "node scripts/sync-drawio-mcp.mjs",

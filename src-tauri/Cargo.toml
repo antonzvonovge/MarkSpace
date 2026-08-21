@@ -4,6 +4,7 @@ version = "1.22.0"
 description = "Markdown-first local vault with Notion-like editing"
 authors = ["you"]
 edition = "2021"
+default-run = "markspace"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,6 +14,10 @@ edition = "2021"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "markspace_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "markspace-embeddings"
+path = "src/bin/markspace_embeddings.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

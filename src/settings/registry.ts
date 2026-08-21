@@ -13,6 +13,7 @@ export type SettingCategory =
   | "mcp"
   | "memory"
   | "diary"
+  | "indexing"
   | "sync";
 
 export type SettingControl =
@@ -59,6 +60,7 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "mcp", label: "MCP", scope: "app" },
   { id: "memory", label: "Memory", scope: "vault" },
   { id: "diary", label: "Diary", scope: "vault" },
+  { id: "indexing", label: "Indexing", scope: "vault" },
   { id: "sync", label: "Sync", scope: "vault", separatorBefore: true },
 ];
 

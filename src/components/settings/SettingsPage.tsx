@@ -11,6 +11,7 @@ import type { PrefKey } from "../../settings/types";
 import { usePrefsStore, useSettingsTabActive } from "../../store/prefsStore";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DiarySettingsPanel } from "./DiarySettingsPanel";
+import { IndexingSettingsPanel } from "./IndexingSettingsPanel";
 import { KeysSettingsPanel } from "./KeysSettingsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
@@ -21,7 +22,15 @@ type Props = {
   onClose: () => void;
 };
 
-const PANEL_CATEGORIES = new Set(["sync", "keys", "ai", "mcp", "memory", "diary"]);
+const PANEL_CATEGORIES = new Set([
+  "sync",
+  "keys",
+  "ai",
+  "mcp",
+  "memory",
+  "diary",
+  "indexing",
+]);
 
 function queryMatchesSync(query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -103,6 +112,19 @@ function queryMatchesDiary(query: string): boolean {
   );
 }
 
+function queryMatchesIndexing(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    "indexing".includes(q) ||
+    q.includes("index") ||
+    q.includes("indexing") ||
+    q.includes("embedding") ||
+    q.includes("semantic") ||
+    q.includes("delay")
+  );
+}
+
 function queryMatchesMcp(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
@@ -143,6 +165,7 @@ export function SettingsPage({ onClose }: Props) {
   const showMcpInSearch = searching && queryMatchesMcp(query);
   const showMemoryInSearch = searching && queryMatchesMemory(query);
   const showDiaryInSearch = searching && queryMatchesDiary(query);
+  const showIndexingInSearch = searching && queryMatchesIndexing(query);
 
   const rows = useMemo(() => {
     if (searching) {
@@ -170,6 +193,8 @@ export function SettingsPage({ onClose }: Props) {
     (!searching && category === "memory") || showMemoryInSearch;
   const showDiaryPanel =
     (!searching && category === "diary") || showDiaryInSearch;
+  const showIndexingPanel =
+    (!searching && category === "indexing") || showIndexingInSearch;
 
   return (
     <div className="settings-page">
@@ -230,7 +255,8 @@ export function SettingsPage({ onClose }: Props) {
             !showAiPanel &&
             !showMcpPanel &&
             !showMemoryPanel &&
-            !showDiaryPanel && (
+            !showDiaryPanel &&
+            !showIndexingPanel && (
               <div className="settings-empty">
                 No settings match “{query.trim()}”
               </div>
@@ -283,6 +309,15 @@ export function SettingsPage({ onClose }: Props) {
             <section className="settings-section">
               {searching && <h2 className="settings-section-title">Diary</h2>}
               <DiarySettingsPanel />
+            </section>
+          )}
+
+          {showIndexingPanel && (
+            <section className="settings-section">
+              {searching && (
+                <h2 className="settings-section-title">Indexing</h2>
+              )}
+              <IndexingSettingsPanel />
             </section>
           )}
 

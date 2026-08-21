@@ -322,6 +322,7 @@ export type EmbeddingsIndexStatus = {
   pendingFiles: number;
   indexing: boolean;
   progress: number;
+  indexingEnabled?: boolean;
   error?: string;
 };
 
@@ -771,6 +772,23 @@ export async function setDiarySettings(
   return invoke<DiarySettings>("set_diary_settings", {
     args: { markers },
   });
+}
+
+export type IndexingSettings = {
+  version: number;
+  enabled: boolean;
+  delaySeconds: number;
+};
+
+export async function getIndexingSettings(): Promise<IndexingSettings> {
+  return invoke<IndexingSettings>("get_indexing_settings");
+}
+
+export async function setIndexingSettings(args: {
+  enabled: boolean;
+  delaySeconds: number;
+}): Promise<IndexingSettings> {
+  return invoke<IndexingSettings>("set_indexing_settings", { args });
 }
 
 export type VaultAiSettingsDoc = {

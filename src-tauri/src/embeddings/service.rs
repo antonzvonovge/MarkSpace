@@ -1,79 +1,39 @@
-use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
+//! Embeddings indexing service (runs inside `markspace-embeddings` process).
+
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
 use walkdir::WalkDir;
 
 use super::chunk::{chunk_markdown, chunk_pdf};
+use super::download::model_is_installed;
 use super::index::{
     content_hash, content_hash_bytes, cosine_similarity, index_dir, is_indexed, is_indexed_hash,
     load_index, save_index, ChunkRecord, EmbeddingIndex, FileRecord,
 };
-use super::download::model_is_installed;
+use super::ipc::{ChildMessage, HostRequest};
 use super::model::{Embedder, MODEL_ID};
+use super::types::{BackgroundJobPayload, EmbeddingsIndexStatus, SemanticHit};
 
 const JOB_ID: &str = "embeddings-index";
-const EVENT_NAME: &str = "background-job://update";
-/// Wait for typing/saves to settle before re-embedding a path.
-const DEBOUNCE: Duration = Duration::from_secs(5);
 const MAX_EMBED_BATCH: usize = 8;
-/// One file per tick keeps search and status replies close behind indexing.
 const FILES_PER_TICK: usize = 1;
 const MIN_PERSIST_INTERVAL: Duration = Duration::from_millis(1500);
 const MAX_PERSIST_INTERVAL: Duration = Duration::from_secs(30);
-const FLUSH_TIMEOUT: Duration = Duration::from_millis(1500);
-const SEARCH_TIMEOUT: Duration = Duration::from_secs(60);
-const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_DELAY_SECS: u32 = 5;
 
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BackgroundJobPayload {
-    pub id: String,
-    pub label: String,
-    pub progress: u32,
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SemanticHit {
-    pub path: String,
-    pub score: f32,
-    pub snippet: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub heading: Option<String>,
-    pub start_line: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EmbeddingsIndexStatus {
-    pub model_available: bool,
-    pub ready: bool,
-    pub model_id: String,
-    pub indexed_files: usize,
-    pub pending_files: usize,
-    pub indexing: bool,
-    pub progress: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
 
 enum Msg {
     OpenVault {
         vault_path: String,
         app_data: PathBuf,
-        app: AppHandle,
+        enabled: bool,
+        delay_seconds: u32,
     },
     ModelAvailable {
         model_dir: PathBuf,
@@ -88,6 +48,11 @@ enum Msg {
         from: String,
         to: String,
     },
+    SetPolicy {
+        enabled: bool,
+        delay_seconds: u32,
+        reply: Sender<()>,
+    },
     Search {
         query: String,
         limit: usize,
@@ -99,10 +64,12 @@ enum Msg {
     Flush {
         reply: Sender<()>,
     },
+    Shutdown {
+        reply: Sender<()>,
+    },
 }
 
 struct WorkerState {
-    app: Option<AppHandle>,
     vault_path: Option<String>,
     vault_root: Option<PathBuf>,
     index_dir: Option<PathBuf>,
@@ -116,19 +83,21 @@ struct WorkerState {
     progress: u32,
     total_work: usize,
     done_work: usize,
-    /// Files whose embeddings were reused from the saved index on the last scan.
     reused_work: usize,
     last_persist: Option<Instant>,
-    /// Keeps index writes at roughly 10% of indexing time on large vaults.
     persist_interval: Duration,
     last_error: Option<String>,
     model_loaded: bool,
+    enabled: bool,
+    delay: Duration,
+    /// When set, run `scan_vault` once this instant is reached.
+    scan_at: Option<Instant>,
+    emit_job: Sender<BackgroundJobPayload>,
 }
 
 impl WorkerState {
-    fn new() -> Self {
+    fn new(emit_job: Sender<BackgroundJobPayload>) -> Self {
         Self {
-            app: None,
             vault_path: None,
             vault_root: None,
             index_dir: None,
@@ -147,11 +116,14 @@ impl WorkerState {
             persist_interval: MIN_PERSIST_INTERVAL,
             last_error: None,
             model_loaded: false,
+            enabled: true,
+            delay: Duration::from_secs(DEFAULT_DELAY_SECS as u64),
+            scan_at: None,
+            emit_job,
         }
     }
 
     fn emit_job(&self, status: &str, progress: u32, detail: Option<String>) {
-        let Some(app) = &self.app else { return };
         let payload = BackgroundJobPayload {
             id: JOB_ID.to_string(),
             label: "Indexing notes".into(),
@@ -159,7 +131,11 @@ impl WorkerState {
             status: status.into(),
             detail,
         };
-        let _ = app.emit(EVENT_NAME, payload);
+        let _ = self.emit_job.send(payload);
+    }
+
+    fn set_delay_seconds(&mut self, secs: u32) {
+        self.delay = Duration::from_secs(u64::from(secs.min(300)));
     }
 
     fn ensure_embedder(&mut self) -> Result<(), String> {
@@ -180,12 +156,17 @@ impl WorkerState {
     fn status(&self) -> EmbeddingsIndexStatus {
         EmbeddingsIndexStatus {
             model_available: self.model_dir.is_some(),
-            ready: self.model_dir.is_some() && self.pending.is_empty() && !self.indexing,
+            ready: self.enabled
+                && self.model_dir.is_some()
+                && self.pending.is_empty()
+                && !self.indexing
+                && self.scan_at.is_none(),
             model_id: MODEL_ID.to_string(),
             indexed_files: self.index.files.len(),
             pending_files: self.pending.len(),
-            indexing: self.indexing || !self.pending.is_empty(),
+            indexing: self.enabled && (self.indexing || !self.pending.is_empty() || self.scan_at.is_some()),
             progress: self.progress,
+            indexing_enabled: self.enabled,
             error: self.last_error.clone(),
         }
     }
@@ -207,7 +188,6 @@ impl WorkerState {
         }
     }
 
-    /// Checkpoint mid-run so a crash or quit never discards finished files.
     fn persist_checkpoint(&mut self) {
         if !self.dirty {
             return;
@@ -233,13 +213,37 @@ impl WorkerState {
         }
     }
 
+    fn schedule_scan(&mut self) {
+        if !self.enabled || self.model_dir.is_none() || self.vault_root.is_none() {
+            self.scan_at = None;
+            return;
+        }
+        self.scan_at = Some(Instant::now() + self.delay);
+        if self.delay.is_zero() {
+            // Process on next tick immediately.
+        } else {
+            self.indexing = true;
+            self.progress = 0;
+            self.emit_job(
+                "running",
+                0,
+                Some(format!(
+                    "Starting in {}s…",
+                    self.delay.as_secs().max(1)
+                )),
+            );
+        }
+    }
+
     fn open_vault(
         &mut self,
         vault_path: String,
         app_data: PathBuf,
-        app: AppHandle,
+        enabled: bool,
+        delay_seconds: u32,
     ) {
-        self.app = Some(app);
+        self.enabled = enabled;
+        self.set_delay_seconds(delay_seconds);
         self.vault_path = Some(vault_path.clone());
         self.vault_root = Some(PathBuf::from(&vault_path));
         let dir = index_dir(&app_data, &vault_path);
@@ -255,13 +259,15 @@ impl WorkerState {
         self.pending.clear();
         self.debounce.clear();
         self.last_error = None;
+        self.scan_at = None;
+        self.indexing = false;
+        self.progress = 0;
 
-        if self.model_dir.is_none() {
-            self.indexing = false;
-            self.progress = 0;
+        if self.model_dir.is_none() || !self.enabled {
+            self.emit_job("done", 100, None);
             return;
         }
-        self.scan_vault();
+        self.schedule_scan();
     }
 
     fn model_available(&mut self, model_dir: PathBuf) {
@@ -272,10 +278,44 @@ impl WorkerState {
         self.embedder = None;
         self.model_loaded = false;
         self.last_error = None;
+        if self.enabled && self.vault_root.is_some() {
+            self.schedule_scan();
+        }
+    }
+
+    fn apply_policy(&mut self, enabled: bool, delay_seconds: u32) {
+        self.set_delay_seconds(delay_seconds);
+        let was_enabled = self.enabled;
+        self.enabled = enabled;
+        if !enabled {
+            self.scan_at = None;
+            self.pending.clear();
+            self.debounce.clear();
+            self.indexing = false;
+            self.progress = 0;
+            self.emit_job("done", 100, None);
+            return;
+        }
+        if !was_enabled && self.model_dir.is_some() && self.vault_root.is_some() {
+            self.schedule_scan();
+        }
+    }
+
+    fn maybe_run_scheduled_scan(&mut self) {
+        let Some(at) = self.scan_at else {
+            return;
+        };
+        if Instant::now() < at {
+            return;
+        }
+        self.scan_at = None;
         self.scan_vault();
     }
 
     fn scan_vault(&mut self) {
+        if !self.enabled {
+            return;
+        }
         let Some(root) = self.vault_root.clone() else {
             return;
         };
@@ -321,7 +361,6 @@ impl WorkerState {
         if self.pending.is_empty() {
             self.indexing = false;
             self.persist();
-            // Hide indicator when already up to date.
             self.emit_job("done", 100, None);
         } else {
             self.indexing = true;
@@ -331,7 +370,7 @@ impl WorkerState {
     }
 
     fn queue_path(&mut self, path: &str) {
-        if self.model_dir.is_none() {
+        if !self.enabled || self.model_dir.is_none() {
             return;
         }
         let path = normalize_rel(path);
@@ -341,7 +380,7 @@ impl WorkerState {
         if path.split('/').any(|p| p.starts_with('.')) {
             return;
         }
-        let was_idle = self.pending.is_empty() && !self.indexing;
+        let was_idle = self.pending.is_empty() && !self.indexing && self.scan_at.is_none();
         self.debounce.insert(path.clone(), Instant::now());
         self.pending.insert(path);
         if self.total_work < self.pending.len() + self.done_work {
@@ -366,7 +405,6 @@ impl WorkerState {
             self.dirty = true;
             self.persist();
         }
-        // Prefix delete for folders
         let prefix = format!("{path}/");
         let keys: Vec<String> = self
             .index
@@ -398,7 +436,6 @@ impl WorkerState {
         if let Some(t) = self.debounce.remove(&from) {
             self.debounce.insert(to.clone(), t);
         }
-        // Folder rename prefix
         if !from.ends_with(".md") && !from.ends_with(".pdf") {
             let from_prefix = format!("{from}/");
             let to_prefix = format!("{to}/");
@@ -428,7 +465,7 @@ impl WorkerState {
                     .insert(format!("{to_prefix}{}", &k[from_prefix.len()..]));
             }
         }
-        if to.ends_with(".md") {
+        if to.ends_with(".md") || to.ends_with(".pdf") {
             self.queue_path(&to);
         }
         self.persist();
@@ -439,38 +476,41 @@ impl WorkerState {
             self.persist();
             return false;
         }
+        self.maybe_run_scheduled_scan();
+        if !self.enabled {
+            return false;
+        }
         if self.pending.is_empty() {
-            if self.indexing {
+            if self.indexing && self.scan_at.is_none() {
                 self.indexing = false;
                 self.progress = 100;
                 self.persist();
                 self.emit_job("done", 100, None);
             }
-            return false;
+            return self.scan_at.is_some();
         }
 
-        // Honor debounce for recently queued paths.
         let now = Instant::now();
+        let delay = self.delay;
         let ready: Vec<String> = self
             .pending
             .iter()
             .filter(|p| {
                 self.debounce
                     .get(*p)
-                    .map(|t| now.duration_since(*t) >= DEBOUNCE)
+                    .map(|t| now.duration_since(*t) >= delay)
                     .unwrap_or(true)
             })
             .take(FILES_PER_TICK)
             .cloned()
             .collect();
         if ready.is_empty() {
-            return true; // wait for debounce
+            return true;
         }
 
         if let Err(e) = self.ensure_embedder() {
             self.last_error = Some(e.clone());
             self.emit_job("error", self.progress, Some(e));
-            // Clear pending to avoid tight error loop; user can reopen vault.
             self.pending.clear();
             self.indexing = false;
             return false;
@@ -490,11 +530,8 @@ impl WorkerState {
             self.done_work += 1;
             let total = self.total_work.max(1);
             self.progress = ((self.done_work * 100) / total).min(99) as u32;
-            // Checkpoint per file so an interrupted run resumes where it stopped.
             self.persist_checkpoint();
             if self.pending.is_empty() {
-                // Finish here — the worker loop blocks on recv when idle and
-                // would otherwise leave the UI stuck at "running · 100%".
                 self.indexing = false;
                 self.progress = 100;
                 self.persist();
@@ -531,7 +568,6 @@ impl WorkerState {
             let pages = match crate::pdf_text::extract_pdf_pages(&bytes) {
                 Ok(p) => p,
                 Err(_) => {
-                    // Unreadable / encrypted / empty text layer — store empty record.
                     self.index.files.insert(
                         rel.to_string(),
                         FileRecord {
@@ -576,7 +612,6 @@ impl WorkerState {
 
         let mut records = Vec::with_capacity(chunks.len());
         for batch in chunks.chunks(MAX_EMBED_BATCH) {
-            // Drop partial work on shutdown; the file is re-queued on next scan.
             if is_shutting_down() {
                 return Ok(());
             }
@@ -607,6 +642,12 @@ impl WorkerState {
         let q = query.trim();
         if q.is_empty() {
             return Ok(Vec::new());
+        }
+        if !self.enabled {
+            return Err(
+                "Semantic indexing is disabled for this vault. Enable it in Settings → Indexing."
+                    .into(),
+            );
         }
         if self.model_dir.is_none() {
             return Err(
@@ -675,13 +716,19 @@ fn list_indexable_files(root: &Path) -> Vec<String> {
     out
 }
 
-fn worker_loop(rx: Receiver<Msg>) {
-    let mut state = WorkerState::new();
+fn is_shutting_down() -> bool {
+    SHUTTING_DOWN.load(Ordering::Relaxed)
+}
+
+fn worker_loop(rx: Receiver<Msg>, emit_job: Sender<BackgroundJobPayload>) {
+    let mut state = WorkerState::new(emit_job);
     let mut queue: VecDeque<Msg> = VecDeque::new();
 
     loop {
-        // Block if nothing pending; otherwise poll with timeout for debounce.
-        if queue.is_empty() && state.pending.is_empty() {
+        let waiting = queue.is_empty()
+            && state.pending.is_empty()
+            && state.scan_at.is_none();
+        if waiting {
             match rx.recv() {
                 Ok(msg) => queue.push_back(msg),
                 Err(_) => break,
@@ -699,12 +746,21 @@ fn worker_loop(rx: Receiver<Msg>) {
                 Msg::OpenVault {
                     vault_path,
                     app_data,
-                    app,
-                } => state.open_vault(vault_path, app_data, app),
+                    enabled,
+                    delay_seconds,
+                } => state.open_vault(vault_path, app_data, enabled, delay_seconds),
                 Msg::ModelAvailable { model_dir } => state.model_available(model_dir),
                 Msg::FileChanged { path } => state.queue_path(&path),
                 Msg::FileRemoved { path } => state.remove_path(&path),
                 Msg::FileRenamed { from, to } => state.rename_path(&from, &to),
+                Msg::SetPolicy {
+                    enabled,
+                    delay_seconds,
+                    reply,
+                } => {
+                    state.apply_policy(enabled, delay_seconds);
+                    let _ = reply.send(());
+                }
                 Msg::Search {
                     query,
                     limit,
@@ -716,8 +772,15 @@ fn worker_loop(rx: Receiver<Msg>) {
                     let _ = reply.send(state.status());
                 }
                 Msg::Flush { reply } => {
+                    SHUTTING_DOWN.store(true, Ordering::Relaxed);
                     state.persist();
                     let _ = reply.send(());
+                }
+                Msg::Shutdown { reply } => {
+                    SHUTTING_DOWN.store(true, Ordering::Relaxed);
+                    state.persist();
+                    let _ = reply.send(());
+                    return;
                 }
             }
         }
@@ -726,128 +789,168 @@ fn worker_loop(rx: Receiver<Msg>) {
     }
 }
 
-pub struct EmbeddingsRuntime {
-    tx: Mutex<Option<Sender<Msg>>>,
-}
-
-impl Default for EmbeddingsRuntime {
-    fn default() -> Self {
-        Self {
-            tx: Mutex::new(None),
-        }
+fn write_msg(out: &mut impl Write, msg: &ChildMessage) {
+    if let Ok(line) = serde_json::to_string(msg) {
+        let _ = writeln!(out, "{line}");
+        let _ = out.flush();
     }
 }
 
-impl EmbeddingsRuntime {
-    fn send(&self, msg: Msg) {
-        if let Some(tx) = self.tx.lock().as_ref() {
-            let _ = tx.send(msg);
-        }
-    }
-}
+/// Entry point for the `markspace-embeddings` binary: NDJSON over stdin/stdout.
+pub fn run_stdio_server() {
+    let (msg_tx, msg_rx) = mpsc::channel::<Msg>();
+    let (job_tx, job_rx) = mpsc::channel::<BackgroundJobPayload>();
+    let (out_tx, out_rx) = mpsc::channel::<ChildMessage>();
 
-static RUNTIME: OnceLock<Arc<EmbeddingsRuntime>> = OnceLock::new();
-
-pub fn embeddings_runtime() -> Arc<EmbeddingsRuntime> {
-    RUNTIME
-        .get_or_init(|| Arc::new(EmbeddingsRuntime::default()))
-        .clone()
-}
-
-pub fn start_embeddings_runtime() {
-    let rt = embeddings_runtime();
-    let mut guard = rt.tx.lock();
-    if guard.is_some() {
-        return;
-    }
-    let (tx, rx) = mpsc::channel::<Msg>();
-    *guard = Some(tx);
     thread::Builder::new()
-        .name("embeddings-worker".into())
-        .spawn(move || worker_loop(rx))
-        .expect("spawn embeddings worker");
-}
+        .name("embeddings-service".into())
+        .spawn(move || worker_loop(msg_rx, job_tx))
+        .expect("spawn embeddings service");
 
-pub fn notify_vault_opened(app: &AppHandle, vault_path: &Path) {
-    let app_data = match app.path().app_data_dir() {
-        Ok(p) => p,
-        Err(_) => return,
-    };
-    let vault = vault_path.to_string_lossy().to_string();
-    embeddings_runtime().send(Msg::OpenVault {
-        vault_path: vault,
-        app_data,
-        app: app.clone(),
-    });
-}
+    // Forward job events to stdout writer.
+    let out_jobs = out_tx.clone();
+    thread::Builder::new()
+        .name("embeddings-jobs".into())
+        .spawn(move || {
+            while let Ok(payload) = job_rx.recv() {
+                let _ = out_jobs.send(ChildMessage::Job { payload });
+            }
+        })
+        .expect("spawn job forwarder");
 
-pub fn notify_model_available(model_dir: PathBuf) {
-    embeddings_runtime().send(Msg::ModelAvailable { model_dir });
-}
+    // Serialize stdout writes on one thread.
+    thread::Builder::new()
+        .name("embeddings-stdout".into())
+        .spawn(move || {
+            let mut stdout = std::io::stdout().lock();
+            while let Ok(msg) = out_rx.recv() {
+                write_msg(&mut stdout, &msg);
+            }
+        })
+        .expect("spawn stdout writer");
 
-fn is_shutting_down() -> bool {
-    SHUTTING_DOWN.load(Ordering::Relaxed)
-}
-
-/// Stop indexing and write pending index changes before the process exits.
-/// Bounded so quitting never blocks the UI into an "app not responding" prompt.
-pub fn flush_index() {
-    SHUTTING_DOWN.store(true, Ordering::Relaxed);
-    let (reply_tx, reply_rx) = mpsc::channel();
-    embeddings_runtime().send(Msg::Flush { reply: reply_tx });
-    let _ = reply_rx.recv_timeout(FLUSH_TIMEOUT);
-}
-
-pub fn notify_file_changed(path: &str) {
-    embeddings_runtime().send(Msg::FileChanged {
-        path: path.to_string(),
-    });
-}
-
-pub fn notify_file_removed(path: &str) {
-    embeddings_runtime().send(Msg::FileRemoved {
-        path: path.to_string(),
-    });
-}
-
-pub fn notify_file_renamed(from: &str, to: &str) {
-    embeddings_runtime().send(Msg::FileRenamed {
-        from: from.to_string(),
-        to: to.to_string(),
-    });
-}
-
-/// Async so Tauri keeps this off the main thread; the worker reply is awaited
-/// on a blocking pool thread instead of freezing the UI.
-#[tauri::command]
-pub async fn semantic_search_notes(
-    query: String,
-    limit: Option<usize>,
-) -> Result<Vec<SemanticHit>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let (reply_tx, reply_rx) = mpsc::channel();
-        embeddings_runtime().send(Msg::Search {
-            query,
-            limit: limit.unwrap_or(10),
-            reply: reply_tx,
-        });
-        reply_rx
-            .recv_timeout(SEARCH_TIMEOUT)
-            .map_err(|_| "Semantic search timed out".to_string())?
-    })
-    .await
-    .map_err(|e| format!("Semantic search failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn get_embeddings_index_status() -> Result<EmbeddingsIndexStatus, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let (reply_tx, reply_rx) = mpsc::channel();
-        embeddings_runtime().send(Msg::Status { reply: reply_tx });
-        reply_rx
-            .recv_timeout(STATUS_TIMEOUT)
-            .map_err(|_| "Embeddings status timed out".to_string())
-    })
-    .await
-    .map_err(|e| format!("Embeddings status failed: {e}"))?
+    let stdin = std::io::stdin();
+    let reader = BufReader::new(stdin.lock());
+    for line in reader.lines() {
+        let Ok(line) = line else { break };
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let req: HostRequest = match serde_json::from_str(line) {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = out_tx.send(ChildMessage::Error {
+                    id: None,
+                    message: format!("Invalid request: {e}"),
+                });
+                continue;
+            }
+        };
+        match req {
+            HostRequest::OpenVault {
+                id,
+                vault_path,
+                app_data,
+                enabled,
+                delay_seconds,
+            } => {
+                let _ = msg_tx.send(Msg::OpenVault {
+                    vault_path,
+                    app_data: PathBuf::from(app_data),
+                    enabled,
+                    delay_seconds,
+                });
+                let _ = out_tx.send(ChildMessage::Ack { id });
+            }
+            HostRequest::ModelAvailable { id, model_dir } => {
+                let _ = msg_tx.send(Msg::ModelAvailable {
+                    model_dir: PathBuf::from(model_dir),
+                });
+                let _ = out_tx.send(ChildMessage::Ack { id });
+            }
+            HostRequest::FileChanged { path } => {
+                let _ = msg_tx.send(Msg::FileChanged { path });
+            }
+            HostRequest::FileRemoved { path } => {
+                let _ = msg_tx.send(Msg::FileRemoved { path });
+            }
+            HostRequest::FileRenamed { from, to } => {
+                let _ = msg_tx.send(Msg::FileRenamed { from, to });
+            }
+            HostRequest::SetPolicy {
+                id,
+                enabled,
+                delay_seconds,
+            } => {
+                let (reply_tx, reply_rx) = mpsc::channel();
+                let _ = msg_tx.send(Msg::SetPolicy {
+                    enabled,
+                    delay_seconds,
+                    reply: reply_tx,
+                });
+                let _ = reply_rx.recv();
+                let _ = out_tx.send(ChildMessage::Ack { id });
+            }
+            HostRequest::Search { id, query, limit } => {
+                let (reply_tx, reply_rx) = mpsc::channel();
+                let _ = msg_tx.send(Msg::Search {
+                    query,
+                    limit,
+                    reply: reply_tx,
+                });
+                match reply_rx.recv() {
+                    Ok(Ok(hits)) => {
+                        let _ = out_tx.send(ChildMessage::SearchResult {
+                            id,
+                            hits: Some(hits),
+                            error: None,
+                        });
+                    }
+                    Ok(Err(error)) => {
+                        let _ = out_tx.send(ChildMessage::SearchResult {
+                            id,
+                            hits: None,
+                            error: Some(error),
+                        });
+                    }
+                    Err(_) => {
+                        let _ = out_tx.send(ChildMessage::SearchResult {
+                            id,
+                            hits: None,
+                            error: Some("Service disconnected".into()),
+                        });
+                    }
+                }
+            }
+            HostRequest::Status { id } => {
+                let (reply_tx, reply_rx) = mpsc::channel();
+                let _ = msg_tx.send(Msg::Status { reply: reply_tx });
+                match reply_rx.recv() {
+                    Ok(status) => {
+                        let _ = out_tx.send(ChildMessage::StatusResult { id, status });
+                    }
+                    Err(_) => {
+                        let _ = out_tx.send(ChildMessage::Error {
+                            id: Some(id),
+                            message: "Service disconnected".into(),
+                        });
+                    }
+                }
+            }
+            HostRequest::Flush { id } => {
+                let (reply_tx, reply_rx) = mpsc::channel();
+                let _ = msg_tx.send(Msg::Flush { reply: reply_tx });
+                let _ = reply_rx.recv();
+                let _ = out_tx.send(ChildMessage::FlushDone { id });
+            }
+            HostRequest::Shutdown { id } => {
+                let (reply_tx, reply_rx) = mpsc::channel();
+                let _ = msg_tx.send(Msg::Shutdown { reply: reply_tx });
+                let _ = reply_rx.recv();
+                let _ = out_tx.send(ChildMessage::ShutdownDone { id });
+                break;
+            }
+        }
+    }
 }

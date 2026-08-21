@@ -3,12 +3,13 @@ mod chat_history;
 mod comments;
 mod diary;
 mod dict_progress;
-mod embeddings;
+pub mod embeddings;
 mod favorites;
 mod filemeta;
 mod gems;
 mod git_sync;
 mod http_fetch;
+mod indexing;
 mod mcp;
 mod order_merge;
 mod pdf_text;
@@ -16,6 +17,8 @@ mod projects;
 mod terminal;
 mod vault;
 mod vault_ai;
+
+pub use embeddings::run_stdio_server;
 
 use git_sync::SyncRuntime;
 use mcp::McpRuntime;
@@ -187,8 +190,10 @@ pub fn run() {
             vault::list_note_tags,
             vault::reindex_note_tags,
             pdf_text::extract_pdf_text_cmd,
-            embeddings::worker::semantic_search_notes,
-            embeddings::worker::get_embeddings_index_status,
+            embeddings::host::semantic_search_notes,
+            embeddings::host::get_embeddings_index_status,
+            indexing::get_indexing_settings,
+            indexing::set_indexing_settings,
             embeddings::download::get_embedding_model_status,
             embeddings::download::download_embedding_model,
             favorites::list_favorites,
