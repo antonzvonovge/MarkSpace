@@ -4,7 +4,7 @@
   "version": "1.22.0",
   "identifier": "com.atott.markspace",
   "build": {
-    "beforeDevCommand": "npm run sidecar:stage && npm run dev",
+    "beforeDevCommand": "npm run sidecar:stage:if-needed && npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run sidecar:stage:release && npm run build",
     "frontendDist": "../dist"

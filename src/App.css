@@ -1790,6 +1790,47 @@ select {
   color: var(--muted);
 }
 
+.status-bar-timer {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.status-bar-timer.is-running {
+  color: var(--accent-strong);
+}
+
+.status-bar-timer.is-paused {
+  color: var(--text);
+}
+
+.status-bar-timer.is-stopped {
+  color: var(--muted);
+}
+
+.status-bar-item.status-bar-timer-time {
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.status-bar-item.status-bar-timer-time:hover {
+  background: transparent;
+  color: inherit;
+}
+
+button.status-bar-item.status-bar-timer-time {
+  cursor: pointer;
+}
+
+button.status-bar-item.status-bar-timer-time:hover {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+
+.status-bar-item.status-bar-timer-btn {
+  padding: 0 6px;
+}
+
 .status-bar-item:hover,
 .status-bar-item.is-open {
   background: color-mix(in srgb, var(--text) 8%, transparent);

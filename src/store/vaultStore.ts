@@ -108,6 +108,11 @@ async function nativeLanguageFromPrefs(): Promise<string> {
   return usePrefsStore.getState().prefs.nativeLanguage;
 }
 
+async function defaultViewModeFromPrefs(): Promise<ViewMode> {
+  const { usePrefsStore } = await import("./prefsStore");
+  return usePrefsStore.getState().prefs.defaultViewMode;
+}
+
 /** Coalesce UI tag-catalog refreshes after rapid saves. */
 const TAG_CATALOG_REFRESH_MS = 1_500;
 let tagCatalogRefreshTimer: number | null = null;
@@ -123,6 +128,8 @@ function scheduleTagCatalogRefresh(refresh: () => Promise<void>) {
 }
 
 export type TabKind = "file" | "graph" | "settings" | "incoming";
+
+export type ViewMode = "live" | "source";
 
 /** Singleton virtual path for the tag graph tab (never a vault-relative file). */
 export const GRAPH_TAB_PATH = "markspace:graph";
@@ -143,14 +150,17 @@ export type EditorTab = {
    */
   pinned?: boolean;
   /**
+   * Per-tab Live/Source mode. Absent → Live (or prefs default when opening).
+   * Store `viewMode` mirrors the active tab only.
+   */
+  viewMode?: ViewMode;
+  /**
    * In-memory copy while the tab is open. Absent until first load.
    * Keeps tab switches instant (no disk re-read).
    */
   body?: string;
   dirty?: boolean;
 };
-
-export type ViewMode = "live" | "source";
 
 type OpenNoteOptions = {
   /** VS Code preview mode — default true */
@@ -410,6 +420,12 @@ export function isVirtualTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
 
 export function isFileTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
   return !isVirtualTab(tab);
+}
+
+/** Active-tab Live/Source; Incoming and virtual tabs are always Live. */
+function resolveTabViewMode(tab: EditorTab | undefined): ViewMode {
+  if (!tab || isIncomingTab(tab) || isVirtualTab(tab)) return "live";
+  return tab.viewMode === "source" ? "source" : "live";
 }
 
 async function loadFavoritePaths(): Promise<string[]> {
@@ -712,6 +728,7 @@ function persistSession(state: {
       preview: t.preview,
       kind: t.kind,
       pinned: Boolean(t.pinned),
+      viewMode: t.viewMode === "source" ? "source" : undefined,
     })),
     activePath: state.activePath,
   });
@@ -835,12 +852,14 @@ function activateLoaded(
 ) {
   const outline = loadDocOutlineUi(vaultPath, path);
   const commentsUi = loadDocCommentsUi(vaultPath, path);
+  const tab = tabs.find((t) => t.path === path);
   set({
     tabs: withTabBody(tabs, path, content, dirty),
     activePath: path,
     content,
     dirty,
     loading: false,
+    viewMode: resolveTabViewMode(tab),
     ...(syncTreeSelection
       ? treeSelectionForOpen(path)
       : { treeSelectionVisible: false }),
@@ -1478,6 +1497,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
                   ? "incoming"
                   : "file",
             pinned: Boolean(t.pinned),
+            viewMode: t.viewMode === "source" ? ("source" as const) : undefined,
           })),
       );
 
@@ -1746,6 +1766,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const content = await loadContent();
+      const viewMode = await defaultViewModeFromPrefs();
       let nextTabs = [...get().tabs];
 
       if (asPreview) {
@@ -1756,6 +1777,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           preview: true,
           body: content,
           dirty: false,
+          viewMode,
         };
         if (previewIdx >= 0) {
           nextTabs[previewIdx] = tab;
@@ -1769,6 +1791,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           preview: false,
           body: content,
           dirty: false,
+          viewMode,
         });
       }
 
@@ -2100,13 +2123,39 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
   setViewMode: (mode) => {
     flushActiveEditorBuffer(get);
-    set({ viewMode: mode });
+    const { activePath, tabs } = get();
+    let nextTabs = tabs;
+    if (activePath != null) {
+      const mapped = tabs.map((t) =>
+        t.path === activePath && isFileTab(t) && !isIncomingTab(t)
+          ? t.viewMode === mode
+            ? t
+            : { ...t, viewMode: mode }
+          : t,
+      );
+      if (mapped.some((t, i) => t !== tabs[i])) nextTabs = mapped;
+    }
+    set({ viewMode: mode, tabs: nextTabs });
+    if (nextTabs !== tabs) persistSession(get());
   },
 
   toggleViewMode: () => {
     flushActiveEditorBuffer(get);
-    const { viewMode } = get();
-    set({ viewMode: viewMode === "live" ? "source" : "live" });
+    const { viewMode, activePath, tabs } = get();
+    const mode: ViewMode = viewMode === "live" ? "source" : "live";
+    let nextTabs = tabs;
+    if (activePath != null) {
+      const mapped = tabs.map((t) =>
+        t.path === activePath && isFileTab(t) && !isIncomingTab(t)
+          ? t.viewMode === mode
+            ? t
+            : { ...t, viewMode: mode }
+          : t,
+      );
+      if (mapped.some((t, i) => t !== tabs[i])) nextTabs = mapped;
+    }
+    set({ viewMode: mode, tabs: nextTabs });
+    if (nextTabs !== tabs) persistSession(get());
   },
 
   toggleOutline: () => {

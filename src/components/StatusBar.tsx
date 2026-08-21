@@ -209,6 +209,215 @@ function WordCountItem() {
   );
 }
 
+function TimerIcon() {
+  return (
+    <svg
+      className="status-sync-icon"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <circle
+        cx="8"
+        cy="8.5"
+        r="5.25"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M8 6.25v2.5l1.75 1.05"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6.25 2.75h3.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg
+      className="status-sync-icon"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M5.5 4.25v7.5M10.5 4.25v7.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg
+      className="status-sync-icon"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M6 4.4v7.2l6-3.6-6-3.6z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg
+      className="status-sync-icon"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <rect
+        x="4.75"
+        y="4.75"
+        width="6.5"
+        height="6.5"
+        rx="0.75"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(Math.max(0, ms) / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function TimerItem() {
+  const [mode, setMode] = useState<"idle" | "running" | "paused">("idle");
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const startedAtRef = useRef(0);
+  const baseElapsedRef = useRef(0);
+
+  useEffect(() => {
+    if (mode !== "running") return;
+    const tick = () => {
+      setElapsedMs(baseElapsedRef.current + (Date.now() - startedAtRef.current));
+    };
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [mode]);
+
+  const start = () => {
+    baseElapsedRef.current = 0;
+    startedAtRef.current = Date.now();
+    setElapsedMs(0);
+    setMode("running");
+  };
+
+  const pause = () => {
+    baseElapsedRef.current =
+      baseElapsedRef.current + (Date.now() - startedAtRef.current);
+    setElapsedMs(baseElapsedRef.current);
+    setMode("paused");
+  };
+
+  const resume = () => {
+    startedAtRef.current = Date.now();
+    setMode("running");
+  };
+
+  const stop = () => {
+    const final =
+      mode === "running"
+        ? baseElapsedRef.current + (Date.now() - startedAtRef.current)
+        : baseElapsedRef.current;
+    baseElapsedRef.current = final;
+    startedAtRef.current = 0;
+    setElapsedMs(final);
+    setMode("idle");
+  };
+
+  const active = mode !== "idle";
+  const label = formatElapsed(elapsedMs);
+  const tone =
+    mode === "running"
+      ? "is-running"
+      : mode === "paused"
+        ? "is-paused"
+        : "is-stopped";
+
+  return (
+    <div className={`status-bar-timer ${tone}`}>
+      {active ? (
+        <span
+          className="status-bar-item status-bar-timer-time"
+          title={mode === "running" ? "Timer running" : "Timer paused"}
+        >
+          <TimerIcon />
+          <span>{label}</span>
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="status-bar-item status-bar-timer-time status-bar-timer-btn"
+          title="Start timer"
+          aria-label="Start timer"
+          onClick={start}
+        >
+          <TimerIcon />
+          <span>{label}</span>
+        </button>
+      )}
+      {active ? (
+        <>
+          <button
+            type="button"
+            className="status-bar-item status-bar-timer-btn"
+            title={mode === "running" ? "Pause timer" : "Resume timer"}
+            aria-label={mode === "running" ? "Pause timer" : "Resume timer"}
+            onClick={mode === "running" ? pause : resume}
+          >
+            {mode === "running" ? <PauseIcon /> : <PlayIcon />}
+          </button>
+          <button
+            type="button"
+            className="status-bar-item status-bar-timer-btn"
+            title="Stop timer"
+            aria-label="Stop timer"
+            onClick={stop}
+          >
+            <StopIcon />
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export function StatusBar() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const saveActive = useVaultStore((s) => s.saveActive);
@@ -359,6 +568,7 @@ export function StatusBar() {
       </div>
       <div className="status-bar-right" ref={rootRef}>
         <WordCountItem />
+        <TimerItem />
         <button
           type="button"
           className={

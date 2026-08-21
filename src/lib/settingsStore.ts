@@ -241,6 +241,8 @@ export type SavedEditorTab = {
   kind?: SavedTabKind;
   /** Cursor-style sticky pin (left group). Distinct from preview keep-open. */
   pinned?: boolean;
+  /** Per-tab Live/Source; omit or live → Live. */
+  viewMode?: "live" | "source";
 };
 
 export type VaultSession = {
@@ -278,6 +280,7 @@ export async function loadVaultSession(
       preview: Boolean(t.preview) && !Boolean(t.pinned),
       kind: normalizeSavedTabKind(t.kind, t.path),
       pinned: Boolean(t.pinned),
+      viewMode: t.viewMode === "source" ? ("source" as const) : undefined,
     }));
   // A saved session with no tabs means the user closed everything: keep it
   // distinct from "no session at all" so the caller skips the welcome note.
@@ -303,6 +306,7 @@ export async function saveVaultSession(
       preview: Boolean(t.preview) && !Boolean(t.pinned),
       kind: normalizeSavedTabKind(t.kind, t.path),
       pinned: Boolean(t.pinned),
+      ...(t.viewMode === "source" ? { viewMode: "source" as const } : {}),
     })),
     activePath: session.activePath,
   };
@@ -513,4 +517,72 @@ export async function saveVaultSyncMeta(
     byVault,
   } satisfies GithubSyncStore);
   await store.save();
+}
+
+/** Per-vault semantic indexing policy (device-local, not in the vault). */
+export type IndexingSettingsDoc = {
+  enabled: boolean;
+  delaySeconds: number;
+};
+
+export const DEFAULT_INDEXING_SETTINGS: IndexingSettingsDoc = {
+  enabled: true,
+  delaySeconds: 5,
+};
+
+const INDEXING_BY_VAULT_KEY = "indexingByVault";
+
+function normalizeIndexingSettings(raw: unknown): IndexingSettingsDoc {
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_INDEXING_SETTINGS };
+  }
+  const value = raw as Partial<IndexingSettingsDoc>;
+  const delay =
+    typeof value.delaySeconds === "number" && Number.isFinite(value.delaySeconds)
+      ? Math.min(300, Math.max(0, Math.round(value.delaySeconds)))
+      : DEFAULT_INDEXING_SETTINGS.delaySeconds;
+  return {
+    enabled:
+      typeof value.enabled === "boolean"
+        ? value.enabled
+        : DEFAULT_INDEXING_SETTINGS.enabled,
+    delaySeconds: delay,
+  };
+}
+
+export async function loadIndexingSettings(
+  vaultPath: string,
+): Promise<IndexingSettingsDoc> {
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, unknown>>(INDEXING_BY_VAULT_KEY)) ?? {};
+  if (Object.prototype.hasOwnProperty.call(map, vaultPath)) {
+    return normalizeIndexingSettings(map[vaultPath]);
+  }
+  return { ...DEFAULT_INDEXING_SETTINGS };
+}
+
+export async function saveIndexingSettings(
+  vaultPath: string,
+  settings: IndexingSettingsDoc,
+): Promise<IndexingSettingsDoc> {
+  const next = normalizeIndexingSettings(settings);
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, IndexingSettingsDoc>>(
+      INDEXING_BY_VAULT_KEY,
+    )) ?? {};
+  map[vaultPath] = next;
+  await store.set(INDEXING_BY_VAULT_KEY, map);
+  await store.save();
+  return next;
+}
+
+export async function hasIndexingSettings(
+  vaultPath: string,
+): Promise<boolean> {
+  const store = await Store.load(STORE_FILE);
+  const map =
+    (await store.get<Record<string, unknown>>(INDEXING_BY_VAULT_KEY)) ?? {};
+  return Object.prototype.hasOwnProperty.call(map, vaultPath);
 }

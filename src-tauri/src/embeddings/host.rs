@@ -152,12 +152,15 @@ fn sidecar_candidates() -> Vec<PathBuf> {
 
 fn resolve_sidecar_path() -> Result<PathBuf, String> {
     for path in sidecar_candidates() {
-        if path.is_file() {
-            return Ok(path);
+        // Skip missing paths and zero-byte Tauri stubs from build.rs / stage script.
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if meta.is_file() && meta.len() > 0 {
+                return Ok(path);
+            }
         }
     }
     Err(format!(
-        "markspace-embeddings binary not found. Tried: {}",
+        "markspace-embeddings binary not found (run `npm run sidecar:stage`). Tried: {}",
         sidecar_candidates()
             .iter()
             .map(|p| p.display().to_string())
@@ -717,7 +720,7 @@ pub fn notify_vault_opened(app: &AppHandle, vault_path: &Path) {
         Ok(p) => p,
         Err(_) => return,
     };
-    let settings = crate::indexing::load_settings(vault_path).unwrap_or_default();
+    let settings = crate::indexing::load_for_vault(&app_data, vault_path);
     runtime().send(HostMsg::OpenVault {
         vault_path: vault_path.to_string_lossy().to_string(),
         app_data,

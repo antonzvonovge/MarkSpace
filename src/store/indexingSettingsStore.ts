@@ -1,15 +1,15 @@
 import { create } from "zustand";
 import {
+  DEFAULT_INDEXING_SETTINGS,
+  hasIndexingSettings,
+  loadIndexingSettings,
+  saveIndexingSettings,
+} from "../lib/settingsStore";
+import {
+  clearLegacyIndexingSettings,
   getIndexingSettings,
-  setIndexingSettings,
-  type IndexingSettings,
+  setIndexingSettings as applyIndexingPolicy,
 } from "../lib/vaultApi";
-
-const DEFAULTS: IndexingSettings = {
-  version: 1,
-  enabled: true,
-  delaySeconds: 5,
-};
 
 type IndexingSettingsStore = {
   vaultPath: string | null;
@@ -24,53 +24,78 @@ type IndexingSettingsStore = {
 export const useIndexingSettingsStore = create<IndexingSettingsStore>(
   (set, get) => ({
     vaultPath: null,
-    enabled: DEFAULTS.enabled,
-    delaySeconds: DEFAULTS.delaySeconds,
+    enabled: DEFAULT_INDEXING_SETTINGS.enabled,
+    delaySeconds: DEFAULT_INDEXING_SETTINGS.delaySeconds,
     hydrated: false,
 
     hydrateForVault: async (vaultPath) => {
       if (!vaultPath) {
         set({
           vaultPath: null,
-          enabled: DEFAULTS.enabled,
-          delaySeconds: DEFAULTS.delaySeconds,
+          enabled: DEFAULT_INDEXING_SETTINGS.enabled,
+          delaySeconds: DEFAULT_INDEXING_SETTINGS.delaySeconds,
           hydrated: true,
         });
         return;
       }
       try {
-        const doc = await getIndexingSettings();
+        let doc = await loadIndexingSettings(vaultPath);
+        if (!(await hasIndexingSettings(vaultPath))) {
+          try {
+            const fromRust = await getIndexingSettings();
+            doc = await saveIndexingSettings(vaultPath, {
+              enabled: fromRust.enabled,
+              delaySeconds: fromRust.delaySeconds,
+            });
+            await clearLegacyIndexingSettings();
+          } catch {
+            // keep defaults from loadIndexingSettings
+          }
+        }
         set({
           vaultPath,
           enabled: doc.enabled,
           delaySeconds: doc.delaySeconds,
           hydrated: true,
         });
+        await applyIndexingPolicy({
+          enabled: doc.enabled,
+          delaySeconds: doc.delaySeconds,
+        });
       } catch {
         set({
           vaultPath,
-          enabled: DEFAULTS.enabled,
-          delaySeconds: DEFAULTS.delaySeconds,
+          enabled: DEFAULT_INDEXING_SETTINGS.enabled,
+          delaySeconds: DEFAULT_INDEXING_SETTINGS.delaySeconds,
           hydrated: true,
         });
       }
     },
 
     setEnabled: async (enabled) => {
-      if (!get().vaultPath) return;
-      const doc = await setIndexingSettings({
+      const vaultPath = get().vaultPath;
+      if (!vaultPath) return;
+      const doc = await saveIndexingSettings(vaultPath, {
         enabled,
         delaySeconds: get().delaySeconds,
+      });
+      await applyIndexingPolicy({
+        enabled: doc.enabled,
+        delaySeconds: doc.delaySeconds,
       });
       set({ enabled: doc.enabled, delaySeconds: doc.delaySeconds });
     },
 
     setDelaySeconds: async (delaySeconds) => {
-      if (!get().vaultPath) return;
-      const clamped = Math.max(0, Math.min(300, Math.round(delaySeconds)));
-      const doc = await setIndexingSettings({
+      const vaultPath = get().vaultPath;
+      if (!vaultPath) return;
+      const doc = await saveIndexingSettings(vaultPath, {
         enabled: get().enabled,
-        delaySeconds: clamped,
+        delaySeconds,
+      });
+      await applyIndexingPolicy({
+        enabled: doc.enabled,
+        delaySeconds: doc.delaySeconds,
       });
       set({ enabled: doc.enabled, delaySeconds: doc.delaySeconds });
     },

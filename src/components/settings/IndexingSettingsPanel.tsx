@@ -59,9 +59,9 @@ export function IndexingSettingsPanel() {
   return (
     <div className="sync-panel">
       <p className="sync-panel-lead">
-        Settings for this vault only. Stored in{" "}
-        <code>.markspace/indexing.json</code>. Semantic embeddings run in a
-        separate process; the index is kept on this device (not in the vault).
+        Settings for this vault on this device. Stored in the app settings
+        store (not synced with the vault). Semantic embeddings run in a
+        separate process; the index is also kept on this device.
       </p>
       <div className="sync-panel-vault">
         <span className="sync-vault-path" title={vaultPath}>

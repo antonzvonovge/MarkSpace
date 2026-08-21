@@ -1,13 +1,17 @@
-//! Vault indexing policy stored in `.markspace/indexing.json`.
+//! Indexing policy: persisted in app `settings.json` by the frontend (`indexingByVault`).
+//! Rust only reads that file when opening a vault, and applies live policy updates.
 
 use crate::vault::{get_root, VaultState};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 const MAX_DELAY_SECONDS: u32 = 300;
 const DEFAULT_DELAY_SECONDS: u32 = 5;
+const STORE_FILE: &str = "settings.json";
+const BY_VAULT_KEY: &str = "indexingByVault";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,42 +46,70 @@ impl Default for IndexingSettings {
     }
 }
 
-fn indexing_path(root: &Path) -> PathBuf {
-    root.join(".markspace").join("indexing.json")
-}
-
-fn normalize(mut doc: IndexingSettings) -> IndexingSettings {
+pub fn normalize(mut doc: IndexingSettings) -> IndexingSettings {
     doc.version = 1;
     doc.delay_seconds = doc.delay_seconds.min(MAX_DELAY_SECONDS);
     doc
 }
 
-pub fn load_settings(root: &Path) -> Result<IndexingSettings, String> {
-    let path = indexing_path(root);
-    if !path.exists() {
-        return Ok(IndexingSettings::default());
-    }
-    let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    if raw.trim().is_empty() {
-        return Ok(IndexingSettings::default());
-    }
-    let doc: IndexingSettings =
-        serde_json::from_str(&raw).map_err(|e| format!("Invalid indexing.json: {e}"))?;
-    Ok(normalize(doc))
+fn store_path(app_data: &Path) -> PathBuf {
+    app_data.join(STORE_FILE)
 }
 
-fn save_settings(root: &Path, doc: &IndexingSettings) -> Result<(), String> {
-    let markspace = root.join(".markspace");
-    fs::create_dir_all(&markspace).map_err(|e| e.to_string())?;
-    let path = indexing_path(root);
-    let body = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
-    fs::write(&path, format!("{body}\n")).map_err(|e| e.to_string())
+fn legacy_vault_path(vault_root: &Path) -> PathBuf {
+    vault_root.join(".markspace").join("indexing.json")
+}
+
+fn read_store(app_data: &Path) -> Value {
+    let path = store_path(app_data);
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return Value::Object(Default::default());
+    };
+    serde_json::from_str(&raw).unwrap_or_else(|_| Value::Object(Default::default()))
+}
+
+fn load_legacy_vault_file(vault_root: &Path) -> Option<IndexingSettings> {
+    let path = legacy_vault_path(vault_root);
+    if !path.is_file() {
+        return None;
+    }
+    let raw = fs::read_to_string(&path).ok()?;
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let doc: IndexingSettings = serde_json::from_str(&raw).ok()?;
+    Some(normalize(doc))
+}
+
+/// Load policy for a vault absolute path (app settings, then legacy vault file).
+pub fn load_for_vault(app_data: &Path, vault_path: &Path) -> IndexingSettings {
+    let key = vault_path.to_string_lossy().to_string();
+    let store = read_store(app_data);
+    if let Some(raw) = store.get(BY_VAULT_KEY).and_then(|v| v.get(&key)) {
+        if let Ok(doc) = serde_json::from_value::<IndexingSettings>(raw.clone()) {
+            return normalize(doc);
+        }
+    }
+    if let Some(legacy) = load_legacy_vault_file(vault_path) {
+        return legacy;
+    }
+    IndexingSettings::default()
+}
+
+fn app_data(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Cannot resolve app data dir: {e}"))
 }
 
 #[tauri::command]
-pub fn get_indexing_settings(state: State<'_, VaultState>) -> Result<IndexingSettings, String> {
+pub fn get_indexing_settings(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+) -> Result<IndexingSettings, String> {
     let root = get_root(&state)?;
-    load_settings(&root)
+    let data = app_data(&app)?;
+    Ok(load_for_vault(&data, &root))
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,20 +119,32 @@ pub struct SetIndexingSettingsArgs {
     pub delay_seconds: u32,
 }
 
+/// Apply live policy in the embeddings host. Persistence is done by the frontend
+/// (`settings.json` → `indexingByVault`) before this command runs.
 #[tauri::command]
 pub fn set_indexing_settings(
     state: State<'_, VaultState>,
     args: SetIndexingSettingsArgs,
 ) -> Result<IndexingSettings, String> {
-    let root = get_root(&state)?;
+    let _root = get_root(&state)?;
     let doc = normalize(IndexingSettings {
         version: 1,
         enabled: args.enabled,
         delay_seconds: args.delay_seconds,
     });
-    save_settings(&root, &doc)?;
     crate::embeddings::notify_indexing_policy(doc.enabled, doc.delay_seconds);
     Ok(doc)
+}
+
+/// Delete legacy `.markspace/indexing.json` after the frontend migrated it.
+#[tauri::command]
+pub fn clear_legacy_indexing_settings(state: State<'_, VaultState>) -> Result<(), String> {
+    let root = get_root(&state)?;
+    let path = legacy_vault_path(&root);
+    if path.is_file() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -108,9 +152,9 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn temp_root() -> PathBuf {
+    fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "markspace-indexing-{}",
+            "markspace-indexing-{label}-{}",
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -121,27 +165,56 @@ mod tests {
     }
 
     #[test]
-    fn missing_file_is_defaults() {
-        let root = temp_root();
-        let doc = load_settings(&root).unwrap();
+    fn missing_is_defaults() {
+        let app_data = temp_dir("app");
+        let vault = temp_dir("vault");
+        let doc = load_for_vault(&app_data, &vault);
         assert!(doc.enabled);
         assert_eq!(doc.delay_seconds, DEFAULT_DELAY_SECONDS);
-        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&app_data);
+        let _ = fs::remove_dir_all(&vault);
     }
 
     #[test]
-    fn round_trip() {
-        let root = temp_root();
-        let doc = IndexingSettings {
-            version: 1,
-            enabled: false,
-            delay_seconds: 30,
-        };
-        save_settings(&root, &doc).unwrap();
-        let loaded = load_settings(&root).unwrap();
+    fn reads_settings_json_by_vault() {
+        let app_data = temp_dir("app");
+        let vault = temp_dir("vault");
+        let key = vault.to_string_lossy().to_string();
+        let store = serde_json::json!({
+            "indexingByVault": {
+                key: { "version": 1, "enabled": false, "delaySeconds": 30 }
+            },
+            "prefs": { "theme": "dark" }
+        });
+        fs::write(
+            store_path(&app_data),
+            serde_json::to_string_pretty(&store).unwrap(),
+        )
+        .unwrap();
+        let loaded = load_for_vault(&app_data, &vault);
         assert!(!loaded.enabled);
         assert_eq!(loaded.delay_seconds, 30);
-        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&app_data);
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn falls_back_to_legacy_vault_file() {
+        let app_data = temp_dir("app");
+        let vault = temp_dir("vault");
+        let markspace = vault.join(".markspace");
+        fs::create_dir_all(&markspace).unwrap();
+        fs::write(
+            markspace.join("indexing.json"),
+            r#"{ "version": 1, "enabled": false, "delaySeconds": 42 }
+"#,
+        )
+        .unwrap();
+        let loaded = load_for_vault(&app_data, &vault);
+        assert!(!loaded.enabled);
+        assert_eq!(loaded.delay_seconds, 42);
+        let _ = fs::remove_dir_all(&app_data);
+        let _ = fs::remove_dir_all(&vault);
     }
 
     #[test]

@@ -4,6 +4,7 @@ import { useAgentMemoryStore } from "../../store/agentMemoryStore";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { useDiarySettingsStore } from "../../store/diarySettingsStore";
+import { useIndexingSettingsStore } from "../../store/indexingSettingsStore";
 import { useVaultAiSettingsStore } from "../../store/vaultAiSettingsStore";
 import { usePrefsStore } from "../../store/prefsStore";
 import { useVaultStore } from "../../store/vaultStore";
@@ -18,6 +19,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
   const hydrateForVault = useChatStore((s) => s.hydrateForVault);
   const hydrateMemory = useAgentMemoryStore((s) => s.hydrateForVault);
   const hydrateDiary = useDiarySettingsStore((s) => s.hydrateForVault);
+  const hydrateIndexing = useIndexingSettingsStore((s) => s.hydrateForVault);
   const hydrateVaultAi = useVaultAiSettingsStore((s) => s.hydrateForVault);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const openTabIds = useChatStore((s) => s.openTabIds);
@@ -33,8 +35,16 @@ export const ChatSidebar = memo(function ChatSidebar() {
     void hydrateForVault(vaultPath);
     void hydrateMemory(vaultPath);
     void hydrateDiary(vaultPath);
+    void hydrateIndexing(vaultPath);
     void hydrateVaultAi(vaultPath);
-  }, [vaultPath, hydrateForVault, hydrateMemory, hydrateDiary, hydrateVaultAi]);
+  }, [
+    vaultPath,
+    hydrateForVault,
+    hydrateMemory,
+    hydrateDiary,
+    hydrateIndexing,
+    hydrateVaultAi,
+  ]);
 
   const hasOpenTabs = openTabIds.length > 0 && !!activeThreadId;
 

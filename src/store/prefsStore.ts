@@ -44,9 +44,6 @@ export const usePrefsStore = create<PrefsStore>((set, get) => ({
     const prefs = { ...get().prefs, [key]: value };
     set({ prefs });
     persistAndApply(prefs);
-    if (key === "defaultViewMode") {
-      useVaultStore.setState({ viewMode: value as Prefs["defaultViewMode"] });
-    }
   },
 
   openSettings: (category) => {

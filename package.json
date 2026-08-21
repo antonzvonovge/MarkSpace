@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "sidecar:stage": "node scripts/stage-embeddings-sidecar.mjs",
+    "sidecar:stage:if-needed": "node scripts/stage-embeddings-sidecar.mjs --if-needed",
     "sidecar:stage:release": "node scripts/stage-embeddings-sidecar.mjs --release",
     "test": "vitest run --environment jsdom",
     "drawio:download": "node scripts/download-drawio.mjs",

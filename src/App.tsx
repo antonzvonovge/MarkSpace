@@ -102,7 +102,7 @@ const DocumentTab = memo(function DocumentTab({
       ? s.content
       : (s.tabs.find((t) => t.path === path)?.body ?? ""),
   );
-  // Inactive tabs stay on a warm Live instance; ignore global viewMode flips.
+  // Inactive tabs stay on a warm Live instance; active tab uses its own viewMode.
   const viewMode = useVaultStore((s) =>
     isActive && kind !== "incoming" ? s.viewMode : "live",
   );

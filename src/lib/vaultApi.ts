@@ -791,6 +791,10 @@ export async function setIndexingSettings(args: {
   return invoke<IndexingSettings>("set_indexing_settings", { args });
 }
 
+export async function clearLegacyIndexingSettings(): Promise<void> {
+  await invoke("clear_legacy_indexing_settings");
+}
+
 export type VaultAiSettingsDoc = {
   version: number;
   chatModelId?: string | null;
