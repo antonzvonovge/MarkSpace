@@ -12,6 +12,7 @@ import type { DiagramEngine } from "../editor/diagramCache";
 import { diagramRenderFn } from "../editor/renderDiagram";
 import { scheduleDiagramPreview } from "../editor/scheduleDiagramPreview";
 import { writeClipboardPng } from "../lib/clipboardImage";
+import { writeClipboardText } from "../lib/clipboardText";
 import { rasterizeSvgElementToPng } from "../lib/rasterizeSvg";
 
 /**
@@ -124,16 +125,23 @@ export function DiagramLightbox({
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
     "idle",
   );
+  const [copyCodeState, setCopyCodeState] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
   const [panning, setPanning] = useState(false);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const copiedTimerRef = useRef<number | undefined>(undefined);
+  const copyCodeTimerRef = useRef<number | undefined>(undefined);
   const copyInFlightRef = useRef(false);
 
   useEffect(() => {
     return () => {
       if (copiedTimerRef.current !== undefined) {
         window.clearTimeout(copiedTimerRef.current);
+      }
+      if (copyCodeTimerRef.current !== undefined) {
+        window.clearTimeout(copyCodeTimerRef.current);
       }
     };
   }, []);
@@ -160,11 +168,30 @@ export function DiagramLightbox({
     copiedTimerRef.current = window.setTimeout(() => setCopyState("idle"), 1800);
   }, []);
 
+  const copyCode = useCallback(async () => {
+    if (!code) return;
+    try {
+      await writeClipboardText(code);
+      setCopyCodeState("copied");
+    } catch (err) {
+      console.warn("diagram source copy failed", err);
+      setCopyCodeState("error");
+    }
+    if (copyCodeTimerRef.current !== undefined) {
+      window.clearTimeout(copyCodeTimerRef.current);
+    }
+    copyCodeTimerRef.current = window.setTimeout(
+      () => setCopyCodeState("idle"),
+      1800,
+    );
+  }, [code]);
+
   useEffect(() => {
     if (!open) {
       setZoom(1);
       setSvgReady(false);
       setCopyState("idle");
+      setCopyCodeState("idle");
       setPanning(false);
       return;
     }
@@ -284,6 +311,12 @@ export function DiagramLightbox({
       : copyState === "error"
         ? "Could not copy image"
         : "Copy image";
+  const copyCodeLabel =
+    copyCodeState === "copied"
+      ? "Copied"
+      : copyCodeState === "error"
+        ? "Could not copy code"
+        : "Copy code";
 
   return createPortal(
     <div className="diagram-lightbox-root" role="presentation">
@@ -351,6 +384,34 @@ export function DiagramLightbox({
                   <path
                     fill="currentColor"
                     d="M5.5 2A1.5 1.5 0 004 3.5V4h-.5A1.5 1.5 0 002 5.5v7A1.5 1.5 0 003.5 14h6a1.5 1.5 0 001.5-1.5V12h.5A1.5 1.5 0 0013 10.5v-7A1.5 1.5 0 0011.5 2h-6zM5 3.5a.5.5 0 01.5-.5h6a.5.5 0 01.5.5v7a.5.5 0 01-.5.5H11V5.5A1.5 1.5 0 009.5 4H5v-.5zM3.5 5H9.5a.5.5 0 01.5.5v7a.5.5 0 01-.5.5h-6a.5.5 0 01-.5-.5v-7a.5.5 0 01.5-.5z"
+                  />
+                </svg>
+              )}
+            </button>
+            <button
+              type="button"
+              className={`diagram-lightbox__btn diagram-lightbox__icon-btn is-${copyCodeState}`}
+              aria-label={copyCodeLabel}
+              title={copyCodeLabel}
+              disabled={!code}
+              onClick={() => void copyCode()}
+            >
+              {copyCodeState === "copied" ? (
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M6.5 11.2L3.3 8l1.06-1.06L6.5 9.08l5.14-5.14L12.7 5 6.5 11.2z"
+                  />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M5.5 4.5L2.5 8l3 3.5M10.5 4.5l3 3.5-3 3.5"
                   />
                 </svg>
               )}

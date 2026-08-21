@@ -34,6 +34,11 @@
   --chat-chip-bg: color-mix(in srgb, var(--text) 7.5%, var(--editor-surface));
   --chat-chip-border: color-mix(in srgb, var(--text) 13%, transparent);
   --chat-chip-fg: var(--muted);
+  /* User chat bubble — matte light blue. */
+  --chat-user-bubble-bg: #d4e6fb;
+  --chat-user-bubble-shadow:
+    0 1px 2px rgba(28, 36, 40, 0.07),
+    0 1px 3px rgba(28, 36, 40, 0.04);
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
   --font-live: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
   --font-source: "JetBrains Mono", ui-monospace, monospace;
@@ -85,6 +90,10 @@
   --tag-bg-hover: rgba(100, 181, 246, 0.22);
   --tag-border: rgba(144, 202, 249, 0.28);
   --tag-text: #90caf9;
+  --chat-user-bubble-bg: rgba(100, 181, 246, 0.22);
+  --chat-user-bubble-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 1px 3px rgba(0, 0, 0, 0.16);
 }
 
 /* Cursor-like thin file-tree rows */
@@ -107,7 +116,7 @@
 }
 
 :root[data-density="compact"] .brand-block {
-  padding: 2px var(--tree-pad-x) 4px 10px;
+  padding: 2px var(--tree-pad-x) 4px 0;
   --tree-toolbar-icon: 16px;
   --tree-toolbar-btn: 22px;
 }
@@ -115,6 +124,10 @@
 :root[data-density="compact"] .brand {
   font-size: 1.1rem;
   gap: 6px;
+  /* Match Favorites header icon metrics for logo centering. */
+  --tree-row-gap: 6px;
+  --tree-icon-size: 20px;
+  --tree-chevron-size: 16px;
 }
 
 :root[data-density="compact"] .sidebar-footer {
@@ -418,7 +431,7 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px var(--tree-pad-x) 8px 14px;
+  padding: 4px var(--tree-pad-x) 8px 0;
 }
 
 .sidebar-footer {
@@ -768,10 +781,16 @@ select {
 }
 
 .brand {
+  --brand-logo-size: 1.35em;
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
+  /* Center logo on the Favorites section icon column. */
+  padding-left: calc(
+    var(--tree-pad-x) + var(--tree-chevron-size) + var(--tree-row-gap) +
+      (var(--tree-icon-size) - var(--brand-logo-size)) / 2
+  );
   font-size: 1.35rem;
   font-weight: 700;
   line-height: 1.2;
@@ -779,8 +798,8 @@ select {
 }
 
 .brand-logo {
-  width: 1.35em;
-  height: 1.35em;
+  width: var(--brand-logo-size);
+  height: var(--brand-logo-size);
   flex-shrink: 0;
   border-radius: 50%;
   object-fit: cover;
@@ -831,7 +850,11 @@ select {
   gap: var(--tree-row-gap);
   width: 100%;
   min-height: var(--tree-row-height);
-  padding: 2px var(--tree-pad-x);
+  /* Align icon with Favorites star (skip chevron column). */
+  padding: 2px var(--tree-pad-x) 2px
+    calc(
+      var(--tree-pad-x) + var(--tree-chevron-size) + var(--tree-row-gap)
+    );
   border: 0;
   background: transparent;
   color: var(--sidebar-text);
@@ -3732,12 +3755,13 @@ select {
   border-left: 3px solid rgba(203, 17, 171, 0.45);
   color: var(--muted);
   margin: 0.85em 0;
+  /* Match BlockNote inset so empty placeholder doesn’t sit on the bar. */
   padding-left: 0.85em;
 }
 
-/* Empty quote + BlockNote placeholder ::after are flex siblings; don't shrink the bar. */
 .editor-canvas .bn-block-content[data-content-type="quote"] > blockquote {
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Light syntax-highlighted code blocks (override BlockNote’s #161616 chrome). */
@@ -6484,7 +6508,8 @@ select {
   max-width: 100%;
   padding: 8px 11px;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--chat-user-bubble-bg);
+  box-shadow: var(--chat-user-bubble-shadow);
   color: var(--text);
   font-size: 0.875rem;
   line-height: 1.45;
@@ -6495,6 +6520,9 @@ select {
 .chat-bubble.is-clamped {
   max-height: calc(1.45em * 8 + 16px);
   overflow: hidden;
+}
+
+.chat-bubble.is-clamped.is-faded {
   -webkit-mask-image: linear-gradient(
     to bottom,
     #000 0%,
@@ -6521,10 +6549,6 @@ select {
 
 .chat-bubble-toggle:hover {
   color: var(--text);
-}
-
-:root[data-theme="dark"] .chat-bubble {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 .chat-msg-assistant {
@@ -6567,6 +6591,10 @@ select {
 }
 
 .chat-msg-action-btn.is-saved {
+  color: var(--accent);
+}
+
+.chat-msg-action-btn.is-copied {
   color: var(--accent);
 }
 
@@ -8235,7 +8263,7 @@ select {
   padding: 0 6px 0 5px;
   vertical-align: -3px;
   border: 1px solid var(--chat-chip-border);
-  border-radius: 5px;
+  border-radius: 7px;
   background: var(--chat-chip-bg);
   color: var(--chat-chip-fg);
   font-size: 0.75rem;
@@ -8263,6 +8291,15 @@ select {
 
 .chat-path-chip.is-dir {
   --chat-chip-icon: var(--chat-chip-icon-folder);
+}
+
+.chat-bubble .chat-path-chip,
+.chat-bubble .chat-selection-chip,
+.chat-bubble .chat-comment-chip-card > .chat-comment-chip {
+  height: 22px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  vertical-align: -4px;
 }
 
 .chat-path-chip.chat-skill-chip {
@@ -9080,6 +9117,30 @@ select {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.45;
+}
+
+.chat-step-limit-continue {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 560;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-step-limit-continue:hover {
+  color: var(--accent-strong);
+}
+
+.chat-step-limit-continue:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .chat-error {

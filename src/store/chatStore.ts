@@ -211,7 +211,11 @@ type ChatStore = {
   /** Refresh gem name/instructions cache after edit; clear if deleted. */
   refreshActiveGem: () => Promise<void>;
   refreshSkillsCatalog: () => Promise<SkillMeta[]>;
-  newThread: () => Promise<void>;
+  /** Start a new chat; optional `projectPath` / `mode` override defaults. */
+  newThread: (opts?: {
+    projectPath?: string | null;
+    mode?: ChatMode;
+  }) => Promise<void>;
   selectThread: (threadId: string) => Promise<void>;
   closeTab: (threadId: string) => Promise<void>;
   closeOtherTabs: (threadId: string) => Promise<void>;
@@ -222,6 +226,8 @@ type ChatStore = {
   /** Set a user-chosen title; further auto-rename is skipped. */
   renameThread: (threadId: string, title: string) => Promise<void>;
   send: (text?: string) => Promise<void>;
+  /** Drop replies after this user turn and regenerate the assistant response. */
+  retryFromUserMessage: (messageId: string) => Promise<void>;
   stop: () => void;
   clearError: () => void;
   persistActive: () => Promise<void>;
@@ -345,6 +351,37 @@ function withoutAttention(ids: string[], threadId: string): string[] {
   return ids.includes(threadId) ? ids.filter((id) => id !== threadId) : ids;
 }
 
+/** True when the thread has no messages (draft-only / never sent). */
+async function isThreadEmpty(
+  vaultPath: string,
+  threadId: string,
+  get: () => ChatStore,
+): Promise<boolean> {
+  if (get().activeThreadId === threadId) {
+    return get().messages.length === 0;
+  }
+  try {
+    const file = await getChatThread(vaultPath, threadId);
+    return !Array.isArray(file.messages) || file.messages.length === 0;
+  } catch {
+    // Missing file — treat as empty so it can be scrubbed from the index.
+    return true;
+  }
+}
+
+/** Delete closed tabs that never got a message (keep them out of history). */
+async function deleteEmptyClosedThreads(
+  vaultPath: string,
+  closedIds: string[],
+  get: () => ChatStore,
+): Promise<void> {
+  for (const id of closedIds) {
+    if (await isThreadEmpty(vaultPath, id, get)) {
+      await deleteChatThread(vaultPath, id);
+    }
+  }
+}
+
 type ProjectContext = {
   about: string;
   projectType: ProjectTypeId;
@@ -419,21 +456,27 @@ async function createNewThread(
   get: ChatStoreGet,
   set: ChatStoreSet,
   gemId: string | null,
+  opts?: { projectPath?: string | null; mode?: ChatMode },
 ): Promise<void> {
   const vaultPath = get().vaultBound ?? useVaultStore.getState().vaultPath;
   if (!vaultPath) return;
   if (isChatBusy(get().status)) get().stop();
-  const { mode, modelId: defaultModelId } = defaultsFromSettings();
+  const defaults = defaultsFromSettings();
+  const mode = opts?.mode ?? defaults.mode;
+  const defaultModelId = defaults.modelId;
   const now = Date.now();
   const id = crypto.randomUUID();
-  // Inherit project from the chat the user was just in, else latest thread.
+  // Explicit project wins; else inherit from the chat the user was just in,
+  // else the latest thread that has a project.
   const inheritedProject =
-    get().projectPath?.trim() ||
-    [...get().threads]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .map((t) => t.projectPath?.trim() || null)
-      .find((p): p is string => !!p) ||
-    null;
+    opts && "projectPath" in opts
+      ? opts.projectPath?.trim() || null
+      : get().projectPath?.trim() ||
+        [...get().threads]
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .map((t) => t.projectPath?.trim() || null)
+          .find((p): p is string => !!p) ||
+        null;
   const project = await loadProjectContext(inheritedProject);
   const gem = await loadGemContext(gemId);
   const settings = useAiSettingsStore.getState().settings;
@@ -587,6 +630,8 @@ async function closeChatTabsKeeping(
       : openTabIds[0] ?? null;
 
   const closedIds = prevTabs.filter((id) => !keepIds.has(id));
+  // Empty chats must not linger in history after the tab is closed.
+  await deleteEmptyClosedThreads(vaultPath, closedIds, get);
   const listed = await persistChatTabs(get, openTabIds, nextActive);
   if (!listed) return;
 
@@ -635,6 +680,345 @@ async function closeChatTabsKeeping(
       activeThreadId: listed.activeThreadId,
       attentionThreadIds: attention,
     });
+  }
+}
+
+/**
+ * Compact if needed, then stream an assistant reply for `messages`
+ * (must already end with the user turn being answered).
+ */
+async function runAssistantTurn(params: {
+  messages: UIMessage[];
+  skillIds: string[];
+  toolIds: string[];
+  clearDraft: boolean;
+  titleHint?: string;
+  /** History used for context estimate before compaction (defaults to messages). */
+  estimateHistory?: UIMessage[];
+  estimateDraft?: string;
+  estimateAttachments?: ChatAttachment[];
+}): Promise<void> {
+  const get = useChatStore.getState;
+  const set = useChatStore.setState;
+
+  const vaultPath =
+    get().vaultBound ?? useVaultStore.getState().vaultPath;
+  if (!vaultPath) {
+    set({ error: "Open a vault to chat", status: "error" });
+    return;
+  }
+
+  const settings = useAiSettingsStore.getState().settings;
+  const keys = credentialsFromSettings(settings);
+  const modelId = resolveModelId(
+    settings.baseUrl,
+    get().modelId || vaultChatModelId(),
+  );
+  if (!hasCredentialsForModel(modelId, keys)) {
+    set({
+      error: missingCredentialsMessage(modelId, keys),
+      status: "error",
+    });
+    return;
+  }
+
+  if (isChatBusy(get().status)) return;
+
+  let activeThreadId = get().activeThreadId;
+  if (!activeThreadId) {
+    await get().newThread();
+    activeThreadId = get().activeThreadId;
+  }
+  if (!activeThreadId) return;
+
+  const vault = useVaultStore.getState();
+  const excerpt =
+    vault.activePath && vault.content
+      ? vault.content.slice(0, 4000)
+      : null;
+
+  const projectPath = get().projectPath;
+  const project = projectPath
+    ? await loadProjectContext(projectPath)
+    : EMPTY_PROJECT_CONTEXT;
+  if (projectPath) {
+    set({
+      projectAbout: project.about,
+      projectType: project.projectType,
+      projectLearningLanguage: project.learningLanguage,
+    });
+  }
+
+  const skills = await get().refreshSkillsCatalog();
+  const forcedSkills = params.skillIds.length
+    ? await loadSkills(params.skillIds)
+    : [];
+  const forcedTools = params.toolIds.length ? params.toolIds : [];
+  const mode = get().mode;
+  const limit = contextWindowForModel(settings, modelId);
+  const system = buildSystemPrompt({
+    mode,
+    vaultPath,
+    activePath: vault.activePath,
+    activeExcerpt: excerpt,
+    projectPath,
+    projectAbout: project.about,
+    projectType: project.projectType,
+    projectLearningLanguage: project.learningLanguage,
+    gemName: get().gemName,
+    gemInstructions: get().gemInstructions,
+    skills,
+    forcedSkills,
+    forcedTools,
+  });
+  const anchorTokens = get().contextAnchorTokens;
+  const anchorCount = get().contextAnchorMessageCount;
+
+  let history = params.estimateHistory ?? params.messages;
+  const estimateDraft = params.estimateDraft ?? "";
+  const estimateAttachments = params.estimateAttachments ?? [];
+  let usedBeforeSend = estimateUsedContext({
+    system,
+    messages: history,
+    draft: estimateDraft,
+    draftAttachments: estimateAttachments,
+    mode,
+    anchor:
+      anchorTokens != null && anchorCount != null
+        ? { tokens: anchorTokens, messageCount: anchorCount }
+        : null,
+  });
+
+  const controller = new AbortController();
+
+  if (wouldExceedContext(usedBeforeSend, limit)) {
+    const { older } = splitForCompaction(history);
+    if (older.length === 0) {
+      set({
+        error:
+          "Context window is full and there is nothing older to compact. Start a new chat.",
+        status: "error",
+      });
+      return;
+    }
+
+    set({
+      abort: controller,
+      status: "compacting",
+      error: null,
+      streamStartedAt: Date.now(),
+      streamReasoningText: null,
+    });
+
+    try {
+      const { messages: compacted, compacted: didCompact } =
+        await compactChatHistory({
+          messages: history,
+          keys,
+          ...helperModelCallParams(),
+          abortSignal: controller.signal,
+        });
+      if (!didCompact) {
+        set({
+          abort: null,
+          status: "error",
+          streamStartedAt: null,
+          error:
+            "Context window is full and there is nothing older to compact. Start a new chat.",
+        });
+        return;
+      }
+      history = compacted;
+      // Rebuild turn messages: compacted prefix + trailing user turn when
+      // estimateHistory was a prefix of params.messages.
+      const trailing = params.messages.slice(
+        (params.estimateHistory ?? params.messages).length,
+      );
+      const nextMessages =
+        trailing.length > 0 ? [...history, ...trailing] : history;
+      set({
+        messages: nextMessages,
+        contextAnchorTokens: null,
+        contextAnchorMessageCount: null,
+      });
+      params = { ...params, messages: nextMessages };
+      usedBeforeSend = estimateUsedContext({
+        system,
+        messages: history,
+        draft: estimateDraft,
+        draftAttachments: estimateAttachments,
+        mode,
+        anchor: null,
+      });
+      if (wouldExceedContext(usedBeforeSend, limit)) {
+        set({
+          abort: null,
+          status: "error",
+          streamStartedAt: null,
+          error:
+            "Context is still full after compaction. Start a new chat or shorten your message.",
+        });
+        await get().persistActive();
+        return;
+      }
+      await get().persistActive();
+    } catch (e) {
+      const aborted =
+        controller.signal.aborted ||
+        (e instanceof Error && e.name === "AbortError");
+      if (aborted) {
+        set({
+          status: "ready",
+          abort: null,
+          streamStartedAt: null,
+          streamReasoningText: null,
+        });
+        return;
+      }
+      set({
+        abort: null,
+        status: "error",
+        streamStartedAt: null,
+        error: formatAiError(e),
+      });
+      return;
+    }
+  }
+
+  const messages = params.messages;
+  const prevMeta = get().threads.find((t) => t.id === activeThreadId);
+  const provisional = isProvisionalTitle(
+    prevMeta?.title,
+    messages,
+    prevMeta?.titleLocked,
+  );
+  const firstUser = messages.find((m) => m.role === "user");
+  const title = provisional
+    ? firstUser
+      ? titleFromMessage(userText(firstUser) || params.titleHint || "")
+      : "New chat"
+    : (prevMeta?.title ?? "New chat");
+
+  set({
+    messages,
+    ...(params.clearDraft
+      ? {
+          draft: "",
+          draftAttachments: [],
+          draftSelections: {},
+        }
+      : {}),
+    status: "streaming",
+    error: null,
+    streamStartedAt: Date.now(),
+    streamReasoningText: null,
+    abort: controller,
+    threads: get().threads.map((t) =>
+      t.id === activeThreadId ? { ...t, title, updatedAt: Date.now() } : t,
+    ),
+  });
+
+  try {
+    const { messages: finalMessages, lastStepInputTokens } = await runChat({
+      messages,
+      mode,
+      modelId,
+      keys,
+      vaultPath,
+      activePath: vault.activePath,
+      activeExcerpt: excerpt,
+      projectPath,
+      projectAbout: project.about,
+      projectType: project.projectType,
+      projectLearningLanguage: project.learningLanguage,
+      gemName: get().gemName,
+      gemInstructions: get().gemInstructions,
+      enableReasoning: get().enableReasoning,
+      skills,
+      forcedSkills,
+      forcedTools,
+      contextWindow: limit,
+      maxSteps: settings.agentMaxSteps,
+      abortSignal: controller.signal,
+      onMessages: (next) => {
+        if (get().abort !== controller) return;
+        set({ messages: next });
+      },
+      onReasoningPreview: (text) => {
+        if (get().abort !== controller) return;
+        set({ streamReasoningText: text });
+      },
+    });
+    const anchor = buildContextAnchor({
+      lastStepInputTokens,
+      messages: finalMessages,
+      system,
+      mode,
+    });
+    const viewingFinished = get().activeThreadId === activeThreadId;
+    set({
+      messages: finalMessages,
+      contextAnchorTokens: anchor.tokens,
+      contextAnchorMessageCount: anchor.messageCount,
+      status: "ready",
+      abort: null,
+      streamStartedAt: null,
+      streamReasoningText: null,
+      error: null,
+      attentionThreadIds: viewingFinished
+        ? withoutAttention(get().attentionThreadIds, activeThreadId)
+        : withAttention(get().attentionThreadIds, activeThreadId),
+    });
+    await get().persistActive();
+    await maybeRefreshTitle(activeThreadId, finalMessages, {
+      keys,
+      modelId,
+    });
+  } catch (e) {
+    const aborted =
+      controller.signal.aborted ||
+      (e instanceof Error && e.name === "AbortError");
+    if (aborted) {
+      set({
+        status: "ready",
+        abort: null,
+        streamStartedAt: null,
+        streamReasoningText: null,
+      });
+      await get().persistActive();
+      return;
+    }
+    const message = formatAiError(e);
+    const errorMsg: UIMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      parts: [{ type: "text", text: `Error: ${message}` }],
+    };
+    const base = get().messages;
+    const withoutEmptyAssistant =
+      base.length > 0 &&
+      base[base.length - 1]?.role === "assistant" &&
+      !(base[base.length - 1].parts ?? []).some(
+        (p) =>
+          (p.type === "text" && p.text.trim()) ||
+          ("type" in p && String(p.type).startsWith("tool-")),
+      )
+        ? base.slice(0, -1)
+        : base;
+    const next = [...withoutEmptyAssistant, errorMsg];
+    const viewingFinished = get().activeThreadId === activeThreadId;
+    set({
+      messages: next,
+      status: "error",
+      error: message,
+      abort: null,
+      streamStartedAt: null,
+      streamReasoningText: null,
+      attentionThreadIds: viewingFinished
+        ? withoutAttention(get().attentionThreadIds, activeThreadId)
+        : withAttention(get().attentionThreadIds, activeThreadId),
+    });
+    await get().persistActive();
   }
 }
 
@@ -956,8 +1340,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   clearError: () => set({ error: null, status: "ready" }),
 
-  newThread: async () => {
-    await createNewThread(get, set, null);
+  newThread: async (opts) => {
+    await createNewThread(get, set, null, opts);
   },
 
   newThreadWithGem: async (gemId) => {
@@ -1012,6 +1396,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       : currentActive && openTabIds.includes(currentActive)
         ? currentActive
         : openTabIds[0] ?? null;
+
+    // Empty chats must not linger in history after the tab is closed.
+    await deleteEmptyClosedThreads(vaultPath, [threadId], get);
 
     const listed = await persistChatTabs(get, openTabIds, nextActive);
     if (!listed) return;
@@ -1304,333 +1691,55 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const attachments = get().draftAttachments;
     const content = unwrapComposerMarkers(draftText).trim();
     if (!content && attachments.length === 0) return;
-    const vaultPath =
-      get().vaultBound ?? useVaultStore.getState().vaultPath;
-    if (!vaultPath) {
-      set({ error: "Open a vault to chat", status: "error" });
-      return;
-    }
-
-    const settings = useAiSettingsStore.getState().settings;
-    const keys = credentialsFromSettings(settings);
-    const modelId = resolveModelId(
-      settings.baseUrl,
-      get().modelId || vaultChatModelId(),
-    );
-    if (!hasCredentialsForModel(modelId, keys)) {
-      set({
-        error: missingCredentialsMessage(modelId, keys),
-        status: "error",
-      });
-      return;
-    }
-
     if (isChatBusy(get().status)) return;
 
-    let activeThreadId = get().activeThreadId;
-    if (!activeThreadId) {
-      await get().newThread();
-      activeThreadId = get().activeThreadId;
-    }
-    if (!activeThreadId) return;
-
-    const vault = useVaultStore.getState();
-    const excerpt =
-      vault.activePath && vault.content
-        ? vault.content.slice(0, 4000)
-        : null;
-
-    const projectPath = get().projectPath;
-    const project = projectPath
-      ? await loadProjectContext(projectPath)
-      : EMPTY_PROJECT_CONTEXT;
-    if (projectPath) {
-      set({
-        projectAbout: project.about,
-        projectType: project.projectType,
-        projectLearningLanguage: project.learningLanguage,
-      });
-    }
-
-    const skills = await get().refreshSkillsCatalog();
-    const forcedSkills = skillIds.length
-      ? await loadSkills(skillIds)
-      : [];
-    const forcedTools = toolIds.length ? toolIds : [];
-    const mode = get().mode;
-    const limit = contextWindowForModel(settings, modelId);
-    const system = buildSystemPrompt({
-      mode,
-      vaultPath,
-      activePath: vault.activePath,
-      activeExcerpt: excerpt,
-      projectPath,
-      projectAbout: project.about,
-      projectType: project.projectType,
-      projectLearningLanguage: project.learningLanguage,
-      gemName: get().gemName,
-      gemInstructions: get().gemInstructions,
-      skills,
-      forcedSkills,
-      forcedTools,
-    });
-    const anchorTokens = get().contextAnchorTokens;
-    const anchorCount = get().contextAnchorMessageCount;
-
-    let history = get().messages;
-    let usedBeforeSend = estimateUsedContext({
-      system,
-      messages: history,
-      draft: draftText,
-      draftAttachments: attachments,
-      mode,
-      anchor:
-        anchorTokens != null && anchorCount != null
-          ? { tokens: anchorTokens, messageCount: anchorCount }
-          : null,
-    });
-
-    const controller = new AbortController();
-
-    if (wouldExceedContext(usedBeforeSend, limit)) {
-      const { older } = splitForCompaction(history);
-      if (older.length === 0) {
-        set({
-          error:
-            "Context window is full and there is nothing older to compact. Start a new chat.",
-          status: "error",
-        });
-        return;
-      }
-
-      set({
-        abort: controller,
-        status: "compacting",
-        error: null,
-        streamStartedAt: Date.now(),
-        streamReasoningText: null,
-      });
-
-      try {
-        const { messages: compacted, compacted: didCompact } =
-          await compactChatHistory({
-            messages: history,
-            keys,
-            ...helperModelCallParams(),
-            abortSignal: controller.signal,
-          });
-        if (!didCompact) {
-          set({
-            abort: null,
-            status: "error",
-            streamStartedAt: null,
-            error:
-              "Context window is full and there is nothing older to compact. Start a new chat.",
-          });
-          return;
-        }
-        history = compacted;
-        set({
-          messages: history,
-          contextAnchorTokens: null,
-          contextAnchorMessageCount: null,
-        });
-        usedBeforeSend = estimateUsedContext({
-          system,
-          messages: history,
-          draft: draftText,
-          draftAttachments: attachments,
-          mode,
-          anchor: null,
-        });
-        if (wouldExceedContext(usedBeforeSend, limit)) {
-          set({
-            abort: null,
-            status: "error",
-            streamStartedAt: null,
-            error:
-              "Context is still full after compaction. Start a new chat or shorten your message.",
-          });
-          await get().persistActive();
-          return;
-        }
-        await get().persistActive();
-      } catch (e) {
-        const aborted =
-          controller.signal.aborted ||
-          (e instanceof Error && e.name === "AbortError");
-        if (aborted) {
-          set({
-            status: "ready",
-            abort: null,
-            streamStartedAt: null,
-            streamReasoningText: null,
-          });
-          return;
-        }
-        set({
-          abort: null,
-          status: "error",
-          streamStartedAt: null,
-          error: formatAiError(e),
-        });
-        return;
-      }
-    }
-
+    const history = get().messages;
     const { parts, titleHint } = prepareUserMessageParts(
       draftText,
       attachments,
     );
-    if (parts.length === 0) {
-      set({
-        abort: null,
-        status: "ready",
-        streamStartedAt: null,
-      });
-      return;
-    }
+    if (parts.length === 0) return;
 
     const userMessage: UIMessage = {
       id: crypto.randomUUID(),
       role: "user",
       parts,
     };
-    const messages = [...history, userMessage];
-    const prevMeta = get().threads.find((t) => t.id === activeThreadId);
-    const provisional = isProvisionalTitle(
-      prevMeta?.title,
-      messages,
-      prevMeta?.titleLocked,
-    );
-    const firstUser = messages.find((m) => m.role === "user");
-    const title = provisional
-      ? firstUser
-        ? titleFromMessage(userText(firstUser) || titleHint)
-        : "New chat"
-      : (prevMeta?.title ?? "New chat");
-
-    set({
-      messages,
-      draft: "",
-      draftAttachments: [],
-      draftSelections: {},
-      status: "streaming",
-      error: null,
-      streamStartedAt: Date.now(),
-      streamReasoningText: null,
-      abort: controller,
-      threads: get().threads.map((t) =>
-        t.id === activeThreadId ? { ...t, title, updatedAt: Date.now() } : t,
-      ),
+    await runAssistantTurn({
+      messages: [...history, userMessage],
+      skillIds,
+      toolIds,
+      clearDraft: true,
+      titleHint,
+      estimateHistory: history,
+      estimateDraft: draftText,
+      estimateAttachments: attachments,
     });
+  },
 
-    try {
-      const { messages: finalMessages, lastStepInputTokens } = await runChat({
-        messages,
-        mode,
-        modelId,
-        keys,
-        vaultPath,
-        activePath: vault.activePath,
-        activeExcerpt: excerpt,
-        projectPath,
-        projectAbout: project.about,
-        projectType: project.projectType,
-        projectLearningLanguage: project.learningLanguage,
-        gemName: get().gemName,
-        gemInstructions: get().gemInstructions,
-        enableReasoning: get().enableReasoning,
-        skills,
-        forcedSkills,
-        forcedTools,
-        contextWindow: limit,
-        maxSteps: settings.agentMaxSteps,
-        abortSignal: controller.signal,
-        onMessages: (next) => {
-          if (get().abort !== controller) return;
-          set({ messages: next });
-        },
-        onReasoningPreview: (text) => {
-          if (get().abort !== controller) return;
-          set({ streamReasoningText: text });
-        },
-      });
-      const anchor = buildContextAnchor({
-        lastStepInputTokens,
-        messages: finalMessages,
-        system,
-        mode,
-      });
-      // Only flag attention when the user is not already watching this thread
-      // (they switched away or closed chat). Clear separately on composer focus.
-      const viewingFinished =
-        get().activeThreadId === activeThreadId;
-      set({
-        messages: finalMessages,
-        contextAnchorTokens: anchor.tokens,
-        contextAnchorMessageCount: anchor.messageCount,
-        status: "ready",
-        abort: null,
-        streamStartedAt: null,
-        streamReasoningText: null,
-        error: null,
-        attentionThreadIds: viewingFinished
-          ? withoutAttention(get().attentionThreadIds, activeThreadId)
-          : withAttention(get().attentionThreadIds, activeThreadId),
-      });
-      await get().persistActive();
-      await maybeRefreshTitle(activeThreadId, finalMessages, {
-        keys,
-        modelId,
-      });
-    } catch (e) {
-      const aborted =
-        controller.signal.aborted ||
-        (e instanceof Error && e.name === "AbortError");
-      if (aborted) {
-        set({
-          status: "ready",
-          abort: null,
-          streamStartedAt: null,
-          streamReasoningText: null,
-        });
-        await get().persistActive();
-        return;
-      }
-      const message = formatAiError(e);
-      const errorMsg: UIMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        parts: [{ type: "text", text: `Error: ${message}` }],
-      };
-      const base = get().messages;
-      const withoutEmptyAssistant =
-        base.length > 0 &&
-        base[base.length - 1]?.role === "assistant" &&
-        !(base[base.length - 1].parts ?? []).some(
-          (p) =>
-            (p.type === "text" && p.text.trim()) ||
-            ("type" in p && String(p.type).startsWith("tool-")),
-        )
-          ? base.slice(0, -1)
-          : base;
-      const next = [...withoutEmptyAssistant, errorMsg];
-      const viewingFinished =
-        get().activeThreadId === activeThreadId;
-      set({
-        messages: next,
-        status: "error",
-        error: message,
-        abort: null,
-        streamStartedAt: null,
-        streamReasoningText: null,
-        attentionThreadIds: viewingFinished
-          ? withoutAttention(get().attentionThreadIds, activeThreadId)
-          : withAttention(get().attentionThreadIds, activeThreadId),
-      });
-      await get().persistActive();
-    }
+  retryFromUserMessage: async (messageId) => {
+    if (isChatBusy(get().status)) return;
+    const all = get().messages;
+    const idx = all.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    const target = all[idx]!;
+    if (target.role !== "user") return;
+    const meta = (
+      target as UIMessage & { metadata?: { kind?: string } }
+    ).metadata;
+    if (meta?.kind === "question-answer") return;
+
+    const truncated = all.slice(0, idx + 1);
+    const rawText = userText(target);
+    const skillIds = extractSkillIdsFromDraft(rawText);
+    const toolIds = extractToolIdsFromDraft(rawText);
+
+    await runAssistantTurn({
+      messages: truncated,
+      skillIds,
+      toolIds,
+      clearDraft: false,
+    });
   },
 
   stop: () => {

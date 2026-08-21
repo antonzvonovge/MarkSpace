@@ -47,13 +47,22 @@ export function agentStepLimitNotice(
   cutOff = false,
 ): string {
   if (cutOff) {
-    return `Reached the agent step limit (${maxSteps} steps) and stopped mid-work. Send another message to continue.`;
+    return `Reached the agent step limit (${maxSteps} steps) and stopped mid-work.`;
   }
-  return `Reached the agent step limit (${maxSteps} steps) and wrapped up here. Send another message if you need more.`;
+  return `Reached the agent step limit (${maxSteps} steps) and wrapped up here.`;
 }
 
 export function isAgentStepLimitNotice(text: string): boolean {
   return AGENT_STEP_LIMIT_NOTICE_RE.test(text.trim());
+}
+
+/** Drop legacy “send another message…” hints now that UI has Continue. */
+export function displayAgentStepLimitNotice(text: string): string {
+  return text
+    .trim()
+    .replace(/\s*Send another message to continue\.\s*$/i, "")
+    .replace(/\s*Send another message if you need more\.\s*$/i, "")
+    .trim();
 }
 
 export type RunChatResult = {

@@ -175,6 +175,11 @@ type VaultStore = {
   /** True only after the user clicks a folder in the tree (not when opening a note). */
   selectedFolderExplicit: boolean;
   /**
+   * File highlighted in the tree when it differs from `activePath`
+   * (e.g. right-click select without opening a preview). Cleared on open/folder select.
+   */
+  treeSelectedFilePath: string | null;
+  /**
    * When false, the tree shows no selected/active highlight
    * (e.g. right after session restore).
    */
@@ -293,6 +298,11 @@ type VaultStore = {
   takePendingCommentFocus: () => string | null;
   saveActive: () => Promise<void>;
   selectFolder: (path: string) => void;
+  /**
+   * Highlight a tree row without opening it (context menu / right-click).
+   * Folders use folder selection; files set `treeSelectedFilePath` and keep the editor as-is.
+   */
+  selectInTree: (path: string, isDir: boolean) => void;
   /**
    * Select a folder and open its hidden overview note (`{folder}/.folder.md`),
    * creating the note when missing. No-op for vault root (`""`).
@@ -531,13 +541,29 @@ function tabLabel(path: string, kind?: TabKind): string {
 function treeSelectionForOpen(path: string): {
   selectedFolderPath: string;
   selectedFolderExplicit: boolean;
+  treeSelectedFilePath: null;
   treeSelectionVisible: true;
 } {
   return {
     selectedFolderPath: parentPath(path),
     selectedFolderExplicit: isFolderNotePath(path),
+    treeSelectedFilePath: null,
     treeSelectionVisible: true,
   };
+}
+
+/** Remap a stored path after move/rename/delete (`to === null` clears matches). */
+function remapStoredPath(
+  path: string | null,
+  from: string,
+  to: string | null,
+): string | null {
+  if (!path) return null;
+  if (path === from || path.startsWith(`${from}/`)) {
+    if (to == null) return null;
+    return path === from ? to : `${to}${path.slice(from.length)}`;
+  }
+  return path;
 }
 
 function collectFilePaths(node: TreeNode, out: string[] = []): string[] {
@@ -783,7 +809,7 @@ function applyNavRemap(
   set({ navHistory: next.paths, navIndex: next.index });
 }
 
-/** Remap recent MRU and browse history after move/rename/delete. */
+/** Remap recent MRU, browse history, and tree file selection after move/rename/delete. */
 function applyPathRemaps(
   set: (partial: Partial<VaultStore>) => void,
   get: () => VaultStore,
@@ -792,6 +818,10 @@ function applyPathRemaps(
 ) {
   applyRecentRemap(set, get, from, to);
   applyNavRemap(set, get, from, to);
+  const nextTreeFile = remapStoredPath(get().treeSelectedFilePath, from, to);
+  if (nextTreeFile !== get().treeSelectedFilePath) {
+    set({ treeSelectedFilePath: nextTreeFile });
+  }
 }
 
 function activateLoaded(
@@ -985,6 +1015,7 @@ function activateVirtualTab(
     dirty: false,
     loading: false,
     selectedFolderExplicit: false,
+    treeSelectedFilePath: null,
     ...(syncTreeSelection ? { treeSelectionVisible: true } : { treeSelectionVisible: false }),
     showOutline: false,
     showComments: false,
@@ -1143,7 +1174,11 @@ async function openSingletonTab(
     if (activePath === existing.path) {
       set(
         syncTreeSelection
-          ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+          ? {
+              selectedFolderExplicit: false,
+              treeSelectedFilePath: null,
+              treeSelectionVisible: true,
+            }
           : { treeSelectionVisible: false },
       );
       return;
@@ -1220,6 +1255,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   activePath: null,
   selectedFolderPath: "",
   selectedFolderExplicit: false,
+  treeSelectedFilePath: null,
   treeSelectionVisible: false,
   expandedPaths: [],
   favoritePaths: [],
@@ -1455,6 +1491,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         dirty: false,
         selectedFolderPath: "",
         selectedFolderExplicit: false,
+        treeSelectedFilePath: null,
         treeSelectionVisible: false,
         expandedPaths,
         favoritePaths,
@@ -1872,7 +1909,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           showOutline: false,
           showComments: false,
           ...(syncTreeSelection
-            ? { selectedFolderExplicit: false, treeSelectionVisible: true }
+            ? {
+                selectedFolderExplicit: false,
+                treeSelectedFilePath: null,
+                treeSelectionVisible: true,
+              }
             : { treeSelectionVisible: false }),
         });
         persistSession(get());
@@ -2226,8 +2267,22 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     set({
       selectedFolderPath: path,
       selectedFolderExplicit: true,
+      treeSelectedFilePath: null,
       treeSelectionVisible: true,
     }),
+
+  selectInTree: (path, isDir) => {
+    if (isDir) {
+      get().selectFolder(path);
+      return;
+    }
+    set({
+      treeSelectedFilePath: path,
+      selectedFolderPath: parentPath(path),
+      selectedFolderExplicit: false,
+      treeSelectionVisible: true,
+    });
+  },
 
   openOrCreateFolderNote: async (folder) => {
     const cleaned = folder.replace(/^\/+|\/+$/g, "");
@@ -2440,7 +2495,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         set({ expandedPaths: nextExpanded });
         if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       }
-      set({ selectedFolderPath: created, selectedFolderExplicit: true, treeSelectionVisible: true });
+      set({
+        selectedFolderPath: created,
+        selectedFolderExplicit: true,
+        treeSelectedFilePath: null,
+        treeSelectionVisible: true,
+      });
       await get().refreshTree();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -2467,7 +2527,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         set({ expandedPaths: nextExpanded });
         if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       }
-      set({ selectedFolderPath: "Skills", selectedFolderExplicit: true, treeSelectionVisible: true });
+      set({
+        selectedFolderPath: "Skills",
+        selectedFolderExplicit: true,
+        treeSelectedFilePath: null,
+        treeSelectionVisible: true,
+      });
       await get().refreshTree();
       await get().openNote(created, { preview: false });
     } catch (e) {
@@ -2591,6 +2656,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       } else if (selectedFolderPath === notePath) {
         patch.selectedFolderPath = result.folder;
         patch.selectedFolderExplicit = true;
+        patch.treeSelectedFilePath = null;
       }
 
       set(patch);
@@ -2656,6 +2722,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         tabs: nextTabs,
         selectedFolderPath: result.folder,
         selectedFolderExplicit: true,
+        treeSelectedFilePath: null,
       };
       if (activePath === notePath) {
         patch.activePath = result.folderNote;
@@ -2787,6 +2854,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           set({
             selectedFolderPath: pinnedFolder,
             selectedFolderExplicit: true,
+            treeSelectedFilePath: null,
             treeSelectionVisible: true,
           });
         }

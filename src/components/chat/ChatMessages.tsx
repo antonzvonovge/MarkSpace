@@ -31,7 +31,7 @@ import { chipLabelForPath } from "../../lib/chatComposerDom";
 import { commentQuoteLabel } from "../../lib/commentAnchors";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { findModel, OPENROUTER_MODELS } from "../../ai/models";
-import { isAgentStepLimitNotice } from "../../ai/runChat";
+import { displayAgentStepLimitNotice, isAgentStepLimitNotice } from "../../ai/runChat";
 import { resolveModelId } from "../../ai/resolveModelId";
 import {
   saveAssistantMessageAsNote,
@@ -39,7 +39,7 @@ import {
 } from "../../lib/saveChatMessage";
 import type { AiSettings } from "../../ai/types";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
-import { useChatStore } from "../../store/chatStore";
+import { isChatBusy, useChatStore } from "../../store/chatStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { vaultChatModelId } from "../../store/vaultAiSettingsStore";
 import { PromptDialog } from "../AppDialog";
@@ -327,6 +327,8 @@ type UserRowProps = {
   sticky: boolean;
   stickyRef: React.RefObject<HTMLDivElement | null>;
   onOpenCopyMenu: (e: ReactMouseEvent, fullText: string) => void;
+  onRetry: (messageId: string) => void;
+  canRetry: boolean;
 };
 
 const UserMessageRow = memo(function UserMessageRow({
@@ -334,6 +336,8 @@ const UserMessageRow = memo(function UserMessageRow({
   sticky,
   stickyRef,
   onOpenCopyMenu,
+  onRetry,
+  canRetry,
 }: UserRowProps) {
   const files = filePartsFrom(message);
   const text = displayTextFromUserMessage(message);
@@ -341,6 +345,12 @@ const UserMessageRow = memo(function UserMessageRow({
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const [clampable, setClampable] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const showRetry =
+    canRetry &&
+    isStickyUserCandidate(message) &&
+    (text.trim().length > 0 ||
+      files.length > 0 ||
+      attachedDocNames.length > 0);
 
   useLayoutEffect(() => {
     const el = bubbleRef.current;
@@ -404,7 +414,13 @@ const UserMessageRow = memo(function UserMessageRow({
         <div className="chat-bubble-wrap">
           <div
             ref={bubbleRef}
-            className={expanded ? "chat-bubble" : "chat-bubble is-clamped"}
+            className={
+              expanded
+                ? "chat-bubble"
+                : clampable
+                  ? "chat-bubble is-clamped is-faded"
+                  : "chat-bubble is-clamped"
+            }
             onClick={onBubbleClick}
           >
             <UserText text={text} />
@@ -418,6 +434,22 @@ const UserMessageRow = memo(function UserMessageRow({
               {expanded ? "Show less" : "Show more"}
             </button>
           ) : null}
+        </div>
+      ) : null}
+      {showRetry ? (
+        <div className="chat-msg-actions">
+          <button
+            type="button"
+            className="chat-msg-action-btn"
+            title="Retry"
+            aria-label="Retry"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRetry(message.id);
+            }}
+          >
+            <RetryIcon />
+          </button>
         </div>
       ) : null}
     </div>
@@ -447,13 +479,49 @@ function SavedNoteIcon() {
   );
 }
 
+function CopyMarkdownIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M5.5 2A1.5 1.5 0 004 3.5V4h-.5A1.5 1.5 0 002 5.5v7A1.5 1.5 0 003.5 14h6a1.5 1.5 0 001.5-1.5V12h.5A1.5 1.5 0 0013 10.5v-7A1.5 1.5 0 0011.5 2h-6zM5 3.5a.5.5 0 01.5-.5h6a.5.5 0 01.5.5v7a.5.5 0 01-.5.5H11V5.5A1.5 1.5 0 009.5 4H5v-.5zM3.5 5H9.5a.5.5 0 01.5.5v7a.5.5 0 01-.5.5h-6a.5.5 0 01-.5-.5v-7a.5.5 0 01.5-.5z"
+      />
+    </svg>
+  );
+}
+
+function RetryIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 8a5 5 0 0 1 8.9-2.1M13 4v2.5H10.5"
+      />
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M13 8a5 5 0 0 1-8.9 2.1M3 12v-2.5H5.5"
+      />
+    </svg>
+  );
+}
+
 type AssistantRowProps = {
   message: UIMessage;
   streaming: boolean;
   isLast: boolean;
   saved: boolean;
+  copied: boolean;
   onOpenCopyMenu: (e: ReactMouseEvent, fullText: string) => void;
   onSave: (messageId: string, content: string) => void;
+  onCopyMarkdown: (messageId: string, content: string) => void;
 };
 
 const AssistantMessageRow = memo(function AssistantMessageRow({
@@ -461,9 +529,13 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   streaming,
   isLast,
   saved,
+  copied,
   onOpenCopyMenu,
   onSave,
+  onCopyMarkdown,
 }: AssistantRowProps) {
+  const send = useChatStore((s) => s.send);
+  const chatStatus = useChatStore((s) => s.status);
   const msgParts = message.parts ?? [];
   const hasAnswerText = msgParts.some(
     (p) => p.type === "text" && p.text.trim().length > 0,
@@ -471,7 +543,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   const streamingThis = streaming && isLast;
   const copyText = textFrom(message);
   const saveText = saveTextFrom(message);
-  const showSave = !streamingThis && saveText.length > 0;
+  const showActions = !streamingThis && saveText.length > 0;
+  const canContinueStepLimit =
+    isLast && !streamingThis && !isChatBusy(chatStatus);
 
   return (
     <div
@@ -517,7 +591,21 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                 className="chat-step-limit-notice"
                 role="status"
               >
-                {part.text}
+                <span>{displayAgentStepLimitNotice(part.text)}</span>
+                {canContinueStepLimit ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="chat-step-limit-continue"
+                      onClick={() => {
+                        void send("Continue");
+                      }}
+                    >
+                      Continue
+                    </button>
+                  </>
+                ) : null}
               </div>
             );
           }
@@ -565,8 +653,22 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         }
         return null;
       })}
-      {showSave ? (
+      {showActions ? (
         <div className="chat-msg-actions">
+          <button
+            type="button"
+            className={
+              copied ? "chat-msg-action-btn is-copied" : "chat-msg-action-btn"
+            }
+            title={copied ? "Copied" : "Copy markdown"}
+            aria-label={copied ? "Copied" : "Copy markdown"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopyMarkdown(message.id, saveText);
+            }}
+          >
+            {copied ? <SavedNoteIcon /> : <CopyMarkdownIcon />}
+          </button>
           <button
             type="button"
             className={
@@ -596,13 +698,21 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
   const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
   const [savePrompt, setSavePrompt] = useState<SavePromptState | null>(null);
   const [savedMessageId, setSavedMessageId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const savedClearRef = useRef<number | null>(null);
+  const copiedClearRef = useRef<number | null>(null);
   const projectPath = useChatStore((s) => s.projectPath);
+  const chatStatus = useChatStore((s) => s.status);
+  const retryFromUserMessage = useChatStore((s) => s.retryFromUserMessage);
+  const canRetry = !streaming && !isChatBusy(chatStatus);
 
   useEffect(() => {
     return () => {
       if (savedClearRef.current != null) {
         window.clearTimeout(savedClearRef.current);
+      }
+      if (copiedClearRef.current != null) {
+        window.clearTimeout(copiedClearRef.current);
       }
     };
   }, []);
@@ -626,6 +736,27 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
       defaultName: suggestedNoteNameFromMarkdown(content),
     });
   }, []);
+
+  const copyMarkdown = useCallback((messageId: string, content: string) => {
+    if (!content.trim()) return;
+    void writeClipboardText(content).then(() => {
+      if (copiedClearRef.current != null) {
+        window.clearTimeout(copiedClearRef.current);
+      }
+      setCopiedMessageId(messageId);
+      copiedClearRef.current = window.setTimeout(() => {
+        setCopiedMessageId((id) => (id === messageId ? null : id));
+        copiedClearRef.current = null;
+      }, 1500);
+    });
+  }, []);
+
+  const onRetry = useCallback(
+    (messageId: string) => {
+      void retryFromUserMessage(messageId);
+    },
+    [retryFromUserMessage],
+  );
 
   const stickyIdx = lastStickyUserIndex(messages);
   const stickyId = stickyIdx >= 0 ? messages[stickyIdx]!.id : null;
@@ -720,6 +851,8 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
               sticky={index === stickyIdx}
               stickyRef={stickyRef}
               onOpenCopyMenu={openCopyMenu}
+              onRetry={onRetry}
+              canRetry={canRetry}
             />
           );
         }
@@ -740,8 +873,10 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
             streaming={streaming}
             isLast={message.id === last?.id}
             saved={message.id === savedMessageId}
+            copied={message.id === copiedMessageId}
             onOpenCopyMenu={openCopyMenu}
             onSave={requestSave}
+            onCopyMarkdown={copyMarkdown}
           />
         );
       })}

@@ -49,6 +49,7 @@ import {
 import { nativeLanguageLabel } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";
 import { useChatStore } from "../store/chatStore";
+import { useChatUiStore } from "../store/chatUiStore";
 import {
   PromptDialog,
   ConfirmDialog,
@@ -413,6 +414,19 @@ function TranslateIcon() {
   );
 }
 
+function OpenChatIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 2.25a5.75 5.75 0 0 0-4.9 8.75L2.25 13.75l3-.7A5.75 5.75 0 1 0 8 2.25z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function DownloadArticleIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -578,6 +592,7 @@ function TreeContextMenu({
   onTurnIntoFolder,
   onNewSkill,
   onDownloadArticle,
+  onOpenChat,
   onTranslate,
   onTranslateReplace,
   onRename,
@@ -603,6 +618,7 @@ function TreeContextMenu({
   onTurnIntoFolder: () => void;
   onNewSkill: () => void;
   onDownloadArticle: () => void;
+  onOpenChat: () => void;
   onTranslate: () => void;
   onTranslateReplace: () => void;
   onRename: () => void;
@@ -629,6 +645,7 @@ function TreeContextMenu({
   const showStandardCreate = !isSkills;
   const showDownloadArticle =
     !menu.createOnly && menu.isDir && !isSkills;
+  const showOpenChat = showProjectProperties;
   const showTranslate =
     !menu.createOnly &&
     !menu.isDir &&
@@ -664,7 +681,8 @@ function TreeContextMenu({
 
   const showCreate = showSkillCreate || showStandardCreate;
   const showPaths = true; // Reveal is always available
-  const showContentActions = showDownloadArticle || showTranslate;
+  const showContentActions =
+    showDownloadArticle || showOpenChat || showTranslate;
   const showDelete = showEditActions;
 
   const sections: ReactNode[] = [];
@@ -904,6 +922,20 @@ function TreeContextMenu({
   if (showContentActions) {
     sections.push(
       <div key="content-actions">
+        {showOpenChat ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onOpenChat();
+            }}
+          >
+            <OpenChatIcon />
+            <span>Open chat</span>
+          </button>
+        ) : null}
         {showDownloadArticle ? (
           <button
             type="button"
@@ -1073,13 +1105,14 @@ function FavoritesTreeRows({
   activePath,
   selectedFolderPath,
   selectedFolderExplicit,
+  treeSelectedFilePath,
   treeSelectionVisible,
   renamingPath,
   favoriteSet,
   projectPropertiesByPath,
   unresolvedCounts,
   onOpenContextMenu,
-  onSelectFolder,
+  onSelectInTree,
   onOpenFolder,
   onOpenNote,
   onToggleExpanded,
@@ -1092,13 +1125,14 @@ function FavoritesTreeRows({
   activePath: string | null;
   selectedFolderPath: string;
   selectedFolderExplicit: boolean;
+  treeSelectedFilePath: string | null;
   treeSelectionVisible: boolean;
   renamingPath: string | null;
   favoriteSet: Set<string>;
   projectPropertiesByPath: Record<string, ProjectProperties>;
   unresolvedCounts: Map<string, number>;
   onOpenContextMenu: (menu: ContextMenuState) => void;
-  onSelectFolder: (path: string) => void;
+  onSelectInTree: (path: string, isDir: boolean) => void;
   onOpenFolder: (path: string) => void;
   onOpenNote: (path: string, options?: { preview?: boolean }) => void;
   onToggleExpanded: (path: string) => void;
@@ -1129,7 +1163,7 @@ function FavoritesTreeRows({
           treeSelectionVisible &&
           !isDir &&
           !selectedFolderExplicit &&
-          activePath === path;
+          (treeSelectedFilePath ?? activePath) === path;
         const renaming = renamingPath === path;
         const openComments = unresolvedCounts.get(path) ?? 0;
         const projectRoot = vaultProjectRootOf(path);
@@ -1186,8 +1220,7 @@ function FavoritesTreeRows({
                   isDir,
                   isFavorite: favoriteSet.has(path),
                 });
-                if (isDir) onSelectFolder(path);
-                else onOpenNote(path, { preview: true });
+                onSelectInTree(path, isDir);
               }}
             >
               {isDir ? (
@@ -1287,13 +1320,14 @@ function FavoritesTreeRows({
                 activePath={activePath}
                 selectedFolderPath={selectedFolderPath}
                 selectedFolderExplicit={selectedFolderExplicit}
+                treeSelectedFilePath={treeSelectedFilePath}
                 treeSelectionVisible={treeSelectionVisible}
                 renamingPath={renamingPath}
                 favoriteSet={favoriteSet}
                 projectPropertiesByPath={projectPropertiesByPath}
                 unresolvedCounts={unresolvedCounts}
                 onOpenContextMenu={onOpenContextMenu}
-                onSelectFolder={onSelectFolder}
+                onSelectInTree={onSelectInTree}
                 onOpenFolder={onOpenFolder}
                 onOpenNote={onOpenNote}
                 onToggleExpanded={onToggleExpanded}
@@ -1323,6 +1357,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
   const selectedFolderExplicit = useVaultStore((s) => s.selectedFolderExplicit);
+  const treeSelectedFilePath = useVaultStore((s) => s.treeSelectedFilePath);
   const treeSelectionVisible = useVaultStore((s) => s.treeSelectionVisible);
   const createNoteInSelection = useVaultStore((s) => s.createNoteInSelection);
   const createDrawioInSelection = useVaultStore((s) => s.createDrawioInSelection);
@@ -1337,6 +1372,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const removePath = useVaultStore((s) => s.removePath);
   const importIntoSelection = useVaultStore((s) => s.importIntoSelection);
   const selectFolder = useVaultStore((s) => s.selectFolder);
+  const selectInTree = useVaultStore((s) => s.selectInTree);
   const openOrCreateFolderNote = useVaultStore((s) => s.openOrCreateFolderNote);
   const openNote = useVaultStore((s) => s.openNote);
   const toggleExpanded = useVaultStore((s) => s.toggleExpanded);
@@ -1508,6 +1544,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       selectedFolderPath: target.isDir
         ? target.treePath
         : parentPath(activePath),
+      treeSelectedFilePath: target.isDir ? null : target.treePath,
       treeSelectionVisible: true,
     });
     revealPathInTree(target.treePath, target.isDir ? { isDir: true } : undefined);
@@ -1549,6 +1586,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       selectedFolderPath: target.isDir
         ? target.treePath
         : parentPath(treeRevealRequest.path),
+      treeSelectedFilePath: target.isDir ? null : target.treePath,
       treeSelectionVisible: true,
     });
     revealPathInTree(target.treePath, target.isDir ? { isDir: true } : undefined);
@@ -1652,6 +1690,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         activePath,
         selectedFolderPath,
         selectedFolderExplicit,
+        treeSelectedFilePath,
         tree: vaultTree,
         expandedPaths,
       } = store;
@@ -1660,6 +1699,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         let target: string | null = null;
         if (selectedFolderExplicit && selectedFolderPath) {
           target = selectedFolderPath;
+        } else if (treeSelectedFilePath) {
+          target = treeSelectedFilePath;
         } else if (activePath) {
           target = activePath;
         }
@@ -1689,9 +1730,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       const currentPath =
         selectedFolderExplicit && selectedFolderPath
           ? selectedFolderPath
-          : activePath && isFolderNotePath(activePath)
-            ? parentPath(activePath)
-            : activePath;
+          : treeSelectedFilePath
+            ? treeSelectedFilePath
+            : activePath && isFolderNotePath(activePath)
+              ? parentPath(activePath)
+              : activePath;
 
       let index = currentPath
         ? rows.findIndex((r) => r.path === currentPath)
@@ -2070,6 +2113,13 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             selectFolder(folder);
             setClipFolder(folder);
           }}
+          onOpenChat={() => {
+            useChatUiStore.getState().setOpen(true);
+            void useChatStore.getState().newThread({
+              projectPath: contextMenu.path,
+              mode: "agent",
+            });
+          }}
           onTranslate={() => {
             startTranslateNote(contextMenu.path);
           }}
@@ -2292,13 +2342,14 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 activePath={activePath}
                 selectedFolderPath={selectedFolderPath}
                 selectedFolderExplicit={selectedFolderExplicit}
+                treeSelectedFilePath={treeSelectedFilePath}
                 treeSelectionVisible={treeSelectionVisible}
                 renamingPath={renamingPath}
                 favoriteSet={favoriteSet}
                 projectPropertiesByPath={projectPropertiesByPath}
                 unresolvedCounts={unresolvedCounts}
                 onOpenContextMenu={setContextMenu}
-                onSelectFolder={selectFolder}
+                onSelectInTree={selectInTree}
                 onOpenFolder={(path) => {
                   void openOrCreateFolderNote(path);
                 }}
@@ -2430,7 +2481,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   treeSelectionVisible &&
                   !isDir &&
                   !selectedFolderExplicit &&
-                  activePath === path;
+                  (treeSelectedFilePath ?? activePath) === path;
                 const renaming = renamingPath === path;
                 const openComments = unresolvedCounts.get(path) ?? 0;
                 const projectRoot = vaultProjectRootOf(path);
@@ -2502,8 +2553,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         isDir,
                         isFavorite: path !== "" && favoriteSet.has(path),
                       });
-                      if (isDir) selectFolder(path);
-                      else void openNote(path, { preview: true });
+                      selectInTree(path, isDir);
                     }}
                   >
                     <DrawioTreeDragBridge
