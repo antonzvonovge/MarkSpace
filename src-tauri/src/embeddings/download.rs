@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::model::MODEL_ID;
+use super::types::MODEL_ID;
 
 const EVENT_NAME: &str = "embedding-model://progress";
 const MODEL_BASE_URL: &str =

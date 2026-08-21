@@ -150,6 +150,8 @@ const cargoArgs = [
   join(tauriDir, "Cargo.toml"),
   "--bin",
   "markspace-embeddings",
+  "--features",
+  "embeddings-sidecar",
 ];
 if (release) cargoArgs.push("--release");
 if (process.env.CARGO_BUILD_TARGET || process.env.TAURI_ENV_TARGET_TRIPLE) {

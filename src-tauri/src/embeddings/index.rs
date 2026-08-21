@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::model::{EMBEDDING_DIM, MODEL_ID};
+use super::types::{EMBEDDING_DIM, MODEL_ID};
 
 pub const INDEX_VERSION: u32 = 2;
 

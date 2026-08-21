@@ -16,8 +16,8 @@ use super::index::{
     load_index, save_index, ChunkRecord, EmbeddingIndex, FileRecord,
 };
 use super::ipc::{ChildMessage, HostRequest};
-use super::model::{Embedder, MODEL_ID};
-use super::types::{BackgroundJobPayload, EmbeddingsIndexStatus, SemanticHit};
+use super::model::Embedder;
+use super::types::{BackgroundJobPayload, EmbeddingsIndexStatus, SemanticHit, MODEL_ID};
 
 const JOB_ID: &str = "embeddings-index";
 const MAX_EMBED_BATCH: usize = 8;

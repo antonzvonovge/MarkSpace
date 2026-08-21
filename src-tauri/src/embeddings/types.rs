@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+pub const MODEL_ID: &str = "paraphrase-multilingual-MiniLM-L12-v2";
+#[cfg(feature = "embeddings-sidecar")]
+pub const EMBEDDING_DIM: usize = 384;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundJobPayload {

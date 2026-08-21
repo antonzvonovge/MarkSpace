@@ -4,8 +4,6 @@ use candle_transformers::models::bert::{BertModel, Config, DTYPE};
 use std::path::Path;
 use tokenizers::{PaddingParams, TruncationParams, Tokenizer};
 
-pub const MODEL_ID: &str = "paraphrase-multilingual-MiniLM-L12-v2";
-pub const EMBEDDING_DIM: usize = 384;
 /// Multilingual MiniLM sentence-transformers default max length.
 const MAX_SEQ_LEN: usize = 128;
 
@@ -149,6 +147,7 @@ fn normalize_l2(v: &Tensor) -> Result<Tensor, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::embeddings::types::{EMBEDDING_DIM, MODEL_ID};
     use std::path::PathBuf;
     use std::time::Instant;
 

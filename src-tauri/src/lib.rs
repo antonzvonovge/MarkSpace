@@ -18,6 +18,7 @@ mod terminal;
 mod vault;
 mod vault_ai;
 
+#[cfg(feature = "embeddings-sidecar")]
 pub use embeddings::run_stdio_server;
 
 use git_sync::SyncRuntime;
