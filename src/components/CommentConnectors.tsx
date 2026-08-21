@@ -29,24 +29,11 @@ function gutterPath(
   return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 }
 
-function measureLinks(
-  shell: HTMLElement,
-  commentIds: string[],
-  activeId: string | null,
-  resolvedById: ReadonlyMap<string, boolean>,
-): Link[] {
-  const shellRect = shell.getBoundingClientRect();
-  const editorMain = shell.querySelector(".editor-main");
-  const commentsScroll = shell.querySelector(".comments-scroll");
-  const gutter = commentsGutterX(shell);
-  if (!editorMain || !commentsScroll || gutter == null) return [];
+/** Cached per-id DOM refs, rebuilt only when the comment set / doc layout changes. */
+type MarkCardRefs = Map<string, { mark: Element; card: Element }>;
 
-  const editorRect = editorMain.getBoundingClientRect();
-  const panelRect = commentsScroll.getBoundingClientRect();
-  // Start just left of the comments panel (in the splitter/gutter).
-  const x1 = Math.max(0, gutter - 4);
-  const links: Link[] = [];
-
+function buildMarkCardRefs(shell: HTMLElement, commentIds: string[]): MarkCardRefs {
+  const refs: MarkCardRefs = new Map();
   for (const id of commentIds) {
     const mark = shell.querySelector(
       `.editor-canvas [data-comment-id="${CSS.escape(id)}"]`,
@@ -54,8 +41,30 @@ function measureLinks(
     const card = shell.querySelector(
       `[data-comment-card-id="${CSS.escape(id)}"]`,
     );
-    if (!mark || !card) continue;
+    if (mark && card) refs.set(id, { mark, card });
+  }
+  return refs;
+}
 
+function measureLinks(
+  shell: HTMLElement,
+  editorMain: Element,
+  commentsScroll: Element,
+  refs: MarkCardRefs,
+  activeId: string | null,
+  resolvedById: ReadonlyMap<string, boolean>,
+): Link[] {
+  const shellRect = shell.getBoundingClientRect();
+  const gutter = commentsGutterX(shell);
+  if (gutter == null) return [];
+
+  const editorRect = editorMain.getBoundingClientRect();
+  const panelRect = commentsScroll.getBoundingClientRect();
+  // Start just left of the comments panel (in the splitter/gutter).
+  const x1 = Math.max(0, gutter - 4);
+  const links: Link[] = [];
+
+  for (const [id, { mark, card }] of refs) {
     const markRect = mark.getBoundingClientRect();
     const cardRect = card.getBoundingClientRect();
 
@@ -108,33 +117,46 @@ export function CommentConnectors({
       return;
     }
 
+    const editorMain = shell.querySelector(".editor-main");
+    const commentsScroll = shell.querySelector(".comments-scroll");
+    if (!editorMain || !commentsScroll) {
+      setLinks([]);
+      return;
+    }
+
+    // Resolved once per (commentIds/layoutTick) change, not on every scroll
+    // frame — avoids a `querySelector` + `CSS.escape` pass per comment on
+    // every scroll tick (the same scroller used for edge-auto-scroll while
+    // dragging a selection).
+    const refs = buildMarkCardRefs(shell, commentIds);
+
     let raf = 0;
     const update = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const rect = shell.getBoundingClientRect();
         setSize({ w: rect.width, h: rect.height });
-        setLinks(measureLinks(shell, commentIds, activeId, resolvedById));
+        setLinks(
+          measureLinks(shell, editorMain, commentsScroll, refs, activeId, resolvedById),
+        );
       });
     };
 
     update();
 
-    const editorMain = shell.querySelector(".editor-main");
-    const commentsScroll = shell.querySelector(".comments-scroll");
-    editorMain?.addEventListener("scroll", update, { passive: true });
-    commentsScroll?.addEventListener("scroll", update, { passive: true });
+    editorMain.addEventListener("scroll", update, { passive: true });
+    commentsScroll.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
 
     const ro = new ResizeObserver(update);
     ro.observe(shell);
-    if (editorMain) ro.observe(editorMain);
-    if (commentsScroll) ro.observe(commentsScroll);
+    ro.observe(editorMain);
+    ro.observe(commentsScroll);
 
     return () => {
       cancelAnimationFrame(raf);
-      editorMain?.removeEventListener("scroll", update);
-      commentsScroll?.removeEventListener("scroll", update);
+      editorMain.removeEventListener("scroll", update);
+      commentsScroll.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
       ro.disconnect();
     };

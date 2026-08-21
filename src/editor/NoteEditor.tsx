@@ -2,6 +2,7 @@ import "@blocknote/mantine/style.css";
 import "katex/dist/katex.min.css";
 
 import { VALID_LINK_PROTOCOLS } from "@blocknote/core";
+import { SideMenuExtension } from "@blocknote/core/extensions";
 import { BlockNoteView } from "@blocknote/mantine";
 import type { Theme } from "@blocknote/mantine";
 import {
@@ -1119,6 +1120,31 @@ export const NoteEditor = memo(function NoteEditor({
       document.removeEventListener("drop", onDrop, true);
       document.removeEventListener("dragend", onDragEnd, true);
     };
+  }, [editor, isActive]);
+
+  // BlockNote's SideMenu plugin listens for `mousemove` on `document` (capture
+  // phase) *per editor instance* and, on every move, scans every mounted
+  // `.bn-editor` for hit-testing — even ones that are warm-but-inactive and
+  // hidden via `visibility: hidden`. With several Live tabs kept warm
+  // (`useWarmLiveMarkdownPaths`), that multiplies the per-move cost, which is
+  // felt as jank while dragging a multi-block selection or scrolling. Freeze
+  // the side menu on inactive instances so their `mousemove` handler bails out
+  // on its very first check; unfreeze when the tab becomes active again.
+  // `freezeMenu`/`unfreezeMenu` can throw if the menu was never shown yet
+  // (no prior hover), but they set the frozen flag before that — safe to
+  // swallow.
+  useEffect(() => {
+    const sideMenu = editor.getExtension(SideMenuExtension);
+    if (!sideMenu) return;
+    try {
+      if (isActive) {
+        sideMenu.unfreezeMenu();
+      } else {
+        sideMenu.freezeMenu();
+      }
+    } catch {
+      // No side menu state yet for this instance — frozen flag is already set.
+    }
   }, [editor, isActive]);
 
   return (
