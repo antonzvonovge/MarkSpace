@@ -11,7 +11,6 @@ import {
   LinkItemDialog,
   type LinkItemDialogValue,
 } from "../../components/AppDialog";
-import { DocumentToolbar } from "../../components/DocumentToolbar";
 import { TagChipsInput } from "../../components/TagChipsInput";
 import { useListReorder } from "../../hooks/useListReorder";
 import {
@@ -206,7 +205,6 @@ export function LinksEditor({ path, content, onChange }: Props) {
   if (error) {
     return (
       <div className="links-editor-column">
-        <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
         <div className="links-editor" ref={setScrollEl}>
           <div className="links-editor-error">
             <h2>Invalid links file</h2>
@@ -223,7 +221,6 @@ export function LinksEditor({ path, content, onChange }: Props) {
 
   return (
     <div className="links-editor-column">
-      <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
       <div className="links-editor" ref={setScrollEl}>
         <div className="links-editor-toolbar">
           <div className="links-editor-filter">

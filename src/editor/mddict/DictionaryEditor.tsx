@@ -10,7 +10,6 @@ import {
   AddWordDialog,
   type AddWordDialogValue,
 } from "../../components/AppDialog";
-import { DocumentToolbar } from "../../components/DocumentToolbar";
 import { TagChipsInput } from "../../components/TagChipsInput";
 import {
   DICT_KNOWN_THRESHOLD,
@@ -368,7 +367,6 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
   if (error) {
     return (
       <div className="dict-editor-column">
-        <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
         <div className="dict-editor">
           <div className="dict-editor-error">
             <h2>Invalid dictionary file</h2>
@@ -385,7 +383,6 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
 
   return (
     <div className="dict-editor-column">
-      <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
       <div className="dict-editor">
         <div className="dict-editor-toolbar">
           <div className="dict-editor-filter">

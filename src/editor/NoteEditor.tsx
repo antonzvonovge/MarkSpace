@@ -25,7 +25,6 @@ import {
 } from "react";
 import { CommentsPanel } from "../components/CommentsPanel";
 import { DocumentOutline } from "../components/DocumentOutline";
-import { DocumentToolbar } from "../components/DocumentToolbar";
 import {
   EditContextMenu,
   type EditContextMenuState,
@@ -1192,10 +1191,8 @@ export const NoteEditor = memo(function NoteEditor({
         </>
       ) : null}
       <div className="editor-column">
-        {/* Editor chrome stays mounted for keep-alive tabs: toggling
-            `editable` or the controllers makes BlockNote re-mount the
-            ProseMirror view on every tab switch. */}
-        <DocumentToolbar />
+        {/* DocumentToolbar lives in MainPane (above editor slots) so Live
+            keep-alive does not paint a second path / Live|Source row in Source. */}
         <div
           className="editor-main"
           ref={setEditorMainEl}

@@ -7,7 +7,6 @@ import {
   type HabitFieldsValue,
 } from "../../components/AppDialog";
 import { HabitDayDialog, type HabitDayRow } from "./HabitDayDialog";
-import { DocumentToolbar } from "../../components/DocumentToolbar";
 import { CloseIcon, PencilIcon, PlusIcon } from "../../components/treeIcons";
 import { useListReorder } from "../../hooks/useListReorder";
 import {
@@ -201,7 +200,6 @@ export function HabitTrackerEditor({ path, content, onChange }: Props) {
   if (error) {
     return (
       <div className="habit-tracker-column">
-        <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
         <div className="habit-tracker" ref={setScrollEl}>
           <div className="links-editor-error">
             <h2>Invalid habit tracker</h2>
@@ -218,7 +216,6 @@ export function HabitTrackerEditor({ path, content, onChange }: Props) {
 
   return (
     <div className="habit-tracker-column">
-      <DocumentToolbar showOutlineToggle={false} showCommentsToggle={false} />
       <div className="habit-tracker" ref={setScrollEl}>
         <div className="habit-tracker-main">
           <h1 className="habit-tracker-year">{doc.year}</h1>

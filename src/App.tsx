@@ -312,7 +312,6 @@ const MainPane = memo(function MainPane({
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const tabs = useVaultStore((s) => s.tabs);
   const activePath = useVaultStore((s) => s.activePath);
-  const viewMode = useVaultStore((s) => s.viewMode);
   const closeSettings = usePrefsStore((s) => s.closeSettings);
   const warmLivePaths = useWarmLiveMarkdownPaths(tabs, activePath);
 
@@ -345,20 +344,21 @@ const MainPane = memo(function MainPane({
                   const activeTab = tabs.find((t) => t.path === activePath);
                   if (activeTab && !isFileTab(activeTab)) return null;
                   if (activeTab && isIncomingTab(activeTab)) return null;
-                  return (
-                    (documentKind(activePath) === "markdown" ||
-                      documentKind(activePath) === "mdlnks" ||
-                      documentKind(activePath) === "mddict" ||
-                      documentKind(activePath) === "mdhabit") &&
-                    viewMode === "source" ? (
-                      <DocumentToolbar
-                        showOutlineToggle={
-                          documentKind(activePath) === "markdown"
-                        }
-                        showCommentsToggle={false}
-                      />
-                    ) : null
-                  );
+                  const kind = documentKind(activePath);
+                  const showToolbar =
+                    kind === "markdown" ||
+                    kind === "mdlnks" ||
+                    kind === "mddict" ||
+                    kind === "mdhabit";
+                  // One toolbar above the editor slots — not inside Live keep-alive
+                  // editors, or Source would stack a second path/Live/Source row
+                  // over the warm Live chrome.
+                  return showToolbar ? (
+                    <DocumentToolbar
+                      showOutlineToggle={kind === "markdown"}
+                      showCommentsToggle={kind === "markdown"}
+                    />
+                  ) : null;
                 })()}
                 <div className="document-body">
                   {tabs.map((tab) => {
