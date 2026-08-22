@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { extractInlineTags } from "../lib/hashtagMarkdown";
 import { getNoteTags, setNoteTags, splitFrontmatter } from "../lib/noteFrontmatter";
 import { resolveSuggestedTags } from "../lib/tagName";
-import { listVaultTags, readNote, writeNote } from "../lib/vaultApi";
+import { withVaultFolderContext } from "../lib/folderContext";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { useBackgroundJobsStore } from "../store/backgroundJobsStore";
@@ -98,12 +98,13 @@ function mergeTags(existing: string[], suggested: string[], max = MAX_TAGS): str
   return out;
 }
 
-function buildSystem(tagCatalog: string[]): string {
+function buildSystem(tagCatalog: string[], notePath: string): string {
   const catalogLine =
     tagCatalog.length > 0
       ? `Existing vault tags (prefer these exact strings when they fit): ${JSON.stringify(tagCatalog)}`
       : `The vault has no tags yet — invent 1–${MAX_TAGS} short lowercase kebab-case tags.`;
-  return `You assign page tags for a markdown note in a personal knowledge base.
+  return withVaultFolderContext(
+    `You assign page tags for a markdown note in a personal knowledge base.
 Reply with JSON only, no markdown fences: {"tags":["..."]}
 - Pick 1–${MAX_TAGS} tags that describe the note's topics, not a summary. Never more than ${MAX_TAGS}.
 - Prefer exact names from the existing vault catalog when they fit. Do not invent a near-duplicate of a catalog tag (e.g. use "multi-agent" not "multiagent" if the catalog has the former).
@@ -111,7 +112,9 @@ Reply with JSON only, no markdown fences: {"tags":["..."]}
 - Tag syntax: no leading #, no spaces. Multi-word tags in kebab-case (e.g. "model-context-protocol"), lowercase, only letters/digits/-/_ and optional nesting with / (e.g. "project/markspace").
 - Keep existing note tags that still fit; omit ones that do not.
 - Do not tag with generic filler (note, ideas, misc) unless that is an existing catalog tag and clearly right.
-${catalogLine}`;
+${catalogLine}`,
+    [notePath],
+  );
 }
 
 function buildPrompt(opts: {
@@ -195,7 +198,7 @@ export async function suggestNoteTags(params: {
     });
     const { text } = await generateText({
       model: resolved.model,
-      system: buildSystem(catalog),
+      system: buildSystem(catalog, params.path),
       prompt,
       maxOutputTokens: 220,
       temperature: 0.2,

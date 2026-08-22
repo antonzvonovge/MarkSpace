@@ -30,7 +30,8 @@ function skipMarkdownNormalize(path: string): boolean {
     lower.endsWith(".drawio") ||
     lower.endsWith(".mdlnks") ||
     lower.endsWith(".mddict") ||
-    lower.endsWith(".mdhabit")
+    lower.endsWith(".mdhabit") ||
+    lower.endsWith(".json")
   );
 }
 
@@ -599,7 +600,7 @@ export function isProjectTypeId(value: unknown): value is ProjectTypeId {
 
 export type ProjectProperties = {
   path: string;
-  /** Free-form description ("What is this project about"). */
+  /** Description and AI instructions for this folder. */
   about: string;
   /** `""` | `knowledgeBase` | `languageLearning` | `diary`. */
   projectType: ProjectTypeId;
@@ -622,7 +623,10 @@ export function emptyProjectProperties(path: string): ProjectProperties {
 function normalizeLoadedProjectProperties(
   raw: ProjectProperties,
 ): ProjectProperties {
-  const projectType = isProjectTypeId(raw.projectType) ? raw.projectType : "";
+  const isProject = isVaultProjectFolder(raw.path, true);
+  const projectType = isProject && isProjectTypeId(raw.projectType)
+    ? raw.projectType
+    : "";
   return {
     path: raw.path,
     about: raw.about ?? "",
@@ -631,7 +635,7 @@ function normalizeLoadedProjectProperties(
       projectType === "languageLearning"
         ? (raw.learningLanguage ?? "").trim()
         : "",
-    color: normalizeProjectColor(raw.color),
+    color: isProject ? normalizeProjectColor(raw.color) : "",
   };
 }
 
@@ -653,12 +657,14 @@ export async function setProjectProperties(
     color: string;
   },
 ): Promise<ProjectProperties> {
-  const projectType = isProjectTypeId(props.projectType) ? props.projectType : "";
+  const isProject = isVaultProjectFolder(path, true);
+  const projectType =
+    isProject && isProjectTypeId(props.projectType) ? props.projectType : "";
   const learningLanguage =
     projectType === "languageLearning"
       ? props.learningLanguage.trim()
       : "";
-  const color = normalizeProjectColor(props.color);
+  const color = isProject ? normalizeProjectColor(props.color) : "";
   const raw = await invoke<ProjectProperties>("set_project_properties", {
     path,
     about: props.about,

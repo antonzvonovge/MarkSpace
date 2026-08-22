@@ -34,6 +34,7 @@ import {
   type ChatMode,
 } from "./types";
 import { buildSystemPrompt, buildVaultTools } from "./vaultTools";
+import type { FolderAbout } from "../lib/folderContext";
 import { unwrapComposerMarkers } from "../lib/chatComposerDom";
 
 /** @deprecated Prefer DEFAULT_AGENT_MAX_STEPS / settings.agentMaxSteps */
@@ -81,6 +82,7 @@ export type RunChatParams = {
   activeExcerpt: string | null;
   projectPath?: string | null;
   projectAbout?: string | null;
+  folderContext?: FolderAbout[] | null;
   projectType?: string | null;
   projectLearningLanguage?: string | null;
   gemName?: string | null;
@@ -364,6 +366,7 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     activeExcerpt: params.activeExcerpt,
     projectPath: params.projectPath,
     projectAbout: params.projectAbout,
+    folderContext: params.folderContext,
     projectType: params.projectType,
     projectLearningLanguage: params.projectLearningLanguage,
     gemName: params.gemName,
@@ -377,6 +380,7 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     getMessages: () => inputMessages,
     projectPath: params.projectPath,
     projectAbout: params.projectAbout,
+    folderContext: params.folderContext,
     projectType: params.projectType,
     projectLearningLanguage: params.projectLearningLanguage,
     modelId: params.modelId,

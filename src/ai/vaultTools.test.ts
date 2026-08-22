@@ -254,6 +254,28 @@ describe("vault agent tools", () => {
     expect(prompt).toContain("list_tags");
   });
 
+  it("includes folder context instructions without duplicating project about", () => {
+    const prompt = buildSystemPrompt({
+      mode: "ask",
+      vaultPath: null,
+      activePath: "Spanish/Lexicon/go.md",
+      activeExcerpt: null,
+      projectPath: "Spanish",
+      projectType: "languageLearning",
+      projectLearningLanguage: "es",
+      folderContext: [
+        { path: "Spanish/Lexicon", about: "One card per lemma." },
+        { path: "Spanish", about: "A1 vocab" },
+      ],
+    });
+    expect(prompt).toContain("Folder context (description and instructions");
+    expect(prompt).toContain("deeper folder wins");
+    expect(prompt).toContain("One card per lemma.");
+    expect(prompt).toContain("A1 vocab");
+    expect(prompt).not.toContain("Project description:");
+    expect(prompt.split("A1 vocab").length).toBe(2);
+  });
+
   it("includes project type and learning language in the system prompt", () => {
     const prompt = buildSystemPrompt({
       mode: "ask",
@@ -268,6 +290,8 @@ describe("vault agent tools", () => {
     expect(prompt).toContain("Project type: Foreign language learning.");
     expect(prompt).toContain("Learning language: Spanish (es).");
     expect(prompt).toContain("A1 vocab");
+    expect(prompt).toContain("description and instructions for the AI");
+    expect(prompt).not.toContain("Project description:");
   });
 
   it("includes diary guidance in the system prompt", () => {
@@ -283,6 +307,7 @@ describe("vault agent tools", () => {
     expect(ask).toContain("Project type: Diary.");
     expect(ask).toContain("personal diary project");
     expect(ask).toContain("Daily reflections");
+    expect(ask).toContain("description and instructions for the AI");
     expect(ask).toContain("{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md");
     expect(ask).not.toContain("open_or_create_daily_note");
 

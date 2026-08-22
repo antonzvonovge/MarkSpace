@@ -14,20 +14,18 @@ In MarkSpace, a **project** is a first-level folder directly under the vault roo
 - Diary projects: context menu **New daily note** (instead of New note) opens or creates today's note at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (helpers in `src/lib/diaryNotes.ts`). Toolbar create (+) is disabled when the selected folder is under a diary project. Agent tool: `open_or_create_daily_note` (date `YYYY-MM-DD`); system prompt documents the same layout.
 - Prefer the word "project" in product copy and agent language when referring to those top-level folders.
 
-## Project properties
+## Folder properties
 
-Editable via tree context menu **Project properties…** → dialog.
+Any vault folder except the root can have properties. Tree context menu: **Project properties…** on a first-level project, **Folder properties…** on nested folders.
 
-- Stored in `.markspace/projects/<sha256(path)>.json` (`path`, `about`, `projectType`, `learningLanguage`, `color`).
-- **`about`** — UI label **What is this project about**.
-- **`projectType`** — `""` (None) | `knowledgeBase` | `languageLearning` | `diary`. Default empty.
-- **`learningLanguage`** — ISO 639-1 code (same catalog as native language prefs); only meaningful when `projectType` is `languageLearning` (cleared otherwise). UI label **Learning language**.
-- **`color`** — optional Material 500 hex from a fixed palette (`""` = unset). Used for graph note nodes, document tab strips, tree/chat accents. Catalog: `src/lib/projectColors.ts`.
-- APIs: `get_project_properties` / `set_project_properties` (Rust `projects.rs`); TS `getProjectProperties` / `setProjectProperties`.
-- Remapped on rename/move/delete like favorites.
+- Stored in `.markspace/projects/<sha256(relative path)>.json` (`path`, `about`, `projectType`, `learningLanguage`, `color`). Nested paths are allowed.
+- **`about`** — UI label **About and AI instructions**. Description and/or instructions the AI must follow when working with notes in that folder. Injected into chat, specialists, Quick Translate, and other file-scoped LLM calls (union of the active note, chat project picker, and composer path chips; one `about` per path; deeper folder wins on conflict).
+- **`projectType`** / **`learningLanguage`** / **`color`** — only for first-level projects (`isVaultProjectFolder`). Nested folders store empty values. `projectType`: `""` (None) | `knowledgeBase` | `languageLearning` | `diary`. Color: Material 500 from `src/lib/projectColors.ts`.
+- APIs: `get_project_properties` / `set_project_properties` / `list_project_properties` (Rust `projects.rs`); TS wrappers in `vaultApi.ts`.
+- Remapped on rename/move/delete of the folder **and descendants**, like favorites.
 
 ## Chat project context
 
 Composer toolbar has a **project picker** (left of Ask/Agent). Selection is per chat thread (`projectPath` on the thread file).
 
-When a project is selected, `buildSystemPrompt` includes `Active project:`, optional **Project type** / **Learning language**, and the project **about** description so the agent knows the project context.
+When a project is selected, `buildSystemPrompt` includes `Active project:` and optional **Project type** / **Learning language**. Folder `about` texts are injected once per path as **Folder context** (not a separate Project description block).

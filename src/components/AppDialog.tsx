@@ -51,17 +51,26 @@ export function DialogShell({
   wide = false,
   nested = false,
   className,
+  showClose = false,
+  hideTitle = false,
+  headerLeading,
 }: {
   open: boolean;
   title: string;
   description?: string;
   onCancel: () => void;
   children?: ReactNode;
-  footer: ReactNode;
+  footer?: ReactNode;
   wide?: boolean;
   /** Stack above another dialog; Escape closes this layer first. */
   nested?: boolean;
   className?: string;
+  /** X control in the header (top-right). */
+  showClose?: boolean;
+  /** Hide the title heading; keep `title` for accessibility. */
+  hideTitle?: boolean;
+  /** Replaces the title in the header row (e.g. a control). */
+  headerLeading?: ReactNode;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -99,18 +108,46 @@ export function DialogShell({
           .join(" ")}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-labelledby={hideTitle ? undefined : titleId}
+        aria-label={hideTitle ? title : undefined}
       >
         <header className="app-dialog-header">
-          <h2 id={titleId} className="app-dialog-title">
-            {title}
-          </h2>
+          <div className="app-dialog-header-row">
+            {hideTitle ? (
+              <div className="app-dialog-header-leading">{headerLeading}</div>
+            ) : (
+              <h2 id={titleId} className="app-dialog-title">
+                {title}
+              </h2>
+            )}
+            {showClose ? (
+              <button
+                type="button"
+                className="app-dialog-close"
+                aria-label="Close"
+                tabIndex={-1}
+                onClick={onCancel}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    d="M4 4l8 8M12 4l-8 8"
+                  />
+                </svg>
+              </button>
+            ) : null}
+          </div>
           {description ? (
             <p className="app-dialog-desc">{description}</p>
           ) : null}
         </header>
         {children}
-        <footer className="app-dialog-footer">{footer}</footer>
+        {footer ? (
+          <footer className="app-dialog-footer">{footer}</footer>
+        ) : null}
       </div>
     </div>,
     document.body,
@@ -247,6 +284,8 @@ export type ProjectPropertiesDialogValue = {
 type ProjectPropertiesDialogProps = {
   open: boolean;
   projectName: string;
+  /** First-level vault project: show type, language, and color. */
+  isProject?: boolean;
   about: string;
   projectType?: ProjectTypeId;
   learningLanguage?: string;
@@ -487,6 +526,7 @@ type AddWordDialogProps = {
   open: boolean;
   learningLanguageCode?: string;
   learningLanguageLabel?: string;
+  notePath?: string;
   onCancel: () => void;
   onConfirm: (value: AddWordDialogValue) => void;
 };
@@ -495,6 +535,7 @@ export function AddWordDialog({
   open,
   learningLanguageCode = "",
   learningLanguageLabel = "",
+  notePath,
   onCancel,
   onConfirm,
 }: AddWordDialogProps) {
@@ -542,6 +583,7 @@ export function AddWordDialog({
         keys: credentialsFromSettings(aiSettings),
         ...helperModelCallParams(),
         abortSignal: ac.signal,
+        notePath,
       });
       if (ac.signal.aborted) return;
       onConfirm({
@@ -635,6 +677,7 @@ export function AddWordDialog({
 export function ProjectPropertiesDialog({
   open,
   projectName,
+  isProject = true,
   about,
   projectType = "",
   learningLanguage = "",
@@ -667,16 +710,18 @@ export function ProjectPropertiesDialog({
     if (saving) return;
     onSave({
       about: value,
-      projectType: type,
-      learningLanguage: type === "languageLearning" ? language : "",
-      color,
+      projectType: isProject ? type : "",
+      learningLanguage:
+        isProject && type === "languageLearning" ? language : "",
+      color: isProject ? color : "",
     });
   };
 
   return (
     <DialogShell
       open={open}
-      title="Project properties"
+      className="is-folder-props"
+      title={isProject ? "Project properties" : "Folder properties"}
       description={projectName}
       onCancel={onCancel}
       footer={
@@ -701,82 +746,91 @@ export function ProjectPropertiesDialog({
       }
     >
       <div className="app-dialog-body">
-        <label className="app-dialog-label" id="project-type-label">
-          Project type
-        </label>
-        <Select
-          variant="field"
-          menuPlacement="below"
-          aria-label="Project type"
-          value={type}
-          options={PROJECT_TYPE_OPTIONS}
-          onChange={(next) => {
-            setType(next);
-            if (next !== "languageLearning") setLanguage("");
-          }}
-        />
-
-        {type === "languageLearning" ? (
+        {isProject ? (
           <>
-            <label className="app-dialog-label" id="learning-language-label">
-              Learning language
+            <label className="app-dialog-label" id="project-type-label">
+              Project type
             </label>
             <Select
               variant="field"
               menuPlacement="below"
-              aria-label="Learning language"
-              value={(language || "") as "" | NativeLanguageId}
-              options={LEARNING_LANGUAGE_OPTIONS}
-              onChange={(next) => setLanguage(next)}
+              aria-label="Project type"
+              value={type}
+              options={PROJECT_TYPE_OPTIONS}
+              onChange={(next) => {
+                setType(next);
+                if (next !== "languageLearning") setLanguage("");
+              }}
             />
+
+            {type === "languageLearning" ? (
+              <>
+                <label className="app-dialog-label" id="learning-language-label">
+                  Learning language
+                </label>
+                <Select
+                  variant="field"
+                  menuPlacement="below"
+                  aria-label="Learning language"
+                  value={(language || "") as "" | NativeLanguageId}
+                  options={LEARNING_LANGUAGE_OPTIONS}
+                  onChange={(next) => setLanguage(next)}
+                />
+              </>
+            ) : null}
+
+            <div
+              className="app-dialog-label"
+              id={colorGroupId}
+              role="presentation"
+            >
+              Color
+            </div>
+            <div
+              className="project-color-picker"
+              role="radiogroup"
+              aria-labelledby={colorGroupId}
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={color === ""}
+                aria-label="None"
+                title="None"
+                className={`project-color-swatch is-none${color === "" ? " is-selected" : ""}`}
+                disabled={saving}
+                onClick={() => setColor("")}
+              >
+                <span className="project-color-swatch-none-x" aria-hidden>
+                  ×
+                </span>
+              </button>
+              {PROJECT_COLOR_SWATCHES.map((swatch) => (
+                <button
+                  key={swatch.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={color === swatch.hex}
+                  aria-label={swatch.label}
+                  title={swatch.label}
+                  className={`project-color-swatch${color === swatch.hex ? " is-selected" : ""}`}
+                  style={{ background: swatch.hex }}
+                  disabled={saving}
+                  onClick={() => setColor(swatch.hex)}
+                />
+              ))}
+            </div>
           </>
         ) : null}
 
-        <div
-          className="app-dialog-label"
-          id={colorGroupId}
-          role="presentation"
-        >
-          Color
-        </div>
-        <div
-          className="project-color-picker"
-          role="radiogroup"
-          aria-labelledby={colorGroupId}
-        >
-          <button
-            type="button"
-            role="radio"
-            aria-checked={color === ""}
-            aria-label="None"
-            title="None"
-            className={`project-color-swatch is-none${color === "" ? " is-selected" : ""}`}
-            disabled={saving}
-            onClick={() => setColor("")}
-          >
-            <span className="project-color-swatch-none-x" aria-hidden>
-              ×
-            </span>
-          </button>
-          {PROJECT_COLOR_SWATCHES.map((swatch) => (
-            <button
-              key={swatch.id}
-              type="button"
-              role="radio"
-              aria-checked={color === swatch.hex}
-              aria-label={swatch.label}
-              title={swatch.label}
-              className={`project-color-swatch${color === swatch.hex ? " is-selected" : ""}`}
-              style={{ background: swatch.hex }}
-              disabled={saving}
-              onClick={() => setColor(swatch.hex)}
-            />
-          ))}
-        </div>
-
         <label className="app-dialog-label" htmlFor={aboutId}>
-          What is this project about
+          About and AI instructions
         </label>
+        <p className="app-dialog-hint">
+          {isProject
+            ? "What this project is for, and any instructions the AI should follow when working here."
+            : "What this folder is for, and any instructions the AI should follow when working with notes here."}
+        </p>
         <textarea
           ref={textareaRef}
           id={aboutId}
@@ -790,7 +844,11 @@ export function ProjectPropertiesDialog({
               submit();
             }
           }}
-          placeholder="Briefly describe what this project is about…"
+          placeholder={
+            isProject
+              ? "Describe the project and add instructions for the AI…"
+              : "Describe the folder and add instructions for the AI…"
+          }
           spellCheck={false}
         />
       </div>

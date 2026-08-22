@@ -30,6 +30,9 @@
   --tag-bg-hover: #d8e4f4;
   --tag-border: #c2d5ec;
   --tag-text: #1565c0;
+  /* Live-editor wiki / internal links — matte blue; missing targets use --note-link-broken. */
+  --note-link: #3d7ad6;
+  --note-link-broken: #b44141;
   /* Composer / chat mention chips — Cursor-like tokens, not page tags. */
   --chat-chip-bg: color-mix(in srgb, var(--text) 7.5%, var(--editor-surface));
   --chat-chip-border: color-mix(in srgb, var(--text) 13%, transparent);
@@ -90,6 +93,8 @@
   --tag-bg-hover: rgba(100, 181, 246, 0.22);
   --tag-border: rgba(144, 202, 249, 0.28);
   --tag-text: #90caf9;
+  --note-link: #6eb0ff;
+  --note-link-broken: #e07070;
   --chat-user-bubble-bg: rgba(100, 181, 246, 0.22);
   --chat-user-bubble-shadow:
     0 1px 2px rgba(0, 0, 0, 0.28),
@@ -3798,11 +3803,15 @@ button.status-bar-item.status-bar-timer-time:hover {
 }
 
 .editor-canvas a {
-  color: var(--accent-strong);
+  color: var(--note-link);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
   cursor: pointer;
+}
+
+.editor-canvas a:hover {
+  color: color-mix(in srgb, var(--note-link) 82%, var(--text));
 }
 
 /* Inline body hashtags (`#tag`) — styled via decorations, still editable text. */
@@ -5430,6 +5439,44 @@ button.status-bar-item.status-bar-timer-time:hover {
   padding: 20px 20px 0;
 }
 
+.app-dialog-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-dialog-header-leading {
+  min-width: 0;
+  flex: 1;
+}
+
+.app-dialog-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: -6px -8px 0 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.app-dialog-close:hover {
+  background: rgba(28, 36, 40, 0.08);
+  color: var(--text);
+}
+
+.app-dialog-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .app-dialog-title {
   margin: 0;
   font-size: 1.15rem;
@@ -5455,6 +5502,14 @@ button.status-bar-item.status-bar-timer-time:hover {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+.app-dialog-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.35;
 }
 
 .project-color-picker {
@@ -5611,6 +5666,10 @@ button.status-bar-item.status-bar-timer-time:hover {
   width: min(100%, 560px);
 }
 
+.app-dialog.is-folder-props {
+  width: min(100%, 500px);
+}
+
 .app-dialog.is-mcp {
   width: min(100%, 620px);
   max-height: calc(100vh - 48px);
@@ -5732,30 +5791,66 @@ button.status-bar-item.status-bar-timer-time:hover {
 }
 
 .quick-translate-dialog .app-dialog-header {
-  padding: 22px 24px 0;
+  padding: 16px 16px 0 24px;
 }
 
-.quick-translate-dialog .app-dialog-title {
-  font-size: 0.78rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
+.quick-translate-dialog .app-dialog-header-row {
+  align-items: center;
 }
 
-.quick-translate-dialog .app-dialog-desc {
-  margin-top: 4px;
+.quick-translate-dialog .app-dialog-header-leading {
+  flex: 0 1 auto;
+}
+
+.quick-translate-dialog .app-dialog-header-leading .ms-select,
+.quick-translate-dialog .app-dialog-header-leading .ms-select.is-field {
+  width: max-content;
+  max-width: calc(100% - 8px);
+  min-width: 0;
+}
+
+.quick-translate-dialog .app-dialog-header-leading .ms-select-trigger {
+  width: auto;
+}
+
+.quick-translate-dialog .app-dialog-close {
+  margin: 0;
 }
 
 .quick-translate-dialog .app-dialog-footer {
-  padding: 16px 24px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.quick-translate-footer-meta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.quick-translate-footer-meta .quick-translate-note-link {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-translate-footer-meta .quick-translate-status {
+  margin: 0;
 }
 
 .quick-translate-body {
   flex: 1;
   min-height: 0;
   gap: 16px;
-  padding: 16px 24px 0;
+  padding: 16px 24px 20px;
   overflow: hidden;
 }
 
@@ -5764,13 +5859,6 @@ button.status-bar-item.status-bar-timer-time:hover {
   flex-direction: column;
   gap: 10px;
   flex-shrink: 0;
-}
-
-.quick-translate-search .ms-select {
-  align-self: flex-start;
-  width: auto;
-  min-width: 12rem;
-  max-width: 100%;
 }
 
 .quick-translate-input-row {
@@ -6031,6 +6119,27 @@ button.status-bar-item.status-bar-timer-time:hover {
 .quick-translate-synonym:disabled {
   cursor: default;
   opacity: 0.55;
+}
+
+.quick-translate-note-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+}
+
+.quick-translate-note-link:hover {
+  text-decoration: underline;
+}
+
+.quick-translate-note-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .quick-translate-examples {
@@ -6368,6 +6477,10 @@ button.status-bar-item.status-bar-timer-time:hover {
 
 :root[data-theme="dark"] .app-dialog-btn:hover {
   background: rgba(231, 238, 242, 0.14);
+}
+
+:root[data-theme="dark"] .app-dialog-close:hover {
+  background: rgba(231, 238, 242, 0.1);
 }
 
 @keyframes app-dialog-fade {
@@ -7485,7 +7598,11 @@ button.status-bar-item.status-bar-timer-time:hover {
 .chat-md a.ms-broken-link,
 .editor-canvas a.ms-broken-link,
 .editor-canvas .bn-container a.ms-broken-link {
-  color: var(--danger);
+  color: var(--note-link-broken);
+}
+
+.editor-canvas a.ms-broken-link:hover {
+  color: color-mix(in srgb, var(--note-link-broken) 85%, var(--text));
 }
 
 .chat-md a.chat-note-link {
@@ -11111,6 +11228,7 @@ button.status-bar-item.status-bar-timer-time:hover {
 }
 
 .app-dialog-body .app-dialog-label + .app-dialog-input,
+.app-dialog-body .app-dialog-hint + .app-dialog-input,
 .app-dialog-body .app-dialog-label + .ms-select,
 .app-dialog-body .app-dialog-label + .link-dialog-tags,
 .app-dialog-body .app-dialog-label + .project-color-picker,

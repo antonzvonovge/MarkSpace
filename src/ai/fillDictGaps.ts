@@ -1,4 +1,5 @@
 import { generateText } from "ai";
+import { withVaultFolderContext } from "../lib/folderContext";
 import {
   resolveLanguageModel,
   runWithModelFallback,
@@ -28,6 +29,7 @@ export type FillDictGapsParams = {
   onProgress?: (done: number, total: number) => void;
   /** Called after each successful chunk so the UI can persist partial results. */
   onChunk?: (filled: DictGapFields[]) => void;
+  notePath?: string;
 };
 
 function extractJsonObject(raw: string): unknown {
@@ -105,7 +107,8 @@ function buildSystem(params: FillDictGapsParams): string {
     params.learningLanguageCode?.trim() ||
     "the target language of the vocabulary list";
   const native = `${params.nativeLanguageLabel} (${params.nativeLanguageCode})`;
-  return `You complete missing fields in vocabulary dictionary entries for a language-learning notes app.
+  return withVaultFolderContext(
+    `You complete missing fields in vocabulary dictionary entries for a language-learning notes app.
 Each entry may be a single word or a multi-word expression / phrase / idiom.
 Reply with JSON only, no markdown fences:
 {"entries":[{"word":"...","transcript":"...","translation":"...","examples":["...","..."]}]}
@@ -117,7 +120,9 @@ Reply with JSON only, no markdown fences:
 - For each entry, fill ONLY fields that are empty or missing in the input. If a field is already provided, copy it back unchanged.
 - Use already-filled fields as context so new values stay consistent (sense, register, spelling).
 - Return one object per input entry, same "word" values, same order.
-- Do not invent tags. Do not wrap values in extra quotes beyond JSON.`;
+- Do not invent tags. Do not wrap values in extra quotes beyond JSON.`,
+    [params.notePath],
+  );
 }
 
 function chunkPrompt(entries: DictGapFields[]): string {

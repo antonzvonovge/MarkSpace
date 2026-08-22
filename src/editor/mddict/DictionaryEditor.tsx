@@ -332,6 +332,7 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
         nativeLanguageLabel: nativeLanguageLabel(nativeLanguage),
         keys: credentialsFromSettings(aiSettings),
         ...helperModelCallParams(),
+        notePath: path,
         abortSignal: ac.signal,
         onProgress: (done, total) => {
           setAiFillDone(done);
@@ -467,6 +468,7 @@ export function DictionaryEditor({ path, content, onChange }: Props) {
           open={addOpen}
           learningLanguageCode={learningLanguageCode}
           learningLanguageLabel={learningLanguageLabel}
+          notePath={path}
           onCancel={() => setAddOpen(false)}
           onConfirm={onAddWord}
         />

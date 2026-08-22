@@ -6,6 +6,7 @@ import {
   createToolChipElement,
   extractSkillIdsFromDraft,
   extractToolIdsFromDraft,
+  extractVaultPathsFromDraft,
   formatVaultPathForModel,
   renderComposerFromDraft,
   replaceAtWithToolChip,
@@ -32,6 +33,14 @@ describe("vault path markers", () => {
       "[folder: Projects/ideas/; folder note: Projects/ideas/.folder.md]",
     );
     expect(formatVaultPathForModel("/")).toBe("/");
+  });
+
+  it("extracts vault paths from composer chips", () => {
+    expect(
+      extractVaultPathsFromDraft(
+        `see ${wrapVaultPathMarker("Notes/todo.md")} ${wrapVaultPathMarker("Projects/")}`,
+      ),
+    ).toEqual(["Notes/todo.md", "Projects/"]);
   });
 
   it("strips close markers from paths when wrapping", () => {

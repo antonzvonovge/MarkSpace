@@ -10,6 +10,7 @@ import {
   runWithModelFallback,
   type AiProviderCredentials,
 } from "./languageModel";
+import { withFolderContext, type FolderAbout } from "../lib/folderContext";
 
 /** Cheap model — same class as dictionary suggest / note title. */
 /** Default foreign side of the pair (English ↔ native). */
@@ -55,6 +56,7 @@ export type QuickTranslateParams = {
   modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
+  folderContext?: FolderAbout[];
 };
 
 export type QuickTranslatePair = {
@@ -231,7 +233,7 @@ function buildSystem(params: QuickTranslateParams): string {
   const foreign = `${params.foreignLanguageLabel} (${params.foreignLanguageCode})`;
   const nativeCode = params.nativeLanguageCode.trim();
   const foreignCode = params.foreignLanguageCode.trim() || DEFAULT_FOREIGN_LANG;
-  return `You are a bilingual ${params.foreignLanguageLabel} ↔ ${params.nativeLanguageLabel} dictionary for IELTS General Training (Writing Task 1 letters, Task 2 essays, Reading) in a notes app (user native language: ${native}).
+  const body = `You are a bilingual ${params.foreignLanguageLabel} ↔ ${params.nativeLanguageLabel} dictionary for IELTS General Training (Writing Task 1 letters, Task 2 essays, Reading) in a notes app (user native language: ${native}).
 The user types a word or short expression in ${foreign} or ${native} (detect which).
 The head translation is in the OTHER language (inverse of the query). Learning aids — synonyms, inflections, collocations, and example sentences — are always in ${params.foreignLanguageLabel}, never in the user's native language. Sense explanations (meaning, usage) are in ${params.nativeLanguageLabel}.
 
@@ -253,6 +255,7 @@ CRITICAL — never give ${params.nativeLanguageLabel} synonyms, inflections, col
 - examples: 2–3 short ${params.foreignLanguageLabel} sentences in realistic IELTS General topics (complaint letter, job application, landlord, workplace, travel). Keep each text under ~120 chars. examples.note = brief ${params.nativeLanguageLabel} hint of the exam context (e.g. "Task 1: letter to landlord"). Empty forms array if not useful.
 
 - Do not wrap values in extra quotes beyond JSON.`;
+  return withFolderContext(body, params.folderContext ?? []);
 }
 
 export async function quickTranslate(

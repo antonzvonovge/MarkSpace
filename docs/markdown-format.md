@@ -17,6 +17,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Diary daily notes may set YAML `marker:` to a catalog id from Settings → Diary (defaults include `holiday`, `important`, `sad`, …) so the sidebar calendar shows that day's emoji; omit the key (or leave it empty) to clear.
+- Language-learning projects may keep a **Lexicon** tree at `{project}/Lexicon/…` (at most two folders under `Lexicon/`, then a lemma `.md`). Quick Translate writes a full dictionary article in the background (status bar); keep YAML `lemma` / `lang` / `aliases` and the `## Notes` heading. Do not delete `## Notes` or the user’s text below it. The app may move files inside `Lexicon/` to reorganize.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
 - Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
@@ -48,6 +49,57 @@ marker: holiday
 - Other keys (e.g. `aliases`) are preserved when tags change; when the last key is removed the whole block is dropped.
 - Front-matter tags are edited from the tag overlay; the live editor loads only the markdown after the closing `---` and reattaches front-matter on save.
 - You may also use **inline tags** in the body (below); they are separate from front-matter and are not copied into `tags:` automatically.
+
+## Language-learning lexicon
+
+Foreign-language **projects** (top-level folders with project type language learning) may contain `{project}/Lexicon/`. Quick Translate (Ctrl+Shift+T) caches a compact JSON card, then **in the background** (status bar) writes a full dictionary article into the lemma note and may **move** files under `Lexicon/` (at most two category folders, then the `.md` file). Do not open the note just to generate it.
+
+The generated article is a **study note** in MarkSpace markdown (not lookup JSON): GFM tables, nested `*` lists, `[[project/Lexicon/lemma|lemma]]` wiki-links, one blank line between blocks. Typical sections: Pronunciation, Grammar, Meanings, Collocations, Idioms, Related words, Usage, Common mistakes. Omit empty sections. Explanations in the user’s native language; examples in the learning language. Do not invent `.assets/` or Draw.io paths.
+
+```md
+---
+created: 2026-08-22T10:00:00.000Z
+updated: 2026-08-22T10:00:00.000Z
+lemma: register
+lang: en
+aliases:
+  - registered
+---
+
+# register
+
+* **Verb / noun** — зарегистрироваться; реестр; речевой регистр.
+
+## Grammar
+
+| Form | Example |
+| --- | --- |
+| register / registered / registered | I registered yesterday. |
+
+* **Pattern:** register **for** a course (not *in*).
+
+## Meanings
+
+* **Verb — записаться** (Neutral)
+  * You must [[English/Lexicon/enroll|enroll]] vs *register* for official lists.
+  * Please register for the exam online.
+    * Запишитесь на экзамен онлайн.
+
+## Collocations
+
+| Chunk | Meaning |
+| --- | --- |
+| register a complaint | подать жалобу |
+
+## Notes
+
+Your comments stay below this heading. The generated block above may be refreshed; this tail is not overwritten.
+```
+
+- Keep `lemma`, `lang`, and `aliases` in front-matter (plus `created` / `updated` / `tags` as usual).
+- Always keep a `## Notes` heading. Put personal examples and comments **below** it. Do not parse or replace that tail when editing the generated card.
+- Do not store model JSON in the note body.
+- Agents may move notes inside that project’s `Lexicon/` only; do not nest deeper than `Lexicon/{a}/{b}/{lemma}.md`.
 
 ## Inline tags
 

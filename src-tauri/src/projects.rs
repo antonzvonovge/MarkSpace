@@ -1,7 +1,9 @@
-//! Project properties stored as one file per project under `.markspace/projects/`.
+//! Folder properties stored as one file per folder under `.markspace/projects/`.
 //!
-//! A "project" is a first-level folder under the vault root. Concurrent edits on
-//! different machines collide only when they touch the same project path.
+//! Any vault folder (not the root) may have `about` (description and AI
+//! instructions). Project type, learning language, and color apply only to
+//! first-level folders (projects). Concurrent edits collide only when they
+//! touch the same folder path.
 
 use crate::vault::VaultState;
 use serde::{Deserialize, Serialize};
@@ -41,7 +43,7 @@ const PROJECT_COLORS: &[&str] = &[
 #[serde(rename_all = "camelCase")]
 pub struct ProjectProperties {
     pub path: String,
-    /// Free-form description: what the project is about.
+    /// Description and AI instructions for this folder.
     #[serde(default)]
     pub about: String,
     /// `""` | `knowledgeBase` | `languageLearning` | `diary`.
@@ -83,28 +85,59 @@ fn normalize_project_color(raw: &str) -> String {
     }
 }
 
-fn normalize_project_path(path: &str) -> Result<String, String> {
+fn normalize_folder_path(path: &str) -> Result<String, String> {
     let trimmed = path.trim().trim_matches('/').replace('\\', "/");
     if trimmed.is_empty() {
         return Err("Cannot set properties on vault root".into());
     }
-    if trimmed.contains('/') {
-        return Err("Only first-level folders are projects".into());
-    }
     if trimmed == "." || trimmed == ".." {
-        return Err("Invalid project path".into());
+        return Err("Invalid folder path".into());
     }
     for component in Path::new(&trimmed).components() {
-        if matches!(component, Component::ParentDir | Component::RootDir) {
-            return Err("Invalid project path".into());
+        if matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::CurDir
+        ) {
+            return Err("Invalid folder path".into());
         }
     }
     Ok(trimmed)
 }
 
+fn is_folder_path(path: &str) -> bool {
+    normalize_folder_path(path).is_ok()
+}
+
 fn is_project_path(path: &str) -> bool {
-    let trimmed = path.trim().trim_matches('/').replace('\\', "/");
-    !trimmed.is_empty() && !trimmed.contains('/')
+    let Ok(trimmed) = normalize_folder_path(path) else {
+        return false;
+    };
+    !trimmed.contains('/')
+}
+
+fn sanitize_props(mut props: ProjectProperties) -> ProjectProperties {
+    if !is_project_path(&props.path) {
+        props.project_type = String::new();
+        props.learning_language = String::new();
+        props.color = String::new();
+        return props;
+    }
+    props.project_type = normalize_project_type(&props.project_type);
+    props.learning_language =
+        normalize_learning_language(&props.project_type, &props.learning_language);
+    props.color = normalize_project_color(&props.color);
+    props
+}
+
+fn path_is_self_or_descendant(path: &str, ancestor: &str) -> bool {
+    path == ancestor || path.starts_with(&format!("{ancestor}/"))
+}
+
+fn remap_descendant_path(path: &str, from: &str, to: &str) -> String {
+    if path == from {
+        return to.to_string();
+    }
+    format!("{to}{}", &path[from.len()..])
 }
 
 fn projects_dir(root: &Path) -> PathBuf {
@@ -135,7 +168,7 @@ fn read_project_file(path: &Path) -> Option<ProjectProperties> {
     let value: Value = serde_json::from_str(&raw).ok()?;
     let rel = value.get("path")?.as_str()?.trim().replace('\\', "/");
     let rel = rel.trim_matches('/').to_string();
-    if !is_project_path(&rel) {
+    if !is_folder_path(&rel) {
         return None;
     }
     let about = value
@@ -143,32 +176,29 @@ fn read_project_file(path: &Path) -> Option<ProjectProperties> {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let project_type = normalize_project_type(
-        value
-            .get("projectType")
-            .and_then(|v| v.as_str())
-            .unwrap_or(""),
-    );
-    let learning_language = normalize_learning_language(
-        &project_type,
-        value
-            .get("learningLanguage")
-            .and_then(|v| v.as_str())
-            .unwrap_or(""),
-    );
-    let color = normalize_project_color(
-        value.get("color").and_then(|v| v.as_str()).unwrap_or(""),
-    );
-    Some(ProjectProperties {
+    Some(sanitize_props(ProjectProperties {
         path: rel,
         about,
-        project_type,
-        learning_language,
-        color,
-    })
+        project_type: value
+            .get("projectType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        learning_language: value
+            .get("learningLanguage")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        color: value
+            .get("color")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    }))
 }
 
 fn write_project_file(root: &Path, props: &ProjectProperties) -> Result<(), String> {
+    let props = sanitize_props(props.clone());
     let dir = projects_dir(root);
     fs::create_dir_all(&dir).map_err(|e| format!("Cannot create projects dir: {e}"))?;
     let file = project_file_path(root, &props.path);
@@ -247,9 +277,9 @@ pub fn get_project_properties(
     state: State<VaultState>,
 ) -> Result<ProjectProperties, String> {
     let root = get_root(&state)?;
-    let rel = normalize_project_path(&path)?;
+    let rel = normalize_folder_path(&path)?;
     if !path_exists_dir(&root, &rel) {
-        return Err("Project not found".into());
+        return Err("Folder not found".into());
     }
 
     let file = project_file_path(&root, &rel);
@@ -312,21 +342,18 @@ pub fn set_project_properties(
     state: State<VaultState>,
 ) -> Result<ProjectProperties, String> {
     let root = get_root(&state)?;
-    let rel = normalize_project_path(&path)?;
+    let rel = normalize_folder_path(&path)?;
     if !path_exists_dir(&root, &rel) {
-        return Err("Project not found".into());
+        return Err("Folder not found".into());
     }
 
-    let project_type = normalize_project_type(&project_type);
-    let learning_language = normalize_learning_language(&project_type, &learning_language);
-    let color = normalize_project_color(&color);
-    let props = ProjectProperties {
+    let props = sanitize_props(ProjectProperties {
         path: rel,
         about: about.trim().to_string(),
         project_type,
         learning_language,
         color,
-    };
+    });
 
     // Drop any stale markers for this path (wrong hash filename).
     for (marker, existing) in scan_project_markers(&root)? {
@@ -339,16 +366,20 @@ pub fn set_project_properties(
     Ok(props)
 }
 
-/// Remap project properties after rename/move (`to = Some`) or delete (`to = None`).
+/// Remap folder properties after rename/move (`to = Some`) or delete (`to = None`).
 ///
-/// Only first-level folder paths are projects; moving a project into a nested
-/// location drops its properties.
+/// Remaps the folder itself and every stored descendant (`from/...`).
+/// Moving a first-level project into a nested path keeps `about` and clears
+/// project-only fields.
 pub fn remap_project_properties(root: &Path, from: &str, to: Option<&str>) -> Result<(), String> {
     let from = from.trim().trim_matches('/').replace('\\', "/");
-    if !is_project_path(&from) {
+    if !is_folder_path(&from) {
         return Ok(());
     }
-    let to = to.map(|t| t.trim().trim_matches('/').replace('\\', "/"));
+    let to = to.and_then(|t| {
+        let t = t.trim().trim_matches('/').replace('\\', "/");
+        is_folder_path(&t).then_some(t)
+    });
 
     let markers = match scan_project_markers(root) {
         Ok(v) => v,
@@ -356,19 +387,20 @@ pub fn remap_project_properties(root: &Path, from: &str, to: Option<&str>) -> Re
     };
 
     for (_file, props) in markers {
-        if props.path != from {
+        if !path_is_self_or_descendant(&props.path, &from) {
             continue;
         }
-        let _ = remove_project_file(root, &from);
-        if let Some(ref new_path) = to {
-            if is_project_path(new_path) && path_exists_dir(root, new_path) {
-                let next = ProjectProperties {
-                    path: new_path.clone(),
+        let _ = remove_project_file(root, &props.path);
+        if let Some(ref new_root) = to {
+            let new_path = remap_descendant_path(&props.path, &from, new_root);
+            if path_exists_dir(root, &new_path) {
+                let next = sanitize_props(ProjectProperties {
+                    path: new_path,
                     about: props.about,
                     project_type: props.project_type,
                     learning_language: props.learning_language,
                     color: props.color,
-                };
+                });
                 let _ = write_project_file(root, &next);
             }
         }
@@ -513,9 +545,36 @@ mod tests {
     }
 
     #[test]
-    fn rejects_nested_path() {
-        assert!(normalize_project_path("nested/deep").is_err());
-        assert!(normalize_project_path("").is_err());
+    fn accepts_nested_folder_path() {
+        assert_eq!(
+            normalize_folder_path("nested/deep").unwrap(),
+            "nested/deep"
+        );
+        assert!(normalize_folder_path("").is_err());
+        assert!(normalize_folder_path("..").is_err());
+    }
+
+    #[test]
+    fn write_and_read_nested_about() {
+        let root = temp_vault();
+        write_project_file(
+            &root,
+            &ProjectProperties {
+                path: "nested/deep".into(),
+                about: "Deep notes".into(),
+                project_type: PROJECT_TYPE_LANGUAGE_LEARNING.into(),
+                learning_language: "es".into(),
+                color: "#2196f3".into(),
+            },
+        )
+        .unwrap();
+        let loaded = read_project_file(&project_file_path(&root, "nested/deep")).unwrap();
+        assert_eq!(loaded.path, "nested/deep");
+        assert_eq!(loaded.about, "Deep notes");
+        assert_eq!(loaded.project_type, "");
+        assert_eq!(loaded.learning_language, "");
+        assert_eq!(loaded.color, "");
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -551,13 +610,25 @@ mod tests {
     }
 
     #[test]
-    fn remap_move_into_nested_drops_props() {
+    fn remap_move_into_nested_keeps_about_clears_project_fields() {
         let root = temp_vault();
         write_project_file(
             &root,
             &ProjectProperties {
                 path: "Alpha".into(),
                 about: "A".into(),
+                project_type: PROJECT_TYPE_KNOWLEDGE_BASE.into(),
+                learning_language: String::new(),
+                color: "#2196f3".into(),
+            },
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("Alpha").join("child")).unwrap();
+        write_project_file(
+            &root,
+            &ProjectProperties {
+                path: "Alpha/child".into(),
+                about: "Child".into(),
                 project_type: String::new(),
                 learning_language: String::new(),
                 color: String::new(),
@@ -568,6 +639,13 @@ mod tests {
         fs::rename(root.join("Alpha"), root.join("nested").join("Alpha")).unwrap();
         remap_project_properties(&root, "Alpha", Some("nested/Alpha")).unwrap();
         assert!(!project_file_path(&root, "Alpha").exists());
+        assert!(!project_file_path(&root, "Alpha/child").exists());
+        let moved = read_project_file(&project_file_path(&root, "nested/Alpha")).unwrap();
+        assert_eq!(moved.about, "A");
+        assert_eq!(moved.project_type, "");
+        assert_eq!(moved.color, "");
+        let child = read_project_file(&project_file_path(&root, "nested/Alpha/child")).unwrap();
+        assert_eq!(child.about, "Child");
         let _ = fs::remove_dir_all(&root);
     }
 }

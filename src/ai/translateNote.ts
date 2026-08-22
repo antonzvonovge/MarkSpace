@@ -1,6 +1,7 @@
 import { streamText } from "ai";
 import { extractInlineTags } from "../lib/hashtagMarkdown";
 import { splitFrontmatter } from "../lib/noteFrontmatter";
+import { withVaultFolderContext } from "../lib/folderContext";
 import {
   createNote,
   joinPath,
@@ -129,9 +130,10 @@ export function joinWithOriginalFrontmatter(
   return `---\n${split.rawYaml ?? ""}\n---\n${body.replace(/^\uFEFF?/, "")}`;
 }
 
-function buildSystem(language: NativeLanguageId): string {
+function buildSystem(language: NativeLanguageId, sourcePath?: string): string {
   const label = nativeLanguageLabel(language);
-  return `You translate Markdown note bodies for a personal knowledge base.
+  return withVaultFolderContext(
+    `You translate Markdown note bodies for a personal knowledge base.
 Reply with ONLY the translated Markdown body — no preamble, no explanation, no wrapping code fences, and no YAML front-matter (it was removed on purpose).
 
 Target language: ${label} (${language}).
@@ -144,7 +146,9 @@ Do NOT translate or alter:
 - Fenced code block contents (mermaid/plantuml/d2/dot/markmap/source); keep code as-is
 - URLs and HTML attributes (including data-background-color / data-text-color)
 
-Do translate natural-language content: headings, paragraphs, lists, table cell text, image alt text, and link labels.`;
+Do translate natural-language content: headings, paragraphs, lists, table cell text, image alt text, and link labels.`,
+    [sourcePath],
+  );
 }
 
 async function createNoteUnique(desiredPath: string): Promise<string> {
@@ -171,6 +175,7 @@ async function createNoteUnique(desiredPath: string): Promise<string> {
 async function translateMarkdownBody(params: {
   body: string;
   targetLanguage: NativeLanguageId;
+  sourcePath?: string;
   keys: AiProviderCredentials;
   modelId?: string;
   fallbackModelId?: string;
@@ -189,7 +194,7 @@ async function translateMarkdownBody(params: {
 
     const result = streamText({
       model: resolved.model,
-      system: buildSystem(params.targetLanguage),
+      system: buildSystem(params.targetLanguage, params.sourcePath),
       prompt: params.body,
       maxOutputTokens: 16_384,
       abortSignal: params.abortSignal,
@@ -223,7 +228,7 @@ async function translateMarkdownBody(params: {
 /** Prepare body (mask tags) → LLM → restore tags; frontmatter never leaves this helper. */
 export async function translateNoteMarkdown(
   content: string,
-  params: Omit<TranslateNoteParams, "sourcePath">,
+  params: Omit<TranslateNoteParams, "sourcePath"> & { sourcePath?: string },
 ): Promise<string> {
   const { body } = splitFrontmatter(content);
   if (!body.trim()) {
@@ -234,6 +239,7 @@ export async function translateNoteMarkdown(
   const translated = await translateMarkdownBody({
     body: protectedBody.text,
     targetLanguage: params.targetLanguage,
+    sourcePath: params.sourcePath,
     keys: params.keys,
     modelId: params.modelId,
     fallbackModelId: params.fallbackModelId,
@@ -283,6 +289,7 @@ async function prepareTranslation(
 
   params.onProgress?.(15, "Translating");
   const translated = await translateNoteMarkdown(content, {
+    sourcePath,
     targetLanguage: params.targetLanguage,
     keys: params.keys,
     modelId: params.modelId,

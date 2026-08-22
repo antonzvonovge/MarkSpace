@@ -36,6 +36,7 @@ import {
   type ProjectProperties,
 } from "../lib/vaultApi";
 import { diaryProjectRootForPath, vaultProjectRootOf } from "../lib/diaryNotes";
+import { isVaultLexiconFolder } from "../lib/lexiconNotes";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
@@ -72,6 +73,7 @@ import {
   FcPackage,
   FcPlanner,
   FcReading,
+  FcReadingEbook,
   FcWorkflow,
 } from "react-icons/fc";
 import {
@@ -169,6 +171,9 @@ function FolderTreeIcon({
   learningLanguage?: string | null;
 }) {
   if (isSkillsFolder(path)) return <FcWorkflow size={size} />;
+  if (isVaultLexiconFolder(path, true)) {
+    return <FcReadingEbook size={size} />;
+  }
   if (isVaultProjectFolder(path, true)) {
     if (projectType === "languageLearning") {
       if (learningLanguageFlagSvg(learningLanguage)) {
@@ -639,8 +644,9 @@ function TreeContextMenu({
   const showEditActions = !menu.createOnly && menu.path !== "" && !isSkills;
   const showCopyPath = !menu.createOnly && menu.path !== "";
   const showFavorite = !menu.createOnly && menu.path !== "";
-  const showProjectProperties =
-    !menu.createOnly && isVaultProjectFolder(menu.path, menu.isDir);
+  const showFolderProperties =
+    !menu.createOnly && menu.isDir && menu.path !== "";
+  const showProjectProperties = showFolderProperties && isVaultProjectFolder(menu.path, true);
   const showSkillCreate = isSkills || menu.createOnly === true;
   const showStandardCreate = !isSkills;
   const showDownloadArticle =
@@ -726,10 +732,10 @@ function TreeContextMenu({
     );
   }
 
-  if (showProjectProperties) {
+  if (showFolderProperties) {
     sections.push(
       <button
-        key="project-properties"
+        key="folder-properties"
         type="button"
         role="menuitem"
         className="tree-context-item"
@@ -739,7 +745,11 @@ function TreeContextMenu({
         }}
       >
         <PropertiesIcon />
-        <span>Project properties…</span>
+        <span>
+          {showProjectProperties
+            ? "Project properties…"
+            : "Folder properties…"}
+        </span>
       </button>,
     );
   }
@@ -2161,6 +2171,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       <ProjectPropertiesDialog
         open={projectPropsTarget !== null && !projectPropsLoading}
         projectName={projectPropsTarget?.path ?? ""}
+        isProject={
+          projectPropsTarget
+            ? isVaultProjectFolder(projectPropsTarget.path, true)
+            : true
+        }
         about={projectPropsTarget?.about ?? ""}
         projectType={projectPropsTarget?.projectType ?? ""}
         learningLanguage={projectPropsTarget?.learningLanguage ?? ""}

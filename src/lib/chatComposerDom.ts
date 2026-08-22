@@ -82,7 +82,18 @@ export function unwrapComposerMarkers(text: string): string {
   return unwrapToolMarkers(unwrapSkillMarkers(unwrapVaultPathMarkers(text)));
 }
 
-/** Skill ids embedded as chips in the draft (order preserved, deduped). */
+/** Vault-relative paths from composer chips (order preserved). */
+export function extractVaultPathsFromDraft(text: string): string[] {
+  const paths: string[] = [];
+  PATH_MARKER_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = PATH_MARKER_RE.exec(text))) {
+    const path = (match[1] ?? "").trim();
+    if (path) paths.push(path);
+  }
+  return paths;
+}
+
 export function extractSkillIdsFromDraft(text: string): string[] {
   const ids: string[] = [];
   const seen = new Set<string>();

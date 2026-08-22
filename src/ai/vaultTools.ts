@@ -28,6 +28,7 @@ import {
   type AgentMemoryEntry,
   type TreeNode,
 } from "../lib/vaultApi";
+import { formatFolderContextBlock, type FolderAbout } from "../lib/folderContext";
 import {
   formatDailyNoteHeading,
   parseIsoDateOnly,
@@ -206,6 +207,7 @@ export type BuildVaultToolsOpts = {
   getMessages?: () => UIMessage[];
   projectPath?: string | null;
   projectAbout?: string | null;
+  folderContext?: FolderAbout[] | null;
   projectType?: string | null;
   projectLearningLanguage?: string | null;
   /** Model id for specialist workers (defaults to settings). */
@@ -1015,6 +1017,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     run_specialist: buildRunSpecialistTool({
       projectPath,
       projectAbout: opts?.projectAbout,
+      folderContext: opts?.folderContext,
       projectType: opts?.projectType,
       projectLearningLanguage: opts?.projectLearningLanguage,
       modelId: opts?.modelId,
@@ -1695,6 +1698,22 @@ function syncOpenEditor(path: string, content: string) {
   }, 0);
 }
 
+function resolveFolderContext(opts: {
+  folderContext?: FolderAbout[] | null;
+  projectPath?: string | null;
+  projectAbout?: string | null;
+}): FolderAbout[] {
+  if (opts.folderContext && opts.folderContext.length > 0) {
+    return opts.folderContext;
+  }
+  const about = opts.projectAbout?.trim();
+  const path = opts.projectPath?.trim();
+  if (about && path) {
+    return [{ path, about: about.slice(0, 4000) }];
+  }
+  return [];
+}
+
 export function buildSystemPrompt(opts: {
   mode: ChatMode;
   vaultPath: string | null;
@@ -1702,8 +1721,8 @@ export function buildSystemPrompt(opts: {
   activeExcerpt: string | null;
   /** Selected vault project (first-level folder), if any. */
   projectPath?: string | null;
-  /** Project "about" description from project properties. */
   projectAbout?: string | null;
+  folderContext?: FolderAbout[] | null;
   /** Project type from project properties (`""` | knowledgeBase | languageLearning | diary). */
   projectType?: string | null;
   /** Learning language ISO code when project type is language learning. */
@@ -1901,18 +1920,16 @@ export function buildSystemPrompt(opts: {
           : "Daily notes live at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (e.g. Journal/2026/08/02.Aug.2026.md).",
       );
     }
-    const about = opts.projectAbout?.trim();
-    if (about) {
-      lines.push("Project description:");
-      lines.push("```");
-      lines.push(about.slice(0, 4000));
-      lines.push("```");
-    }
     lines.push(
       opts.mode === "agent"
         ? "Project scope: list_folder (empty path = project root) and search are limited to this project. Specialists inherit the same project scope. You may still read files outside by explicit path when needed."
         : "Project scope: list_notes, list_folder (empty path = project root), search_notes, semantic_search, and list_tags are limited to this project. You may still read or edit files outside the project by explicit vault-relative path when needed (e.g. cross-project links or moves).",
     );
+  }
+  const folderEntries = resolveFolderContext(opts);
+  const folderBlock = formatFolderContextBlock(folderEntries);
+  if (folderBlock) {
+    lines.push(folderBlock);
   }
   if (opts.activePath) {
     lines.push(`Active note: ${opts.activePath}`);

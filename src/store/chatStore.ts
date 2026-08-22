@@ -32,6 +32,7 @@ import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
 import { listSkills, loadSkills, type SkillMeta } from "../ai/skills";
 import { buildSystemPrompt } from "../ai/vaultTools";
+import { collectChatFolderAbouts, type FolderAbout } from "../lib/folderContext";
 import { modelSupportsReasoning } from "../ai/models";
 import { contextWindowForModel, type ChatMode } from "../ai/types";
 import {
@@ -74,6 +75,33 @@ import {
   vaultChatModelId,
 } from "./vaultAiSettingsStore";
 import { useVaultStore } from "./vaultStore";
+
+function lastUserText(messages: UIMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]!;
+    if (message.role !== "user") continue;
+    return (message.parts ?? [])
+      .filter(
+        (part): part is { type: "text"; text: string } => part.type === "text",
+      )
+      .map((part) => part.text)
+      .join("\n");
+  }
+  return "";
+}
+
+function folderContextForChat(opts: {
+  activePath: string | null;
+  projectPath: string | null;
+  composerText?: string | null;
+}): FolderAbout[] {
+  return collectChatFolderAbouts({
+    activePath: opts.activePath,
+    projectPath: opts.projectPath,
+    composerText: opts.composerText,
+    propsByPath: useVaultStore.getState().projectPropertiesByPath,
+  });
+}
 
 export type ChatStatus = "ready" | "streaming" | "compacting" | "error";
 export type { ChatAttachment };
@@ -756,6 +784,11 @@ async function runAssistantTurn(params: {
   const forcedTools = params.toolIds.length ? params.toolIds : [];
   const mode = get().mode;
   const limit = contextWindowForModel(settings, modelId);
+  const folderContext = folderContextForChat({
+    activePath: vault.activePath,
+    projectPath,
+    composerText: lastUserText(params.messages) || params.estimateDraft || "",
+  });
   const system = buildSystemPrompt({
     mode,
     vaultPath,
@@ -763,6 +796,7 @@ async function runAssistantTurn(params: {
     activeExcerpt: excerpt,
     projectPath,
     projectAbout: project.about,
+    folderContext,
     projectType: project.projectType,
     projectLearningLanguage: project.learningLanguage,
     gemName: get().gemName,
@@ -929,6 +963,7 @@ async function runAssistantTurn(params: {
       activeExcerpt: excerpt,
       projectPath,
       projectAbout: project.about,
+      folderContext,
       projectType: project.projectType,
       projectLearningLanguage: project.learningLanguage,
       gemName: get().gemName,
@@ -1765,6 +1800,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       activeExcerpt: vault.content ? vault.content.slice(0, 4000) : null,
       projectPath: get().projectPath,
       projectAbout: get().projectAbout,
+      folderContext: folderContextForChat({
+        activePath: vault.activePath,
+        projectPath: get().projectPath,
+        composerText: get().draft,
+      }),
       projectType: get().projectType,
       projectLearningLanguage: get().projectLearningLanguage,
       gemName: get().gemName,

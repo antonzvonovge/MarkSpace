@@ -22,6 +22,12 @@ import { hostOsSystemPromptLine } from "../lib/hostOs";
 import { formatMcpWorkerPromptLines } from "./mcpTools";
 import { isAgentTerminalEnabled } from "./terminalTool";
 import {
+  collectFolderAbouts,
+  formatFolderContextBlock,
+  type FolderAbout,
+} from "../lib/folderContext";
+import { useVaultStore } from "../store/vaultStore";
+import {
   beginSpecialistWave,
   waitingStatusForDeps,
   withPredecessorContext,
@@ -294,6 +300,7 @@ function summarizeFromText(text: string, max = 600): string {
 export type RunSpecialistContext = {
   projectPath?: string | null;
   projectAbout?: string | null;
+  folderContext?: FolderAbout[] | null;
   projectType?: string | null;
   projectLearningLanguage?: string | null;
   /** Override model id (defaults to settings). */
@@ -356,6 +363,8 @@ export async function runSpecialist(params: {
     const { contextWindowForModel } = await import("./types");
     const tools = buildVaultTools("agent", {
       projectPath: params.ctx.projectPath,
+      projectAbout: params.ctx.projectAbout,
+      folderContext: params.ctx.folderContext,
       getMessages: () => [] as UIMessage[],
       toolNames: [...preset.toolNames],
       specialistKind: params.kind,
@@ -381,9 +390,19 @@ export async function runSpecialist(params: {
     }
     if (params.ctx.projectPath) {
       contextLines.push(`Active project: ${params.ctx.projectPath}`);
-      if (params.ctx.projectAbout?.trim()) {
-        contextLines.push(`Project about: ${params.ctx.projectAbout.trim()}`);
-      }
+    }
+    const folderBlock = formatFolderContextBlock(
+      collectFolderAbouts(
+        [
+          params.ctx.projectPath,
+          ...paths,
+          ...(params.ctx.folderContext ?? []).map((e) => e.path),
+        ],
+        useVaultStore.getState().projectPropertiesByPath,
+      ),
+    );
+    if (folderBlock) {
+      contextLines.push(folderBlock);
     }
     contextLines.push(...formatMcpWorkerPromptLines(params.kind));
     contextLines.push(

@@ -1,4 +1,5 @@
 import { generateText } from "ai";
+import { withVaultFolderContext } from "../lib/folderContext";
 import {
   resolveLanguageModel,
   runWithModelFallback,
@@ -23,6 +24,7 @@ export type SuggestDictEntryParams = {
   modelId?: string;
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
+  notePath?: string;
 };
 
 function extractJsonObject(raw: string): unknown {
@@ -68,7 +70,8 @@ function buildSystem(params: SuggestDictEntryParams): string {
     params.learningLanguageCode?.trim() ||
     "the target language of the vocabulary list";
   const native = `${params.nativeLanguageLabel} (${params.nativeLanguageCode})`;
-  return `You help fill a vocabulary dictionary entry for a language-learning notes app.
+  return withVaultFolderContext(
+    `You help fill a vocabulary dictionary entry for a language-learning notes app.
 The entry may be a single word or a multi-word expression / phrase / idiom.
 Reply with JSON only, no markdown fences:
 {"transcript":"...","translation":"...","examples":["...","..."]}
@@ -78,7 +81,9 @@ Reply with JSON only, no markdown fences:
 - translation: gloss into the learner's native language ${native}. Single line, concise; for idioms prefer the natural equivalent, not a word-by-word calque.
 - examples: 1–3 short usage sentences in ${learn} that naturally include the entry (or a natural inflection of it). No translations of the examples.
 - Do not invent tags. Do not wrap values in extra quotes beyond JSON.
-- Keep examples short (under ~120 chars each).`;
+- Keep examples short (under ~120 chars each).`,
+    [params.notePath],
+  );
 }
 
 export async function suggestDictEntry(

@@ -1,10 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { credentialsFromSettings } from "../ai/languageModel";
+import { startLexiconArticleJob } from "../ai/lexiconArticle";
 import {
   collectLearningLanguageCodes,
   DEFAULT_FOREIGN_LANG,
   dictItemFromQuickTranslate,
-  formatQuickTranslateMarkdown,
   quickTranslate,
   quickTranslatePairCodes,
   quickTranslatePairLabel,
@@ -12,19 +12,30 @@ import {
   quickTranslateTargetHead,
   type QuickTranslateResult,
 } from "../ai/quickTranslate";
-import {
-  canInsertTextInActiveMarkdown,
-  focusActiveMarkdownEditor,
-  insertTextInActiveMarkdown,
-} from "../editor/completedTasksCommand";
+import { focusActiveMarkdownEditor } from "../editor/completedTasksCommand";
 import {
   collectVaultMddictPaths,
   filterMddictPathsForLearningLanguage,
   sortMddictPathsForPicker,
 } from "../editor/mddict/dictPractice";
-import { appendOrMergeDictEntry } from "../lib/mddictWrite";
+import {
+  loadLexiconHits,
+  lookupLexiconHit,
+  pickLexiconProject,
+  upsertLexiconNote,
+} from "../lib/lexiconNotes";
+import {
+  collectFolderAbouts,
+} from "../lib/folderContext";
+import {
+  loadQuickTranslateCache,
+  lookupCachedTranslation,
+  saveQuickTranslateCache,
+  upsertCachedTranslation,
+} from "../lib/quickTranslateCache";
 import { isNativeLanguageId, nativeLanguageLabel } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { useBackgroundJobsStore } from "../store/backgroundJobsStore";
 import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore } from "../store/vaultStore";
@@ -91,6 +102,26 @@ function focusVisible(el: HTMLElement | null) {
   }
 }
 
+function stubResultFromLemma(
+  query: string,
+  lemma: string,
+  foreignLang: string,
+): QuickTranslateResult {
+  return {
+    query,
+    queryLang: foreignLang,
+    lemma,
+    transcript: "",
+    translation: lemma,
+    translationTranscript: "",
+    didYouMean: "",
+    forms: [],
+    synonyms: [],
+    senses: [],
+    examples: [],
+  };
+}
+
 export function QuickTranslateDialog({
   open,
   initialQuery = "",
@@ -98,7 +129,7 @@ export function QuickTranslateDialog({
 }: Props) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const insertBtnRef = useRef<HTMLButtonElement>(null);
+  const addDictBtnRef = useRef<HTMLButtonElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const selectQueryRef = useRef(false);
   const wasOpenRef = useRef(false);
@@ -107,6 +138,7 @@ export function QuickTranslateDialog({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<QuickTranslateResult | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [lexiconPath, setLexiconPath] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPath, setPickerPath] = useState("");
   const [pickerBusy, setPickerBusy] = useState(false);
@@ -120,11 +152,22 @@ export function QuickTranslateDialog({
   const projectPropertiesByPath = useVaultStore(
     (s) => s.projectPropertiesByPath,
   );
-  const canInsert = useVaultStore((s) => {
-    void s.activePath;
-    void s.viewMode;
-    return canInsertTextInActiveMarkdown();
+  const openNote = useVaultStore((s) => s.openNote);
+  const lexiconJob = useBackgroundJobsStore((s) => {
+    if (!lexiconPath) return null;
+    const job = s.jobs[`lexicon-article:${lexiconPath}`];
+    if (!job) return null;
+    if (job.status !== "running" && job.status !== "error") return null;
+    return job;
   });
+  const footerStatus =
+    busy && !result
+      ? "Translating…"
+      : lexiconJob
+        ? lexiconJob.detail || lexiconJob.label
+        : status;
+
+  const showFooter = Boolean(result || footerStatus || lexiconPath);
 
   const dictPaths = useMemo(
     () =>
@@ -190,6 +233,7 @@ export function QuickTranslateDialog({
     setError(null);
     setResult(null);
     setStatus(null);
+    setLexiconPath(null);
     setPickerOpen(false);
     setPickerError(null);
     const id = window.requestAnimationFrame(() => {
@@ -227,19 +271,112 @@ export function QuickTranslateDialog({
     setBusy(true);
     setError(null);
     setStatus(null);
+    setLexiconPath(null);
+    const project = pickLexiconProject(
+      projectPropertiesByPath,
+      foreignLang,
+      activePath,
+    );
+    const modelParams = helperModelCallParams();
+    const keys = credentialsFromSettings(aiSettings);
+
+    const attachNote = (path: string | undefined) => {
+      if (!path) return;
+      setLexiconPath(path);
+    };
+
     try {
+      let cache = await loadQuickTranslateCache();
+      if (ac.signal.aborted) return;
+      const cached = lookupCachedTranslation(
+        cache,
+        foreignLang,
+        nativeLanguage,
+        trimmed,
+      );
+      if (cached) {
+        setResult(cached.result);
+        if (cached.notePath) {
+          attachNote(cached.notePath);
+        } else if (project) {
+          const { hits, surfacesByPath } = await loadLexiconHits(tree, project);
+          const hit = lookupLexiconHit(hits, trimmed, surfacesByPath);
+          if (hit) setLexiconPath(hit.path);
+        }
+        return;
+      }
+
+      if (project) {
+        const { hits, surfacesByPath } = await loadLexiconHits(tree, project);
+        if (ac.signal.aborted) return;
+        const hit = lookupLexiconHit(hits, trimmed, surfacesByPath);
+        if (hit) {
+          const byLemma = lookupCachedTranslation(
+            cache,
+            foreignLang,
+            nativeLanguage,
+            hit.lemma,
+          );
+          setResult(
+            byLemma?.result ??
+              stubResultFromLemma(trimmed, hit.lemma, foreignLang),
+          );
+          setLexiconPath(hit.path);
+          return;
+        }
+      }
+
+      setStatus("Translating…");
       const next = await quickTranslate({
         query: trimmed,
         foreignLanguageCode: foreignLang,
         foreignLanguageLabel: foreignLabel,
         nativeLanguageCode: nativeLanguage,
         nativeLanguageLabel: nativeLabel,
-        keys: credentialsFromSettings(aiSettings),
-        ...helperModelCallParams(),
+        keys,
+        ...modelParams,
         abortSignal: ac.signal,
+        folderContext: collectFolderAbouts(
+          [activePath],
+          projectPropertiesByPath,
+        ),
       });
       if (ac.signal.aborted) return;
       setResult(next);
+      setStatus(null);
+      cache = upsertCachedTranslation(
+        cache,
+        foreignLang,
+        nativeLanguage,
+        next,
+      );
+      await saveQuickTranslateCache(cache);
+
+      if (project) {
+        const saved = await upsertLexiconNote({
+          projectPath: project,
+          result: next,
+          foreignLanguageCode: foreignLang,
+        });
+        cache = upsertCachedTranslation(
+          cache,
+          foreignLang,
+          nativeLanguage,
+          next,
+          saved.path,
+        );
+        await saveQuickTranslateCache(cache);
+        setLexiconPath(saved.path);
+        startLexiconArticleJob({
+          notePath: saved.path,
+          projectPath: project,
+          result: next,
+          foreignLanguageCode: foreignLang,
+          foreignLanguageLabel: foreignLabel,
+          nativeLanguageCode: nativeLanguage,
+          nativeLanguageLabel: nativeLabel,
+        });
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : String(e));
@@ -256,18 +393,6 @@ export function QuickTranslateDialog({
     abortRef.current?.abort();
     setPickerOpen(false);
     onClose();
-  };
-
-  const insert = () => {
-    if (!result || busy) return;
-    const ok = insertTextInActiveMarkdown(
-      formatQuickTranslateMarkdown(result, nativeLanguage),
-    );
-    if (!ok) {
-      setError("Open a markdown note to insert at the cursor.");
-      return;
-    }
-    close();
   };
 
   const openPicker = () => {
@@ -323,10 +448,27 @@ export function QuickTranslateDialog({
       <DialogShell
         open={open}
         title="Translate"
-        description={
-          result
-            ? undefined
-            : `A ${foreignLabel} or ${nativeLabel} word. Press Enter.`
+        hideTitle
+        showClose
+        headerLeading={
+          showPairPicker ? (
+            <Select
+              variant="field"
+              menuPlacement="below"
+              tabIndex={-1}
+              aria-label="Language pair"
+              value={foreignLang}
+              options={pairOptions}
+              disabled={busy}
+              onChange={(code) => {
+                writeLastForeignLang(code);
+                setForeignLang(code);
+                setResult(null);
+                setStatus(null);
+                setLexiconPath(null);
+              }}
+            />
+          ) : null
         }
         className={[
           "quick-translate-dialog",
@@ -336,33 +478,34 @@ export function QuickTranslateDialog({
           .join(" ")}
         onCancel={() => {
           if (pickerOpen) return;
-          if (busy) {
-            abortRef.current?.abort();
-            return;
-          }
+          abortRef.current?.abort();
           close();
         }}
         footer={
+          showFooter ? (
           <>
-            <button type="button" className="app-dialog-btn" tabIndex={-1} onClick={close}>
-              Cancel
-            </button>
-            <div className="app-dialog-footer-spacer" />
+            <div className="quick-translate-footer-meta">
+              {lexiconPath ? (
+                <button
+                  type="button"
+                  className="quick-translate-note-link"
+                  onClick={() => {
+                    const path = lexiconPath;
+                    close();
+                    void openNote(path, { preview: false });
+                  }}
+                >
+                  Open note
+                </button>
+              ) : null}
+              {footerStatus ? (
+                <p className="quick-translate-status" role="status">
+                  {footerStatus}
+                </p>
+              ) : null}
+            </div>
             <button
-              ref={insertBtnRef}
-              type="button"
-              className="app-dialog-btn is-primary"
-              disabled={!result || busy || !canInsert}
-              title={
-                canInsert
-                  ? undefined
-                  : "Open a markdown note to insert at the cursor"
-              }
-              onClick={insert}
-            >
-              Insert
-            </button>
-            <button
+              ref={addDictBtnRef}
               type="button"
               className="app-dialog-btn"
               disabled={!result || busy}
@@ -371,27 +514,11 @@ export function QuickTranslateDialog({
               Add to dictionary
             </button>
           </>
+          ) : undefined
         }
       >
         <div className="app-dialog-body quick-translate-body">
           <div className="quick-translate-search">
-            {showPairPicker ? (
-              <Select
-                variant="field"
-                menuPlacement="below"
-                tabIndex={-1}
-                aria-label="Language pair"
-                value={foreignLang}
-                options={pairOptions}
-                disabled={busy}
-                onChange={(code) => {
-                  writeLastForeignLang(code);
-                  setForeignLang(code);
-                  setResult(null);
-                  setStatus(null);
-                }}
-              />
-            ) : null}
             <div className="quick-translate-input-row">
               <input
                 ref={inputRef}
@@ -406,7 +533,7 @@ export function QuickTranslateDialog({
                     return;
                   }
                   if (e.key === "Tab" && !e.shiftKey && result && !busy) {
-                    const target = canInsert ? insertBtnRef.current : null;
+                    const target = addDictBtnRef.current;
                     if (target && !target.disabled) {
                       e.preventDefault();
                       focusVisible(target);
@@ -429,10 +556,6 @@ export function QuickTranslateDialog({
               </button>
             </div>
           </div>
-
-          {busy && !result ? (
-            <p className="quick-translate-status">Looking up…</p>
-          ) : null}
 
           {result && targetHead ? (
             <div className="quick-translate-card" aria-live="polite">
@@ -576,11 +699,6 @@ export function QuickTranslateDialog({
               {error}
             </p>
           ) : null}
-          {status ? (
-            <p className="quick-translate-status" role="status">
-              {status}
-            </p>
-          ) : null}
         </div>
       </DialogShell>
 
@@ -591,7 +709,7 @@ export function QuickTranslateDialog({
         description={
           dictPaths.length === 0
             ? "No dictionaries in this vault. Create one with New dictionary."
-            : "The word card stays open. Nothing is inserted into the note."
+            : "The word card stays open. The lexicon note is not changed."
         }
         onCancel={() => {
           if (pickerBusy) return;
