@@ -50,6 +50,11 @@ describe("markdownFormat", () => {
     expect(rules).not.toMatch(/do \*\*not\*\* emit[\s\S]*inline `#tags`/i);
   });
 
+  it("forbids fake https://file.md vault links in core rules", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/https:\/\/Note\.md|https:\/\/file\.md/i);
+  });
+
   it("documents diary day markers in core rules", () => {
     const rules = markdownCoreRules().join("\n");
     expect(rules).toMatch(/marker:/);

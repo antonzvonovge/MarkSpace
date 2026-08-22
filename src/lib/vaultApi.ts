@@ -389,6 +389,16 @@ export async function listNoteTags(): Promise<NoteTags[]> {
   return invoke("list_note_tags");
 }
 
+/** One note and resolved existing `[[wiki]]` targets. */
+export type NoteWikilinks = {
+  path: string;
+  targets: string[];
+};
+
+export async function listNoteWikilinks(): Promise<NoteWikilinks[]> {
+  return invoke("list_note_wikilinks");
+}
+
 /** Re-read one note into the tag index; returns full catalog. */
 export async function reindexNoteTags(path: string): Promise<string[]> {
   return invoke("reindex_note_tags", { path });

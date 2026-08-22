@@ -136,6 +136,8 @@ export type GraphCameraState = {
 
 export type GraphUiSettings = {
   tagsOnly: boolean;
+  /** Note–note graph from resolved wiki-links (mutually exclusive with tagsOnly). */
+  linksMode: boolean;
   showUntagged: boolean;
   labelThreshold: number;
   /** Layout spread, 0 (tight ball) … 1 (loose constellation). */
@@ -148,6 +150,7 @@ export type GraphUiSettings = {
 
 export const DEFAULT_GRAPH_UI_SETTINGS: GraphUiSettings = {
   tagsOnly: false,
+  linksMode: false,
   showUntagged: false,
   labelThreshold: 7,
   spread: 0.5,
@@ -200,6 +203,7 @@ function normalizeGraphUiSettings(raw: unknown): GraphUiSettings {
         : DEFAULT_GRAPH_UI_SETTINGS.spread;
   return {
     tagsOnly: Boolean(value.tagsOnly),
+    linksMode: Boolean(value.linksMode) && !Boolean(value.tagsOnly),
     showUntagged: Boolean(value.showUntagged),
     labelThreshold,
     spread,

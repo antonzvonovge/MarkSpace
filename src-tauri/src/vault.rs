@@ -1,7 +1,7 @@
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
@@ -3079,6 +3079,315 @@ pub fn list_note_tags(state: State<VaultState>) -> Result<Vec<NoteTags>, String>
             tags: tags.clone(),
         })
         .collect();
+    out.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    Ok(out)
+}
+
+/// One note and the existing vault files its `[[wiki]]` links resolve to.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteWikilinks {
+    pub path: String,
+    pub targets: Vec<String>,
+}
+
+struct WikiResolveIndex {
+    files_lc: HashMap<String, String>,
+    folder_rel_lc: HashMap<String, String>,
+    folder_name_lc: HashMap<String, String>,
+    stem_ext: HashMap<(String, String), String>,
+    stem_any: HashMap<String, String>,
+}
+
+fn vault_doc_ext(path: &Path) -> Option<String> {
+    let ext = path.extension()?.to_str()?.to_lowercase();
+    match ext.as_str() {
+        "md" | "pdf" | "drawio" | "mdlnks" | "mddict" | "mdhabit" => Some(ext),
+        _ => None,
+    }
+}
+
+fn walk_vault_entries(root: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
+    WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            e.file_name()
+                .to_str()
+                .map(walk_entry_allowed)
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            !e.path().components().any(|c| {
+                matches!(c, Component::Normal(n) if is_skipped_hidden_component(&n.to_string_lossy()))
+            })
+        })
+}
+
+fn build_wiki_resolve_index(root: &Path) -> WikiResolveIndex {
+    let mut files_lc = HashMap::new();
+    let mut folder_rel_lc = HashMap::new();
+    let mut folder_name_lc = HashMap::new();
+    let mut stem_ext = HashMap::new();
+    let mut stem_any = HashMap::new();
+
+    for entry in walk_vault_entries(root) {
+        let path = entry.path();
+        if path == root {
+            continue;
+        }
+        let rel = relative_to_root(root, path);
+        if path.is_dir() {
+            let lc = rel.to_lowercase();
+            folder_rel_lc.entry(lc.clone()).or_insert_with(|| rel.clone());
+            let name = path
+                .file_name()
+                .map(|s| s.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            if !name.is_empty() {
+                folder_name_lc.entry(name).or_insert(rel);
+            }
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        let Some(ext) = vault_doc_ext(path) else {
+            continue;
+        };
+        files_lc
+            .entry(rel.to_lowercase())
+            .or_insert_with(|| rel.clone());
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if stem.is_empty() {
+            continue;
+        }
+        stem_ext
+            .entry((stem.clone(), ext))
+            .or_insert_with(|| rel.clone());
+        stem_any.entry(stem).or_insert(rel);
+    }
+
+    WikiResolveIndex {
+        files_lc,
+        folder_rel_lc,
+        folder_name_lc,
+        stem_ext,
+        stem_any,
+    }
+}
+
+fn resolve_wiki_with_index(index: &WikiResolveIndex, target: &str) -> Option<String> {
+    let target = target.trim().trim_start_matches('/');
+    if target.is_empty() {
+        return None;
+    }
+    let lower = target.to_lowercase();
+    let direct = if lower.ends_with(".md")
+        || lower.ends_with(".pdf")
+        || lower.ends_with(".drawio")
+        || lower.ends_with(".mdlnks")
+        || lower.ends_with(".mddict")
+        || lower.ends_with(".mdhabit")
+    {
+        target.to_string()
+    } else {
+        format!("{target}.md")
+    };
+    if let Some(rel) = index.files_lc.get(&direct.to_lowercase()) {
+        return Some(rel.clone());
+    }
+
+    let folder_candidate = if lower.ends_with(".pdf")
+        || lower.ends_with(".drawio")
+        || lower.ends_with(".mdlnks")
+        || lower.ends_with(".mddict")
+        || lower.ends_with(".mdhabit")
+    {
+        None
+    } else if lower.ends_with(".md") {
+        Some(target[..target.len() - 3].to_string())
+    } else {
+        Some(target.to_string())
+    };
+    if let Some(folder_candidate) = folder_candidate {
+        if !folder_candidate.is_empty() {
+            if let Some(folder_rel) = index.folder_rel_lc.get(&folder_candidate.to_lowercase())
+            {
+                let note = folder_note_rel(folder_rel);
+                if index.files_lc.contains_key(&note.to_lowercase()) {
+                    return Some(
+                        index
+                            .files_lc
+                            .get(&note.to_lowercase())
+                            .cloned()
+                            .unwrap_or(note),
+                    );
+                }
+            }
+        }
+    }
+
+    let needle = Path::new(target)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| target.to_string())
+        .to_lowercase();
+
+    let prefer_ext: Option<&str> = if lower.ends_with(".pdf") {
+        Some("pdf")
+    } else if lower.ends_with(".mddict") {
+        Some("mddict")
+    } else if lower.ends_with(".mdlnks") {
+        Some("mdlnks")
+    } else if lower.ends_with(".mdhabit") {
+        Some("mdhabit")
+    } else if lower.ends_with(".drawio") {
+        Some("drawio")
+    } else if lower.ends_with(".md") {
+        Some("md")
+    } else {
+        None
+    };
+
+    let allow_folder_match = prefer_ext.is_none() || prefer_ext == Some("md");
+    if allow_folder_match {
+        if let Some(folder_rel) = index.folder_name_lc.get(&needle) {
+            let note = folder_note_rel(folder_rel);
+            if index.files_lc.contains_key(&note.to_lowercase()) {
+                return Some(
+                    index
+                        .files_lc
+                        .get(&note.to_lowercase())
+                        .cloned()
+                        .unwrap_or(note),
+                );
+            }
+        }
+    }
+
+    if let Some(ext) = prefer_ext {
+        if let Some(rel) = index.stem_ext.get(&(needle.clone(), ext.to_string())) {
+            return Some(rel.clone());
+        }
+    } else if let Some(rel) = index.stem_any.get(&needle) {
+        return Some(rel.clone());
+    }
+
+    None
+}
+
+fn extract_wiki_targets(content: &str) -> Vec<String> {
+    let visible = strip_markdown_code_regions(content);
+    let bytes = visible.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'[' && bytes[i + 1] == b'[' {
+            if i > 0 && bytes[i - 1] == b'!' {
+                i += 2;
+                continue;
+            }
+            if let Some(end) = visible[i + 2..].find("]]") {
+                let inner = &visible[i + 2..i + 2 + end];
+                let target = inner.split('|').next().unwrap_or("").trim();
+                if !target.is_empty() && !target.to_lowercase().ends_with(".drawio") {
+                    out.push(target.to_string());
+                }
+                i += 2 + end + 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+fn strip_markdown_code_regions(source: &str) -> String {
+    let s = source;
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    let bytes = s.as_bytes();
+    while i < s.len() {
+        if s[i..].starts_with("```") {
+            if let Some(rel) = s[i + 3..].find("```") {
+                let end = i + 3 + rel + 3;
+                out.push_str(&" ".repeat(end - i));
+                i = end;
+                continue;
+            }
+            break;
+        }
+        if bytes[i] == b'`' {
+            if let Some(rel) = s[i + 1..].find('`') {
+                let end = i + 1 + rel + 1;
+                out.push_str(&" ".repeat(end - i));
+                i = end;
+                continue;
+            }
+            out.push_str(&s[i..]);
+            break;
+        }
+        out.push(s[i..].chars().next().unwrap());
+        i += s[i..].chars().next().unwrap().len_utf8();
+    }
+    out
+}
+
+#[tauri::command(async)]
+pub fn list_note_wikilinks(state: State<VaultState>) -> Result<Vec<NoteWikilinks>, String> {
+    let root = get_root(&state)?;
+    let index = build_wiki_resolve_index(&root);
+    let mut out = Vec::new();
+
+    for entry in walk_vault_entries(&root) {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if !path
+            .extension()
+            .and_then(|x| x.to_str())
+            .map(|e| e.eq_ignore_ascii_case("md"))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let rel = relative_to_root(&root, path);
+        let text = match fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let mut seen = HashSet::new();
+        let mut targets = Vec::new();
+        for target in extract_wiki_targets(&text) {
+            let Some(resolved) = resolve_wiki_with_index(&index, &target) else {
+                continue;
+            };
+            if resolved == rel {
+                continue;
+            }
+            let key = resolved.to_lowercase();
+            if !seen.insert(key) {
+                continue;
+            }
+            targets.push(resolved);
+        }
+        if targets.is_empty() {
+            continue;
+        }
+        out.push(NoteWikilinks {
+            path: rel,
+            targets,
+        });
+    }
+
     out.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
     Ok(out)
 }

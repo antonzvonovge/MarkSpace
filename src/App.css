@@ -2262,9 +2262,12 @@ button.status-bar-item.status-bar-timer-time:hover {
   z-index: 41;
 }
 
-.editor-chrome .editor-tabbar {
+.editor-chrome .editor-tabbar-wrap {
   flex: 1;
   min-width: 0;
+}
+
+.editor-chrome .editor-tabbar {
   border-bottom: 0;
   background: transparent;
 }
@@ -2335,18 +2338,65 @@ button.status-bar-item.status-bar-timer-time:hover {
   background: transparent;
 }
 
+.editor-tabbar-wrap {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .editor-tabbar {
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
-  height: 35px;
+  width: 100%;
+  height: 100%;
   padding: 0;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
   background: var(--chrome-muted);
   border-bottom: 0;
   user-select: none;
   -webkit-user-select: none;
+  scrollbar-width: none;
+}
+
+.editor-tabbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.editor-tabbar-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.editor-tabbar-wrap:hover .editor-tabbar-overlay,
+.editor-tabbar-wrap:focus-within .editor-tabbar-overlay,
+.editor-tabbar-wrap.is-dragging .editor-tabbar-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.editor-tabbar-overlay-thumb {
+  position: absolute;
+  top: 1px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  pointer-events: none;
+}
+
+.editor-tabbar-overlay:hover .editor-tabbar-overlay-thumb {
+  background: color-mix(in srgb, var(--muted) 62%, transparent);
 }
 
 .editor-tab {
@@ -6195,6 +6245,9 @@ button.status-bar-item.status-bar-timer-time:hover {
 .chat-tabbar {
   flex: 1;
   min-width: 0;
+}
+
+.chat-tabbar .editor-tabbar {
   border-bottom: 0;
   background: transparent;
 }
@@ -7252,10 +7305,10 @@ button.status-bar-item.status-bar-timer-time:hover {
   user-select: none;
 }
 
-.chat-md a {
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+.chat-md a.ms-broken-link,
+.editor-canvas a.ms-broken-link,
+.editor-canvas .bn-container a.ms-broken-link {
+  color: var(--danger);
 }
 
 .chat-md a.chat-note-link {

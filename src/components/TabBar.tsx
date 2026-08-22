@@ -15,8 +15,8 @@ import { isUnderDiaryProject, vaultProjectRootOf } from "../lib/diaryNotes";
 import { useChatUiStore } from "../store/chatUiStore";
 import { useFocusUiStore } from "../store/focusUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
-import { useHorizontalWheelScroll } from "../hooks/useHorizontalWheelScroll";
 import { useTabReorder } from "../hooks/useTabReorder";
+import { TabBarOverflow } from "./TabBarOverflow";
 import { lastPinnedIndex, hasCloseableOthers, hasCloseableToTheRight } from "../lib/editorTabs";
 import {
   TabContextMenu,
@@ -287,7 +287,6 @@ export function EditorChrome() {
     [reorderTabs],
   );
   const bindReorder = useTabReorder(tabs.length, onReorder);
-  const tabbarRef = useHorizontalWheelScroll<HTMLDivElement>();
   const pinnedEnd = lastPinnedIndex(tabs);
 
   return (
@@ -360,7 +359,7 @@ export function EditorChrome() {
           <path d="m6.5 3.5-.7.7L9.6 8l-3.8 3.8.7.7L11 8 6.5 3.5Z" />
         </svg>
       </button>
-      <div ref={tabbarRef} className="editor-tabbar" role="tablist">
+      <TabBarOverflow>
         {tabs.map((tab, index) => (
           <TabItem
             key={tab.path}
@@ -378,7 +377,7 @@ export function EditorChrome() {
             onOpenContextMenu={setContextMenu}
           />
         ))}
-      </div>
+      </TabBarOverflow>
       <button
         type="button"
         className={

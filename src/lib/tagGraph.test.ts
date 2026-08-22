@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTagGraph,
+  buildWikiLinkGraph,
   noteNodeId,
   tagNodeId,
 } from "./tagGraph";
@@ -122,5 +123,22 @@ describe("buildTagGraph", () => {
       untagged: true,
       label: "scan",
     });
+  });
+});
+
+describe("buildWikiLinkGraph", () => {
+  it("builds note–note wiki-link edges", () => {
+    const g = buildWikiLinkGraph([
+      { path: "A.md", targets: ["B.md"] },
+      { path: "B.md", targets: ["A.md", "C.md"] },
+    ]);
+    expect(g.nodes.every((n) => n.kind === "note")).toBe(true);
+    expect(g.edges).toHaveLength(2);
+    expect(
+      g.edges.some(
+        (e) =>
+          e.source === noteNodeId("A.md") && e.target === noteNodeId("B.md"),
+      ),
+    ).toBe(true);
   });
 });

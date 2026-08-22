@@ -3,8 +3,8 @@ import { getChatThreadPath } from "../../lib/chatHistoryApi";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { useChatStore } from "../../store/chatStore";
 import { useVaultStore } from "../../store/vaultStore";
-import { useHorizontalWheelScroll } from "../../hooks/useHorizontalWheelScroll";
 import { useTabReorder } from "../../hooks/useTabReorder";
+import { TabBarOverflow } from "../TabBarOverflow";
 import {
   hasCloseableOthers,
   hasCloseableToTheRight,
@@ -46,7 +46,6 @@ export function ChatTabBar() {
   );
   const [renameThreadId, setRenameThreadId] = useState<string | null>(null);
   const activeRef = useRef<HTMLDivElement>(null);
-  const tabbarRef = useHorizontalWheelScroll<HTMLDivElement>();
 
   const tabs = useMemo(() => {
     const byId = new Map(threads.map((t) => [t.id, t]));
@@ -102,11 +101,7 @@ export function ChatTabBar() {
 
   return (
     <div className="chat-chrome">
-      <div
-        ref={tabbarRef}
-        className="editor-tabbar chat-tabbar"
-        role="tablist"
-      >
+      <TabBarOverflow className="chat-tabbar">
         {tabs.map((tab, index) => {
           const active = tab.id === activeThreadId;
           const attention = attentionSet.has(tab.id);
@@ -241,7 +236,7 @@ export function ChatTabBar() {
             </div>
           );
         })}
-      </div>
+      </TabBarOverflow>
 
       <div className="chat-chrome-actions">
         <div className="chat-history-wrap">

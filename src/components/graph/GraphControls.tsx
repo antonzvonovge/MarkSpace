@@ -4,14 +4,14 @@ export type GraphControlsProps = {
   query: string;
   onQueryChange: (q: string) => void;
   onSearchSubmit: () => void;
-  running: boolean;
-  onToggleLayout: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
   projects: { path: string; name: string }[];
   projectPath: string | null;
   onProjectPathChange: (path: string | null) => void;
+  linksMode: boolean;
+  onLinksModeChange: (v: boolean) => void;
   tagsOnly: boolean;
   onTagsOnlyChange: (v: boolean) => void;
   showUntagged: boolean;
@@ -30,14 +30,14 @@ export function GraphControls({
   query,
   onQueryChange,
   onSearchSubmit,
-  running,
-  onToggleLayout,
   onZoomIn,
   onZoomOut,
   onFit,
   projects,
   projectPath,
   onProjectPathChange,
+  linksMode,
+  onLinksModeChange,
   tagsOnly,
   onTagsOnlyChange,
   showUntagged,
@@ -64,8 +64,10 @@ export function GraphControls({
           type="search"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search tags and notes…"
-          aria-label="Search tags and notes"
+          placeholder={
+            linksMode ? "Search notes…" : "Search tags and notes…"
+          }
+          aria-label={linksMode ? "Search notes" : "Search tags and notes"}
         />
       </form>
 
@@ -87,15 +89,6 @@ export function GraphControls({
       </label>
 
       <div className="tag-graph-btn-row">
-        <button
-          type="button"
-          className="tag-graph-btn"
-          title={running ? "Pause layout" : "Resume layout"}
-          aria-pressed={running}
-          onClick={onToggleLayout}
-        >
-          {running ? "Pause" : "Resume"}
-        </button>
         <button
           type="button"
           className="tag-graph-btn"
@@ -125,7 +118,17 @@ export function GraphControls({
       <label className="tag-graph-toggle">
         <input
           type="checkbox"
+          checked={linksMode}
+          onChange={(e) => onLinksModeChange(e.target.checked)}
+        />
+        <span>Links</span>
+      </label>
+
+      <label className="tag-graph-toggle">
+        <input
+          type="checkbox"
           checked={tagsOnly}
+          disabled={linksMode}
           onChange={(e) => onTagsOnlyChange(e.target.checked)}
         />
         <span>Tags only</span>
@@ -135,7 +138,7 @@ export function GraphControls({
         <input
           type="checkbox"
           checked={showUntagged}
-          disabled={tagsOnly}
+          disabled={tagsOnly || linksMode}
           onChange={(e) => onShowUntaggedChange(e.target.checked)}
         />
         <span>Show untagged</span>

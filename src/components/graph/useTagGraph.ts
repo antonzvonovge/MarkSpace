@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listNoteTags, type NoteTags, type TreeNode } from "../../lib/vaultApi";
+import {
+  listNoteTags,
+  listNoteWikilinks,
+  type NoteTags,
+  type NoteWikilinks,
+  type TreeNode,
+} from "../../lib/vaultApi";
 import {
   buildTagGraph,
+  buildWikiLinkGraph,
   type BuildTagGraphOptions,
   type TagGraphData,
 } from "../../lib/tagGraph";
@@ -10,6 +17,7 @@ import { GRAPH_TAB_PATH, useVaultStore } from "../../store/vaultStore";
 export type TagGraphViewOptions = {
   showUntagged: boolean;
   tagsOnly: boolean;
+  linksMode: boolean;
   /** First-level vault project path; null includes the entire vault. */
   projectPath: string | null;
   /** Focus node id (`tag:…` / `note:…`) for local subgraph; null = full vault. */
@@ -35,6 +43,7 @@ export function useTagGraph(options: TagGraphViewOptions) {
   const isActive = activePath === GRAPH_TAB_PATH;
 
   const [noteTags, setNoteTags] = useState<NoteTags[]>([]);
+  const [noteWikilinks, setNoteWikilinks] = useState<NoteWikilinks[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<number | null>(null);
@@ -43,9 +52,13 @@ export function useTagGraph(options: TagGraphViewOptions) {
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
     try {
-      const next = await listNoteTags();
+      const [tags, wikilinks] = await Promise.all([
+        listNoteTags(),
+        listNoteWikilinks(),
+      ]);
       if (id !== requestId.current) return;
-      setNoteTags(next);
+      setNoteTags(tags);
+      setNoteWikilinks(wikilinks);
       setError(null);
     } catch (e) {
       if (id !== requestId.current) return;
@@ -55,12 +68,10 @@ export function useTagGraph(options: TagGraphViewOptions) {
     }
   }, []);
 
-  // Keep the payload warm while the graph tab stays mounted in the background.
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  // Re-fetch when the tag catalog changes (watcher / save), debounced.
   useEffect(() => {
     if (!isActive) return;
     if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
@@ -71,7 +82,7 @@ export function useTagGraph(options: TagGraphViewOptions) {
     return () => {
       if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
     };
-  }, [vaultTags, isActive, refresh]);
+  }, [vaultTags, tree, isActive, refresh]);
 
   const allNotePaths = useMemo(() => collectDocumentPaths(tree), [tree]);
   const inSelectedProject = useCallback(
@@ -87,8 +98,25 @@ export function useTagGraph(options: TagGraphViewOptions) {
     () => allNotePaths.filter(inSelectedProject),
     [allNotePaths, inSelectedProject],
   );
+  const scopedWikilinks = useMemo(
+    () =>
+      noteWikilinks
+        .filter((entry) => inSelectedProject(entry.path))
+        .map((entry) => ({
+          ...entry,
+          targets: entry.targets.filter(inSelectedProject),
+        }))
+        .filter((entry) => entry.targets.length > 0),
+    [noteWikilinks, inSelectedProject],
+  );
 
   const data: TagGraphData = useMemo(() => {
+    if (options.linksMode) {
+      return buildWikiLinkGraph(scopedWikilinks, {
+        root: options.focusRoot,
+        depth: options.focusRoot ? 1 : undefined,
+      });
+    }
     const opts: BuildTagGraphOptions = {
       showUntagged: options.showUntagged,
       tagsOnly: options.tagsOnly,
@@ -100,8 +128,10 @@ export function useTagGraph(options: TagGraphViewOptions) {
   }, [
     scopedNoteTags,
     scopedNotePaths,
+    scopedWikilinks,
     options.showUntagged,
     options.tagsOnly,
+    options.linksMode,
     options.focusRoot,
   ]);
 

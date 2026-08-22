@@ -335,3 +335,97 @@ function buildTagsOnlyGraph(
 
   return { nodes, edges };
 }
+
+/** One note and the vault-relative paths its `[[wiki]]` links resolve to (existing files only). */
+export type NoteWikilinks = {
+  path: string;
+  targets: string[];
+};
+
+/**
+ * Note–note graph from resolved wiki-links. Isolated notes (no wiki edges) are omitted.
+ */
+export function buildWikiLinkGraph(
+  links: NoteWikilinks[],
+  options: { root?: string | null; depth?: number } = {},
+): TagGraphData {
+  const neighbors = new Map<string, Set<string>>();
+  const addUndirected = (a: string, b: string) => {
+    if (a === b) return;
+    if (!neighbors.has(a)) neighbors.set(a, new Set());
+    if (!neighbors.has(b)) neighbors.set(b, new Set());
+    neighbors.get(a)!.add(b);
+    neighbors.get(b)!.add(a);
+  };
+
+  for (const entry of links) {
+    const from = entry.path.trim();
+    if (!from) continue;
+    for (const raw of entry.targets) {
+      const to = raw.trim();
+      if (!to) continue;
+      addUndirected(from, to);
+    }
+  }
+
+  let keep: Set<string> | null = null;
+  const root = normalizeRoot(options.root);
+  if (root?.kind === "note") {
+    const depth = Math.max(0, options.depth ?? 1);
+    keep = new Set([root.key]);
+    let frontier = new Set([root.key]);
+    for (let d = 0; d < depth; d++) {
+      const next = new Set<string>();
+      for (const path of frontier) {
+        for (const n of neighbors.get(path) ?? []) {
+          if (!keep.has(n)) {
+            keep.add(n);
+            next.add(n);
+          }
+        }
+      }
+      frontier = next;
+      if (!frontier.size) break;
+    }
+  }
+
+  const nodes: TagGraphNode[] = [];
+  const edges: TagGraphEdge[] = [];
+  const seenEdges = new Set<string>();
+
+  const paths = [...neighbors.keys()].sort((a, b) =>
+    noteLabel(a).localeCompare(noteLabel(b), undefined, { sensitivity: "base" }),
+  );
+
+  for (const path of paths) {
+    if (keep && !keep.has(path)) continue;
+    const degree = [...(neighbors.get(path) ?? [])].filter(
+      (n) => !keep || keep.has(n),
+    ).length;
+    nodes.push({
+      id: noteNodeId(path),
+      kind: "note",
+      label: noteLabel(path),
+      key: path,
+      degree,
+    });
+  }
+
+  for (const [from, tos] of neighbors) {
+    if (keep && !keep.has(from)) continue;
+    for (const to of tos) {
+      if (keep && !keep.has(to)) continue;
+      if (from >= to) continue;
+      const eid = `${from}::${to}`;
+      if (seenEdges.has(eid)) continue;
+      seenEdges.add(eid);
+      edges.push({
+        id: eid,
+        source: noteNodeId(from),
+        target: noteNodeId(to),
+      });
+    }
+  }
+
+  return { nodes, edges };
+}

@@ -31,7 +31,7 @@ import {
 } from "../components/EditContextMenu";
 import { ImageLightbox } from "../components/ImageLightbox";
 import { NotePageChrome } from "../components/NotePageChrome";
-import { writeClipboardText } from "../lib/clipboardText";
+import { decorateBrokenVaultLinks } from "../lib/brokenLinks";
 import { registerLiveEditor } from "./completedTasksCommand";
 import { registerLiveEditorFlush } from "./liveEditorFlush";
 import {
@@ -746,6 +746,15 @@ export const NoteEditor = memo(function NoteEditor({
     },
     [openNote, refreshTree],
   );
+
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    const timer = window.setTimeout(() => {
+      void decorateBrokenVaultLinks(el);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [content, path, editor]);
 
   const handleImageDoubleClick = useCallback((event: React.MouseEvent) => {
     const target = event.target;

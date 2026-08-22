@@ -87,6 +87,51 @@ export function isExternalHref(href: string | null | undefined): boolean {
   return /^(https?:|mailto:)/i.test(href);
 }
 
+/** Outgoing `[[target]]` / `[[target|alias]]` (not `![[*.drawio]]` embeds). Skips fenced and inline code. */
+export function extractWikiLinkTargets(source: string): string[] {
+  const visible = stripMarkdownCodeRegions(source);
+  const targets: string[] = [];
+  const re = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(visible))) {
+    const at = match.index;
+    if (at > 0 && visible[at - 1] === "!") continue;
+    const trimmed = match[1].trim();
+    if (!trimmed) continue;
+    if (/\.drawio$/i.test(trimmed)) continue;
+    targets.push(trimmed);
+  }
+  return targets;
+}
+
+function stripMarkdownCodeRegions(source: string): string {
+  let out = "";
+  let i = 0;
+  const s = source;
+  while (i < s.length) {
+    if (s.startsWith("```", i)) {
+      const end = s.indexOf("```", i + 3);
+      if (end === -1) break;
+      out += " ".repeat(end + 3 - i);
+      i = end + 3;
+      continue;
+    }
+    if (s[i] === "`") {
+      const end = s.indexOf("`", i + 1);
+      if (end === -1) {
+        out += s.slice(i);
+        break;
+      }
+      out += " ".repeat(end + 1 - i);
+      i = end + 1;
+      continue;
+    }
+    out += s[i];
+    i += 1;
+  }
+  return out;
+}
+
 /** Parse ```drawio fence body → { src, previewWidth }. */
 export function parseDrawioFenceBody(body: string): {
   src: string;

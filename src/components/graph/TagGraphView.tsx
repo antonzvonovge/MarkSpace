@@ -463,9 +463,9 @@ export function TagGraphView() {
   const [glOk] = useState(() => webglAvailable());
   const [canvasFresh, setCanvasFresh] = useState(true);
   const [query, setQuery] = useState("");
-  const [running, setRunning] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
   const [tagsOnly, setTagsOnly] = useState(DEFAULT_GRAPH_UI_SETTINGS.tagsOnly);
+  const [linksMode, setLinksMode] = useState(DEFAULT_GRAPH_UI_SETTINGS.linksMode);
   const [showUntagged, setShowUntagged] = useState(
     DEFAULT_GRAPH_UI_SETTINGS.showUntagged,
   );
@@ -493,13 +493,14 @@ export function TagGraphView() {
   const graphSettings = useMemo<GraphUiSettings>(
     () => ({
       tagsOnly,
+      linksMode,
       showUntagged,
       labelThreshold,
       spread,
       projectPath,
       camera,
     }),
-    [tagsOnly, showUntagged, labelThreshold, spread, projectPath, camera],
+    [tagsOnly, linksMode, showUntagged, labelThreshold, spread, projectPath, camera],
   );
   latestSettingsRef.current = {
     vaultPath,
@@ -511,6 +512,7 @@ export function TagGraphView() {
   const { data, loading, error, isActive } = useTagGraph({
     showUntagged,
     tagsOnly,
+    linksMode,
     projectPath,
     focusRoot,
   });
@@ -549,6 +551,7 @@ export function TagGraphView() {
       .then((saved) => {
         if (cancelled) return;
         setTagsOnly(saved.tagsOnly);
+        setLinksMode(saved.linksMode);
         setShowUntagged(saved.showUntagged);
         setLabelThreshold(saved.labelThreshold);
         setSpread(saved.spread);
@@ -661,7 +664,6 @@ export function TagGraphView() {
 
   const stopLayout = useCallback(() => {
     layoutRef.current?.stop();
-    setRunning(false);
     if (graphRef.current) {
       rememberPositions(graphRef.current, positionsRef.current);
     }
@@ -708,7 +710,6 @@ export function TagGraphView() {
     if (!layout) return;
     cancelAnimation();
     if (!layout.isRunning()) layout.start();
-    setRunning(true);
   }, [cancelAnimation]);
 
   /** Rebuild the worker against current settings. Returns whether it was running. */
@@ -912,7 +913,6 @@ export function TagGraphView() {
       }
       if (layoutRef.current?.isRunning()) {
         layoutRef.current.stop();
-        setRunning(false);
       }
       if (graph.hasNode(node) && graph.getNodeAttribute(node, "fixed")) {
         graph.removeNodeAttribute(node, "fixed");
@@ -1108,11 +1108,6 @@ export function TagGraphView() {
     sigmaRef.current?.refresh();
   }, [theme, projectColors]);
 
-  const onToggleLayout = () => {
-    if (running) stopLayout();
-    else startLayout();
-  };
-
   const onZoomIn = () => {
     const cam = sigmaRef.current?.getCamera();
     if (!cam) return;
@@ -1199,11 +1194,23 @@ export function TagGraphView() {
 
       {glOk && empty && (
         <div className="tag-graph-empty">
-          <h2>{projectPath ? "No tags in this project" : "No tags yet"}</h2>
+          <h2>
+            {linksMode
+              ? projectPath
+                ? "No wiki-links in this project"
+                : "No wiki-links yet"
+              : projectPath
+                ? "No tags in this project"
+                : "No tags yet"}
+          </h2>
           <p>
-            {projectPath
-              ? "Choose another project or add tags to its notes."
-              : "Add tags in note frontmatter or write inline #tags — they will appear here as a graph."}
+            {linksMode
+              ? projectPath
+                ? "Choose another project or add [[wiki]] links between its notes."
+                : "Add [[Note]] wiki-links in notes — they will appear here as a graph."
+              : projectPath
+                ? "Choose another project or add tags to its notes."
+                : "Add tags in note frontmatter or write inline #tags — they will appear here as a graph."}
           </p>
         </div>
       )}
@@ -1214,8 +1221,6 @@ export function TagGraphView() {
             query={query}
             onQueryChange={setQuery}
             onSearchSubmit={onSearchSubmit}
-            running={running}
-            onToggleLayout={onToggleLayout}
             onZoomIn={onZoomIn}
             onZoomOut={onZoomOut}
             onFit={onFit}
@@ -1225,8 +1230,19 @@ export function TagGraphView() {
               setProjectPath(path);
               setFocusRoot(null);
             }}
+            linksMode={linksMode}
+            onLinksModeChange={(v) => {
+              setLinksMode(v);
+              if (v) {
+                setTagsOnly(false);
+                setFocusRoot(null);
+              }
+            }}
             tagsOnly={tagsOnly}
-            onTagsOnlyChange={(v) => setTagsOnly(v)}
+            onTagsOnlyChange={(v) => {
+              setTagsOnly(v);
+              if (v) setLinksMode(false);
+            }}
             showUntagged={showUntagged}
             onShowUntaggedChange={(v) => setShowUntagged(v)}
             labelThreshold={labelThreshold}

@@ -3,6 +3,7 @@ import {
   markdownToWiki,
   wikiToMarkdown,
   wikiTargetFromHref,
+  extractWikiLinkTargets,
 } from "./wikiMarkdown";
 
 describe("wikiToMarkdown / markdownToWiki", () => {
@@ -37,5 +38,17 @@ describe("wikiToMarkdown / markdownToWiki", () => {
     const mid = wikiToMarkdown(src);
     expect(mid).toBe("```drawio\nmeetings/#5 loop/diagram.drawio|480\n```");
     expect(markdownToWiki(mid)).toBe(src);
+  });
+
+  it("extracts wiki targets and skips code and drawio embeds", () => {
+    const src = [
+      "See [[Welcome]] and [[folder/note|Alias]].",
+      "```",
+      "[[inside-fence]]",
+      "```",
+      "`[[inline]]`",
+      "![[diagram.drawio]]",
+    ].join("\n");
+    expect(extractWikiLinkTargets(src)).toEqual(["Welcome", "folder/note"]);
   });
 });

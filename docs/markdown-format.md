@@ -6,7 +6,7 @@ these conventions. Agents that create or edit `.md` files **must** follow this
 guide. Call `read_format_guide` for the full text when unsure.
 
 <!-- core-rules:start -->
-- Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported). A wiki target that names an existing **folder** resolves to that folder’s hidden overview note `{folder}/.folder.md` (created on open if missing).
+- Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported). A wiki target that names an existing **folder** resolves to that folder’s hidden overview note `{folder}/.folder.md` (created on open if missing). Never write `[label](https://Note.md)` or a bare `https://file.md` for a vault note — that is an external URL, not a wiki-link.
 - In **chat replies**, reference vault files with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — also `.mddict`, `.mdlnks`, `.mdhabit`, `.drawio`, and `.pdf` paths. All render as a clickable file link that opens the document. Mention a file this way whenever you create, open, or cite one.
 - Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
@@ -73,7 +73,8 @@ In the note body, hashtags are styled inline tags (editable text in Live mode):
 | `[[projects]]` | Wiki-link to a **folder** → hidden overview `{folder}/.folder.md` |
 | `[[projects/ideas\|Ideas]]` | Wiki-link with display alias |
 | `[Site](https://example.com)` | External URL (system browser) |
-| `[Local](./Welcome.md)` | Relative file link when possible |
+
+Internal links are **only** `[[…]]`. Do not use Markdown file hrefs (`[Local](./Welcome.md)`, `[Note](Note.md)`) or fake hosts (`[20.08.2010.md](https://20.08.2010.md)`). `http:` / `https:` / `mailto:` always open in the system browser.
 
 Wiki targets must not contain `|` inside the target segment. A literal `#` in a path (e.g. folder `#5 …`) is allowed. Heading anchors like `[[Note#Section]]` are **not** supported — the `#…` part is treated as part of the path, not a jump to a heading.
 

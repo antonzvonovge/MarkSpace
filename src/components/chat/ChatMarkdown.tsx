@@ -198,8 +198,66 @@ function ChatPre({ children }: { children?: ReactNode }) {
   return <ChatHighlightedPre lang={lang} code={code} />;
 }
 
-function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
+function ChatNoteLink({
+  path,
+  href,
+  children,
+}: {
+  path: string;
+  href: string;
+  children: ReactNode;
+}) {
   const openNote = useVaultStore((state) => state.openNote);
+  const [broken, setBroken] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void resolveWikiTarget(path).then((resolved) => {
+      if (!cancelled) setBroken(!resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  return (
+    <a
+      className={broken ? "chat-note-link ms-broken-link" : "chat-note-link"}
+      href={href}
+      title={path}
+      onClick={(event) => {
+        event.preventDefault();
+        const openPinned = event.ctrlKey || event.metaKey;
+        const go = (notePath: string) =>
+          openPinned
+            ? openNote(notePath, { preview: false })
+            : openNote(notePath);
+        void (async () => {
+          const resolved = await resolveWikiTarget(path);
+          if (resolved) {
+            const folder = folderPathFromFolderNote(resolved);
+            const notePath = folder
+              ? await ensureFolderNote(folder)
+              : resolved;
+            await go(notePath);
+            return;
+          }
+          const folder = folderPathFromFolderNote(path);
+          if (folder) {
+            await go(await ensureFolderNote(folder));
+            return;
+          }
+          await go(path);
+        })();
+      }}
+    >
+      <FcDocument aria-hidden="true" focusable="false" size={14} />
+      <span>{children}</span>
+    </a>
+  );
+}
+
+function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
   const rootClass = ["chat-md", className].filter(Boolean).join(" ");
 
   if (streaming) {
@@ -230,40 +288,9 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
                 return <span>{children}</span>;
               }
               return (
-                <a
-                  className="chat-note-link"
-                  href={href}
-                  title={path}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    const openPinned = event.ctrlKey || event.metaKey;
-                    const go = (notePath: string) =>
-                      openPinned
-                        ? openNote(notePath, { preview: false })
-                        : openNote(notePath);
-                    void (async () => {
-                      const resolved = await resolveWikiTarget(path);
-                      if (resolved) {
-                        const folder = folderPathFromFolderNote(resolved);
-                        const notePath = folder
-                          ? await ensureFolderNote(folder)
-                          : resolved;
-                        await go(notePath);
-                        return;
-                      }
-                      // Exact vault-relative .md path from the model.
-                      const folder = folderPathFromFolderNote(path);
-                      if (folder) {
-                        await go(await ensureFolderNote(folder));
-                        return;
-                      }
-                      await go(path);
-                    })();
-                  }}
-                >
-                  <FcDocument aria-hidden="true" focusable="false" size={14} />
-                  <span>{children}</span>
-                </a>
+                <ChatNoteLink path={path} href={href}>
+                  {children}
+                </ChatNoteLink>
               );
             }
             return (

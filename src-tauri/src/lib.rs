@@ -189,6 +189,7 @@ pub fn run() {
             vault::list_diary_day_markers,
             vault::list_dictionary_tags,
             vault::list_note_tags,
+            vault::list_note_wikilinks,
             vault::reindex_note_tags,
             pdf_text::extract_pdf_text_cmd,
             embeddings::host::semantic_search_notes,
