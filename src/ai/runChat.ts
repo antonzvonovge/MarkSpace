@@ -7,6 +7,7 @@ import {
   MissingToolResultsError,
   stepCountIs,
   streamText,
+  type ToolSet,
   type UIMessage,
 } from "ai";
 import {
@@ -37,6 +38,7 @@ import { buildSystemPrompt, buildVaultTools } from "./vaultTools";
 import type { FolderAbout } from "../lib/folderContext";
 import { unwrapComposerMarkers } from "../lib/chatComposerDom";
 import { pingUserActivity } from "../lib/userActivity";
+import { collapseDuplicateTextParts } from "./collapseDuplicateTextParts";
 
 /** @deprecated Prefer DEFAULT_AGENT_MAX_STEPS / settings.agentMaxSteps */
 export const AGENT_MAX_STEPS = DEFAULT_AGENT_MAX_STEPS;
@@ -235,6 +237,17 @@ function isAbortError(error: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;
   if (!(error instanceof Error)) return false;
   return error.name === "AbortError" || /abort/i.test(error.message);
+}
+
+function schemaOnlyTools(tools: ToolSet): ToolSet {
+  const out: ToolSet = {};
+  for (const [name, toolDef] of Object.entries(tools)) {
+    if (!toolDef || typeof toolDef !== "object") continue;
+    const copy = { ...(toolDef as object) } as Record<string, unknown>;
+    delete copy.execute;
+    out[name] = copy as ToolSet[string];
+  }
+  return out;
 }
 
 export async function runChat(params: RunChatParams): Promise<RunChatResult> {
@@ -447,7 +460,9 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
       model: resolved.model,
       system,
       messages: modelMessages,
-      tools,
+      // Client-side tools: the HTTP stream must not wait on execute().
+      // We run pick_vault_folder / ask_user as soon as the tool-call arrives.
+      tools: schemaOnlyTools(tools),
       stopWhen: stepCountIs(remainingSteps),
       abortSignal: params.abortSignal,
       prepareStep: ({ messages }) => {
@@ -564,6 +579,11 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
           break;
         }
         case "text-end": {
+          const collapsed = collapseDuplicateTextParts(parts);
+          if (collapsed.length !== parts.length) {
+            parts.splice(0, parts.length, ...collapsed);
+            emit(true);
+          }
           break;
         }
         case "tool-call": {
@@ -575,6 +595,33 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
             input: part.input,
           } as AssistantPart);
           emit(true);
+          const callId = part.toolCallId;
+          const toolName = part.toolName;
+          const input = part.input;
+          void executeIncompleteParts({
+            parts: [
+              {
+                type: `tool-${toolName}`,
+                toolCallId: callId,
+                toolName,
+                state: "input-available",
+                input,
+              } as UIMessage["parts"][number],
+            ],
+            tools,
+            abortSignal: params.abortSignal,
+          }).then((recovered) => {
+            const done = recovered.parts[0];
+            if (!done) return;
+            const idx = parts.findIndex(
+              (p) =>
+                "toolCallId" in p &&
+                (p as { toolCallId?: string }).toolCallId === callId,
+            );
+            if (idx < 0) return;
+            parts[idx] = done as AssistantPart;
+            emit(true);
+          });
           break;
         }
         case "tool-result": {
@@ -658,27 +705,36 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
       break;
     }
 
-    if (!parts.some(isIncompleteToolPart)) break;
+    if (parts.some(isIncompleteToolPart)) {
+      // Provider ended the stream after a tool-call without executing it (Gemini),
+      // or execute started on tool-call and is still waiting on the UI.
+      recoveryRounds += 1;
+      if (recoveryRounds > maxSteps) break;
 
-    // Provider ended the stream after a tool-call without executing it (Gemini).
-    recoveryRounds += 1;
-    if (recoveryRounds > maxSteps) break;
+      const recovered = await executeIncompleteParts({
+        parts,
+        tools,
+        abortSignal: params.abortSignal,
+      });
+      parts.splice(0, parts.length, ...recovered.parts);
+      emit(true);
 
-    const recovered = await executeIncompleteParts({
-      parts,
-      tools,
-      abortSignal: params.abortSignal,
-    });
-    parts.splice(0, parts.length, ...recovered.parts);
-    emit(true);
-
-    if (params.abortSignal?.aborted) {
-      aborted = true;
-      break;
+      if (params.abortSignal?.aborted) {
+        aborted = true;
+        break;
+      }
+      if (remainingSteps <= 0) {
+        hitStepLimit = true;
+        lastFinishWasToolCalls = true;
+        break;
+      }
+      continue;
     }
+
+    // Tools already ran during the stream; still send results back to the model.
+    if (!lastFinishWasToolCalls) break;
     if (remainingSteps <= 0) {
       hitStepLimit = true;
-      lastFinishWasToolCalls = true;
       break;
     }
   }
@@ -694,11 +750,13 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     parts,
     aborted ? INCOMPLETE_TOOL_REASON_ABORTED : INCOMPLETE_TOOL_REASON_DROPPED,
   );
-  const cleaned = settled.filter((p) => {
-    if (isTextUIPart(p)) return p.text.trim().length > 0;
-    if (isReasoningUIPart(p)) return p.text.trim().length > 0;
-    return true;
-  });
+  const cleaned = collapseDuplicateTextParts(
+    settled.filter((p) => {
+      if (isTextUIPart(p)) return p.text.trim().length > 0;
+      if (isReasoningUIPart(p)) return p.text.trim().length > 0;
+      return true;
+    }),
+  );
   if (hitStepLimit) {
     cleaned.push({
       type: "text",

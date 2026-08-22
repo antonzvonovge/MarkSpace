@@ -8,6 +8,10 @@ import {
   skillPathForId,
   type TreeNode,
 } from "../lib/vaultApi";
+import {
+  listBuiltinIeltsSkills,
+  loadBuiltinIeltsSkill,
+} from "./ieltsBuiltinSkills";
 
 export type SkillMeta = {
   id: string;
@@ -73,26 +77,34 @@ export function isCatalogSkill(meta: SkillMeta): boolean {
   );
 }
 
+function mergeBuiltinSkills(out: SkillMeta[]): SkillMeta[] {
+  const seen = new Set(out.map((s) => s.id));
+  for (const builtin of listBuiltinIeltsSkills()) {
+    if (seen.has(builtin.id)) continue;
+    out.push(builtin);
+  }
+  out.sort((a, b) => a.id.localeCompare(b.id));
+  return out;
+}
 /** List skill metadata from the open vault's Skills/ folder. */
 export async function listSkills(): Promise<SkillMeta[]> {
   const tree = await listTree();
   const folder = findSkillsFolder(tree);
-  if (!folder) return [];
-
   const out: SkillMeta[] = [];
-  for (const child of folder.children ?? []) {
-    if (child.isDir) continue;
-    const id = skillIdFromPath(child.path);
-    if (!id || !isValidSkillId(id)) continue;
-    try {
-      const raw = await readNote(child.path);
-      out.push(parseSkillMeta(id, child.path, raw));
-    } catch {
-      /* skip unreadable */
+  if (folder) {
+    for (const child of folder.children ?? []) {
+      if (child.isDir) continue;
+      const id = skillIdFromPath(child.path);
+      if (!id || !isValidSkillId(id)) continue;
+      try {
+        const raw = await readNote(child.path);
+        out.push(parseSkillMeta(id, child.path, raw));
+      } catch {
+        /* skip unreadable */
+      }
     }
   }
-  out.sort((a, b) => a.id.localeCompare(b.id));
-  return out;
+  return mergeBuiltinSkills(out);
 }
 
 /** Load one skill by id (filename stem). */
@@ -108,7 +120,7 @@ export async function loadSkill(id: string): Promise<LoadedSkill | null> {
       raw,
     };
   } catch {
-    return null;
+    return loadBuiltinIeltsSkill(id);
   }
 }
 

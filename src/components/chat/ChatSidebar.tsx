@@ -6,9 +6,11 @@ import { useChatStore } from "../../store/chatStore";
 import { useDiarySettingsStore } from "../../store/diarySettingsStore";
 import { useIndexingSettingsStore } from "../../store/indexingSettingsStore";
 import { useVaultAiSettingsStore } from "../../store/vaultAiSettingsStore";
+import { useIeltsUiStore } from "../../store/ieltsUiStore";
 import { usePrefsStore } from "../../store/prefsStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatComposer } from "./ChatComposer";
+import { ChatIeltsBar } from "./ChatIeltsBar";
 import { ChatGemBanner } from "./ChatGemBanner";
 import { ChatMessages } from "./ChatMessages";
 import { ChatTabBar } from "./ChatTabBar";
@@ -45,6 +47,11 @@ export const ChatSidebar = memo(function ChatSidebar() {
     hydrateIndexing,
     hydrateVaultAi,
   ]);
+
+  const setIeltsThread = useIeltsUiStore((s) => s.setPendingThreadId);
+  useEffect(() => {
+    setIeltsThread(activeThreadId);
+  }, [activeThreadId, setIeltsThread]);
 
   const hasOpenTabs = openTabIds.length > 0 && !!activeThreadId;
 
@@ -99,6 +106,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
             </div>
           )}
           <ChatTerminalApprovalBar />
+          <ChatIeltsBar />
           <ChatComposer />
         </>
       )}

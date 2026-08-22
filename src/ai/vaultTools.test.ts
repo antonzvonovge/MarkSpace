@@ -21,7 +21,7 @@ function file(name: string, path: string): TreeNode {
 }
 
 describe("vault agent tools", () => {
-  it("Ask keeps read tools; Agent orchestrator has exactly 8 tools", () => {
+  it("Ask keeps read tools; Agent orchestrator includes ielts_practice", () => {
     const askTools = buildVaultTools("ask");
     const agentTools = buildVaultTools("agent");
 
@@ -38,15 +38,19 @@ describe("vault agent tools", () => {
     expect(askTools).not.toHaveProperty("translate_note");
     expect(askTools).not.toHaveProperty("auto_tag_note");
     expect(askTools).not.toHaveProperty("open_or_create_daily_note");
+    expect(askTools).toHaveProperty("pick_vault_folder");
+    expect(askTools).toHaveProperty("ielts_practice");
     expect(askTools).toHaveProperty("scrape_url");
     expect(askTools).not.toHaveProperty("run_specialist");
 
     const agentIds = Object.keys(agentTools).sort();
     expect(agentIds).toEqual([
       "ask_user",
+      "ielts_practice",
       "list_folder",
       "memory",
       "open_note",
+      "pick_vault_folder",
       "read_note",
       "read_skill",
       "run_specialist",
@@ -69,7 +73,7 @@ describe("vault agent tools", () => {
     try {
       const agentTools = buildVaultTools("agent");
       expect(agentTools).toHaveProperty("run_terminal");
-      expect(Object.keys(agentTools)).toHaveLength(9);
+      expect(Object.keys(agentTools)).toHaveLength(11);
       const prompt = buildSystemPrompt({
         mode: "agent",
         vaultPath: null,

@@ -59,6 +59,7 @@ describe("osClipboardFiles", () => {
     expect(isVaultDocumentName("vocab.mddict")).toBe(true);
     expect(isVaultDocumentName("year.mdhabit")).toBe(true);
     expect(isVaultDocumentName("a.png")).toBe(false);
+    expect(isVaultDocumentName("notes.txt")).toBe(false);
     const dt = mockDataTransfer({
       types: ["Files"],
       files: [

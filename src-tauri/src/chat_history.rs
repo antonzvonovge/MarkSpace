@@ -149,7 +149,32 @@ fn write_index(dir: &PathBuf, index: &ChatIndex) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|e| format!("Cannot create chats dir: {e}"))?;
     let path = index_path(dir);
     let raw = serde_json::to_string_pretty(index).map_err(|e| format!("Cannot serialize index: {e}"))?;
-    fs::write(&path, raw).map_err(|e| format!("Cannot write chat index: {e}"))
+    atomic_write(&path, &raw)
+}
+
+fn atomic_write(path: &PathBuf, raw: &str) -> Result<(), String> {
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, raw).map_err(|e| format!("Cannot write {}: {e}", tmp.display()))?;
+    if path.exists() {
+        fs::remove_file(path).map_err(|e| format!("Cannot replace {}: {e}", path.display()))?;
+    }
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("Cannot replace {}: {e}", path.display())
+    })
+}
+
+fn parse_thread_json(raw: &str) -> Result<ChatThreadFile, String> {
+    match serde_json::from_str(raw) {
+        Ok(thread) => Ok(thread),
+        Err(err) => {
+            let mut de = serde_json::Deserializer::from_str(raw).into_iter::<ChatThreadFile>();
+            match de.next() {
+                Some(Ok(thread)) => Ok(thread),
+                _ => Err(format!("Invalid chat thread: {err}")),
+            }
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -189,7 +214,13 @@ pub fn get_chat_thread(
         return Err("Chat thread not found".into());
     }
     let raw = fs::read_to_string(&path).map_err(|e| format!("Cannot read chat thread: {e}"))?;
-    serde_json::from_str(&raw).map_err(|e| format!("Invalid chat thread: {e}"))
+    let thread = parse_thread_json(&raw)?;
+    if serde_json::from_str::<ChatThreadFile>(&raw).is_err() {
+        if let Ok(fixed) = serde_json::to_string_pretty(&thread) {
+            let _ = atomic_write(&path, &fixed);
+        }
+    }
+    Ok(thread)
 }
 
 /// Absolute filesystem path of the thread JSON under the app data chats dir.
@@ -222,7 +253,7 @@ pub fn upsert_chat_thread(
     let path = thread_path(&dir, &thread.id);
     let raw =
         serde_json::to_string_pretty(&thread).map_err(|e| format!("Cannot serialize thread: {e}"))?;
-    fs::write(&path, raw).map_err(|e| format!("Cannot write chat thread: {e}"))?;
+    atomic_write(&path, &raw)?;
 
     let meta = ChatThreadMeta {
         id: thread.id.clone(),

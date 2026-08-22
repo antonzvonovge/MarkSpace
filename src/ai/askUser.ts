@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { createToolWait } from "./toolWait";
 
 export type AskUserOption = { id: string; label: string };
 
@@ -26,80 +27,32 @@ export type AskUserAnswer = {
   answers: AskUserAnswerItem[];
 };
 
-type Pending = {
-  resolve: (value: AskUserAnswer) => void;
-  reject: (error: Error) => void;
-};
+const askWait = createToolWait<AskUserAnswer>("Ask");
 
-const pending = new Map<string, Pending>();
-
-function abortError(message = "Ask cancelled"): Error {
-  const err = new Error(message);
-  err.name = "AbortError";
-  return err;
-}
-
-/** Wait until the UI resolves this tool call (or abort). */
 export function waitForAskUserAnswer(
   toolCallId: string,
   signal?: AbortSignal,
 ): Promise<AskUserAnswer> {
-  if (signal?.aborted) {
-    return Promise.reject(abortError());
-  }
-
-  return new Promise<AskUserAnswer>((resolve, reject) => {
-    const cleanup = () => {
-      pending.delete(toolCallId);
-      signal?.removeEventListener("abort", onAbort);
-    };
-
-    const onAbort = () => {
-      cleanup();
-      reject(abortError());
-    };
-
-    pending.set(toolCallId, {
-      resolve: (value) => {
-        cleanup();
-        resolve(value);
-      },
-      reject: (error) => {
-        cleanup();
-        reject(error);
-      },
-    });
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
+  return askWait.wait(toolCallId, signal);
 }
 
-/** Resolve a pending ask_user from the chat UI. */
 export function resolveAskUserAnswer(
   toolCallId: string,
   answer: AskUserAnswer,
 ): boolean {
-  const entry = pending.get(toolCallId);
-  if (!entry) return false;
-  entry.resolve(answer);
-  return true;
+  return askWait.resolve(toolCallId, answer);
 }
 
 export function cancelAskUser(toolCallId: string, reason?: string): boolean {
-  const entry = pending.get(toolCallId);
-  if (!entry) return false;
-  entry.reject(abortError(reason ?? "Ask cancelled"));
-  return true;
+  return askWait.cancel(toolCallId, reason);
 }
 
 export function cancelAllPendingAskUser(reason?: string): void {
-  const ids = [...pending.keys()];
-  for (const id of ids) cancelAskUser(id, reason);
+  askWait.cancelAll(reason);
 }
 
 export function hasPendingAskUser(toolCallId?: string): boolean {
-  if (toolCallId) return pending.has(toolCallId);
-  return pending.size > 0;
+  return askWait.has(toolCallId);
 }
 
 const optionSchema = z.object({

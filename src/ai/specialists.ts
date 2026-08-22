@@ -267,6 +267,8 @@ function humanStatus(toolName: string): string {
     add_link: "Adding link…",
     add_entry: "Adding entry…",
     clip_article: "Clipping article…",
+    ielts_practice: "IELTS practice…",
+    pick_vault_folder: "Choosing folder…",
     translate_note: "Translating…",
     auto_tag_note: "Tagging note…",
     run_terminal: "Waiting for terminal…",

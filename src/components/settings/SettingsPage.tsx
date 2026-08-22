@@ -62,7 +62,12 @@ function queryMatchesKeys(query: string): boolean {
     q.includes("anthropic") ||
     q.includes("google") ||
     q.includes("tavily") ||
-    q.includes("firecrawl")
+    q.includes("firecrawl") ||
+    q.includes("ielts") ||
+    q.includes("deepgram") ||
+    q.includes("eleven") ||
+    q.includes("azure") ||
+    q.includes("whisper")
   );
 }
 

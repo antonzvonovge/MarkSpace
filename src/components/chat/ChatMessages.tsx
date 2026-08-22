@@ -45,6 +45,8 @@ import { vaultChatModelId } from "../../store/vaultAiSettingsStore";
 import { PromptDialog } from "../AppDialog";
 import { EditContextMenu } from "../EditContextMenu";
 import { ChatAskUser } from "./ChatAskUser";
+import { ChatPickVaultFolder } from "./ChatPickVaultFolder";
+import { ChatIeltsPractice } from "./ChatIeltsPractice";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { ChatReasoning } from "./ChatReasoning";
 import { ChatToolCall } from "./ChatToolCall";
@@ -626,6 +628,22 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
               : part.type.startsWith("tool-")
                 ? part.type.slice("tool-".length)
                 : part.type;
+          if (toolName === "ielts_practice") {
+            return (
+              <ChatIeltsPractice
+                key={`${message.id}-tool-${i}`}
+                part={part}
+              />
+            );
+          }
+          if (toolName === "pick_vault_folder") {
+            return (
+              <ChatPickVaultFolder
+                key={`${message.id}-tool-${i}`}
+                part={part}
+              />
+            );
+          }
           if (toolName === "ask_user") {
             return (
               <ChatAskUser key={`${message.id}-tool-${i}`} part={part} />

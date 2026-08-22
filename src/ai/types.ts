@@ -40,6 +40,14 @@ export type AiSettings = {
    * provider=firecrawl is requested. Not used by fetch_url or default clip auto-pick.
    */
   firecrawlApiKey: string;
+  /** Optional Deepgram key for IELTS Speaking STT. */
+  deepgramApiKey: string;
+  /** Optional ElevenLabs key for IELTS TTS. */
+  elevenLabsApiKey: string;
+  /** Optional Azure Speech key for pronunciation assessment. */
+  azureSpeechKey: string;
+  /** Azure Speech region, e.g. westeurope. */
+  azureSpeechRegion: string;
   modelId: string;
   defaultMode: ChatMode;
   /**
@@ -80,6 +88,10 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   googleApiKey: "",
   tavilyApiKey: "",
   firecrawlApiKey: "",
+  deepgramApiKey: "",
+  elevenLabsApiKey: "",
+  azureSpeechKey: "",
+  azureSpeechRegion: "",
   modelId: "anthropic/claude-sonnet-5",
   defaultMode: "ask",
   agentMaxSteps: DEFAULT_AGENT_MAX_STEPS,

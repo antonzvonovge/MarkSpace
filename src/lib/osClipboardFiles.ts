@@ -1,3 +1,5 @@
+import { isVaultDocumentPath } from "./vaultApi";
+
 /** Parse OS file-manager clipboard / paste payloads into absolute paths + File blobs. */
 
 function fileUrlToPath(raw: string): string | null {
@@ -70,15 +72,7 @@ export function pathsFromClipboardData(data: DataTransfer): string[] {
 }
 
 export function isVaultDocumentName(name: string): boolean {
-  const lower = name.toLowerCase();
-  return (
-    lower.endsWith(".md") ||
-    lower.endsWith(".drawio") ||
-    lower.endsWith(".mdlnks") ||
-    lower.endsWith(".mddict") ||
-    lower.endsWith(".mdhabit") ||
-    lower.endsWith(".pdf")
-  );
+  return isVaultDocumentPath(name);
 }
 
 /** Files from clipboardData.files + items (when the OS exposes blobs, not paths). */

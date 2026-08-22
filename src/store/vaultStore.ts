@@ -23,6 +23,7 @@ import {
   isFolderNotePath,
   isDrawioPath,
   isPdfPath,
+  isVaultDocumentPath,
   isSkillsFolder,
   isValidSkillId,
   joinPath,
@@ -1645,6 +1646,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         syncTreeSelection: options?.syncTreeSelection,
         skipNavHistory: options?.skipNavHistory,
       });
+      return;
+    }
+    if (!isVaultDocumentPath(path)) {
+      if (options?.syncTreeSelection !== false) {
+        get().selectInTree(path, false);
+      }
       return;
     }
     const asPreview = options?.preview !== false;

@@ -238,15 +238,51 @@ export type HttpFetchBytesResult = {
 
 export async function httpFetchBytes(
   url: string,
-  opts?: { timeoutSecs?: number },
+  opts?: {
+    timeoutSecs?: number;
+    method?: string;
+    headers?: Record<string, string> | null;
+    body?: string | null;
+    bodyBase64?: string | null;
+  },
 ): Promise<HttpFetchBytesResult> {
   return invoke("http_fetch_bytes", {
     req: {
       url,
-      method: "GET",
-      headers: null,
-      body: null,
+      method: opts?.method ?? "GET",
+      headers: opts?.headers ?? null,
+      body: opts?.body ?? null,
+      bodyBase64: opts?.bodyBase64 ?? null,
       timeoutSecs: opts?.timeoutSecs ?? null,
+    },
+  });
+}
+
+export type HttpFetchTextResult = {
+  status: number;
+  body: string;
+};
+
+export async function httpPostMultipart(req: {
+  url: string;
+  headers?: Record<string, string>;
+  fields?: Record<string, string>;
+  fileField: string;
+  fileName: string;
+  fileBase64: string;
+  fileMime?: string;
+  timeoutSecs?: number;
+}): Promise<HttpFetchTextResult> {
+  return invoke("http_post_multipart", {
+    req: {
+      url: req.url,
+      headers: req.headers ?? null,
+      fields: req.fields ?? null,
+      fileField: req.fileField,
+      fileName: req.fileName,
+      fileBase64: req.fileBase64,
+      fileMime: req.fileMime ?? null,
+      timeoutSecs: req.timeoutSecs ?? null,
     },
   });
 }
@@ -965,6 +1001,18 @@ export type DocumentKind =
   | "mddict"
   | "mdhabit"
   | "pdf";
+
+export function isVaultDocumentPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return (
+    lower.endsWith(".md") ||
+    lower.endsWith(".drawio") ||
+    lower.endsWith(".mdlnks") ||
+    lower.endsWith(".mddict") ||
+    lower.endsWith(".mdhabit") ||
+    lower.endsWith(".pdf")
+  );
+}
 
 export function documentKind(path: string): DocumentKind {
   const lower = path.toLowerCase();

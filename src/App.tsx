@@ -71,6 +71,7 @@ import { useFocusUiStore } from "./store/focusUiStore";
 import { usePrefsStore } from "./store/prefsStore";
 import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
+import { useChatStore } from "./store/chatStore";
 import { isFileTab, isGraphTab, isIncomingTab, isSettingsTab, useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import { useWarmLiveMarkdownPaths } from "./hooks/useWarmLiveMarkdownPaths";
@@ -976,8 +977,8 @@ function App() {
     };
   }, [refreshTree, refreshSyncStatus]);
 
-  // Flush a pending autosave when the window is hidden or closed so a longer
-  // debounce does not leave dirty content only in memory.
+  // Flush note autosave and the active chat thread when the window is hidden
+  // or closed so streaming / unsaved editor state is not left only in memory.
   useEffect(() => {
     const clearTimer = () => {
       if (timer.current) {
@@ -985,9 +986,12 @@ function App() {
         timer.current = null;
       }
     };
-    const flush = () => {
+    const flush = async () => {
       clearTimer();
-      return saveActive();
+      await Promise.all([
+        saveActive(),
+        useChatStore.getState().persistActive(),
+      ]);
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") void flush();

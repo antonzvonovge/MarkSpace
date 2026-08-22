@@ -28,6 +28,7 @@ import {
   getProjectProperties,
   isFolderNotePath,
   isSkillsFolder,
+  isVaultDocumentPath,
   isVaultProjectFolder,
   joinPath,
   parentPath,
@@ -251,6 +252,10 @@ function toStorePath(id: string | number): string {
 
 function toNodeId(path: string): string {
   return path === "" ? VAULT_ID : path;
+}
+
+function isUnsupportedTreeFile(isDir: boolean, path: string): boolean {
+  return !isDir && !isVaultDocumentPath(path);
 }
 
 /** Ancestor folder paths for a vault-relative file path (excludes the file itself). */
@@ -641,14 +646,16 @@ function TreeContextMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const isSkills = isSkillsFolder(menu.path, menu.isDir);
   const isDiary = diaryProjectRoot !== null;
+  const unsupportedFile = isUnsupportedTreeFile(menu.isDir, menu.path);
   const showEditActions = !menu.createOnly && menu.path !== "" && !isSkills;
   const showCopyPath = !menu.createOnly && menu.path !== "";
-  const showFavorite = !menu.createOnly && menu.path !== "";
+  const showFavorite =
+    !menu.createOnly && menu.path !== "" && !unsupportedFile;
   const showFolderProperties =
     !menu.createOnly && menu.isDir && menu.path !== "";
   const showProjectProperties = showFolderProperties && isVaultProjectFolder(menu.path, true);
   const showSkillCreate = isSkills || menu.createOnly === true;
-  const showStandardCreate = !isSkills;
+  const showStandardCreate = !isSkills && !unsupportedFile;
   const showDownloadArticle =
     !menu.createOnly && menu.isDir && !isSkills;
   const showOpenChat = showProjectProperties;
@@ -1165,6 +1172,7 @@ function FavoritesTreeRows({
         const isMddict = !isDir && path.toLowerCase().endsWith(".mddict");
         const isMdhabit = !isDir && path.toLowerCase().endsWith(".mdhabit");
         const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
+        const unsupported = isUnsupportedTreeFile(isDir, path);
         const selected =
           treeSelectionVisible &&
           isDir &&
@@ -1191,6 +1199,7 @@ function FavoritesTreeRows({
                 isDir ? "tree-folder-row" : "tree-file",
                 isProject ? "is-project" : "",
                 isSkills ? "is-skills" : "",
+                unsupported ? "is-unsupported" : "",
                 projectColor ? "has-project-color" : "",
                 selected || active ? "is-selected" : "",
                 renaming ? "is-renaming" : "",
@@ -1214,10 +1223,15 @@ function FavoritesTreeRows({
                   onOpenFolder(path);
                   return;
                 }
+                if (isUnsupportedTreeFile(false, path)) {
+                  onSelectInTree(path, false);
+                  return;
+                }
                 onOpenNote(path, { preview: true });
               }}
               onDoubleClick={() => {
                 if (isDir || renaming) return;
+                if (isUnsupportedTreeFile(false, path)) return;
                 onOpenNote(path, { preview: false });
               }}
               onContextMenu={(e) => {
@@ -2488,6 +2502,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 const isMdhabit =
                   !isDir && path.toLowerCase().endsWith(".mdhabit");
                 const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
+                const unsupported = isUnsupportedTreeFile(isDir, path);
                 const selected =
                   treeSelectionVisible &&
                   isDir &&
@@ -2520,6 +2535,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                     void openOrCreateFolderNote(path);
                     return;
                   }
+                  if (unsupported) {
+                    selectInTree(path, false);
+                    return;
+                  }
                   void openNote(path, { preview: true });
                 };
 
@@ -2531,6 +2550,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       isVault ? "is-vault-root" : "",
                       isProject ? "is-project" : "",
                       isSkills ? "is-skills" : "",
+                      unsupported ? "is-unsupported" : "",
                       projectColor ? "has-project-color" : "",
                       selected || active ? "is-selected" : "",
                       isDropTarget && treeDragging ? "is-drop-target" : "",
@@ -2554,7 +2574,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                     data-drawio-path={isDrawio ? path : undefined}
                     onClick={handleRowClick}
                     onDoubleClick={() => {
-                      if (isDir || renaming) return;
+                      if (isDir || renaming || unsupported) return;
                       void openNote(path, { preview: false });
                     }}
                     onContextMenu={(e) => {

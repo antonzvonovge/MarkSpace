@@ -42,6 +42,7 @@ import {
   findAttachmentFilePart,
 } from "./chatAttachments";
 import { buildAskUserTool } from "./askUser";
+import { buildPickVaultFolderTool } from "./pickVaultFolder";
 import { readNoteBuffer } from "./noteBuffer";
 import { buildDrawioTools } from "./drawio/tools";
 import { buildMdlnksTools } from "./mdlnks/tools";
@@ -63,6 +64,7 @@ import {
   type LoadedSkill,
   type SkillMeta,
 } from "./skills";
+import { buildIeltsTools } from "./ieltsTools";
 import { formatForcedToolsLines } from "./toolCatalog";
 import { buildRunSpecialistTool } from "./specialists";
 import { orchestratorToolNames, pickTools, type SpecialistKind } from "./toolPacks";
@@ -214,7 +216,7 @@ export type BuildVaultToolsOpts = {
   modelId?: string | null;
   /**
    * Restrict to these tool names. For Agent mode, omit to get the
-   * orchestrator set (8 tools, or 9 when terminal is enabled). Pass an
+   * orchestrator set (9 tools, or 10 when terminal is enabled). Pass an
    * explicit list for specialists.
    */
   toolNames?: string[];
@@ -841,6 +843,8 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
   const webTools = buildWebTools();
   const fileTools = buildFileTools(mode);
   const askUserTool = { ask_user: buildAskUserTool() };
+  const pickFolderTool = { pick_vault_folder: buildPickVaultFolderTool() };
+  const ieltsTools = buildIeltsTools();
 
   if (mode === "ask") {
     const askAll = {
@@ -852,6 +856,8 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
       ...webTools,
       ...fileTools,
       ...askUserTool,
+      ...pickFolderTool,
+      ...ieltsTools,
     };
     if (opts?.toolNames?.length) {
       return pickTools(askAll, opts.toolNames) as typeof askAll;
@@ -1034,6 +1040,8 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     ...webTools,
     ...fileTools,
     ...askUserTool,
+    ...pickFolderTool,
+    ...ieltsTools,
     ...orchestratorExtras,
     set_file_tags: tool({
       description:
@@ -1805,7 +1813,10 @@ export function buildSystemPrompt(opts: {
 
   lines.push(
     "CRITICAL — parallel tools: every model round re-sends the whole context. When several independent tools are needed, emit them TOGETHER in one response.",
+    "When you need a vault folder (save location, IELTS session note): call pick_vault_folder. The UI remembers the last folder across chats and lets the user Browse the vault tree. Do not use ask_user for folder paths.",
     "When you need a decision, confirmation, or clarification with clear choices: use ask_user instead of listing A/B/C in plain chat text.",
+    "IELTS General Training practice: built-in skills ielts-writing, ielts-reading, ielts-listening, ielts-speaking (also /slash). Always pick_vault_folder first. Drive the session with ielts_practice (start, set_secret, synthesize_audio, show_paper, grade, save_note, end). Exam paper goes in show_paper, never chat markdown. Listening full test: one synthesize_audio for sections 1–4, one show_paper (questions 1–40), one Submit, then grade. After save_note and end: stop; one recap only, never repeat “done”. Do not call set_timer or write Submit reminders. start returns existing_notes and existing_topics — invent a NEW theme. Never print the answer key or listening script until after grade. Scores are indicative practice, not official Cambridge. Use web_search only for public pages the user asked to find — do not fetch pirated exam books.",
+    "IELTS language: exam material the user must read or hear stays in English (prompts, passages, questions, scripts, cue cards). After they Submit the paper (or End session in Speaking): scores, traps, explanations, speaking feedback, and the Result/Feedback sections of the session note MUST be in the user's native language from Profile. Do not write those recaps in English unless the native language is English.",
     "Paths are vault-relative.",
     "Folder notes: every vault folder (except the vault root) has a special hidden overview note at `{folder}/.folder.md` (not listed in the tree). When the user pastes/drops a folder into chat, the message names both the folder and its folder note path separately. If they ask to read/edit/open the folder note / overview for a mentioned folder, they mean that exact `{folder}/.folder.md` — not some other note inside the folder. Pass a folder path or `{folder}/.folder.md` to open_note (created if missing); use read_note / edit_note on `{folder}/.folder.md` for contents.",
     "When the user asks to open/show a file, call open_note.",

@@ -8,6 +8,8 @@ import {
 } from "../ai/chatAttachments";
 import { generateChatTitle } from "../ai/generateChatTitle";
 import { cancelAllPendingAskUser } from "../ai/askUser";
+import { cancelAllPendingIeltsPaper } from "../ai/ieltsPaper";
+import { cancelAllPendingPickVaultFolder } from "../ai/pickVaultFolder";
 import {
   cancelAllPendingTerminal,
   killAllRunningTerminalJobs,
@@ -27,6 +29,7 @@ import {
   hasCredentialsForModel,
   missingCredentialsMessage,
 } from "../ai/languageModel";
+import { pickIeltsTextModelId, missingIeltsTextKeyMessage } from "../ai/ieltsFit";
 import { settleIncompleteToolCalls } from "../ai/incompleteToolCalls";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
@@ -70,6 +73,7 @@ import {
 } from "../lib/vaultApi";
 import { getGem } from "../lib/gemsApi";
 import { useAiSettingsStore } from "./aiSettingsStore";
+import { useIeltsUiStore } from "./ieltsUiStore";
 import {
   helperModelCallParams,
   vaultChatModelId,
@@ -351,6 +355,72 @@ async function persistChatTabs(
     openTabIds.includes(id),
   );
   return setOpenChatTabs(vaultPath, openTabIds, activeThreadId, pinned);
+}
+
+const STREAM_PERSIST_MS = 2000;
+let persistActiveChain: Promise<void> = Promise.resolve();
+let lastStreamPersistAt = 0;
+
+async function writeActiveThread(get: () => ChatStore): Promise<void> {
+  const {
+    vaultBound,
+    activeThreadId,
+    messages,
+    mode,
+    modelId,
+    projectPath,
+    gemId,
+    enableReasoning,
+    terminalAllowForChat,
+    contextAnchorTokens,
+    contextAnchorMessageCount,
+    threads,
+  } = get();
+  if (!vaultBound || !activeThreadId) return;
+  const meta = threads.find((t) => t.id === activeThreadId);
+  const now = Date.now();
+  const title =
+    meta?.title && !isProvisionalTitle(meta.title, messages, meta.titleLocked)
+      ? meta.title
+      : (() => {
+          const firstUser = messages.find((m) => m.role === "user");
+          return firstUser
+            ? titleFromMessage(userText(firstUser))
+            : meta?.title && meta.title !== "New chat"
+              ? meta.title
+              : "New chat";
+        })();
+  const file = {
+    id: activeThreadId,
+    title,
+    createdAt: meta?.createdAt ?? now,
+    updatedAt: now,
+    mode,
+    modelId,
+    projectPath,
+    gemId,
+    enableReasoning,
+    terminalAllowForChat,
+    contextAnchorTokens,
+    contextAnchorMessageCount,
+    messages,
+    ...(meta?.titleLocked ? { titleLocked: true as const } : {}),
+  };
+  const updated = await upsertChatThread(vaultBound, file);
+  useChatStore.setState((s) => ({
+    threads: [
+      updated,
+      ...s.threads.filter((t) => t.id !== updated.id),
+    ].sort((a, b) => b.updatedAt - a.updatedAt),
+  }));
+}
+
+function enqueuePersistActive(get: () => ChatStore): Promise<void> {
+  persistActiveChain = persistActiveChain.then(
+    () => writeActiveThread(get),
+    () => writeActiveThread(get),
+  );
+  return persistActiveChain;
 }
 
 /** Drop selection texts whose chip was deleted from the draft. */
@@ -738,9 +808,22 @@ async function runAssistantTurn(params: {
 
   const settings = useAiSettingsStore.getState().settings;
   const keys = credentialsFromSettings(settings);
+  const ieltsSession = useIeltsUiStore.getState().session;
+  const wantsIelts =
+    params.skillIds.some((id) => id.startsWith("ielts-")) ||
+    (ieltsSession != null && ieltsSession.threadId === get().activeThreadId) ||
+    /\bielts\b/i.test(lastUserText(params.messages));
+  const ieltsModel = wantsIelts ? pickIeltsTextModelId(settings) : null;
+  if (wantsIelts && !ieltsModel) {
+    set({
+      error: missingIeltsTextKeyMessage(),
+      status: "error",
+    });
+    return;
+  }
   const modelId = resolveModelId(
     settings.baseUrl,
-    get().modelId || vaultChatModelId(),
+    ieltsModel || get().modelId || vaultChatModelId(),
   );
   if (!hasCredentialsForModel(modelId, keys)) {
     set({
@@ -951,6 +1034,8 @@ async function runAssistantTurn(params: {
       t.id === activeThreadId ? { ...t, title, updatedAt: Date.now() } : t,
     ),
   });
+  lastStreamPersistAt = Date.now();
+  void get().persistActive();
 
   try {
     const { messages: finalMessages, lastStepInputTokens } = await runChat({
@@ -978,6 +1063,22 @@ async function runAssistantTurn(params: {
       onMessages: (next) => {
         if (get().abort !== controller) return;
         set({ messages: next });
+        const now = Date.now();
+        const incomplete = next.some((m) =>
+          (m.parts ?? []).some((p) => {
+            if (!("state" in p)) return false;
+            const st = String((p as { state?: string }).state);
+            return (
+              st === "input-available" ||
+              st === "input-streaming" ||
+              st === "approval-requested"
+            );
+          }),
+        );
+        if (incomplete || now - lastStreamPersistAt >= STREAM_PERSIST_MS) {
+          lastStreamPersistAt = now;
+          void get().persistActive();
+        }
       },
       onReasoningPreview: (text) => {
         if (get().abort !== controller) return;
@@ -1161,15 +1262,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           : openIds[0] ?? null;
 
       if (active) {
-        set(
-          await loadThreadIntoState(
-            vaultPath,
-            active,
-            listed.threads,
-            openIds,
-            tabs.pinnedTabIds,
-          ),
-        );
+        try {
+          set(
+            await loadThreadIntoState(
+              vaultPath,
+              active,
+              listed.threads,
+              openIds,
+              tabs.pinnedTabIds,
+            ),
+          );
+        } catch (e) {
+          set({
+            ...emptySession(vaultPath),
+            threads: listed.threads,
+            openTabIds: openIds,
+            pinnedTabIds: tabs.pinnedTabIds,
+            error:
+              e instanceof Error
+                ? `Could not open last chat: ${e.message}`
+                : "Could not open last chat",
+          });
+        }
       } else {
         set({
           ...emptySession(vaultPath),
@@ -1659,59 +1773,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  persistActive: async () => {
-    const {
-      vaultBound,
-      activeThreadId,
-      messages,
-      mode,
-      modelId,
-      projectPath,
-      gemId,
-      enableReasoning,
-      terminalAllowForChat,
-      contextAnchorTokens,
-      contextAnchorMessageCount,
-      threads,
-    } = get();
-    if (!vaultBound || !activeThreadId) return;
-    const meta = threads.find((t) => t.id === activeThreadId);
-    const now = Date.now();
-    const title =
-      meta?.title && !isProvisionalTitle(meta.title, messages, meta.titleLocked)
-        ? meta.title
-        : (() => {
-            const firstUser = messages.find((m) => m.role === "user");
-            return firstUser
-              ? titleFromMessage(userText(firstUser))
-              : meta?.title && meta.title !== "New chat"
-                ? meta.title
-                : "New chat";
-          })();
-    const file = {
-      id: activeThreadId,
-      title,
-      createdAt: meta?.createdAt ?? now,
-      updatedAt: now,
-      mode,
-      modelId,
-      projectPath,
-      gemId,
-      enableReasoning,
-      terminalAllowForChat,
-      contextAnchorTokens,
-      contextAnchorMessageCount,
-      messages,
-      ...(meta?.titleLocked ? { titleLocked: true as const } : {}),
-    };
-    const updated = await upsertChatThread(vaultBound, file);
-    const listed = await listChatThreads(vaultBound);
-    set({
-      threads: listed.threads,
-      ...applyListedTabs(listed),
-      activeThreadId: updated.id,
-    });
-  },
+  persistActive: () => enqueuePersistActive(get),
 
   send: async (text) => {
     const rawDraft = text ?? get().draft;
@@ -1780,6 +1842,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   stop: () => {
     const { abort } = get();
     cancelAllPendingAskUser("stopped");
+    cancelAllPendingIeltsPaper("stopped");
+    cancelAllPendingPickVaultFolder("stopped");
     cancelAllPendingTerminal("stopped");
     void killAllRunningTerminalJobs();
     if (abort) abort.abort();

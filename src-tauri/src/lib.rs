@@ -238,6 +238,7 @@ pub fn run() {
             mcp::mcp_call_tool,
             http_fetch::http_fetch,
             http_fetch::http_fetch_bytes,
+            http_fetch::http_post_multipart,
             terminal::run_terminal_command,
             terminal::kill_terminal_command,
             chat_history::list_chat_threads,

@@ -815,7 +815,7 @@ fn build_tree(root: &Path, dir: &Path, order: &OrderMap) -> Result<Vec<TreeNode>
                 is_dir: true,
                 children: Some(children),
             });
-        } else if is_vault_document(&name) {
+        } else {
             entries.push(TreeNode {
                 name,
                 path: rel,
@@ -871,7 +871,7 @@ fn materialize_parent_order(root: &Path, order: &mut OrderMap, parent: &str) -> 
             continue;
         }
         let path = entry.path();
-        if path.is_dir() || is_vault_document(&name) {
+        if path.is_dir() || path.is_file() {
             names.push(name);
         }
     }

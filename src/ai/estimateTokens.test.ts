@@ -23,7 +23,7 @@ describe("estimateToolSchemaTokens", () => {
     const ask = estimateToolSchemaTokens("ask");
     const agent = estimateToolSchemaTokens("agent");
     expect(ask).toBeGreaterThan(2_000);
-    // Orchestrator (8 tools) should be well under the old full-agent ~8k+.
+    // Orchestrator is leaner than Ask (full tool set).
     expect(agent).toBeLessThan(ask);
     expect(agent).toBeLessThan(8_000);
     expect(agent).toBeGreaterThan(500);
