@@ -96,6 +96,17 @@ import {
   readTextFromSystemClipboard,
   warnClipboardImageMissing,
 } from "./pasteImages";
+import {
+  recordSegmentChanges,
+  SegmentMarkdownCache,
+  type SegmentBlock,
+} from "./incrementalSerialize";
+import {
+  passthroughStage,
+  verifyIncrementalSerialization,
+  withSerializeProfile,
+  type StageTimer,
+} from "./serializeProfile";
 import { noteEditorSchema } from "./schema";
 import { createSelectAtomBlockAfterDropExtension } from "./selectAtomBlockAfterDrop";
 import { getNoteSlashMenuItems } from "./slashMenuItems";
@@ -233,6 +244,12 @@ const LIVE_SERIALIZE_MS = 1_000;
 
 /** Upper bound on the idle wait, so a busy main thread cannot starve the export. */
 const LIVE_SERIALIZE_IDLE_TIMEOUT_MS = 1_000;
+
+/**
+ * `incremental` reuses cached markdown for untouched segments and only ever
+ * feeds derived UI; anything headed for disk goes through `full`.
+ */
+type SerializeMode = "full" | "incremental";
 
 type IdleHandle =
   | { kind: "idle"; id: number }
@@ -529,6 +546,13 @@ export const NoteEditor = memo(function NoteEditor({
   const serializeTimerRef = useRef<number | null>(null);
   const idleHandleRef = useRef<IdleHandle | null>(null);
   const pendingSerializeRef = useRef(false);
+  const segmentCacheRef = useRef(new SegmentMarkdownCache<SegmentBlock>());
+  const lastEmitWasIncrementalRef = useRef(false);
+
+  useEffect(() => {
+    segmentCacheRef.current = new SegmentMarkdownCache<SegmentBlock>();
+    lastEmitWasIncrementalRef.current = false;
+  }, [editor]);
 
   const cancelScheduledSerialize = useCallback(() => {
     if (serializeTimerRef.current != null) {
@@ -541,21 +565,57 @@ export const NoteEditor = memo(function NoteEditor({
     }
   }, []);
 
+  /** Whole-document export: the only thing ever allowed to reach disk. */
+  const serializeWholeDocument = useCallback(
+    (ed: typeof editor, stage: StageTimer) => {
+      const html = stage("blocksToHtml", () =>
+        ed.blocksToHTMLLossy(ed.document),
+      );
+      return stage("htmlToMarkdown", () => nestedHtmlToMarkdown(html));
+    },
+    [],
+  );
+
   const emitSerializedMarkdown = useCallback(
-    (ed: typeof editor) => {
-      let md = applyImagePreviewWidths(
-        nestedHtmlToMarkdown(ed.blocksToHTMLLossy(ed.document)),
-        collectImageSizeRefs(ed.document),
-      );
-      md = applyColoredTableHtml(
-        md,
-        projectColoredTables(ed.document, (blocks) =>
-          ed.blocksToHTMLLossy(blocks as typeof ed.document),
-        ),
-      );
-      const wikiMd = markdownToWiki(
-        editorMarkdownToMath(editorMarkdownToHashtags(md)),
-      );
+    (ed: typeof editor, mode: SerializeMode = "full") => {
+      const wikiMd = withSerializeProfile(`${path} ${mode}`, (stage) => {
+        let base: string;
+        if (mode === "incremental") {
+          base = stage("segments", () =>
+            segmentCacheRef.current.serialize(
+              ed.document as unknown as SegmentBlock[],
+              (blocks) =>
+                nestedHtmlToMarkdown(
+                  ed.blocksToHTMLLossy(blocks as unknown as typeof ed.document),
+                ),
+            ),
+          );
+          verifyIncrementalSerialization(path, base, () =>
+            serializeWholeDocument(ed, passthroughStage),
+          );
+        } else {
+          base = serializeWholeDocument(ed, stage);
+          // The cache saw none of this, so the next incremental pass starts cold.
+          segmentCacheRef.current.invalidateAll();
+        }
+
+        return stage("postProcess", () => {
+          let md = applyImagePreviewWidths(
+            base,
+            collectImageSizeRefs(ed.document),
+          );
+          md = applyColoredTableHtml(
+            md,
+            projectColoredTables(ed.document, (blocks) =>
+              ed.blocksToHTMLLossy(blocks as typeof ed.document),
+            ),
+          );
+          return markdownToWiki(
+            editorMarkdownToMath(editorMarkdownToHashtags(md)),
+          );
+        });
+      });
+      lastEmitWasIncrementalRef.current = mode === "incremental";
       const full = withNoteBody(frontmatterBaseRef.current, wikiMd);
       // External loads / round-trips: adopt serialization, do not pin preview.
       if (applyingRef.current || adoptNextChangeRef.current) {
@@ -574,16 +634,20 @@ export const NoteEditor = memo(function NoteEditor({
       lastExternalRef.current = full;
       onChangeRef.current(full);
     },
-    [editor],
+    [editor, path, serializeWholeDocument],
   );
 
   const flushSerialize = useCallback(() => {
     cancelScheduledSerialize();
-    if (!pendingSerializeRef.current) return;
+    // Even with nothing pending, a cached incremental result may be what the
+    // store holds. Redo it whole so only a full export is ever persisted.
+    if (!pendingSerializeRef.current && !lastEmitWasIncrementalRef.current) {
+      return;
+    }
     pendingSerializeRef.current = false;
     const ed = editorRef.current;
     if (!ed) return;
-    emitSerializedMarkdown(ed);
+    emitSerializedMarkdown(ed, "full");
   }, [emitSerializedMarkdown, cancelScheduledSerialize]);
 
   useEffect(() => registerLiveEditorFlush(path, flushSerialize), [
@@ -603,17 +667,18 @@ export const NoteEditor = memo(function NoteEditor({
       if (!pendingSerializeRef.current) return;
       pendingSerializeRef.current = false;
       const ed = editorRef.current;
-      if (ed) emitSerializedMarkdown(ed);
+      if (ed) emitSerializedMarkdown(ed, "full");
     };
   }, [editor, emitSerializedMarkdown, cancelScheduledSerialize]);
 
-  useEditorChange((ed) => {
+  useEditorChange((ed, context) => {
+    recordSegmentChanges(segmentCacheRef.current, context);
     if (isActiveRef.current) refreshDocumentFindIfOpen();
     // Load/replaceBlocks must adopt serialization synchronously.
     if (applyingRef.current || adoptNextChangeRef.current) {
       cancelScheduledSerialize();
       pendingSerializeRef.current = false;
-      emitSerializedMarkdown(ed);
+      emitSerializedMarkdown(ed, "full");
       return;
     }
     // Keep-alive hidden editors must not mark the active note dirty.
@@ -631,7 +696,7 @@ export const NoteEditor = memo(function NoteEditor({
         if (!pendingSerializeRef.current) return;
         pendingSerializeRef.current = false;
         const current = editorRef.current;
-        if (current) emitSerializedMarkdown(current);
+        if (current) emitSerializedMarkdown(current, "incremental");
       }, LIVE_SERIALIZE_IDLE_TIMEOUT_MS);
     }, LIVE_SERIALIZE_MS);
   }, editor);

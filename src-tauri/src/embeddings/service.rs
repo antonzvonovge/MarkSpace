@@ -25,6 +25,13 @@ const FILES_PER_TICK: usize = 1;
 const MIN_PERSIST_INTERVAL: Duration = Duration::from_millis(1500);
 const MAX_PERSIST_INTERVAL: Duration = Duration::from_secs(30);
 const DEFAULT_DELAY_SECS: u32 = 5;
+/// How long one activity heartbeat holds indexing back. The host only pings
+/// while the user is active, so this doubles as the "user went idle" timeout.
+const USER_BUSY_TTL: Duration = Duration::from_secs(3);
+/// Floor between per-file progress events. Every Tauri `emit` round-trips
+/// through the UI thread and blocks on the reply, so one event per indexed file
+/// is a real cost, not just a redundant render.
+const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
 
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
@@ -34,6 +41,7 @@ enum Msg {
         app_data: PathBuf,
         enabled: bool,
         delay_seconds: u32,
+        pause_on_activity: bool,
     },
     ModelAvailable {
         model_dir: PathBuf,
@@ -51,8 +59,10 @@ enum Msg {
     SetPolicy {
         enabled: bool,
         delay_seconds: u32,
+        pause_on_activity: bool,
         reply: Sender<()>,
     },
+    UserActivity,
     Search {
         query: String,
         limit: usize,
@@ -92,6 +102,12 @@ struct WorkerState {
     delay: Duration,
     /// When set, run `scan_vault` once this instant is reached.
     scan_at: Option<Instant>,
+    /// Hold off indexing while the user types or a chat streams.
+    pause_on_activity: bool,
+    busy_until: Option<Instant>,
+    paused_emitted: bool,
+    last_progress_emit: Option<Instant>,
+    last_payload: Option<BackgroundJobPayload>,
     emit_job: Sender<BackgroundJobPayload>,
 }
 
@@ -119,11 +135,18 @@ impl WorkerState {
             enabled: true,
             delay: Duration::from_secs(DEFAULT_DELAY_SECS as u64),
             scan_at: None,
+            pause_on_activity: false,
+            busy_until: None,
+            paused_emitted: false,
+            last_progress_emit: None,
+            last_payload: None,
             emit_job,
         }
     }
 
-    fn emit_job(&self, status: &str, progress: u32, detail: Option<String>) {
+    /// Phase changes (model loading, done, error, paused). Deduplicated but never
+    /// delayed, so the status bar always lands on the right final state.
+    fn emit_job(&mut self, status: &str, progress: u32, detail: Option<String>) {
         let payload = BackgroundJobPayload {
             id: JOB_ID.to_string(),
             label: "Indexing notes".into(),
@@ -131,7 +154,43 @@ impl WorkerState {
             status: status.into(),
             detail,
         };
+        if self.last_payload.as_ref() == Some(&payload) {
+            return;
+        }
+        if payload.status == "running" {
+            self.last_progress_emit = Some(Instant::now());
+        }
+        self.last_payload = Some(payload.clone());
         let _ = self.emit_job.send(payload);
+    }
+
+    /// Per-file progress: rate limited on top of the deduplication above.
+    fn emit_progress(&mut self, progress: u32, detail: Option<String>) {
+        if let Some(at) = self.last_progress_emit {
+            if at.elapsed() < PROGRESS_EMIT_INTERVAL {
+                return;
+            }
+        }
+        self.emit_job("running", progress, detail);
+    }
+
+    fn note_user_activity(&mut self) {
+        if !self.pause_on_activity {
+            return;
+        }
+        self.busy_until = Some(Instant::now() + USER_BUSY_TTL);
+    }
+
+    fn user_is_busy(&self) -> bool {
+        self.pause_on_activity
+            && self
+                .busy_until
+                .map(|until| Instant::now() < until)
+                .unwrap_or(false)
+    }
+
+    fn has_queued_work(&self) -> bool {
+        !self.pending.is_empty() || self.scan_at.is_some()
     }
 
     fn set_delay_seconds(&mut self, secs: u32) {
@@ -241,8 +300,12 @@ impl WorkerState {
         app_data: PathBuf,
         enabled: bool,
         delay_seconds: u32,
+        pause_on_activity: bool,
     ) {
         self.enabled = enabled;
+        self.pause_on_activity = pause_on_activity;
+        self.busy_until = None;
+        self.paused_emitted = false;
         self.set_delay_seconds(delay_seconds);
         self.vault_path = Some(vault_path.clone());
         self.vault_root = Some(PathBuf::from(&vault_path));
@@ -283,8 +346,13 @@ impl WorkerState {
         }
     }
 
-    fn apply_policy(&mut self, enabled: bool, delay_seconds: u32) {
+    fn apply_policy(&mut self, enabled: bool, delay_seconds: u32, pause_on_activity: bool) {
         self.set_delay_seconds(delay_seconds);
+        self.pause_on_activity = pause_on_activity;
+        if !pause_on_activity {
+            self.busy_until = None;
+            self.paused_emitted = false;
+        }
         let was_enabled = self.enabled;
         self.enabled = enabled;
         if !enabled {
@@ -293,6 +361,8 @@ impl WorkerState {
             self.debounce.clear();
             self.indexing = false;
             self.progress = 0;
+            self.busy_until = None;
+            self.paused_emitted = false;
             self.emit_job("done", 100, None);
             return;
         }
@@ -476,6 +546,23 @@ impl WorkerState {
             self.persist();
             return false;
         }
+        // Checked before the scheduled scan: walking the vault and hashing every
+        // file competes with the UI just like embedding does. A skipped scan is
+        // not lost, `scan_at` stays due and fires once the user goes idle.
+        if self.user_is_busy() {
+            if self.enabled && self.has_queued_work() && !self.paused_emitted {
+                self.paused_emitted = true;
+                self.emit_job("paused", self.progress, Some("Paused while you work".into()));
+            }
+            return true;
+        }
+        if self.paused_emitted {
+            self.paused_emitted = false;
+            if self.enabled && self.has_queued_work() {
+                let detail = self.work_detail();
+                self.emit_job("running", self.progress, Some(detail));
+            }
+        }
         self.maybe_run_scheduled_scan();
         if !self.enabled {
             return false;
@@ -539,7 +626,7 @@ impl WorkerState {
                 return false;
             }
             let detail = self.work_detail();
-            self.emit_job("running", self.progress, Some(detail));
+            self.emit_progress(self.progress, Some(detail));
         }
         true
     }
@@ -748,17 +835,26 @@ fn worker_loop(rx: Receiver<Msg>, emit_job: Sender<BackgroundJobPayload>) {
                     app_data,
                     enabled,
                     delay_seconds,
-                } => state.open_vault(vault_path, app_data, enabled, delay_seconds),
+                    pause_on_activity,
+                } => state.open_vault(
+                    vault_path,
+                    app_data,
+                    enabled,
+                    delay_seconds,
+                    pause_on_activity,
+                ),
                 Msg::ModelAvailable { model_dir } => state.model_available(model_dir),
                 Msg::FileChanged { path } => state.queue_path(&path),
                 Msg::FileRemoved { path } => state.remove_path(&path),
                 Msg::FileRenamed { from, to } => state.rename_path(&from, &to),
+                Msg::UserActivity => state.note_user_activity(),
                 Msg::SetPolicy {
                     enabled,
                     delay_seconds,
+                    pause_on_activity,
                     reply,
                 } => {
-                    state.apply_policy(enabled, delay_seconds);
+                    state.apply_policy(enabled, delay_seconds, pause_on_activity);
                     let _ = reply.send(());
                 }
                 Msg::Search {
@@ -854,12 +950,14 @@ pub fn run_stdio_server() {
                 app_data,
                 enabled,
                 delay_seconds,
+                pause_on_activity,
             } => {
                 let _ = msg_tx.send(Msg::OpenVault {
                     vault_path,
                     app_data: PathBuf::from(app_data),
                     enabled,
                     delay_seconds,
+                    pause_on_activity,
                 });
                 let _ = out_tx.send(ChildMessage::Ack { id });
             }
@@ -882,15 +980,20 @@ pub fn run_stdio_server() {
                 id,
                 enabled,
                 delay_seconds,
+                pause_on_activity,
             } => {
                 let (reply_tx, reply_rx) = mpsc::channel();
                 let _ = msg_tx.send(Msg::SetPolicy {
                     enabled,
                     delay_seconds,
+                    pause_on_activity,
                     reply: reply_tx,
                 });
                 let _ = reply_rx.recv();
                 let _ = out_tx.send(ChildMessage::Ack { id });
+            }
+            HostRequest::UserActivity => {
+                let _ = msg_tx.send(Msg::UserActivity);
             }
             HostRequest::Search { id, query, limit } => {
                 let (reply_tx, reply_rx) = mpsc::channel();

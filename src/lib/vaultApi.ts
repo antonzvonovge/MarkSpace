@@ -339,6 +339,11 @@ export async function getEmbeddingsIndexStatus(): Promise<EmbeddingsIndexStatus>
   return invoke("get_embeddings_index_status");
 }
 
+/** Heartbeat telling the indexer to hold off while the user is working. */
+export async function notifyUserActivity(): Promise<void> {
+  await invoke("notify_user_activity");
+}
+
 export type EmbeddingModelStatus = {
   installed: boolean;
   downloading: boolean;
@@ -790,10 +795,14 @@ export async function setDiarySettings(
   });
 }
 
+/** How much of the machine background indexing may take. */
+export type BackgroundPriority = "low" | "balanced" | "full";
+
 export type IndexingSettings = {
   version: number;
   enabled: boolean;
   delaySeconds: number;
+  backgroundPriority: BackgroundPriority;
 };
 
 export async function getIndexingSettings(): Promise<IndexingSettings> {
@@ -803,6 +812,7 @@ export async function getIndexingSettings(): Promise<IndexingSettings> {
 export async function setIndexingSettings(args: {
   enabled: boolean;
   delaySeconds: number;
+  backgroundPriority: BackgroundPriority;
 }): Promise<IndexingSettings> {
   return invoke<IndexingSettings>("set_indexing_settings", { args });
 }

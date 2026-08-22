@@ -16,11 +16,54 @@ type BackgroundJobsState = {
   jobs: Record<string, BackgroundJob>;
   upsertJob: (job: BackgroundJob) => void;
   removeJob: (id: string) => void;
-  visibleJobs: () => BackgroundJob[];
 };
 
 const DONE_HIDE_MS = 1500;
 const doneTimers = new Map<string, number>();
+
+/**
+ * Progress ticks are coalesced to one store write per frame.
+ *
+ * Sources like note indexing and article clipping report on every file or
+ * image, and each of those would otherwise be its own React render.
+ */
+const pendingUpdates = new Map<string, BackgroundJob>();
+let flushHandle = 0;
+
+function applyJobs(batch: BackgroundJob[]) {
+  if (batch.length === 0) return;
+  useBackgroundJobsStore.setState((state) => {
+    const jobs = { ...state.jobs };
+    for (const job of batch) {
+      const prev = jobs[job.id];
+      jobs[job.id] = {
+        ...job,
+        queuedAt: prev?.queuedAt ?? job.queuedAt ?? Date.now(),
+      };
+    }
+    return { jobs };
+  });
+}
+
+/** Exported for tests; production code goes through the frame callback. */
+export function flushBackgroundJobUpdates() {
+  if (flushHandle) {
+    cancelAnimationFrame(flushHandle);
+    flushHandle = 0;
+  }
+  if (pendingUpdates.size === 0) return;
+  const batch = [...pendingUpdates.values()];
+  pendingUpdates.clear();
+  applyJobs(batch);
+}
+
+function scheduleFlush() {
+  if (flushHandle) return;
+  flushHandle = requestAnimationFrame(() => {
+    flushHandle = 0;
+    flushBackgroundJobUpdates();
+  });
+}
 
 export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => ({
   jobs: {},
@@ -32,14 +75,16 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
       doneTimers.delete(job.id);
     }
 
-    set((state) => {
-      const prev = state.jobs[job.id];
-      const next: BackgroundJob = {
-        ...job,
-        queuedAt: prev?.queuedAt ?? job.queuedAt ?? Date.now(),
-      };
-      return { jobs: { ...state.jobs, [job.id]: next } };
-    });
+    if (job.status === "running" || job.status === "paused") {
+      pendingUpdates.set(job.id, job);
+      scheduleFlush();
+      return;
+    }
+
+    // Terminal states land right away, and drop any queued tick that would
+    // otherwise overwrite them a frame later.
+    pendingUpdates.delete(job.id);
+    applyJobs([job]);
 
     if (job.status === "done") {
       const timer = window.setTimeout(() => {
@@ -51,18 +96,13 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
   },
 
   removeJob: (id) => {
+    pendingUpdates.delete(id);
     set((state) => {
       if (!(id in state.jobs)) return state;
       const next = { ...state.jobs };
       delete next[id];
       return { jobs: next };
     });
-  },
-
-  visibleJobs: () => {
-    return Object.values(get().jobs).filter(
-      (j) => j.status === "running" || j.status === "error" || j.status === "done",
-    );
   },
 }));
 

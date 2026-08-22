@@ -75,6 +75,7 @@ import { isFileTab, isGraphTab, isIncomingTab, isSettingsTab, useVaultStore } fr
 import { useAutoSync } from "./hooks/useAutoSync";
 import { useWarmLiveMarkdownPaths } from "./hooks/useWarmLiveMarkdownPaths";
 import { getEmbeddingsIndexStatus } from "./lib/vaultApi";
+import { pingUserActivity } from "./lib/userActivity";
 import "./App.css";
 
 /**
@@ -882,6 +883,21 @@ function App() {
       });
     return () => {
       unlistenJobs?.();
+    };
+  }, []);
+
+  // One place to notice the user working, so background indexing can step
+  // aside. Passive + capture so nothing here can delay or swallow input.
+  useEffect(() => {
+    const onActivity = () => pingUserActivity();
+    const opts: AddEventListenerOptions = { capture: true, passive: true };
+    document.addEventListener("keydown", onActivity, opts);
+    document.addEventListener("pointerdown", onActivity, opts);
+    document.addEventListener("wheel", onActivity, opts);
+    return () => {
+      document.removeEventListener("keydown", onActivity, opts);
+      document.removeEventListener("pointerdown", onActivity, opts);
+      document.removeEventListener("wheel", onActivity, opts);
     };
   }, []);
 

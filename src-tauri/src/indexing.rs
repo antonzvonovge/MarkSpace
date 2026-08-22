@@ -13,6 +13,35 @@ const DEFAULT_DELAY_SECONDS: u32 = 5;
 const STORE_FILE: &str = "settings.json";
 const BY_VAULT_KEY: &str = "indexingByVault";
 
+/// How much of the machine the embeddings sidecar may take.
+///
+/// Applied at spawn time (worker threads and process priority), never live:
+/// Candle reads `RAYON_NUM_THREADS` on first inference, and an unprivileged
+/// process cannot lower its own `nice` again (`RLIMIT_NICE` defaults to 0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BackgroundPriority {
+    /// Single worker thread, heavily deprioritized, pauses while you work.
+    Low,
+    /// A couple of threads, deprioritized, pauses while you work.
+    Balanced,
+    /// No limits and no pauses.
+    Full,
+}
+
+impl Default for BackgroundPriority {
+    fn default() -> Self {
+        Self::Balanced
+    }
+}
+
+impl BackgroundPriority {
+    /// `Full` keeps indexing through typing and chat streaming.
+    pub fn pauses_on_activity(self) -> bool {
+        !matches!(self, Self::Full)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexingSettings {
@@ -22,6 +51,8 @@ pub struct IndexingSettings {
     pub enabled: bool,
     #[serde(default = "default_delay")]
     pub delay_seconds: u32,
+    #[serde(default)]
+    pub background_priority: BackgroundPriority,
 }
 
 fn default_version() -> u32 {
@@ -42,6 +73,7 @@ impl Default for IndexingSettings {
             version: 1,
             enabled: true,
             delay_seconds: DEFAULT_DELAY_SECONDS,
+            background_priority: BackgroundPriority::default(),
         }
     }
 }
@@ -117,6 +149,8 @@ pub fn get_indexing_settings(
 pub struct SetIndexingSettingsArgs {
     pub enabled: bool,
     pub delay_seconds: u32,
+    #[serde(default)]
+    pub background_priority: BackgroundPriority,
 }
 
 /// Apply live policy in the embeddings host. Persistence is done by the frontend
@@ -131,8 +165,13 @@ pub fn set_indexing_settings(
         version: 1,
         enabled: args.enabled,
         delay_seconds: args.delay_seconds,
+        background_priority: args.background_priority,
     });
-    crate::embeddings::notify_indexing_policy(doc.enabled, doc.delay_seconds);
+    crate::embeddings::notify_indexing_policy(
+        doc.enabled,
+        doc.delay_seconds,
+        doc.background_priority,
+    );
     Ok(doc)
 }
 
@@ -223,7 +262,62 @@ mod tests {
             version: 1,
             enabled: true,
             delay_seconds: 9999,
+            background_priority: BackgroundPriority::Balanced,
         });
         assert_eq!(doc.delay_seconds, MAX_DELAY_SECONDS);
+    }
+
+    #[test]
+    fn background_priority_defaults_to_balanced_when_absent() {
+        let app_data = temp_dir("app");
+        let vault = temp_dir("vault");
+        let key = vault.to_string_lossy().to_string();
+        let store = serde_json::json!({
+            "indexingByVault": {
+                key: { "version": 1, "enabled": true, "delaySeconds": 5 }
+            }
+        });
+        fs::write(
+            store_path(&app_data),
+            serde_json::to_string_pretty(&store).unwrap(),
+        )
+        .unwrap();
+        let loaded = load_for_vault(&app_data, &vault);
+        assert_eq!(loaded.background_priority, BackgroundPriority::Balanced);
+        assert!(loaded.background_priority.pauses_on_activity());
+        let _ = fs::remove_dir_all(&app_data);
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn full_priority_does_not_pause() {
+        assert!(!BackgroundPriority::Full.pauses_on_activity());
+        assert!(BackgroundPriority::Low.pauses_on_activity());
+    }
+
+    #[test]
+    fn reads_background_priority_from_store() {
+        let app_data = temp_dir("app");
+        let vault = temp_dir("vault");
+        let key = vault.to_string_lossy().to_string();
+        let store = serde_json::json!({
+            "indexingByVault": {
+                key: {
+                    "version": 1,
+                    "enabled": true,
+                    "delaySeconds": 5,
+                    "backgroundPriority": "low"
+                }
+            }
+        });
+        fs::write(
+            store_path(&app_data),
+            serde_json::to_string_pretty(&store).unwrap(),
+        )
+        .unwrap();
+        let loaded = load_for_vault(&app_data, &vault);
+        assert_eq!(loaded.background_priority, BackgroundPriority::Low);
+        let _ = fs::remove_dir_all(&app_data);
+        let _ = fs::remove_dir_all(&vault);
     }
 }

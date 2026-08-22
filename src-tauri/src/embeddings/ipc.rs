@@ -13,6 +13,8 @@ pub enum HostRequest {
         app_data: String,
         enabled: bool,
         delay_seconds: u32,
+        #[serde(default)]
+        pause_on_activity: bool,
     },
     ModelAvailable {
         id: u64,
@@ -32,7 +34,12 @@ pub enum HostRequest {
         id: u64,
         enabled: bool,
         delay_seconds: u32,
+        #[serde(default)]
+        pause_on_activity: bool,
     },
+    /// Heartbeat: the user is typing or a chat stream is running. Fire-and-forget;
+    /// the child expires it on its own so a wedged frontend cannot stall indexing.
+    UserActivity,
     Search {
         id: u64,
         query: String,

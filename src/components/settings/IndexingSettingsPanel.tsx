@@ -1,14 +1,46 @@
 import { useEffect, useState } from "react";
 import { useIndexingSettingsStore } from "../../store/indexingSettingsStore";
 import { useVaultStore } from "../../store/vaultStore";
+import type { BackgroundPriority } from "../../lib/vaultApi";
+
+const PRIORITY_OPTIONS: {
+  value: BackgroundPriority;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "low",
+    label: "Low",
+    description:
+      "One worker thread, lowest process priority. Slowest to finish, least noticeable.",
+  },
+  {
+    value: "balanced",
+    label: "Balanced",
+    description:
+      "A couple of threads at reduced priority, paused while you type or a chat is streaming.",
+  },
+  {
+    value: "full",
+    label: "Full speed",
+    description:
+      "No limits and no pauses. Fastest to finish, may make the app feel sluggish.",
+  },
+];
 
 export function IndexingSettingsPanel() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const enabled = useIndexingSettingsStore((s) => s.enabled);
   const delaySeconds = useIndexingSettingsStore((s) => s.delaySeconds);
+  const backgroundPriority = useIndexingSettingsStore(
+    (s) => s.backgroundPriority,
+  );
   const hydrate = useIndexingSettingsStore((s) => s.hydrateForVault);
   const setEnabled = useIndexingSettingsStore((s) => s.setEnabled);
   const setDelaySeconds = useIndexingSettingsStore((s) => s.setDelaySeconds);
+  const setBackgroundPriority = useIndexingSettingsStore(
+    (s) => s.setBackgroundPriority,
+  );
 
   const [delayDraft, setDelayDraft] = useState(String(delaySeconds));
   const [busy, setBusy] = useState(false);
@@ -111,6 +143,36 @@ export function IndexingSettingsPanel() {
             }
           }}
         />
+      </section>
+
+      <section className="sync-block">
+        <h3 className="sync-block-title">Background priority</h3>
+        <p className="sync-block-desc">
+          How much of the machine indexing may take. Changing this restarts the
+          indexing process, so it pauses for a moment.
+        </p>
+        <div className="indexing-priority-options">
+          {PRIORITY_OPTIONS.map((option) => (
+            <label key={option.value} className="indexing-priority-option">
+              <input
+                type="radio"
+                name="indexing-background-priority"
+                value={option.value}
+                checked={backgroundPriority === option.value}
+                disabled={busy || !enabled}
+                onChange={() =>
+                  void run(() => setBackgroundPriority(option.value))
+                }
+              />
+              <span className="indexing-priority-text">
+                <span className="indexing-priority-label">{option.label}</span>
+                <span className="indexing-priority-desc">
+                  {option.description}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
       </section>
 
       {error && <p className="embedding-model-error">{error}</p>}

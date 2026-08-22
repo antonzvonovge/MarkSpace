@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use super::ipc::{ChildMessage, HostRequest};
 use super::types::{EmbeddingsIndexStatus, SemanticHit};
+use crate::indexing::BackgroundPriority;
 
 const EVENT_NAME: &str = "background-job://update";
 const FLUSH_TIMEOUT: Duration = Duration::from_millis(1500);
@@ -29,6 +30,7 @@ enum HostMsg {
         app_data: PathBuf,
         enabled: bool,
         delay_seconds: u32,
+        priority: BackgroundPriority,
         app: AppHandle,
     },
     ModelAvailable {
@@ -47,8 +49,10 @@ enum HostMsg {
     SetPolicy {
         enabled: bool,
         delay_seconds: u32,
+        priority: BackgroundPriority,
         reply: Sender<()>,
     },
+    UserActivity,
     Search {
         query: String,
         limit: usize,
@@ -76,6 +80,8 @@ enum PendingKind {
 struct ChildSession {
     child: Child,
     stdin: ChildStdin,
+    /// Threads and `nice` are fixed at spawn, so a policy change needs a respawn.
+    priority: BackgroundPriority,
 }
 
 struct HostState {
@@ -169,21 +175,96 @@ fn resolve_sidecar_path() -> Result<PathBuf, String> {
     ))
 }
 
+/// Worker threads for the sidecar, or `None` to leave the defaults alone.
+///
+/// `RAYON_NUM_THREADS` is the sanctioned knob: `candle_core::utils::get_num_threads`
+/// reads it and the CPU backend turns it into `Parallelism::Rayon(n)` (or
+/// `Parallelism::None` at 1). Left unset, Candle 0.8 takes every logical core.
+/// MiniLM-sized models gain little from wide parallelism, so we stay low and
+/// leave the WebView room to paint. `MARKSPACE_EMBED_THREADS` overrides it for
+/// benchmarking without a rebuild.
+fn embed_threads(priority: BackgroundPriority) -> Option<usize> {
+    if let Ok(raw) = std::env::var("MARKSPACE_EMBED_THREADS") {
+        if let Ok(n) = raw.trim().parse::<usize>() {
+            if n > 0 {
+                return Some(n);
+            }
+        }
+    }
+    match priority {
+        BackgroundPriority::Low => Some(1),
+        BackgroundPriority::Balanced => {
+            let cores = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4);
+            Some((cores / 8).clamp(1, 2))
+        }
+        BackgroundPriority::Full => None,
+    }
+}
+
+/// Niceness increment for the child, or 0 to inherit ours.
+///
+/// Deliberately gentle: a steeper `nice` starves the sidecar badly enough that
+/// indexing never finishes on a busy machine.
+fn nice_increment(priority: BackgroundPriority) -> i32 {
+    match priority {
+        BackgroundPriority::Low => 10,
+        BackgroundPriority::Balanced => 5,
+        BackgroundPriority::Full => 0,
+    }
+}
+
 fn start_child_io(
     pending: Arc<Mutex<HashMap<u64, Pending>>>,
     app_slot: Arc<Mutex<Option<AppHandle>>>,
+    priority: BackgroundPriority,
 ) -> Result<(ChildSession, thread::JoinHandle<()>), String> {
     let path = resolve_sidecar_path()?;
     let mut cmd = Command::new(&path);
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
+
+    if let Some(threads) = embed_threads(priority) {
+        let value = threads.to_string();
+        cmd.env("RAYON_NUM_THREADS", &value);
+        // Only bites if we ever build with the `mkl` feature, harmless otherwise.
+        cmd.env("OMP_NUM_THREADS", &value);
+    }
+    cmd.env("TOKENIZERS_PARALLELISM", "false");
+
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        // Not PROCESS_MODE_BACKGROUND_BEGIN: it only accepts the current process
+        // as a target, and it permanently trims the working set, which trades CPU
+        // priority for a storm of page faults.
+        const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+        let mut flags = CREATE_NO_WINDOW;
+        if nice_increment(priority) > 0 {
+            flags |= BELOW_NORMAL_PRIORITY_CLASS;
+        }
+        cmd.creation_flags(flags);
     }
+    #[cfg(unix)]
+    {
+        let increment = nice_increment(priority);
+        if increment > 0 {
+            use std::os::unix::process::CommandExt;
+            // `setpriority` is async-signal-safe, so it is legal in `pre_exec`.
+            // It has to happen here rather than later: an unprivileged process
+            // cannot lower its own niceness again once raised.
+            unsafe {
+                cmd.pre_exec(move || {
+                    libc::setpriority(libc::PRIO_PROCESS, 0, increment);
+                    Ok(())
+                });
+            }
+        }
+    }
+
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn embeddings process ({}): {e}", path.display()))?;
@@ -218,7 +299,14 @@ fn start_child_io(
         })
         .map_err(|e| format!("Failed to spawn stdout reader: {e}"))?;
 
-    Ok((ChildSession { child, stdin }, reader))
+    Ok((
+        ChildSession {
+            child,
+            stdin,
+            priority,
+        },
+        reader,
+    ))
 }
 
 fn handle_child_message(
@@ -313,6 +401,7 @@ struct SessionCache {
     app_data: Option<PathBuf>,
     enabled: bool,
     delay_seconds: u32,
+    priority: BackgroundPriority,
     model_dir: Option<PathBuf>,
 }
 
@@ -323,34 +412,45 @@ impl Default for SessionCache {
             app_data: None,
             enabled: true,
             delay_seconds: 5,
+            priority: BackgroundPriority::default(),
             model_dir: None,
         }
     }
 }
 
+/// Returns true when a fresh child was spawned, so the caller knows it has to
+/// rehydrate the vault before the child is useful.
 fn ensure_session(
     session: &mut Option<ChildSession>,
     reader: &mut Option<thread::JoinHandle<()>>,
     pending: &Arc<Mutex<HashMap<u64, Pending>>>,
     app_slot: &Arc<Mutex<Option<AppHandle>>>,
-) -> Result<(), String> {
+    priority: BackgroundPriority,
+) -> Result<bool, String> {
     if let Some(s) = session.as_mut() {
-        match s.child.try_wait() {
-            Ok(None) => return Ok(()),
-            Ok(Some(status)) => {
-                eprintln!("[embeddings-host] child exited ({status}); respawning");
-                *session = None;
-            }
-            Err(e) => {
-                eprintln!("[embeddings-host] try_wait failed: {e}; respawning");
-                *session = None;
+        if s.priority != priority {
+            eprintln!("[embeddings-host] priority changed; respawning child");
+            let _ = s.child.kill();
+            let _ = s.child.wait();
+            *session = None;
+        } else {
+            match s.child.try_wait() {
+                Ok(None) => return Ok(false),
+                Ok(Some(status)) => {
+                    eprintln!("[embeddings-host] child exited ({status}); respawning");
+                    *session = None;
+                }
+                Err(e) => {
+                    eprintln!("[embeddings-host] try_wait failed: {e}; respawning");
+                    *session = None;
+                }
             }
         }
     }
-    let (s, r) = start_child_io(pending.clone(), app_slot.clone())?;
+    let (s, r) = start_child_io(pending.clone(), app_slot.clone(), priority)?;
     *session = Some(s);
     *reader = Some(r);
-    Ok(())
+    Ok(true)
 }
 
 fn rehydrate(
@@ -379,6 +479,7 @@ fn rehydrate(
         app_data: app_data.to_string_lossy().to_string(),
         enabled: cache.enabled,
         delay_seconds: cache.delay_seconds,
+        pause_on_activity: cache.priority.pauses_on_activity(),
     };
     if write_request(&mut session.stdin, &req).is_err() {
         pending.lock().remove(&id);
@@ -421,6 +522,7 @@ fn host_loop(rx: Receiver<HostMsg>) {
                 app_data,
                 enabled,
                 delay_seconds,
+                priority,
                 app,
             } => {
                 *app_slot.lock() = Some(app);
@@ -428,7 +530,10 @@ fn host_loop(rx: Receiver<HostMsg>) {
                 cache.app_data = Some(app_data.clone());
                 cache.enabled = enabled;
                 cache.delay_seconds = delay_seconds;
-                if let Err(e) = ensure_session(&mut session, &mut reader, &pending, &app_slot) {
+                cache.priority = priority;
+                if let Err(e) =
+                    ensure_session(&mut session, &mut reader, &pending, &app_slot, priority)
+                {
                     eprintln!("[embeddings-host] {e}");
                     continue;
                 }
@@ -447,6 +552,7 @@ fn host_loop(rx: Receiver<HostMsg>) {
                     app_data: app_data.to_string_lossy().to_string(),
                     enabled,
                     delay_seconds,
+                    pause_on_activity: priority.pauses_on_activity(),
                 };
                 if let Err(e) = write_request(&mut s.stdin, &req) {
                     pending.lock().remove(&id);
@@ -458,7 +564,9 @@ fn host_loop(rx: Receiver<HostMsg>) {
             }
             HostMsg::ModelAvailable { model_dir } => {
                 cache.model_dir = Some(model_dir.clone());
-                if let Err(e) = ensure_session(&mut session, &mut reader, &pending, &app_slot) {
+                if let Err(e) =
+                    ensure_session(&mut session, &mut reader, &pending, &app_slot, cache.priority)
+                {
                     eprintln!("[embeddings-host] {e}");
                     continue;
                 }
@@ -481,7 +589,14 @@ fn host_loop(rx: Receiver<HostMsg>) {
                         if write_request(&mut s.stdin, &req).is_err() {
                             pending.lock().remove(&id);
                             session = None;
-                            if ensure_session(&mut session, &mut reader, &pending, &app_slot).is_ok()
+                            if ensure_session(
+                                &mut session,
+                                &mut reader,
+                                &pending,
+                                &app_slot,
+                                cache.priority,
+                            )
+                            .is_ok()
                             {
                                 if let Some(s) = session.as_mut() {
                                     rehydrate(s, &cache, &pending, &next_id);
@@ -520,20 +635,33 @@ fn host_loop(rx: Receiver<HostMsg>) {
             HostMsg::SetPolicy {
                 enabled,
                 delay_seconds,
+                priority,
                 reply,
             } => {
                 cache.enabled = enabled;
                 cache.delay_seconds = delay_seconds;
+                cache.priority = priority;
                 if session.is_none() {
                     let _ = reply.send(());
                     continue;
                 }
-                if let Err(e) = ensure_session(&mut session, &mut reader, &pending, &app_slot) {
-                    eprintln!("[embeddings-host] {e}");
+                let respawned =
+                    match ensure_session(&mut session, &mut reader, &pending, &app_slot, priority) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            eprintln!("[embeddings-host] {e}");
+                            let _ = reply.send(());
+                            continue;
+                        }
+                    };
+                let s = session.as_mut().unwrap();
+                if respawned {
+                    // A fresh child needs the vault back; the OpenVault it gets
+                    // already carries the new policy, so skip SetPolicy.
+                    rehydrate(s, &cache, &pending, &next_id);
                     let _ = reply.send(());
                     continue;
                 }
-                let s = session.as_mut().unwrap();
                 let id = next_id.fetch_add(1, Ordering::Relaxed);
                 pending.lock().insert(
                     id,
@@ -545,6 +673,7 @@ fn host_loop(rx: Receiver<HostMsg>) {
                     id,
                     enabled,
                     delay_seconds,
+                    pause_on_activity: priority.pauses_on_activity(),
                 };
                 if write_request(&mut s.stdin, &req).is_err() {
                     if let Some(Pending {
@@ -555,14 +684,36 @@ fn host_loop(rx: Receiver<HostMsg>) {
                     }
                 }
             }
+            HostMsg::UserActivity => {
+                // Best effort: never spawn a child just to say the user is busy,
+                // and never block. A dropped heartbeat only costs one 100ms tick.
+                if let Some(s) = session.as_mut() {
+                    if write_request(&mut s.stdin, &HostRequest::UserActivity).is_err() {
+                        session = None;
+                    }
+                }
+            }
             HostMsg::Search {
                 query,
                 limit,
                 reply,
             } => {
-                if let Err(e) = ensure_session(&mut session, &mut reader, &pending, &app_slot) {
-                    let _ = reply.send(Err(e));
-                    continue;
+                let respawned = match ensure_session(
+                    &mut session,
+                    &mut reader,
+                    &pending,
+                    &app_slot,
+                    cache.priority,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = reply.send(Err(e));
+                        continue;
+                    }
+                };
+                let s = session.as_mut().unwrap();
+                if respawned {
+                    rehydrate(s, &cache, &pending, &next_id);
                 }
                 let s = session.as_mut().unwrap();
                 let id = next_id.fetch_add(1, Ordering::Relaxed);
@@ -598,19 +749,32 @@ fn host_loop(rx: Receiver<HostMsg>) {
                     });
                     continue;
                 }
-                if let Err(e) = ensure_session(&mut session, &mut reader, &pending, &app_slot) {
-                    let _ = reply.send(EmbeddingsIndexStatus {
-                        model_available: false,
-                        ready: false,
-                        model_id: String::new(),
-                        indexed_files: 0,
-                        pending_files: 0,
-                        indexing: false,
-                        progress: 0,
-                        indexing_enabled: cache.enabled,
-                        error: Some(e),
-                    });
-                    continue;
+                let respawned = match ensure_session(
+                    &mut session,
+                    &mut reader,
+                    &pending,
+                    &app_slot,
+                    cache.priority,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = reply.send(EmbeddingsIndexStatus {
+                            model_available: false,
+                            ready: false,
+                            model_id: String::new(),
+                            indexed_files: 0,
+                            pending_files: 0,
+                            indexing: false,
+                            progress: 0,
+                            indexing_enabled: cache.enabled,
+                            error: Some(e),
+                        });
+                        continue;
+                    }
+                };
+                if respawned {
+                    let s = session.as_mut().unwrap();
+                    rehydrate(s, &cache, &pending, &next_id);
                 }
                 let s = session.as_mut().unwrap();
                 let id = next_id.fetch_add(1, Ordering::Relaxed);
@@ -726,6 +890,7 @@ pub fn notify_vault_opened(app: &AppHandle, vault_path: &Path) {
         app_data,
         enabled: settings.enabled,
         delay_seconds: settings.delay_seconds,
+        priority: settings.background_priority,
         app: app.clone(),
     });
 }
@@ -734,14 +899,28 @@ pub fn notify_model_available(model_dir: PathBuf) {
     runtime().send(HostMsg::ModelAvailable { model_dir });
 }
 
-pub fn notify_indexing_policy(enabled: bool, delay_seconds: u32) {
+pub fn notify_indexing_policy(
+    enabled: bool,
+    delay_seconds: u32,
+    priority: BackgroundPriority,
+) {
     let (reply_tx, reply_rx) = mpsc::channel();
     runtime().send(HostMsg::SetPolicy {
         enabled,
         delay_seconds,
+        priority,
         reply: reply_tx,
     });
     let _ = reply_rx.recv_timeout(ACK_TIMEOUT);
+}
+
+/// Heartbeat from the UI: the user is typing or a chat stream is running.
+///
+/// Throttled to roughly once a second by the frontend, and the sidecar expires
+/// it after a few seconds, so no matching "user is idle" call is needed.
+#[tauri::command]
+pub fn notify_user_activity() {
+    runtime().send(HostMsg::UserActivity);
 }
 
 pub fn flush_index() {

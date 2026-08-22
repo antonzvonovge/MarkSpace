@@ -36,6 +36,7 @@ import {
 import { buildSystemPrompt, buildVaultTools } from "./vaultTools";
 import type { FolderAbout } from "../lib/folderContext";
 import { unwrapComposerMarkers } from "../lib/chatComposerDom";
+import { pingUserActivity } from "../lib/userActivity";
 
 /** @deprecated Prefer DEFAULT_AGENT_MAX_STEPS / settings.agentMaxSteps */
 export const AGENT_MAX_STEPS = DEFAULT_AGENT_MAX_STEPS;
@@ -281,6 +282,9 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
       cancelAnimationFrame(emitRaf);
       emitRaf = 0;
     }
+    // A live stream is as latency-sensitive as typing: keep indexing paused
+    // even when the user is only reading the reply.
+    pingUserActivity();
     // Slim tool I/O in live UI updates — full payloads only in the final message.
     params.onMessages([
       ...inputMessages,

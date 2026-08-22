@@ -5085,6 +5085,45 @@ button.status-bar-jobs-menu-item:hover {
   line-height: 1.4;
 }
 
+.indexing-priority-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.indexing-priority-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.indexing-priority-option input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.indexing-priority-option input:disabled {
+  cursor: not-allowed;
+}
+
+.indexing-priority-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.indexing-priority-label {
+  font-size: 0.9rem;
+  font-weight: 550;
+}
+
+.indexing-priority-desc {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 .diary-marker-settings-list {
   list-style: none;
   margin: 0 0 12px;

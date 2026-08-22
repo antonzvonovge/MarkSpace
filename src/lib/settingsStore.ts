@@ -5,6 +5,7 @@ import {
   type EditorFontFamilyId,
   type Prefs,
 } from "../settings/types";
+import type { BackgroundPriority } from "./vaultApi";
 
 const STORE_FILE = "settings.json";
 const PREFS_KEY = "prefs";
@@ -527,14 +528,22 @@ export async function saveVaultSyncMeta(
 export type IndexingSettingsDoc = {
   enabled: boolean;
   delaySeconds: number;
+  backgroundPriority: BackgroundPriority;
 };
 
 export const DEFAULT_INDEXING_SETTINGS: IndexingSettingsDoc = {
   enabled: true,
   delaySeconds: 5,
+  backgroundPriority: "balanced",
 };
 
 const INDEXING_BY_VAULT_KEY = "indexingByVault";
+
+const BACKGROUND_PRIORITIES: readonly BackgroundPriority[] = [
+  "low",
+  "balanced",
+  "full",
+];
 
 function normalizeIndexingSettings(raw: unknown): IndexingSettingsDoc {
   if (!raw || typeof raw !== "object") {
@@ -551,6 +560,11 @@ function normalizeIndexingSettings(raw: unknown): IndexingSettingsDoc {
         ? value.enabled
         : DEFAULT_INDEXING_SETTINGS.enabled,
     delaySeconds: delay,
+    backgroundPriority: BACKGROUND_PRIORITIES.includes(
+      value.backgroundPriority as BackgroundPriority,
+    )
+      ? (value.backgroundPriority as BackgroundPriority)
+      : DEFAULT_INDEXING_SETTINGS.backgroundPriority,
   };
 }
 

@@ -194,6 +194,7 @@ pub fn run() {
             pdf_text::extract_pdf_text_cmd,
             embeddings::host::semantic_search_notes,
             embeddings::host::get_embeddings_index_status,
+            embeddings::host::notify_user_activity,
             indexing::get_indexing_settings,
             indexing::set_indexing_settings,
             indexing::clear_legacy_indexing_settings,

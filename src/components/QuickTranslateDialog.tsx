@@ -36,6 +36,7 @@ import {
 } from "../lib/quickTranslateCache";
 import { isNativeLanguageId, nativeLanguageLabel } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { useShallow } from "zustand/react/shallow";
 import { useBackgroundJobsStore } from "../store/backgroundJobsStore";
 import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { usePrefsStore } from "../store/prefsStore";
@@ -155,10 +156,17 @@ export function QuickTranslateDialog({
     (s) => s.projectPropertiesByPath,
   );
   const openNote = useVaultStore((s) => s.openNote);
-  const lexiconJobRecord = useBackgroundJobsStore((s) => {
-    if (!lexiconPath) return null;
-    return s.jobs[`lexicon-article:${lexiconPath}`] ?? null;
-  });
+  // Only the fields the footer shows: `progress` ticks several times a second
+  // and would otherwise re-render the whole dialog for nothing.
+  const lexiconJobRecord = useBackgroundJobsStore(
+    useShallow((s) => {
+      const job = lexiconPath
+        ? s.jobs[`lexicon-article:${lexiconPath}`]
+        : undefined;
+      if (!job) return null;
+      return { status: job.status, label: job.label, detail: job.detail };
+    }),
+  );
   const lexiconJob =
     lexiconJobRecord &&
     (lexiconJobRecord.status === "running" ||
