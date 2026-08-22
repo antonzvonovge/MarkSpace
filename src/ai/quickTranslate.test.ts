@@ -22,10 +22,13 @@ const enQuery: QuickTranslateResult = {
   translationTranscript: "ˈjabləkə",
   forms: ["яблоки (мн.)"],
   synonyms: [],
+  didYouMean: "",
+  senses: [],
   examples: [
     {
       text: "Я съел яблоко.",
       translation: "I ate an apple.",
+      note: "",
     },
   ],
 };
@@ -40,10 +43,13 @@ const ruQuery: QuickTranslateResult = {
   translationTranscript: "/ræt/",
   forms: ["rats (pl)"],
   synonyms: ["mouse"],
+  didYouMean: "",
+  senses: [],
   examples: [
     {
       text: "The rat escaped from the cage.",
       translation: "Крыса убежала из клетки.",
+      note: "",
     },
   ],
 };
@@ -72,7 +78,9 @@ describe("parseQuickTranslateResponse", () => {
       translationTranscript: "/ˈæp.əl/",
       forms: ["apples (pl)"],
       synonyms: ["fruit", "pome"],
-      examples: [{ text: "Eat an apple.", translation: "Ешь яблоко." }],
+      didYouMean: "",
+      senses: [],
+      examples: [{ text: "Eat an apple.", translation: "Ешь яблоко.", note: "" }],
     });
   });
 
@@ -83,6 +91,55 @@ describe("parseQuickTranslateResponse", () => {
     expect(parsed.lemma).toBe("cat");
     expect(parsed.translation).toBe("кот");
     expect(parsed.synonyms).toEqual([]);
+    expect(parsed.didYouMean).toBe("");
+    expect(parsed.senses).toEqual([]);
+  });
+
+  it("parses senses, collocations, and a spelling hint", () => {
+    const parsed = parseQuickTranslateResponse(
+      JSON.stringify({
+        queryLang: "en",
+        lemma: "accommodation",
+        translation: "жильё",
+        didYouMean: "accommodation",
+        senses: [
+          {
+            pos: "noun",
+            meaning: "жильё, размещение",
+            register: "Formal",
+            usage: "Письмо арендодателю или жалобы на жильё.",
+            collocations: ["book accommodation", "suitable accommodation"],
+          },
+        ],
+        examples: [
+          {
+            text: "The hotel did not provide the accommodation I booked.",
+            translation: "Отель не предоставил жильё, которое я забронировал.",
+            note: "Task 1: complaint letter",
+          },
+        ],
+      }),
+      "accomodation",
+    );
+    expect(parsed.didYouMean).toBe("accommodation");
+    expect(parsed.senses[0]?.pos).toBe("noun");
+    expect(parsed.senses[0]?.collocations).toEqual([
+      "book accommodation",
+      "suitable accommodation",
+    ]);
+    expect(parsed.examples[0]?.note).toBe("Task 1: complaint letter");
+  });
+
+  it("clears didYouMean when it repeats the query", () => {
+    const parsed = parseQuickTranslateResponse(
+      JSON.stringify({
+        lemma: "apple",
+        translation: "яблоко",
+        didYouMean: "apple",
+      }),
+      "apple",
+    );
+    expect(parsed.didYouMean).toBe("");
   });
 
   it("throws when translation is missing", () => {
@@ -121,7 +178,7 @@ describe("formatQuickTranslateMarkdown", () => {
         ...enQuery,
         translationTranscript: "",
         forms: [],
-        examples: [{ text: "Привет.", translation: "" }],
+        examples: [{ text: "Привет.", translation: "", note: "" }],
       }),
     ).toBe("яблоко\n- Привет.");
   });

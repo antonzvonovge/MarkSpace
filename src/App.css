@@ -3970,6 +3970,11 @@ button.status-bar-item.status-bar-timer-time:hover {
   opacity: 1;
 }
 
+.bn-drag-handle-menu,
+.bn-drag-handle-turn-into {
+  min-width: 196px;
+}
+
 .editor-canvas .bn-side-menu .mantine-UnstyledButton-root:not(.mantine-Menu-item) svg {
   color: #5d6b73;
 }
@@ -5713,132 +5718,309 @@ button.status-bar-item.status-bar-timer-time:hover {
   filter: brightness(1.05);
 }
 
+.quick-translate-dialog {
+  width: min(100%, 520px);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+}
+
+.quick-translate-dialog.is-expanded {
+  width: min(100%, 760px);
+  height: min(90vh, 880px);
+}
+
+.quick-translate-dialog .app-dialog-header {
+  padding: 22px 24px 0;
+}
+
+.quick-translate-dialog .app-dialog-title {
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.quick-translate-dialog .app-dialog-desc {
+  margin-top: 4px;
+}
+
+.quick-translate-dialog .app-dialog-footer {
+  padding: 16px 24px 20px;
+}
+
+.quick-translate-body {
+  flex: 1;
+  min-height: 0;
+  gap: 16px;
+  padding: 16px 24px 0;
+  overflow: hidden;
+}
+
+.quick-translate-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.quick-translate-search .ms-select {
+  align-self: flex-start;
+  width: auto;
+  min-width: 12rem;
+  max-width: 100%;
+}
+
 .quick-translate-input-row {
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: 0;
+  min-height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--text) 3%, var(--editor-surface));
+  overflow: hidden;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
-.quick-translate-pair {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.quick-translate-input-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(203, 17, 171, 0.16);
 }
 
-.quick-translate-input-row .app-dialog-input {
+.quick-translate-query {
   flex: 1;
   min-width: 0;
+  border: 0;
+  padding: 14px 18px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  outline: none;
 }
 
-.quick-translate-input-row .app-dialog-btn {
+.quick-translate-query:disabled {
+  opacity: 0.65;
+}
+
+.quick-translate-go {
   flex-shrink: 0;
-  white-space: nowrap;
+  margin: 6px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.quick-translate-go:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.quick-translate-go:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .quick-translate-card {
-  margin-top: 14px;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  max-height: min(62vh, 520px);
+  gap: 22px;
   overflow-y: auto;
-  padding: 2px 2px 6px;
-  background: transparent;
+  padding: 4px 2px 12px;
 }
 
 .quick-translate-head {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 0 0 16px;
-  border-bottom: 1px solid var(--line);
+  gap: 6px;
 }
 
 .quick-translate-lemma {
   margin: 0;
   color: var(--heading-1);
-  font-size: 1.75rem;
+  font-size: 2.15rem;
   font-weight: 700;
-  letter-spacing: -0.045em;
-  line-height: 1.15;
+  letter-spacing: -0.05em;
+  line-height: 1.1;
+}
+
+.quick-translate-didyoumean {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.quick-translate-didyoumean-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.quick-translate-didyoumean-btn:hover:not(:disabled) {
+  color: var(--accent-strong);
+}
+
+.quick-translate-didyoumean-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.quick-translate-senses {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 0 0 var(--qt-indent);
+  list-style: none;
+}
+
+.quick-translate-sense {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.quick-translate-sense:last-child {
+  padding-bottom: 0;
+}
+
+.quick-translate-sense-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.quick-translate-pos,
+.quick-translate-register {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.quick-translate-pos {
+  color: var(--accent-strong);
+}
+
+.quick-translate-register {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.quick-translate-sense-meaning {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.quick-translate-sense-usage {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.quick-translate-collocations {
+  margin: 4px 0 0;
+  padding: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.quick-translate-example-note {
+  margin: 6px 0 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.45;
 }
 
 .quick-translate-transcript {
   margin: 0;
   color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 500;
+  font-size: 1rem;
+  font-weight: 450;
   font-style: italic;
-  letter-spacing: 0.01em;
   line-height: 1.35;
 }
 
 .quick-translate-section {
+  --qt-indent: 2.25rem;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .quick-translate-section-label {
   color: var(--muted);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .quick-translate-forms {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px 16px;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--qt-indent);
   list-style: none;
 }
 
 .quick-translate-form {
-  max-width: 100%;
-  padding: 5px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text) 5.5%, var(--editor-surface));
   color: var(--muted);
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.3;
+  font-size: 0.95rem;
+  line-height: 1.35;
 }
 
 .quick-translate-synonyms {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
   margin: 0;
-  padding: 0;
-  list-style: none;
+  padding-left: var(--qt-indent);
+  color: var(--text);
+  font-size: 1rem;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 .quick-translate-synonym {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 6px 12px;
+  padding: 0;
   border: 0;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 11%, var(--editor-surface));
-  color: var(--accent-strong);
+  background: none;
+  color: inherit;
   font: inherit;
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.3;
-  text-align: left;
   cursor: pointer;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
 }
 
 .quick-translate-synonym:hover:not(:disabled) {
-  background: var(--accent);
-  color: #fff;
+  color: var(--accent);
 }
 
 .quick-translate-synonym:focus-visible {
@@ -5851,44 +6033,39 @@ button.status-bar-item.status-bar-timer-time:hover {
   opacity: 0.55;
 }
 
-:root[data-theme="dark"] .quick-translate-synonym {
-  background: color-mix(in srgb, var(--accent) 20%, var(--editor-surface));
-  color: color-mix(in srgb, var(--accent) 38%, #fff);
-}
-
 .quick-translate-examples {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--qt-indent);
   list-style: none;
 }
 
 .quick-translate-examples li {
-  padding: 10px 12px 10px 14px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--text) 3.5%, var(--editor-surface));
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  padding: 0;
 }
 
 .quick-translate-example-text {
   margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.45;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .quick-translate-example-tr {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.4;
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.45;
 }
 
 .quick-translate-status {
-  margin: 4px 0 0;
+  margin: 0;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.35;
 }
 

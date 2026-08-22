@@ -322,9 +322,18 @@ export function QuickTranslateDialog({
     <>
       <DialogShell
         open={open}
-        title="Quick translation"
-        description={`Type a ${foreignLabel} or ${nativeLabel} word and press Enter.`}
-        wide
+        title="Translate"
+        description={
+          result
+            ? undefined
+            : `A ${foreignLabel} or ${nativeLabel} word. Press Enter.`
+        }
+        className={[
+          "quick-translate-dialog",
+          result ? "is-expanded" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         onCancel={() => {
           if (pickerOpen) return;
           if (busy) {
@@ -364,12 +373,9 @@ export function QuickTranslateDialog({
           </>
         }
       >
-        <div className="app-dialog-body">
-          {showPairPicker ? (
-            <div className="quick-translate-pair">
-              <label className="app-dialog-label" id="quick-translate-pair-label">
-                Language pair
-              </label>
+        <div className="app-dialog-body quick-translate-body">
+          <div className="quick-translate-search">
+            {showPairPicker ? (
               <Select
                 variant="field"
                 menuPlacement="below"
@@ -385,48 +391,43 @@ export function QuickTranslateDialog({
                   setStatus(null);
                 }}
               />
-            </div>
-          ) : null}
-          <label className="app-dialog-label" htmlFor={inputId}>
-            Word or expression
-          </label>
-          <div className="quick-translate-input-row">
-            <input
-              ref={inputRef}
-              id={inputId}
-              className="app-dialog-input"
-              value={query}
-              onChange={(e) => setQuery(e.target.value.slice(0, QUERY_MAX))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void lookup();
-                  return;
-                }
-                if (e.key === "Tab" && !e.shiftKey && result && !busy) {
-                  const target = canInsert
-                    ? insertBtnRef.current
-                    : null;
-                  if (target && !target.disabled) {
+            ) : null}
+            <div className="quick-translate-input-row">
+              <input
+                ref={inputRef}
+                id={inputId}
+                className="quick-translate-query"
+                value={query}
+                onChange={(e) => setQuery(e.target.value.slice(0, QUERY_MAX))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
                     e.preventDefault();
-                    focusVisible(target);
+                    void lookup();
+                    return;
                   }
-                }
-              }}
-              placeholder="e.g. яблоко / apple"
-              spellCheck={false}
-              autoComplete="off"
-              disabled={busy}
-            />
-            <button
-              type="button"
-              className="app-dialog-btn is-primary"
-              tabIndex={-1}
-              disabled={!query.trim() || busy}
-              onClick={() => void lookup()}
-            >
-              {busy ? "Looking up…" : "Look up"}
-            </button>
+                  if (e.key === "Tab" && !e.shiftKey && result && !busy) {
+                    const target = canInsert ? insertBtnRef.current : null;
+                    if (target && !target.disabled) {
+                      e.preventDefault();
+                      focusVisible(target);
+                    }
+                  }
+                }}
+                placeholder={`${foreignLabel} or ${nativeLabel}`}
+                spellCheck={false}
+                autoComplete="off"
+                disabled={busy}
+              />
+              <button
+                type="button"
+                className="quick-translate-go"
+                tabIndex={-1}
+                disabled={!query.trim() || busy}
+                onClick={() => void lookup()}
+              >
+                {busy ? "…" : "Look up"}
+              </button>
+            </div>
           </div>
 
           {busy && !result ? (
@@ -436,6 +437,20 @@ export function QuickTranslateDialog({
           {result && targetHead ? (
             <div className="quick-translate-card" aria-live="polite">
               <header className="quick-translate-head">
+                {result.didYouMean ? (
+                  <p className="quick-translate-didyoumean">
+                    Did you mean{" "}
+                    <button
+                      type="button"
+                      className="quick-translate-didyoumean-btn"
+                      disabled={busy}
+                      onClick={() => lookupSynonym(result.didYouMean)}
+                    >
+                      {result.didYouMean}
+                    </button>
+                    ?
+                  </p>
+                ) : null}
                 <p className="quick-translate-lemma">{targetHead.word}</p>
                 {targetHead.transcript &&
                 quickTranslateShowForms(result, nativeLanguage) ? (
@@ -444,12 +459,68 @@ export function QuickTranslateDialog({
                   </p>
                 ) : null}
               </header>
+              {result.senses.length > 0 ? (
+                <div className="quick-translate-section">
+                  <div className="quick-translate-section-label">Meanings</div>
+                  <ul className="quick-translate-senses">
+                    {result.senses.map((sense, i) => (
+                      <li
+                        key={`${sense.pos}-${sense.meaning}-${i}`}
+                        className="quick-translate-sense"
+                      >
+                        <div className="quick-translate-sense-meta">
+                          {sense.pos ? (
+                            <span className="quick-translate-pos">{sense.pos}</span>
+                          ) : null}
+                          {sense.register ? (
+                            <span className="quick-translate-register">
+                              {sense.register}
+                            </span>
+                          ) : null}
+                        </div>
+                        {sense.meaning ? (
+                          <p className="quick-translate-sense-meaning">
+                            {sense.meaning}
+                          </p>
+                        ) : null}
+                        {sense.usage ? (
+                          <p className="quick-translate-sense-usage">
+                            {sense.usage}
+                          </p>
+                        ) : null}
+                        {sense.collocations.length > 0 ? (
+                          <p
+                            className="quick-translate-collocations"
+                            aria-label="Collocations"
+                          >
+                            {sense.collocations.map((chunk, i) => (
+                              <span key={chunk}>
+                                {i > 0 ? ", " : null}
+                                <button
+                                  type="button"
+                                  className="quick-translate-synonym"
+                                  disabled={busy}
+                                  title={`Look up ${chunk}`}
+                                  onClick={() => lookupSynonym(chunk)}
+                                >
+                                  {chunk}
+                                </button>
+                              </span>
+                            ))}
+                          </p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {result.synonyms.length > 0 ? (
                 <div className="quick-translate-section">
                   <div className="quick-translate-section-label">Synonyms</div>
-                  <ul className="quick-translate-synonyms" aria-label="Synonyms">
-                    {result.synonyms.map((word) => (
-                      <li key={word}>
+                  <p className="quick-translate-synonyms" aria-label="Synonyms">
+                    {result.synonyms.map((word, i) => (
+                      <span key={word}>
+                        {i > 0 ? ", " : null}
                         <button
                           type="button"
                           className="quick-translate-synonym"
@@ -459,9 +530,9 @@ export function QuickTranslateDialog({
                         >
                           {word}
                         </button>
-                      </li>
+                      </span>
                     ))}
-                  </ul>
+                  </p>
                 </div>
               ) : null}
               {result.forms.length > 0 &&
@@ -488,6 +559,9 @@ export function QuickTranslateDialog({
                           <p className="quick-translate-example-tr">
                             {ex.translation}
                           </p>
+                        ) : null}
+                        {ex.note ? (
+                          <p className="quick-translate-example-note">{ex.note}</p>
                         ) : null}
                       </li>
                     ))}

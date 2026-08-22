@@ -1,4 +1,8 @@
-import type { NoteTags } from "./vaultApi";
+import {
+  folderPathFromFolderNote,
+  isFolderNotePath,
+  type NoteTags,
+} from "./vaultApi";
 
 export type TagGraphNodeKind = "note" | "tag";
 
@@ -55,6 +59,11 @@ export function tagNodeId(tag: string): string {
 }
 
 export function noteLabel(path: string): string {
+  if (isFolderNotePath(path)) {
+    const folder = folderPathFromFolderNote(path) ?? "";
+    const folderName = folder.split("/").filter(Boolean).pop();
+    return folderName || "Vault";
+  }
   const name = path.split("/").pop() ?? path;
   return name
     .replace(/\.md$/i, "")

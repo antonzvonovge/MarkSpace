@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTagGraph,
   buildWikiLinkGraph,
+  noteLabel,
   noteNodeId,
   tagNodeId,
 } from "./tagGraph";
@@ -140,5 +141,13 @@ describe("buildWikiLinkGraph", () => {
           e.source === noteNodeId("A.md") && e.target === noteNodeId("B.md"),
       ),
     ).toBe(true);
+  });
+});
+
+describe("noteLabel", () => {
+  it("uses the parent folder name for hidden folder notes", () => {
+    expect(noteLabel("English/IELTS/.folder.md")).toBe("IELTS");
+    expect(noteLabel("Projects/.folder.md")).toBe("Projects");
+    expect(noteLabel(".folder.md")).toBe("Vault");
   });
 });

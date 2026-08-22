@@ -7,6 +7,7 @@ import { BlockNoteView } from "@blocknote/mantine";
 import type { Theme } from "@blocknote/mantine";
 import {
   FormattingToolbarController,
+  SideMenuController,
   SuggestionMenuController,
   useCreateBlockNote,
   useEditorChange,
@@ -34,6 +35,7 @@ import { NotePageChrome } from "../components/NotePageChrome";
 import { decorateBrokenVaultLinks } from "../lib/brokenLinks";
 import { registerLiveEditor } from "./completedTasksCommand";
 import { registerLiveEditorFlush } from "./liveEditorFlush";
+import { NoteSideMenu } from "./NoteDragHandleMenu";
 import {
   NoteFormattingToolbar,
   NoteFormattingToolbarProvider,
@@ -1227,7 +1229,9 @@ export const NoteEditor = memo(function NoteEditor({
                   theme={editorTheme}
                   slashMenu={false}
                   formattingToolbar={false}
+                  sideMenu={false}
                 >
+                  <SideMenuController sideMenu={NoteSideMenu} />
                   <FormattingToolbarController
                     formattingToolbar={NoteFormattingToolbar}
                   />
