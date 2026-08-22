@@ -36,7 +36,7 @@ import {
   type ProjectProperties,
 } from "../lib/vaultApi";
 import { diaryProjectRootForPath, vaultProjectRootOf } from "../lib/diaryNotes";
-import { isVaultLexiconFolder } from "../lib/lexiconNotes";
+import { isVaultLexiconFolder, isVaultLexiconMdNote } from "../lib/lexiconNotes";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
@@ -656,7 +656,8 @@ function TreeContextMenu({
     !menu.createOnly &&
     !menu.isDir &&
     !isSkills &&
-    menu.path.toLowerCase().endsWith(".md");
+    menu.path.toLowerCase().endsWith(".md") &&
+    !isVaultLexiconMdNote(menu.path);
   const showTurnIntoFolder =
     !menu.createOnly &&
     !menu.isDir &&

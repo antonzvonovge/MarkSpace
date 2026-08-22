@@ -1754,6 +1754,7 @@ select {
   display: flex;
   align-items: stretch;
   min-width: 0;
+  position: relative;
 }
 
 .status-bar-left .status-bar-item {
@@ -1928,6 +1929,80 @@ button.status-bar-item.status-bar-timer-time:hover {
   flex-shrink: 0;
 }
 
+.status-bar-jobs-menu {
+  position: absolute;
+  left: 4px;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+  min-width: 220px;
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--accent-wb);
+  color: #ffffff;
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.22);
+  animation: tree-create-in 0.16s ease;
+}
+
+.status-bar-jobs-menu::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  bottom: -6px;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid var(--accent-wb);
+}
+
+.status-bar-jobs-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: default;
+}
+
+button.status-bar-jobs-menu-item {
+  cursor: pointer;
+}
+
+button.status-bar-jobs-menu-item:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.status-bar-jobs-menu-item.is-conflict {
+  color: #ffe8e6;
+}
+
+.status-bar-jobs-menu-item svg {
+  flex-shrink: 0;
+}
+
+.status-bar-jobs-menu-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.status-bar-jobs-menu-detail {
+  font-size: 0.75rem;
+  font-weight: 400;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .note-header {
   display: flex;
   align-items: center;
@@ -2081,6 +2156,29 @@ button.status-bar-item.status-bar-timer-time:hover {
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1;
+}
+
+.document-toolbar-text-btn {
+  flex-shrink: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.document-toolbar-text-btn:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.document-toolbar-text-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .document-toolbar-actions {

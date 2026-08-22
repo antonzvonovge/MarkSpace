@@ -5,6 +5,7 @@ import {
   LEXICON_MAX_MD_SEGMENTS,
   formatLexiconFolderLoad,
   isVaultLexiconFolder,
+  isVaultLexiconMdNote,
   lexiconSlug,
   pickLexiconProject,
   resolveLexiconMovePath,
@@ -96,6 +97,10 @@ describe("lexiconNotes", () => {
     expect(isVaultLexiconFolder("Georgian/Lexicon/verbs", true)).toBe(false);
     expect(isVaultLexiconFolder("Lexicon", true)).toBe(false);
     expect(isVaultLexiconFolder("Georgian/Lexicon/go.md", false)).toBe(false);
+    expect(isVaultLexiconMdNote("English/Lexicon/boost.md")).toBe(true);
+    expect(isVaultLexiconMdNote("English/Lexicon/verbs/go.md")).toBe(true);
+    expect(isVaultLexiconMdNote("English/Lexicon/.folder.md")).toBe(false);
+    expect(isVaultLexiconMdNote("English/notes/go.md")).toBe(false);
   });
 
   it("summarizes folder load", () => {

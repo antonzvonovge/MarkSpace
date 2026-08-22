@@ -71,6 +71,115 @@ function jobTitle(job: BackgroundJob): string {
   return parts.join(" · ");
 }
 
+function jobTooltip(job: BackgroundJob): string {
+  return job.detail ? `${jobTitle(job)} · ${job.detail}` : jobTitle(job);
+}
+
+function jobItemClass(job: BackgroundJob): string {
+  if (job.status === "error") return "status-bar-item is-conflict";
+  if (job.status === "running") return "status-bar-item is-busy";
+  return "status-bar-item";
+}
+
+function BackgroundJobChip({
+  job,
+  count,
+  stacked,
+  menuOpen,
+  onToggleMenu,
+}: {
+  job: BackgroundJob;
+  count: number;
+  stacked: boolean;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+}) {
+  const label = (
+    <>
+      {job.status === "running" ? <SpinnerIcon /> : null}
+      <span>
+        {count > 1 ? `(${count}) ` : null}
+        {jobTitle(job)}
+      </span>
+    </>
+  );
+  const className = `${jobItemClass(job)}${menuOpen ? " is-open" : ""}`.trim();
+  const tooltip = stacked
+    ? `${jobTooltip(job)} · ${count} background processes`
+    : job.status === "error"
+      ? `${jobTooltip(job)} (click to dismiss)`
+      : jobTooltip(job);
+
+  if (stacked) {
+    return (
+      <button
+        type="button"
+        className={className}
+        title={tooltip}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={onToggleMenu}
+      >
+        {label}
+      </button>
+    );
+  }
+
+  if (job.status === "error") {
+    return (
+      <button
+        type="button"
+        className={className}
+        title={tooltip}
+        onClick={() => useBackgroundJobsStore.getState().removeJob(job.id)}
+      >
+        <span>{jobTitle(job)}</span>
+      </button>
+    );
+  }
+
+  return (
+    <span className={className} title={tooltip}>
+      {label}
+    </span>
+  );
+}
+
+function BackgroundJobMenuRow({ job }: { job: BackgroundJob }) {
+  const title = jobTooltip(job);
+  const body = (
+    <>
+      {job.status === "running" ? <SpinnerIcon /> : null}
+      <span className="status-bar-jobs-menu-label">
+        <span>{jobTitle(job)}</span>
+        {job.detail ? (
+          <span className="status-bar-jobs-menu-detail">{job.detail}</span>
+        ) : null}
+      </span>
+    </>
+  );
+
+  if (job.status === "error") {
+    return (
+      <button
+        type="button"
+        role="menuitem"
+        className="status-bar-jobs-menu-item is-conflict"
+        title={`${title} (click to dismiss)`}
+        onClick={() => useBackgroundJobsStore.getState().removeJob(job.id)}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <div className="status-bar-jobs-menu-item" role="menuitem" title={title}>
+      {body}
+    </div>
+  );
+}
+
 function relativeSyncAge(iso: string | null, nowMs: number): string | null {
   if (!iso) return null;
   const ts = Date.parse(iso);
@@ -434,14 +543,20 @@ export function StatusBar() {
   const refreshStatus = useSyncStore((s) => s.refreshStatus);
   const runSync = useSyncStore((s) => s.runSync);
   const jobsMap = useBackgroundJobsStore((s) => s.jobs);
-  const bgJobs = Object.values(jobsMap).filter(
-    (j) =>
-      j.status === "running" || j.status === "error" || j.status === "done",
-  );
+  const bgJobs = Object.values(jobsMap)
+    .filter(
+      (j) =>
+        j.status === "running" || j.status === "error" || j.status === "done",
+    )
+    .sort((a, b) => (a.queuedAt ?? 0) - (b.queuedAt ?? 0));
+  const primaryJob = bgJobs[0];
+  const stackedJobs = bgJobs.slice(1);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [jobsMenuOpen, setJobsMenuOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const rootRef = useRef<HTMLDivElement>(null);
+  const jobsRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hydrated) void hydrate();
@@ -460,12 +575,17 @@ export function StatusBar() {
   }, [lastSyncAt, status?.connected]);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !jobsMenuOpen) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setMenuOpen(false);
+      const target = e.target as Node;
+      if (!rootRef.current?.contains(target)) setMenuOpen(false);
+      if (!jobsRootRef.current?.contains(target)) setJobsMenuOpen(false);
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setJobsMenuOpen(false);
+      }
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -473,7 +593,11 @@ export function StatusBar() {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [menuOpen]);
+  }, [menuOpen, jobsMenuOpen]);
+
+  useEffect(() => {
+    if (stackedJobs.length === 0 && jobsMenuOpen) setJobsMenuOpen(false);
+  }, [stackedJobs.length, jobsMenuOpen]);
 
   const connected = Boolean(status?.connected);
   const conflicted = (status?.conflicted.length ?? 0) > 0;
@@ -532,39 +656,23 @@ export function StatusBar() {
 
   return (
     <footer className="status-bar">
-      <div className="status-bar-left">
-        {bgJobs.map((job) => {
-          const title = job.detail
-            ? `${jobTitle(job)} · ${job.detail}`
-            : jobTitle(job);
-          const className =
-            job.status === "error"
-              ? "status-bar-item is-conflict"
-              : job.status === "running"
-                ? "status-bar-item is-busy"
-                : "status-bar-item";
-          if (job.status === "error") {
-            return (
-              <button
-                key={job.id}
-                type="button"
-                className={className}
-                title={`${title} (click to dismiss)`}
-                onClick={() =>
-                  useBackgroundJobsStore.getState().removeJob(job.id)
-                }
-              >
-                <span>{jobTitle(job)}</span>
-              </button>
-            );
-          }
-          return (
-            <span key={job.id} className={className} title={title}>
-              {job.status === "running" ? <SpinnerIcon /> : null}
-              <span>{jobTitle(job)}</span>
-            </span>
-          );
-        })}
+      <div className="status-bar-left" ref={jobsRootRef}>
+        {primaryJob ? (
+          <BackgroundJobChip
+            job={primaryJob}
+            count={bgJobs.length}
+            stacked={stackedJobs.length > 0}
+            menuOpen={jobsMenuOpen}
+            onToggleMenu={() => setJobsMenuOpen((v) => !v)}
+          />
+        ) : null}
+        {jobsMenuOpen && stackedJobs.length > 0 ? (
+          <div className="status-bar-jobs-menu" role="menu">
+            {stackedJobs.map((job) => (
+              <BackgroundJobMenuRow key={job.id} job={job} />
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="status-bar-right" ref={rootRef}>
         <WordCountItem />

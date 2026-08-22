@@ -85,10 +85,14 @@ function normalizeLine(raw: unknown): string {
   return raw.replace(/\s*\n+\s*/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function languageLabel(code: string): string {
+export function quickTranslateLanguageLabel(code: string): string {
   const c = code.trim();
   if (!c) return c;
   return isNativeLanguageId(c) ? nativeLanguageLabel(c) : c;
+}
+
+function languageLabel(code: string): string {
+  return quickTranslateLanguageLabel(code);
 }
 
 function normalizeLang(

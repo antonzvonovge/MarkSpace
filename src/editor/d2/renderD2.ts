@@ -3,6 +3,7 @@ import {
   getOrRenderDiagramSvg,
   type DiagramSkin,
 } from "../diagramCache";
+import { rewriteWikiLinksInD2Source } from "./d2WikiLinks";
 
 type D2Instance = {
   compile: (
@@ -161,7 +162,10 @@ function renderD2Uncached(
       const d2 = await loadD2();
       const themes = themeIds(dark, skin);
       renderSeq += 1;
-      const result = await withTimeout(d2.compile(code, themes), "compile");
+      const result = await withTimeout(
+        d2.compile(rewriteWikiLinksInD2Source(code), themes),
+        "compile",
+      );
       const out = await withTimeout(
         d2.render(result.diagram, {
           ...result.renderOptions,

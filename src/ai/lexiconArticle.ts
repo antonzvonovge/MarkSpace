@@ -1,9 +1,5 @@
 import { generateText } from "ai";
-import {
-  applyLexiconMoves,
-  filterLexiconMoves,
-  proposeLexiconReorg,
-} from "./lexiconReorg";
+import { maybeStartLexiconReorgs } from "./lexiconRevision";
 import {
   credentialsFromSettings,
   resolveLanguageModel,
@@ -18,14 +14,10 @@ import {
 } from "../lib/folderContext";
 import { splitFrontmatter } from "../lib/noteFrontmatter";
 import {
-  collectLexiconMdPaths,
-  formatLexiconFolderLoad,
-  formatLexiconTreeForPrompt,
   patchLexiconGeneratedBody,
 } from "../lib/lexiconNotes";
 import {
   loadQuickTranslateCache,
-  remapCachedNotePath,
   saveQuickTranslateCache,
   upsertCachedTranslation,
 } from "../lib/quickTranslateCache";
@@ -258,8 +250,8 @@ export type StartLexiconArticleJobParams = {
 };
 
 /**
- * Fire-and-forget: write a full lexicon article, then optionally reorganize folders.
- * Progress shows in the bottom status bar. Does not open the note.
+ * Fire-and-forget: write a full lexicon article. Folder review is a separate
+ * job, triggered after enough new lemmas (not on every Translate / lookup).
  */
 export function startLexiconArticleJob(params: StartLexiconArticleJobParams): void {
   const path0 = params.notePath.trim();
@@ -303,64 +295,28 @@ export function startLexiconArticleJob(params: StartLexiconArticleJobParams): vo
         return;
       }
 
-      let notePath = path0;
       await patchLexiconGeneratedBody(
-        notePath,
+        path0,
         params.result,
         params.foreignLanguageCode,
         article,
       );
 
-      reportJob(jobId, {
-        label,
-        progress: 80,
-        status: "running",
-        detail: "Organizing lexicon",
-      });
-      await useVaultStore.getState().refreshTree();
-      const tree = useVaultStore.getState().tree;
-      const proposed = await proposeLexiconReorg({
-        projectPath: params.projectPath,
-        languageLabel: params.foreignLanguageLabel,
-        lemma,
-        treeListing: formatLexiconTreeForPrompt(tree, params.projectPath),
-        folderLoad: formatLexiconFolderLoad(tree, params.projectPath),
-        keys,
-        modelId: helper.modelId,
-        fallbackModelId: helper.fallbackModelId,
-        abortSignal: ac.signal,
-      });
-      if (ac.signal.aborted) {
-        useBackgroundJobsStore.getState().removeJob(jobId);
-        return;
-      }
-      const occupied = collectLexiconMdPaths(tree, params.projectPath);
-      const { accepted } = filterLexiconMoves(
-        proposed,
-        params.projectPath,
-        occupied,
-      );
-      const { done } = await applyLexiconMoves(accepted);
       let cache = await loadQuickTranslateCache();
-      for (const move of done) {
-        cache = remapCachedNotePath(cache, move.from, move.to);
-        if (move.from === notePath) notePath = move.to;
-      }
       cache = upsertCachedTranslation(
         cache,
         params.foreignLanguageCode,
         params.nativeLanguageCode,
         params.result,
-        notePath,
+        path0,
       );
       await saveQuickTranslateCache(cache);
-      if (done.length > 0) await useVaultStore.getState().refreshTree();
 
       reportJob(jobId, {
         label: `Lexicon · ${lemma}`,
         progress: 100,
         status: "done",
-        detail: done.length > 0 ? `Saved · ${done.length} moved` : "Saved",
+        detail: "Saved",
       });
     } catch (err) {
       if (ac.signal.aborted) {
@@ -378,6 +334,7 @@ export function startLexiconArticleJob(params: StartLexiconArticleJobParams): vo
       if (activeAbortByJob.get(jobId) === ac) {
         activeAbortByJob.delete(jobId);
       }
+      void maybeStartLexiconReorgs();
     }
   })();
 }

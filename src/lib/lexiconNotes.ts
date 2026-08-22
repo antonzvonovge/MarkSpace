@@ -46,6 +46,19 @@ export function isLexiconNotePath(path: string, projectPath: string): boolean {
   return p === root || p.startsWith(`${root}/`);
 }
 
+/** Markdown lemma note under `{project}/Lexicon/…` (not `.folder.md`). */
+export function isVaultLexiconMdNote(path: string): boolean {
+  const p = path.replace(/^\/+|\/+$/g, "");
+  if (!p.toLowerCase().endsWith(".md")) return false;
+  const parts = p.split("/").filter(Boolean);
+  if (parts.length < 3 || parts.length > 2 + LEXICON_MAX_MD_SEGMENTS) {
+    return false;
+  }
+  if (parts[1]!.toLowerCase() !== LEXICON_FOLDER.toLowerCase()) return false;
+  const name = parts[parts.length - 1]!;
+  return name.toLowerCase() !== ".folder.md";
+}
+
 export function lexiconMdSegments(path: string, projectPath: string): string[] | null {
   const root = lexiconRoot(projectPath);
   const prefix = `${root}/`;
@@ -152,6 +165,32 @@ export function lemmaFromLexiconMarkdown(markdown: string, fallback: string): st
   const { data } = splitFrontmatter(markdown);
   if (typeof data?.lemma === "string" && data.lemma.trim()) return data.lemma.trim();
   return fallback;
+}
+
+export function stubResultFromLexiconNote(
+  markdown: string,
+  path: string,
+  foreignLang: string,
+): QuickTranslateResult {
+  const stem = path.replace(/^.*\//, "").replace(/\.md$/i, "") || "word";
+  const lemma = lemmaFromLexiconMarkdown(markdown, stem);
+  const aliases = aliasesFromYaml(splitFrontmatter(markdown).data?.aliases).filter(
+    (a) =>
+      normalizeTranslateSurface(a) !== normalizeTranslateSurface(lemma),
+  );
+  return {
+    query: lemma,
+    queryLang: foreignLang,
+    lemma,
+    transcript: "",
+    translation: lemma,
+    translationTranscript: "",
+    didYouMean: "",
+    forms: aliases,
+    synonyms: [],
+    senses: [],
+    examples: [],
+  };
 }
 
 export const LEXICON_ARTICLE_PENDING =

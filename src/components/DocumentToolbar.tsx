@@ -1,6 +1,21 @@
+import { useCallback, useState } from "react";
+import { startLexiconArticleJob } from "../ai/lexiconArticle";
+import { quickTranslateLanguageLabel } from "../ai/quickTranslate";
+import { vaultProjectRootOf } from "../lib/diaryNotes";
 import { formatToolbarPath } from "../lib/documentPath";
-import { documentKind } from "../lib/vaultApi";
+import {
+  isVaultLexiconMdNote,
+  stubResultFromLexiconNote,
+} from "../lib/lexiconNotes";
+import { nativeLanguageLabel } from "../settings/types";
+import {
+  loadQuickTranslateCache,
+  lookupCachedTranslationByNotePath,
+} from "../lib/quickTranslateCache";
+import { documentKind, readNote } from "../lib/vaultApi";
+import { useBackgroundJobsStore } from "../store/backgroundJobsStore";
 import { useDocumentFindStore } from "../store/documentFindStore";
+import { usePrefsStore } from "../store/prefsStore";
 import { useVaultStore, type ViewMode, isIncomingTab } from "../store/vaultStore";
 import { DocumentFindBar } from "./DocumentFindBar";
 
@@ -44,6 +59,72 @@ type Props = {
   /** Show comments toggle in Live mode (markdown only). Default true. */
   showCommentsToggle?: boolean;
 };
+
+function LexiconTranslateToolbarButton({ path }: { path: string }) {
+  const [starting, setStarting] = useState(false);
+  const nativeLanguage = usePrefsStore((s) => s.prefs.nativeLanguage);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
+  const saveActive = useVaultStore((s) => s.saveActive);
+  const jobRunning = useBackgroundJobsStore((s) => {
+    const job = s.jobs[`lexicon-article:${path}`];
+    return job?.status === "running";
+  });
+  const busy = starting || jobRunning;
+
+  const onClick = useCallback(async () => {
+    if (busy) return;
+    const projectPath = vaultProjectRootOf(path);
+    if (!projectPath) return;
+    setStarting(true);
+    try {
+      await saveActive();
+      const props = projectPropertiesByPath[projectPath];
+      const markdown = await readNote(path);
+      const cache = await loadQuickTranslateCache();
+      const cached = lookupCachedTranslationByNotePath(cache, path);
+      const foreign =
+        (props?.learningLanguage ?? "").trim().toLowerCase() ||
+        (typeof cached?.result.queryLang === "string"
+          ? cached.result.queryLang
+          : "") ||
+        "en";
+      const result =
+        cached?.result ?? stubResultFromLexiconNote(markdown, path, foreign);
+      startLexiconArticleJob({
+        notePath: path,
+        projectPath,
+        result,
+        foreignLanguageCode: foreign,
+        foreignLanguageLabel: quickTranslateLanguageLabel(foreign),
+        nativeLanguageCode: nativeLanguage,
+        nativeLanguageLabel: nativeLanguageLabel(nativeLanguage),
+      });
+    } finally {
+      setStarting(false);
+    }
+  }, [
+    busy,
+    nativeLanguage,
+    path,
+    projectPropertiesByPath,
+    saveActive,
+  ]);
+
+  return (
+    <button
+      type="button"
+      className="document-toolbar-text-btn"
+      disabled={busy}
+      title="Regenerate the lexicon article"
+      aria-label="Translate"
+      onClick={() => void onClick()}
+    >
+      Translate
+    </button>
+  );
+}
 
 export function DocumentToolbar({
   showOutlineToggle = true,
@@ -116,29 +197,34 @@ export function DocumentToolbar({
       )}
       <div className="document-toolbar-actions">
         {incomingActive ? null : (
-        <div
-          className="view-mode-switch"
-          role="radiogroup"
-          aria-label="Editor view mode"
-        >
-          {MODES.map(({ mode, label }) => (
-            <button
-              key={mode}
-              type="button"
-              role="radio"
-              aria-checked={viewMode === mode}
-              className={[
-                "view-mode-switch-segment",
-                viewMode === mode ? "is-active" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={() => setViewMode(mode)}
+          <>
+            {activePath && isVaultLexiconMdNote(activePath) ? (
+              <LexiconTranslateToolbarButton path={activePath} />
+            ) : null}
+            <div
+              className="view-mode-switch"
+              role="radiogroup"
+              aria-label="Editor view mode"
             >
-              {label}
-            </button>
-          ))}
-        </div>
+              {MODES.map(({ mode, label }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={viewMode === mode}
+                  className={[
+                    "view-mode-switch-segment",
+                    viewMode === mode ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setViewMode(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </div>
       {showCommentsBtn ? (

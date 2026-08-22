@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   emptyQuickTranslateCache,
   lookupCachedTranslation,
+  lookupCachedTranslationByNotePath,
   normalizeTranslateSurface,
   recordIdForResult,
   remapCachedNotePath,
@@ -63,6 +64,10 @@ describe("quickTranslateCache", () => {
     );
     const id = recordIdForResult("en", "ru", apple);
     expect(file.records[id]?.notePath).toBe("En/Lexicon/nouns/apple.md");
+    expect(
+      lookupCachedTranslationByNotePath(file, "En/Lexicon/nouns/apple.md")?.result
+        .lemma,
+    ).toBe("apple");
   });
 
   it("collects unique surfaces", () => {

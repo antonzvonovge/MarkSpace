@@ -98,7 +98,7 @@ Rules:
 export async function proposeLexiconReorg(params: {
   projectPath: string;
   languageLabel: string;
-  lemma: string;
+  lemma?: string;
   treeListing: string;
   folderLoad: string;
   keys: AiProviderCredentials;
@@ -106,8 +106,11 @@ export async function proposeLexiconReorg(params: {
   fallbackModelId?: string;
   abortSignal?: AbortSignal;
 }): Promise<LexiconMove[]> {
+  const trigger = params.lemma?.trim()
+    ? `Latest new lemma: ${params.lemma.trim()}`
+    : "Batch review after several new lemmas.";
   const prompt = `Project: ${params.projectPath}
-Just saved lemma: ${params.lemma}
+${trigger}
 
 Folder load (notes per directory under Lexicon/):
 ${params.folderLoad}

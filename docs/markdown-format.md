@@ -17,7 +17,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Diary daily notes may set YAML `marker:` to a catalog id from Settings → Diary (defaults include `holiday`, `important`, `sad`, …) so the sidebar calendar shows that day's emoji; omit the key (or leave it empty) to clear.
-- Language-learning projects may keep a **Lexicon** tree at `{project}/Lexicon/…` (at most two folders under `Lexicon/`, then a lemma `.md`). Quick Translate writes a full dictionary article in the background (status bar); keep YAML `lemma` / `lang` / `aliases` and the `## Notes` heading. Do not delete `## Notes` or the user’s text below it. The app may move files inside `Lexicon/` to reorganize.
+- Language-learning projects may keep a **Lexicon** tree at `{project}/Lexicon/…` (at most two folders under `Lexicon/`, then a lemma `.md`). Quick Translate writes a full dictionary article in the background (status bar); keep YAML `lemma` / `lang` / `aliases` and the `## Notes` heading. Do not delete `## Notes` or the user’s text below it. After several **new** lemmas, the app may review and move files inside `Lexicon/`.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
 - Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
@@ -52,7 +52,7 @@ marker: holiday
 
 ## Language-learning lexicon
 
-Foreign-language **projects** (top-level folders with project type language learning) may contain `{project}/Lexicon/`. Quick Translate (Ctrl+Shift+T) caches a compact JSON card, then **in the background** (status bar) writes a full dictionary article into the lemma note and may **move** files under `Lexicon/` (at most two category folders, then the `.md` file). Do not open the note just to generate it.
+Foreign-language **projects** (top-level folders with project type language learning) may contain `{project}/Lexicon/`. Quick Translate (Ctrl+Shift+T) caches a compact JSON card, then **in the background** (status bar) writes a full dictionary article into the lemma note. After every **8 new lemmas** in that project (any entry point that creates a lemma note), a separate background job may **move** files under `Lexicon/` (at most two category folders, then the `.md` file). Regenerating an existing article does not count. Do not open the note just to generate it.
 
 The generated article is a **study note** in MarkSpace markdown (not lookup JSON): GFM tables, nested `*` lists, `[[project/Lexicon/lemma|lemma]]` wiki-links, one blank line between blocks. Typical sections: Pronunciation, Grammar, Meanings, Collocations, Idioms, Related words, Usage, Common mistakes. Omit empty sections. Explanations in the user’s native language; examples in the learning language. Do not invent `.assets/` or Draw.io paths.
 

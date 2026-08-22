@@ -8,6 +8,8 @@ export type BackgroundJob = {
   progress: number;
   status: BackgroundJobStatus;
   detail?: string;
+  /** First seen (ms). Stable across progress updates so the status bar keeps FIFO order. */
+  queuedAt?: number;
 };
 
 type BackgroundJobsState = {
@@ -30,9 +32,14 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
       doneTimers.delete(job.id);
     }
 
-    set((state) => ({
-      jobs: { ...state.jobs, [job.id]: job },
-    }));
+    set((state) => {
+      const prev = state.jobs[job.id];
+      const next: BackgroundJob = {
+        ...job,
+        queuedAt: prev?.queuedAt ?? job.queuedAt ?? Date.now(),
+      };
+      return { jobs: { ...state.jobs, [job.id]: next } };
+    });
 
     if (job.status === "done") {
       const timer = window.setTimeout(() => {

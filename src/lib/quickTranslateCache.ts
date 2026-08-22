@@ -75,6 +75,18 @@ export function lookupCachedTranslation(
   return file.records[id] ?? null;
 }
 
+export function lookupCachedTranslationByNotePath(
+  file: QuickTranslateCacheFile,
+  notePath: string,
+): QuickTranslateCacheRecord | null {
+  const want = notePath.replace(/^\/+/g, "");
+  for (const rec of Object.values(file.records)) {
+    const got = rec.notePath?.replace(/^\/+/g, "");
+    if (got && got === want) return rec;
+  }
+  return null;
+}
+
 export function upsertCachedTranslation(
   file: QuickTranslateCacheFile,
   foreign: string,

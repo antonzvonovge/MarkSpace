@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { credentialsFromSettings } from "../ai/languageModel";
 import { startLexiconArticleJob } from "../ai/lexiconArticle";
+import { recordLexiconLemmaCreated } from "../ai/lexiconRevision";
 import {
   collectLearningLanguageCodes,
   DEFAULT_FOREIGN_LANG,
@@ -139,6 +140,7 @@ export function QuickTranslateDialog({
   const [result, setResult] = useState<QuickTranslateResult | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [lexiconPath, setLexiconPath] = useState<string | null>(null);
+  const [lexiconNoteReady, setLexiconNoteReady] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPath, setPickerPath] = useState("");
   const [pickerBusy, setPickerBusy] = useState(false);
@@ -153,13 +155,20 @@ export function QuickTranslateDialog({
     (s) => s.projectPropertiesByPath,
   );
   const openNote = useVaultStore((s) => s.openNote);
-  const lexiconJob = useBackgroundJobsStore((s) => {
+  const lexiconJobRecord = useBackgroundJobsStore((s) => {
     if (!lexiconPath) return null;
-    const job = s.jobs[`lexicon-article:${lexiconPath}`];
-    if (!job) return null;
-    if (job.status !== "running" && job.status !== "error") return null;
-    return job;
+    return s.jobs[`lexicon-article:${lexiconPath}`] ?? null;
   });
+  const lexiconJob =
+    lexiconJobRecord &&
+    (lexiconJobRecord.status === "running" ||
+      lexiconJobRecord.status === "error")
+      ? lexiconJobRecord
+      : null;
+
+  useEffect(() => {
+    if (lexiconJobRecord?.status === "done") setLexiconNoteReady(true);
+  }, [lexiconJobRecord]);
   const footerStatus =
     busy && !result
       ? "Translating…"
@@ -234,6 +243,7 @@ export function QuickTranslateDialog({
     setResult(null);
     setStatus(null);
     setLexiconPath(null);
+    setLexiconNoteReady(false);
     setPickerOpen(false);
     setPickerError(null);
     const id = window.requestAnimationFrame(() => {
@@ -272,6 +282,7 @@ export function QuickTranslateDialog({
     setError(null);
     setStatus(null);
     setLexiconPath(null);
+    setLexiconNoteReady(false);
     const project = pickLexiconProject(
       projectPropertiesByPath,
       foreignLang,
@@ -283,6 +294,7 @@ export function QuickTranslateDialog({
     const attachNote = (path: string | undefined) => {
       if (!path) return;
       setLexiconPath(path);
+      setLexiconNoteReady(true);
     };
 
     try {
@@ -301,7 +313,10 @@ export function QuickTranslateDialog({
         } else if (project) {
           const { hits, surfacesByPath } = await loadLexiconHits(tree, project);
           const hit = lookupLexiconHit(hits, trimmed, surfacesByPath);
-          if (hit) setLexiconPath(hit.path);
+          if (hit) {
+            setLexiconPath(hit.path);
+            setLexiconNoteReady(true);
+          }
         }
         return;
       }
@@ -322,6 +337,7 @@ export function QuickTranslateDialog({
               stubResultFromLemma(trimmed, hit.lemma, foreignLang),
           );
           setLexiconPath(hit.path);
+          setLexiconNoteReady(true);
           return;
         }
       }
@@ -367,6 +383,9 @@ export function QuickTranslateDialog({
         );
         await saveQuickTranslateCache(cache);
         setLexiconPath(saved.path);
+        if (saved.created) {
+          void recordLexiconLemmaCreated(project);
+        }
         startLexiconArticleJob({
           notePath: saved.path,
           projectPath: project,
@@ -466,6 +485,7 @@ export function QuickTranslateDialog({
                 setResult(null);
                 setStatus(null);
                 setLexiconPath(null);
+                setLexiconNoteReady(false);
               }}
             />
           ) : null
@@ -485,7 +505,7 @@ export function QuickTranslateDialog({
           showFooter ? (
           <>
             <div className="quick-translate-footer-meta">
-              {lexiconPath ? (
+              {lexiconPath && lexiconNoteReady ? (
                 <button
                   type="button"
                   className="quick-translate-note-link"
