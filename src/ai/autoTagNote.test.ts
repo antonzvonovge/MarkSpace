@@ -37,7 +37,7 @@ describe("autoTagNote helpers", () => {
   });
 
   it("asks the model to prefer the vault catalog", () => {
-    const system = buildSystem(["work", "project/markspace"]);
+    const system = buildSystem(["work", "project/markspace"], "Notes/Hello.md");
     expect(system).toContain("project/markspace");
     expect(system).toContain("Prefer exact names from the existing vault catalog");
     expect(system).toContain("Never more than 4");

@@ -82,6 +82,7 @@ import {
   type NoteComment,
 } from "../lib/vaultApi";
 import { isUnderDiaryProject } from "../lib/diaryNotes";
+import { writeClipboardText } from "../lib/clipboardText";
 import { editorFontStack } from "../settings/applyPrefs";
 import type { ThemeId } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";

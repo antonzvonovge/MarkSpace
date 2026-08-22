@@ -3,6 +3,7 @@ import { extractInlineTags } from "../lib/hashtagMarkdown";
 import { getNoteTags, setNoteTags, splitFrontmatter } from "../lib/noteFrontmatter";
 import { resolveSuggestedTags } from "../lib/tagName";
 import { withVaultFolderContext } from "../lib/folderContext";
+import { listVaultTags, readNote, writeNote } from "../lib/vaultApi";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { useBackgroundJobsStore } from "../store/backgroundJobsStore";

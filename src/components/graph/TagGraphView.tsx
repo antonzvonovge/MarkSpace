@@ -662,13 +662,6 @@ export function TagGraphView() {
     hoverRafRef.current = requestAnimationFrame(step);
   }, []);
 
-  const stopLayout = useCallback(() => {
-    layoutRef.current?.stop();
-    if (graphRef.current) {
-      rememberPositions(graphRef.current, positionsRef.current);
-    }
-  }, []);
-
   /**
    * After a node is dropped, pin it and let the neighbourhood relax around the
    * new spot. Nothing runs while dragging — that fight made nodes feel stuck.

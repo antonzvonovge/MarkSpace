@@ -28,6 +28,7 @@ import {
 import {
   collectFolderAbouts,
 } from "../lib/folderContext";
+import { appendOrMergeDictEntry } from "../lib/mddictWrite";
 import {
   loadQuickTranslateCache,
   lookupCachedTranslation,
