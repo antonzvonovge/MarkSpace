@@ -90,6 +90,7 @@ import { isIncomingTab, useVaultStore } from "../store/vaultStore";
 import { createLayoutAgnosticKeymapExtension } from "./layoutAgnosticKeymap";
 import { createListOnlyNestingExtension } from "./listOnlyNesting";
 import { NoteSlashSuggestionMenu } from "./NoteSlashSuggestionMenu";
+import { suggestionMenuFloatingOptions } from "./suggestionMenuFloating";
 import {
   createImagePasteHandler,
   markPasteGestureHandled,
@@ -1305,12 +1306,14 @@ export const NoteEditor = memo(function NoteEditor({
                     triggerCharacter="/"
                     getItems={getSlashMenuItems}
                     suggestionMenuComponent={NoteSlashSuggestionMenu}
+                    floatingUIOptions={suggestionMenuFloatingOptions}
                   />
                   <SuggestionMenuController
                     triggerCharacter="#"
                     getItems={getHashTagMenuItems}
                     shouldOpen={shouldOpenTagMenu}
                     suggestionMenuComponent={TagSuggestionMenu}
+                    floatingUIOptions={suggestionMenuFloatingOptions}
                     onItemClick={(item) => {
                       item.onItemClick?.();
                     }}

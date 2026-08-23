@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { isToolUIPart, type UIMessage } from "ai";
+import { useToolRunTimer } from "./useToolRunTimer";
 
 type Props = {
   part: UIMessage["parts"][number];
@@ -31,6 +32,7 @@ function ChatTerminalCallInner({ part }: Props) {
     state === "input-available" ||
     state === "approval-requested" ||
     state === "approval-responded";
+  const elapsed = useToolRunTimer(running);
   const err = state === "output-error";
   const input = asRecord("input" in part ? part.input : undefined);
   const output = asRecord("output" in part ? part.output : undefined);
@@ -72,7 +74,12 @@ function ChatTerminalCallInner({ part }: Props) {
             </span>
           ) : null}
         </span>
-        <span className="chat-terminal-call-state">{status}</span>
+        <span className="chat-terminal-call-state">
+          {status}
+          {elapsed ? (
+            <span className="chat-tool-call-timer">{elapsed}</span>
+          ) : null}
+        </span>
       </button>
       {open && (
         <div className="chat-terminal-call-body">

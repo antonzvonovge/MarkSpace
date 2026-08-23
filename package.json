@@ -48,6 +48,7 @@
     "ai": "^7.0.37",
     "codemirror": "^6.0.2",
     "country-flag-icons": "^1.6.20",
+    "docx": "^9.7.1",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
     "graphology-layout": "^0.6.1",

@@ -43,18 +43,26 @@ export function NoteSlashSuggestionMenu(
         );
       }
 
+      const tip = item.subtext
+        ? `${item.title} — ${item.subtext}`
+        : item.title;
       out.push(
-        <Components.SuggestionMenu.Item
-          className={mergeCSSClasses(
-            "bn-suggestion-menu-item",
-            item.size === "small" ? "bn-suggestion-menu-item-small" : "",
-          )}
-          item={item}
-          id={`bn-suggestion-menu-item-${i}`}
-          isSelected={i === selectedIndex}
+        <div
           key={`item-${item.title}-${i}`}
-          onClick={() => onItemClick?.(item)}
-        />,
+          className="bn-slash-item-tip"
+          title={tip}
+        >
+          <Components.SuggestionMenu.Item
+            className={mergeCSSClasses(
+              "bn-suggestion-menu-item",
+              item.size === "small" ? "bn-suggestion-menu-item-small" : "",
+            )}
+            item={item}
+            id={`bn-suggestion-menu-item-${i}`}
+            isSelected={i === selectedIndex}
+            onClick={() => onItemClick?.(item)}
+          />
+        </div>,
       );
     }
 

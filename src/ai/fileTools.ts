@@ -9,7 +9,7 @@ import {
 import { useVaultStore } from "../store/vaultStore";
 import type { ChatMode } from "./types";
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 /** Cap base64 returned for non-image binaries so chat history stays usable. */
 const MAX_INLINE_BASE64_CHARS = 120_000;
 

@@ -34,6 +34,18 @@ export function diaryProjectRootForPath(
   return projectPropertiesByPath[root]?.projectType === "diary" ? root : null;
 }
 
+/** Language-learning project root containing `path`, or null. */
+export function languageLearningProjectRootForPath(
+  path: string,
+  projectPropertiesByPath: Record<string, ProjectProperties>,
+): string | null {
+  const root = vaultProjectRootOf(path);
+  if (!root) return null;
+  return projectPropertiesByPath[root]?.projectType === "languageLearning"
+    ? root
+    : null;
+}
+
 export function isUnderDiaryProject(
   path: string,
   projectPropertiesByPath: Record<string, ProjectProperties>,

@@ -11,6 +11,7 @@ import {
   extractPdfText,
   folderNotePath,
   folderPathFromFolderNote,
+  candidateFolderNotePath,
   getAgentMemory,
   getEmbeddingModelStatus,
   getFileTags,
@@ -64,7 +65,6 @@ import {
   type LoadedSkill,
   type SkillMeta,
 } from "./skills";
-import { buildIeltsTools } from "./ieltsTools";
 import { formatForcedToolsLines } from "./toolCatalog";
 import { buildRunSpecialistTool } from "./specialists";
 import { orchestratorToolNames, pickTools, type SpecialistKind } from "./toolPacks";
@@ -77,6 +77,8 @@ import {
   isNativeLanguageId,
   nativeLanguageLabel,
   NATIVE_LANGUAGE_OPTIONS,
+  userGenderLabel,
+  type Prefs,
 } from "../settings/types";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { useAgentMemoryStore } from "../store/agentMemoryStore";
@@ -178,6 +180,47 @@ function findFolderNode(root: TreeNode, folderPath: string): TreeNode | null {
   return cur;
 }
 
+/** File or folder node at `entryPath`, or null. */
+function findTreeEntry(root: TreeNode, entryPath: string): TreeNode | null {
+  const rel = normalizeToolPath(entryPath).replace(/\/+$/, "");
+  if (!rel) return root;
+  const parts = rel.split("/").filter(Boolean);
+  let cur: TreeNode = root;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]!;
+    const next = (cur.children ?? []).find((c) => c.name === part);
+    if (!next) return null;
+    if (i < parts.length - 1 && !next.isDir) return null;
+    cur = next;
+  }
+  return cur;
+}
+
+/**
+ * `Note.md` after the note became folder `Note/` → `{folder}/.folder.md`.
+ * Leaves a real `.md` file alone if it still exists in the tree.
+ */
+async function resolveFolderNoteForTools(rel: string): Promise<string> {
+  const path = normalizeToolPath(rel);
+  if (!path || isFolderNotePath(path)) return path;
+  const alias = candidateFolderNotePath(path);
+  if (!alias) return path;
+  const folder = folderPathFromFolderNote(alias);
+  if (!folder) return path;
+
+  const tree = await listTree();
+  const asFile = findTreeEntry(tree, path);
+  if (asFile && !asFile.isDir) return path;
+  if (findFolderNode(tree, folder)?.isDir) return alias;
+  return path;
+}
+
+async function ensureResolvedFolderNote(rel: string): Promise<string> {
+  const folder = folderPathFromFolderNote(rel);
+  if (!folder) return rel;
+  return ensureFolderNote(folder);
+}
+
 function collectFolderEntries(
   folder: TreeNode,
   recursive: boolean,
@@ -200,6 +243,7 @@ function collectFolderEntries(
 /** @internal exported for unit tests */
 export const _test = {
   findFolderNode,
+  findTreeEntry,
   collectFolderEntries,
   makeInProject,
   MAX_FOLDER_LIST,
@@ -399,12 +443,12 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
 
     read_note: tool({
       description:
-        "Read a note by vault-relative path. Prefer start_line/end_line to read only a slice and save tokens; omit both to read the full file (capped). For .pdf files returns extracted plain text (scanned PDFs may be empty); start_line/end_line then mean 1-based page numbers. A folder’s overview (“folder note”) is `{folder}/.folder.md`.",
+        "Read a note by vault-relative path. Prefer start_line/end_line to read only a slice and save tokens; omit both to read the full file (capped). For .pdf files returns extracted plain text (scanned PDFs may be empty); start_line/end_line then mean 1-based page numbers. A folder’s overview (“folder note”) is `{folder}/.folder.md`. If a note was turned into a folder, `{name}.md` and `{name}` resolve to that overview.",
       inputSchema: z.object({
         path: z
           .string()
           .describe(
-            "Vault-relative path, e.g. Folder/Note.md or Folder/.folder.md",
+            "Vault-relative path, e.g. Folder/Note.md, a folder, or Folder/.folder.md",
           ),
         start_line: z
           .number()
@@ -420,7 +464,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           .describe("1-based end line (inclusive); for PDFs = end page"),
       }),
       execute: async ({ path, start_line: startLine, end_line: endLine }) => {
-        const rel = normalizeToolPath(path);
+        let rel = normalizeToolPath(path);
         if (rel.toLowerCase().endsWith(".pdf")) {
           const extracted = await extractPdfText(rel);
           await yieldToUi();
@@ -484,6 +528,11 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
             page_count: extracted.pageCount,
             content: text,
           };
+        }
+
+        rel = await resolveFolderNoteForTools(rel);
+        if (isFolderNotePath(rel)) {
+          rel = await ensureResolvedFolderNote(rel);
         }
 
         const content = await readNoteBuffer(rel);
@@ -564,7 +613,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
 
     open_note: tool({
       description:
-        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, dictionary (.mddict), links file (.mdlnks), habit tracker (.mdhabit), or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page. For a folder path (or `{folder}/.folder.md`), opens that folder’s hidden overview note, creating it if missing.",
+        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, dictionary (.mddict), links file (.mdlnks), habit tracker (.mdhabit), or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page. For a folder path, `{folder}/.folder.md`, or a former `{name}.md` that is now a folder, opens that folder’s hidden overview note, creating it if missing.",
       inputSchema: z.object({
         path: z
           .string()
@@ -604,19 +653,27 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           }
         } else {
           const tree = await listTree();
-          const folderNode = findFolderNode(tree, rel);
-          if (folderNode && folderNode.isDir) {
-            await store.openOrCreateFolderNote(rel);
+          let folderRel =
+            findFolderNode(tree, rel)?.isDir ? rel : null;
+          if (!folderRel) {
+            const alias = candidateFolderNotePath(rel);
+            const folder = alias ? folderPathFromFolderNote(alias) : null;
+            if (folder && findFolderNode(tree, folder)?.isDir) {
+              folderRel = folder;
+            }
+          }
+          if (folderRel) {
+            await store.openOrCreateFolderNote(folderRel);
             await yieldToUi();
             const after = useVaultStore.getState();
-            const noteRel = folderNotePath(rel);
+            const noteRel = folderNotePath(folderRel);
             if (after.activePath !== noteRel) {
               return {
                 ok: false as const,
-                error: after.error ?? `Could not open folder note for ${rel}`,
+                error: after.error ?? `Could not open folder note for ${folderRel}`,
               };
             }
-            useSidebarUiStore.getState().revealPathInTree(rel);
+            useSidebarUiStore.getState().revealPathInTree(folderRel);
             const tab = after.tabs.find((t) => t.path === noteRel);
             return {
               ok: true as const,
@@ -844,7 +901,6 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
   const fileTools = buildFileTools(mode);
   const askUserTool = { ask_user: buildAskUserTool() };
   const pickFolderTool = { pick_vault_folder: buildPickVaultFolderTool() };
-  const ieltsTools = buildIeltsTools();
 
   if (mode === "ask") {
     const askAll = {
@@ -857,7 +913,6 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
       ...fileTools,
       ...askUserTool,
       ...pickFolderTool,
-      ...ieltsTools,
     };
     if (opts?.toolNames?.length) {
       return pickTools(askAll, opts.toolNames) as typeof askAll;
@@ -1041,7 +1096,6 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     ...fileTools,
     ...askUserTool,
     ...pickFolderTool,
-    ...ieltsTools,
     ...orchestratorExtras,
     set_file_tags: tool({
       description:
@@ -1069,7 +1123,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     }),
     edit_note: tool({
       description:
-        "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note. When inserting or rewriting lists, indent relative to the parent item at every depth (parent indent + 2 spaces under `*`, + 3 under numbered — so 3, then 5, then 8 …) and never insert a blank line between a parent and its nested children. For `* **Label:** …`, short body on the same line; longer body after a blank line must be indented to that item's text column, never flush left or under-indented. To edit a folder’s overview (“folder note”), path must be `{folder}/.folder.md`.",
+        "Preferred way to change a note: replace an exact substring (old_string → new_string) without rewriting the whole file. old_string must uniquely match unless replace_all is true. Use this to save tokens instead of write_note. When inserting or rewriting lists, indent relative to the parent item at every depth (parent indent + 2 spaces under `*`, + 3 under numbered — so 3, then 5, then 8 …) and never insert a blank line between a parent and its nested children. For `* **Label:** …`, short body on the same line; longer body after a blank line must be indented to that item's text column, never flush left or under-indented. A folder overview is `{folder}/.folder.md`; `{name}.md` is accepted when that note is now a folder.",
       inputSchema: z.object({
         path: z
           .string()
@@ -1089,11 +1143,15 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           .describe("Replace every occurrence (default false = single match only)"),
       }),
       execute: async ({
-        path,
+        path: requestedPath,
         old_string: oldString,
         new_string: newString,
         replace_all: replaceAll,
       }) => {
+        let path = await resolveFolderNoteForTools(requestedPath);
+        if (isFolderNotePath(path)) {
+          path = await ensureResolvedFolderNote(path);
+        }
         const content = await readNoteBuffer(path);
         const occurrences = content.split(oldString).length - 1;
         if (occurrences === 0) {
@@ -1133,10 +1191,14 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
         content: z.string(),
       }),
       execute: async ({ path, content }) => {
-        const saved = await writeNote(path, content);
-        syncOpenEditor(path, saved);
+        let rel = await resolveFolderNoteForTools(path);
+        if (isFolderNotePath(rel)) {
+          rel = await ensureResolvedFolderNote(rel);
+        }
+        const saved = await writeNote(rel, content);
+        syncOpenEditor(rel, saved);
         await yieldToUi();
-        return { ok: true, path };
+        return { ok: true, path: rel };
       },
     }),
     create_note: tool({
@@ -1146,6 +1208,17 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
         path: z.string().describe("Desired path, e.g. Ideas/New.md"),
       }),
       execute: async ({ path }) => {
+        const requested = normalizeToolPath(path);
+        const resolved = await resolveFolderNoteForTools(requested);
+        if (
+          isFolderNotePath(resolved) &&
+          candidateFolderNotePath(requested) === resolved
+        ) {
+          return {
+            ok: false as const,
+            error: `That path is a folder. The overview note is ${resolved}. Use edit_note or write_note on it instead of create_note.`,
+          };
+        }
         const created = await createNote(path);
         await useVaultStore.getState().refreshTree();
         await yieldToUi();
@@ -1722,6 +1795,63 @@ function resolveFolderContext(opts: {
   return [];
 }
 
+function ageYearsOnDate(birthday: Date, today: Date): number {
+  let age = today.getFullYear() - birthday.getFullYear();
+  const monthDelta = today.getMonth() - birthday.getMonth();
+  if (
+    monthDelta < 0 ||
+    (monthDelta === 0 && today.getDate() < birthday.getDate())
+  ) {
+    age -= 1;
+  }
+  return age;
+}
+
+function formatYmd(date: Date): string {
+  return `${date.getFullYear().toString().padStart(4, "0")}-${String(
+    date.getMonth() + 1,
+  ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** Profile facts for the chat agent (name, gender, birthday). */
+export function userProfilePromptLines(
+  prefs: Prefs,
+  today: Date = new Date(),
+): string[] {
+  const lines: string[] = [];
+  const userName = prefs.userName.trim();
+  if (userName) {
+    lines.push(`The user's name is ${userName}.`);
+    lines.push(
+      `Address them as ${userName} in a warm, friendly tone (like a helpful colleague). Use their name naturally — greetings, check-ins, wrap-ups — but not in every short reply. Stay concise; do not be overly familiar or sycophantic.`,
+    );
+  }
+  if (prefs.userGender === "male" || prefs.userGender === "female") {
+    lines.push(
+      `The user's gender is ${userGenderLabel(prefs.userGender).toLowerCase()}. When the reply language inflects for gender, use matching forms. Do not mention gender unprompted.`,
+    );
+  }
+  const birthday = prefs.userBirthday.trim()
+    ? parseIsoDateOnly(prefs.userBirthday.trim())
+    : null;
+  if (birthday) {
+    const iso = formatYmd(birthday);
+    const age = ageYearsOnDate(birthday, today);
+    const isBirthdayToday =
+      birthday.getMonth() === today.getMonth() &&
+      birthday.getDate() === today.getDate();
+    lines.push(
+      isBirthdayToday
+        ? `The user's date of birth is ${iso} (age ${age} today — it is their birthday).`
+        : `The user's date of birth is ${iso} (age ${age} as of ${formatYmd(today)}).`,
+    );
+    lines.push(
+      "Use age or birthday only when relevant. Do not mention them unprompted.",
+    );
+  }
+  return lines;
+}
+
 export function buildSystemPrompt(opts: {
   mode: ChatMode;
   vaultPath: string | null;
@@ -1813,12 +1943,10 @@ export function buildSystemPrompt(opts: {
 
   lines.push(
     "CRITICAL — parallel tools: every model round re-sends the whole context. When several independent tools are needed, emit them TOGETHER in one response.",
-    "When you need a vault folder (save location, IELTS session note): call pick_vault_folder. The UI remembers the last folder across chats and lets the user Browse the vault tree. Do not use ask_user for folder paths.",
+    "When you need a vault folder (save location): call pick_vault_folder. The UI remembers the last folder across chats and lets the user Browse the vault tree. Do not use ask_user for folder paths.",
     "When you need a decision, confirmation, or clarification with clear choices: use ask_user instead of listing A/B/C in plain chat text.",
-    "IELTS General Training practice: built-in skills ielts-writing, ielts-reading, ielts-listening, ielts-speaking (also /slash). Always pick_vault_folder first. Drive the session with ielts_practice (start, set_secret, synthesize_audio, show_paper, grade, save_note, end). Exam paper goes in show_paper, never chat markdown. Listening full test: one synthesize_audio for sections 1–4, one show_paper (questions 1–40), one Submit, then grade. After save_note and end: stop; one recap only, never repeat “done”. Do not call set_timer or write Submit reminders. start returns existing_notes and existing_topics — invent a NEW theme. Never print the answer key or listening script until after grade. Scores are indicative practice, not official Cambridge. Use web_search only for public pages the user asked to find — do not fetch pirated exam books.",
-    "IELTS language: exam material the user must read or hear stays in English (prompts, passages, questions, scripts, cue cards). After they Submit the paper (or End session in Speaking): scores, traps, explanations, speaking feedback, and the Result/Feedback sections of the session note MUST be in the user's native language from Profile. Do not write those recaps in English unless the native language is English.",
     "Paths are vault-relative.",
-    "Folder notes: every vault folder (except the vault root) has a special hidden overview note at `{folder}/.folder.md` (not listed in the tree). When the user pastes/drops a folder into chat, the message names both the folder and its folder note path separately. If they ask to read/edit/open the folder note / overview for a mentioned folder, they mean that exact `{folder}/.folder.md` — not some other note inside the folder. Pass a folder path or `{folder}/.folder.md` to open_note (created if missing); use read_note / edit_note on `{folder}/.folder.md` for contents.",
+    "Folder notes: every vault folder (except the vault root) has a special hidden overview note at `{folder}/.folder.md` (not listed in the tree). When the user pastes/drops a folder into chat, the message names both the folder and its folder note path separately. If they ask to read/edit/open the folder note / overview for a mentioned folder, they mean that exact `{folder}/.folder.md` — not some other note inside the folder. Pass a folder path or `{folder}/.folder.md` to open_note (created if missing); use read_note / edit_note on `{folder}/.folder.md` for contents. If a note was converted into a folder, the old `{name}.md` path is no longer a file — tools remap it to `{name}/.folder.md`; prefer that path in later calls.",
     "When the user asks to open/show a file, call open_note.",
     "MarkSpace Markdown dialect — follow these rules; call read_format_guide when unsure:",
     ...markdownCoreRules(),
@@ -1842,13 +1970,7 @@ export function buildSystemPrompt(opts: {
   if (opts.vaultPath) {
     lines.push(`Open vault: ${opts.vaultPath}`);
   }
-  const userName = prefs.userName.trim();
-  if (userName) {
-    lines.push(`The user's name is ${userName}.`);
-    lines.push(
-      `Address them as ${userName} in a warm, friendly tone (like a helpful colleague). Use their name naturally — greetings, check-ins, wrap-ups — but not in every short reply. Stay concise; do not be overly familiar or sycophantic.`,
-    );
-  }
+  lines.push(...userProfilePromptLines(prefs));
   lines.push(
     `User's native language: ${nativeLanguageLabel(prefs.nativeLanguage)} (${prefs.nativeLanguage}).${
       gemActive

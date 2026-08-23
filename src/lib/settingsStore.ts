@@ -1,7 +1,9 @@
 import { Store } from "@tauri-apps/plugin-store";
+import { parseIsoDateOnly } from "./diaryNotes";
 import {
   DEFAULT_PREFS,
   isNativeLanguageId,
+  isUserGenderId,
   type EditorFontFamilyId,
   type Prefs,
 } from "../settings/types";
@@ -41,8 +43,21 @@ function mergePrefs(raw: LegacyPrefs | null | undefined): Prefs {
       ? raw.userName.trim().slice(0, 80)
       : DEFAULT_PREFS.userName;
 
+  const rawBirthday =
+    typeof raw.userBirthday === "string" ? raw.userBirthday.trim() : "";
+  const birthdayDate = rawBirthday ? parseIsoDateOnly(rawBirthday) : null;
+  const userBirthday = birthdayDate
+    ? `${birthdayDate.getFullYear().toString().padStart(4, "0")}-${String(
+        birthdayDate.getMonth() + 1,
+      ).padStart(2, "0")}-${String(birthdayDate.getDate()).padStart(2, "0")}`
+    : DEFAULT_PREFS.userBirthday;
+
   return {
     userName,
+    userBirthday,
+    userGender: isUserGenderId(raw.userGender)
+      ? raw.userGender
+      : DEFAULT_PREFS.userGender,
     nativeLanguage: isNativeLanguageId(raw.nativeLanguage)
       ? raw.nativeLanguage
       : DEFAULT_PREFS.nativeLanguage,

@@ -33,6 +33,13 @@ describe("wikiToMarkdown / markdownToWiki", () => {
     expect(wikiTargetFromHref(`wiki:${encodeURIComponent(path)}`)).toBe(path);
   });
 
+  it("round-trips audio embeds", () => {
+    const src = "![[listening.wav]]";
+    const mid = wikiToMarkdown(src);
+    expect(mid).toBe("```audio\nlistening.wav\n```");
+    expect(markdownToWiki(mid)).toBe(src);
+  });
+
   it("round-trips drawio embeds whose path contains #", () => {
     const src = "![[meetings/#5 loop/diagram.drawio|480]]";
     const mid = wikiToMarkdown(src);

@@ -43,6 +43,14 @@ export function SettingRow({ setting, value, onChange }: Props) {
               onChange(clipped as Prefs[PrefKey]);
             }}
           />
+        ) : control.type === "date" ? (
+          <input
+            className="setting-text setting-date"
+            type="date"
+            value={String(value ?? "")}
+            aria-label={setting.label}
+            onChange={(e) => onChange(e.target.value as Prefs[PrefKey])}
+          />
         ) : (
           <input
             className="setting-number"

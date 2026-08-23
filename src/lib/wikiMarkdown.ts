@@ -1,7 +1,22 @@
-/** Convert [[wiki|alias]] and ![[drawio|width]] into forms TipTap/BlockNote understand. */
+/** Convert [[wiki|alias]] and ![[drawio|width]] / ![[audio]] into forms TipTap/BlockNote understand. */
+export const AUDIO_WIKI_EMBED_EXT = /\.(?:wav|mp3|m4a|ogg|aac)$/i;
+
+export function isAudioWikiEmbedTarget(target: string): boolean {
+  return AUDIO_WIKI_EMBED_EXT.test(target.trim());
+}
+
 export function wikiToMarkdown(source: string): string {
-  // Draw.io file embeds → fenced code (survives BlockNote html↔md; bare <div> does not).
+  // Audio file embeds → fenced code (same trick as Draw.io).
   let next = source.replace(
+    /!\[\[([^\]|]+\.(?:wav|mp3|m4a|ogg|aac))(?:\|([^\]]+))?\]\]/gi,
+    (_match, target: string) => {
+      const src = target.trim();
+      return `\`\`\`audio\n${src}\n\`\`\``;
+    },
+  );
+
+  // Draw.io file embeds → fenced code (survives BlockNote html↔md; bare <div> does not).
+  next = next.replace(
     // Allow `#` in paths (e.g. folder `#5 …`); `|` still ends the target.
     /!\[\[([^\]|]+\.drawio)(?:\|([^\]]+))?\]\]/gi,
     (_match, target: string, width?: string) => {
@@ -22,9 +37,18 @@ export function wikiToMarkdown(source: string): string {
   );
 }
 
-/** Convert wiki: links and drawio fences back to [[wiki]] / ![[drawio]]. */
+/** Convert wiki: links, audio fences, and drawio fences back to [[wiki]] / ![[…]]. */
 export function markdownToWiki(source: string): string {
   let next = source.replace(
+    /```audio\s*\n([\s\S]*?)```/gi,
+    (_match, body: string) => {
+      const src = parseAudioFenceBody(body);
+      if (!src) return _match;
+      return `![[${src}]]`;
+    },
+  );
+
+  next = next.replace(
     /```drawio\s*\n([\s\S]*?)```/gi,
     (_match, body: string) => {
       const line = body.trim().split(/\n/)[0]?.trim() ?? "";
@@ -99,6 +123,7 @@ export function extractWikiLinkTargets(source: string): string[] {
     const trimmed = match[1].trim();
     if (!trimmed) continue;
     if (/\.drawio$/i.test(trimmed)) continue;
+    if (isAudioWikiEmbedTarget(trimmed)) continue;
     targets.push(trimmed);
   }
   return targets;
@@ -130,6 +155,13 @@ function stripMarkdownCodeRegions(source: string): string {
     i += 1;
   }
   return out;
+}
+
+/** Parse ```audio fence body → vault-relative or note-relative path. */
+export function parseAudioFenceBody(body: string): string | null {
+  const src = body.trim().split(/\n/)[0]?.trim() ?? "";
+  if (!src || !isAudioWikiEmbedTarget(src)) return null;
+  return src;
 }
 
 /** Parse ```drawio fence body → { src, previewWidth }. */

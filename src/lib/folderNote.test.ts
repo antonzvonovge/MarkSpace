@@ -3,6 +3,7 @@ import {
   folderPathFromFolderNote,
   isFolderNotePath,
   treeRevealTarget,
+  candidateFolderNotePath,
 } from "./vaultApi";
 
 describe("treeRevealTarget", () => {
@@ -39,5 +40,21 @@ describe("folder note path helpers", () => {
     expect(isFolderNotePath("Projects/Note.md")).toBe(false);
     expect(folderPathFromFolderNote("A/B/.folder.md")).toBe("A/B");
     expect(folderPathFromFolderNote("Note.md")).toBeNull();
+  });
+
+  it("maps a converted note path onto the folder overview", () => {
+    expect(candidateFolderNotePath("English/IELTS/План подготовки.md")).toBe(
+      "English/IELTS/План подготовки/.folder.md",
+    );
+    expect(candidateFolderNotePath("English/IELTS/План подготовки")).toBe(
+      "English/IELTS/План подготовки/.folder.md",
+    );
+    expect(candidateFolderNotePath("English/IELTS/План подготовки/")).toBe(
+      "English/IELTS/План подготовки/.folder.md",
+    );
+    expect(
+      candidateFolderNotePath("English/IELTS/План подготовки/.folder.md"),
+    ).toBeNull();
+    expect(candidateFolderNotePath("Tracker.mdhabit")).toBeNull();
   });
 });

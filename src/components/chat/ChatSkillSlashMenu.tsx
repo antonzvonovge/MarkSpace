@@ -156,9 +156,13 @@ export function ChatSkillSlashMenu({
     active?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
+  const menuWidth = Math.min(280, window.innerWidth - 24);
   const style: CSSProperties | undefined = anchorRect
     ? {
-        left: Math.min(anchorRect.left, window.innerWidth - 320),
+        left: Math.max(
+          12,
+          Math.min(anchorRect.left, window.innerWidth - menuWidth - 12),
+        ),
         top: Math.max(8, anchorRect.top - 8),
         transform: "translateY(-100%)",
       }
@@ -184,6 +188,11 @@ export function ChatSkillSlashMenu({
                 type="button"
                 role="option"
                 aria-selected={i === selectedIndex}
+                title={
+                  s.description
+                    ? `${prefix}${s.id} — ${s.description}`
+                    : `${prefix}${s.id}`
+                }
                 className={
                   i === selectedIndex
                     ? "chat-skill-slash-item is-active"
@@ -220,7 +229,12 @@ export function ChatSkillSlashMenu({
                     role="option"
                     aria-selected={index === selectedIndex}
                     disabled={action.disabled}
-                    title={action.title}
+                    title={
+                      action.title ??
+                      (action.description
+                        ? `${action.label} — ${action.description}`
+                        : action.label)
+                    }
                     className={
                       index === selectedIndex
                         ? "chat-skill-slash-item chat-skill-slash-action is-active"

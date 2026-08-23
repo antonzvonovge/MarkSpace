@@ -55,3 +55,10 @@ export function ancestorFolderPaths(folderPath: string): string[] {
   }
   return out;
 }
+
+/** Ancestors plus the folder itself so the picker shows its children. */
+export function folderPickerExpandedPaths(folderPath: string): string[] {
+  const rel = folderPath.replace(/^\/+|\/+$/g, "");
+  if (!rel) return [];
+  return [...ancestorFolderPaths(rel), rel];
+}

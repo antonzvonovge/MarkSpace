@@ -1,0 +1,22 @@
+---
+description: Do not change audio file format or the audio player without explicit user approval
+alwaysApply: true
+---
+
+# Audio format and player
+
+Any change that affects **how audio is encoded, stored, loaded, or played** must be **proposed and approved by the user first**. Do not implement it on your own, even as a “fix” for silence, seeking, or load time.
+
+This includes, but is not limited to:
+
+- Container / codec / sample rate / channels (WAV vs MP3, PCM vs compressed, 24 kHz vs 44.1 kHz, mono/stereo, TTS output format).
+- How the player gets bytes (`asset://`, blob URL, Web Audio, decode-to-WAV, HTTP stream).
+- Shared player UI and behavior (`src/components/audio/AudioPlayer.tsx` and anything that replaces it).
+- Live embed `![[*.wav|mp3|m4a|ogg|aac]]` (`wikiMarkdown`, `AudioEmbedBlock`).
+- IELTS listening synthesis / stitch / save path (`ieltsAudio`, `ieltsPlayback`, session audio write).
+
+**Allowed without asking:** copy, layout spacing, labels, and CSS that does not change playback, seeking, or the file on disk.
+
+**Not allowed without a yes:** swapping sources, adding decode/re-encode pipelines, changing `<audio>` vs Web Audio, native controls, or on-disk filenames/extensions.
+
+When the user has not explicitly asked for an audio-format or player change: describe the options in chat and wait. Do not “try another approach” in code.

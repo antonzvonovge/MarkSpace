@@ -3462,7 +3462,7 @@ pub fn write_asset(
     Ok(format!(".assets/{unique}"))
 }
 
-const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
+const MAX_FILE_BYTES: usize = 50 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3502,11 +3502,12 @@ pub fn read_file_bytes(path: String, state: State<VaultState>) -> Result<FileByt
 }
 
 /// Write raw bytes to a vault-relative path (creates parent folders).
-/// If the file already exists, picks a unique sibling name.
+/// By default, if the file already exists, picks a unique sibling name.
 #[tauri::command(async)]
 pub fn write_file_bytes(
     path: String,
     data_base64: String,
+    overwrite: Option<bool>,
     state: State<VaultState>,
 ) -> Result<String, String> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -3542,14 +3543,21 @@ pub fn write_file_bytes(
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "file.bin".into());
-    let unique = unique_filename(parent, &desired);
-    let dest = parent.join(&unique);
+    let dest = if overwrite.unwrap_or(false) {
+        full
+    } else {
+        parent.join(&unique_filename(parent, &desired))
+    };
     fs::write(&dest, &data).map_err(|e| format!("Cannot write file: {e}"))?;
 
     let created = relative_to_root(&root, &dest);
     let parent_rel_s = parent_rel(&created);
+    let written_name = dest
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or(desired);
     let mut order = read_order(&root);
-    order_insert_child(&mut order, &parent_rel_s, &unique, None);
+    order_insert_child(&mut order, &parent_rel_s, &written_name, None);
     write_order(&root, &order)?;
     Ok(created)
 }

@@ -14,13 +14,13 @@ import {
 } from "./toolPacks";
 
 describe("toolPacks", () => {
-  it("defines 10 orchestrator tools; terminal is opt-in", () => {
-    expect(ORCHESTRATOR_TOOL_NAMES).toHaveLength(10);
+  it("defines 9 orchestrator tools; terminal is opt-in", () => {
+    expect(ORCHESTRATOR_TOOL_NAMES).toHaveLength(9);
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("run_specialist");
-    expect(ORCHESTRATOR_TOOL_NAMES).toContain("ielts_practice");
+    expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("ielts_practice");
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("pick_vault_folder");
     expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("run_terminal");
-    expect(orchestratorToolNames(false)).toHaveLength(10);
+    expect(orchestratorToolNames(false)).toHaveLength(9);
     expect(orchestratorToolNames(true)).toEqual([
       ...ORCHESTRATOR_TOOL_NAMES,
       "run_terminal",

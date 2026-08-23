@@ -1,4 +1,5 @@
 import { memo, useMemo, useState, useSyncExternalStore } from "react";
+import { useToolRunTimer } from "./useToolRunTimer";
 import { isToolUIPart, type UIMessage } from "ai";
 import {
   getSpecialistLive,
@@ -130,6 +131,7 @@ function ChatSpecialistCardInner({ part }: Props) {
     state === "approval-responded";
   const err =
     state === "output-error" || Boolean(output?.error);
+  const elapsed = useToolRunTimer(running);
 
   const kindLabel = kind
     ? specialistLabel(kind)
@@ -185,6 +187,9 @@ function ChatSpecialistCardInner({ part }: Props) {
           <span className="chat-specialist-card-title-row">
             <span className="chat-specialist-card-title">{title}</span>
             <span className="chat-specialist-card-kind">{kindLabel}</span>
+            {elapsed ? (
+              <span className="chat-tool-call-timer">{elapsed}</span>
+            ) : null}
           </span>
           <span className="chat-specialist-card-status" title={statusLine}>
             {statusLine}

@@ -54,16 +54,6 @@ import { ChatSkillSlashMenu } from "./ChatSkillSlashMenu";
 import { ReasoningToggle } from "./ReasoningToggle";
 import { TerminalAutoAllowChip } from "./TerminalAutoAllowChip";
 import { modelSupportsReasoning } from "../../ai/models";
-import {
-  assessAzurePronunciation,
-  transcribeIeltsSpeech,
-} from "../../ai/ieltsAudio";
-import {
-  hasIeltsAzure,
-  missingIeltsSttMessage,
-  pickIeltsStt,
-} from "../../ai/ieltsFit";
-import { useIeltsUiStore } from "../../store/ieltsUiStore";
 
 /** Selected text if the selection is inside `el`, otherwise "". */
 function selectionTextIn(el: HTMLElement): string {
@@ -187,11 +177,6 @@ export function ChatComposer() {
   const skillsCatalog = useChatStore((s) => s.skillsCatalog);
   const refreshSkillsCatalog = useChatStore((s) => s.refreshSkillsCatalog);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
-  const ieltsSession = useIeltsUiStore((s) => s.session);
-  const ieltsRecording = useIeltsUiStore((s) => s.recording);
-  const setIeltsRecording = useIeltsUiStore((s) => s.setRecording);
-  const mediaRecRef = useRef<MediaRecorder | null>(null);
-  const mediaChunksRef = useRef<Blob[]>([]);
   const clearThreadAttention = useChatStore((s) => s.clearThreadAttention);
   const contextAnchorTokens = useChatStore((s) => s.contextAnchorTokens);
   const contextAnchorMessageCount = useChatStore(
@@ -545,87 +530,6 @@ export function ChatComposer() {
     if (!canSend) return;
     void send();
     focusInput();
-  };
-
-  const speakingMic =
-    ieltsSession != null &&
-    ieltsSession.threadId === activeThreadId &&
-    ieltsSession.skill === "speaking";
-
-  const toggleIeltsMic = () => {
-    if (streaming) return;
-    const rec = mediaRecRef.current;
-    if (ieltsRecording && rec && rec.state !== "inactive") {
-      rec.stop();
-      return;
-    }
-    if (!pickIeltsStt(settings)) {
-      useChatStore.setState({
-        error: missingIeltsSttMessage(),
-        status: "error",
-      });
-      return;
-    }
-    void (async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
-      mediaChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) mediaChunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setIeltsRecording(false);
-        mediaRecRef.current = null;
-        const blob = new Blob(mediaChunksRef.current, {
-          type: recorder.mimeType || "audio/webm",
-        });
-        void (async () => {
-          try {
-            const bytes = new Uint8Array(await blob.arrayBuffer());
-            const { text } = await transcribeIeltsSpeech({
-              settings,
-              bytes,
-              mime: blob.type,
-            });
-            let payload = text;
-            if (hasIeltsAzure(settings)) {
-              try {
-                const az = await assessAzurePronunciation({
-                  settings,
-                  bytes,
-                  mime: blob.type,
-                  referenceText: text,
-                });
-                if (az) {
-                  useIeltsUiStore.getState().patch({ lastPronunciation: az });
-                  payload += `\n\n[Azure pronunciation — accuracy ${az.accuracyScore ?? "–"}, fluency ${az.fluencyScore ?? "–"}, pronunciation ${az.pronunciationScore ?? "–"}]`;
-                }
-              } catch {
-                /* optional */
-              }
-            }
-            await send(payload);
-          } catch (err) {
-            useChatStore.setState({
-              error: err instanceof Error ? err.message : String(err),
-              status: "error",
-            });
-          }
-        })();
-      };
-      mediaRecRef.current = recorder;
-      setIeltsRecording(true);
-      recorder.start();
-    })().catch((err: unknown) => {
-      useChatStore.setState({
-        error: err instanceof Error ? err.message : String(err),
-        status: "error",
-      });
-    });
   };
 
   // Keep DOM in sync when draft is cleared/changed externally (send, new
@@ -992,27 +896,6 @@ export function ChatComposer() {
             />
           </svg>
         </button>
-        {speakingMic ? (
-          <button
-            type="button"
-            className={
-              ieltsRecording
-                ? "chat-attach-btn is-active is-recording"
-                : "chat-attach-btn"
-            }
-            disabled={streaming}
-            onClick={toggleIeltsMic}
-            title={ieltsRecording ? "Stop recording" : "Speak (push to talk)"}
-            aria-label={ieltsRecording ? "Stop recording" : "Speak"}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M8 1.5a2.5 2.5 0 0 0-2.5 2.5v3a2.5 2.5 0 1 0 5 0v-3A2.5 2.5 0 0 0 8 1.5zM4 7a4 4 0 0 0 8 0h1.25a.75.75 0 0 1 0 1.5H12A5.5 5.5 0 0 1 8.75 13v1.25h1.5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1 0-1.5h1.5V13A5.5 5.5 0 0 1 4 8.5H2.75a.75.75 0 0 1 0-1.5H4z"
-              />
-            </svg>
-          </button>
-        ) : null}
 
         {streaming ? (
           <button

@@ -222,10 +222,12 @@ export async function readFileBytes(path: string): Promise<FileBytesResult> {
 export async function writeFileBytes(
   path: string,
   data: Uint8Array,
+  opts?: { overwrite?: boolean },
 ): Promise<string> {
   return invoke("write_file_bytes", {
     path,
     dataBase64: uint8ToBase64(data),
+    overwrite: opts?.overwrite ?? null,
   });
 }
 
@@ -912,6 +914,31 @@ export function isFolderNotePath(path: string): boolean {
 export function folderNotePath(folder: string): string {
   const cleaned = folder.replace(/^\/+|\/+$/g, "");
   return joinPath(cleaned, FOLDER_NOTE_NAME);
+}
+
+/**
+ * Map a mistaken regular-note path onto that folder’s overview.
+ * `Folder/Name.md` or `Folder/Name` → `Folder/Name/.folder.md` when the note
+ * was converted into a folder. Returns null for real `.folder.md` paths and
+ * non-markdown files.
+ */
+export function candidateFolderNotePath(path: string): string | null {
+  const cleaned = path.trim().replace(/^\/+|\/+$/g, "");
+  if (!cleaned || isFolderNotePath(cleaned)) return null;
+  const lower = cleaned.toLowerCase();
+  if (
+    lower.endsWith(".mddict") ||
+    lower.endsWith(".mdlnks") ||
+    lower.endsWith(".mdhabit") ||
+    lower.endsWith(".drawio") ||
+    lower.endsWith(".pdf") ||
+    lower.endsWith(".json")
+  ) {
+    return null;
+  }
+  const folder = lower.endsWith(".md") ? cleaned.slice(0, -3) : cleaned;
+  if (!folder) return null;
+  return folderNotePath(folder);
 }
 
 /** Parent folder of a folder note, or null if `path` is not a folder note. */

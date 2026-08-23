@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { createToolWait } from "./toolWait";
 
 export type IeltsPaperKind = "gap" | "choice" | "long";
 
@@ -31,34 +30,6 @@ export type IeltsPaperAnswerItem = {
 export type IeltsPaperAnswer = {
   answers: IeltsPaperAnswerItem[];
 };
-
-const paperWait = createToolWait<IeltsPaperAnswer>("Paper");
-
-export function waitForIeltsPaper(
-  toolCallId: string,
-  signal?: AbortSignal,
-): Promise<IeltsPaperAnswer> {
-  return paperWait.wait(toolCallId, signal);
-}
-
-export function resolveIeltsPaper(
-  toolCallId: string,
-  answer: IeltsPaperAnswer,
-): boolean {
-  return paperWait.resolve(toolCallId, answer);
-}
-
-export function cancelIeltsPaper(toolCallId: string, reason?: string): boolean {
-  return paperWait.cancel(toolCallId, reason);
-}
-
-export function cancelAllPendingIeltsPaper(reason?: string): void {
-  paperWait.cancelAll(reason);
-}
-
-export function hasPendingIeltsPaper(toolCallId?: string): boolean {
-  return paperWait.has(toolCallId);
-}
 
 const optionSchema = z.object({
   id: z.string().min(1).optional(),
@@ -146,6 +117,55 @@ export function normalizeIeltsPaper(
     options,
     questions,
   };
+}
+
+/** Task text as shown in the trainer (title, passage, bank, numbered items). */
+export function formatIeltsPaperAsMarkdown(paper: IeltsPaper): string {
+  const lines: string[] = [];
+  if (paper.title) {
+    lines.push(`### ${paper.title}`, "");
+  }
+  if (paper.intro) {
+    lines.push(paper.intro, "");
+  }
+  const choiceQs = paper.questions.filter((q) => q.kind === "choice");
+  const usesSharedBank =
+    paper.options.length > 0 &&
+    choiceQs.length > 0 &&
+    choiceQs.every(
+      (q) =>
+        q.options.length === paper.options.length &&
+        q.options.every((o, i) => o.id === paper.options[i]?.id),
+    );
+  if (usesSharedBank) {
+    for (const option of paper.options) {
+      lines.push(`* **${option.id}** ${option.label}`);
+    }
+    lines.push("");
+  }
+  let lastHeading = "";
+  for (const q of paper.questions) {
+    if (q.heading && q.heading !== lastHeading) {
+      lastHeading = q.heading;
+      lines.push(`#### ${q.heading}`, "");
+    }
+    if (q.kind === "long") {
+      if (q.prompt) lines.push(q.prompt, "");
+      continue;
+    }
+    lines.push(`${q.n}. ${q.prompt}`, "");
+    if (
+      q.kind === "choice" &&
+      q.options.length > 0 &&
+      !usesSharedBank
+    ) {
+      for (const option of q.options) {
+        lines.push(`* **${option.id}** ${option.label}`);
+      }
+      lines.push("");
+    }
+  }
+  return lines.join("\n").trim();
 }
 
 export function parseIeltsPaperInput(input: unknown): IeltsPaper | null {

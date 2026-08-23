@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useVaultStore } from "../store/vaultStore";
 import { isUnderDiaryProject } from "../lib/diaryNotes";
+import { FcDocument } from "react-icons/fc";
 import {
   CollapseAllIcon,
   CollectionPlusIcon,
@@ -88,7 +89,7 @@ function TreeCreateMenu({
             className="tree-create-item"
             onClick={() => pick("note")}
           >
-            <PlusIcon />
+            <FcDocument size={16} />
             <span>New note</span>
           </button>
           <button

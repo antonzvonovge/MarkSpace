@@ -5,6 +5,7 @@ import {
   defaultInlineContentSpecs,
 } from "@blocknote/core";
 import { markspaceCodeBlockOptions } from "../lib/codeHighlight";
+import { createAudioBlock } from "./audio/AudioEmbedBlock";
 import { createD2Block } from "./d2/D2Block";
 import { createDotBlock } from "./dot/DotBlock";
 import { createDrawioBlock } from "./drawio/DrawioEmbedBlock";
@@ -30,6 +31,7 @@ export const noteEditorSchema = BlockNoteSchema.create({
     dot: createDotBlock(),
     markmap: createMarkmapBlock(),
     drawio: createDrawioBlock(),
+    audio: createAudioBlock(),
     equation: createMathEquationBlock(),
   },
   inlineContentSpecs: {

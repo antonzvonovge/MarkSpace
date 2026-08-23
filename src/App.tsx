@@ -30,6 +30,7 @@ import { TagGraphView } from "./components/graph/TagGraphView";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { PlainSourceEditor } from "./editor/PlainSourceEditor";
 import { startAutoTagActiveNote } from "./ai/autoTagNote";
+import { startSaveActiveNoteAsDocx } from "./lib/saveNoteDocx";
 import { IELTS_REVIEW_MAX_CHARS } from "./ai/ieltsGeneralReview";
 import {
   deleteCompletedTasksInActiveEditor,
@@ -423,6 +424,11 @@ const PALETTE_COMMANDS = [
     id: "ielts-general-writing-review",
     label: "IELTS General writing review",
     keywords: "ielts gt general training writing band essay letter",
+  },
+  {
+    id: "save-as-docx",
+    label: "Save as Word",
+    keywords: "export docx word document office",
   },
 ];
 
@@ -835,6 +841,10 @@ function App() {
           .slice(0, IELTS_REVIEW_MAX_CHARS);
         setIeltsReviewQuery(selected);
         setIeltsReviewOpen(true);
+        return;
+      }
+      if (id === "save-as-docx") {
+        startSaveActiveNoteAsDocx();
         return;
       }
       if (id !== "open-word-trainer") return;

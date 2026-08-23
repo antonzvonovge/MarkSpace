@@ -8,10 +8,11 @@ guide. Call `read_format_guide` for the full text when unsure.
 <!-- core-rules:start -->
 - Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported). A wiki target that names an existing **folder** resolves to that folder’s hidden overview note `{folder}/.folder.md` (created on open if missing). Never write `[label](https://Note.md)` or a bare `https://file.md` for a vault note — that is an external URL, not a wiki-link.
 - In **chat replies**, reference vault files with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — also `.mddict`, `.mdlnks`, `.mdhabit`, `.drawio`, and `.pdf` paths. All render as a clickable file link that opens the document. Mention a file this way whenever you create, open, or cite one.
-- Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
+- Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Embed audio as `![[clip.wav]]` or `![[folder/clip.mp3]]` (also `.m4a` / `.ogg` / `.aac`; a bare filename is next to the note). Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
 - Tables: use GFM pipe tables (`| col |`). Never draw ASCII / box-drawing tables (`+---`, `│`, monospace grids) and never put a table inside a plain-text / untitled code fence — those stay unrendered junk. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
+- Blockquotes: each line is `>` then **exactly one** space then the text (`> **Goal:** …`). Never `>  ` (two spaces after `>`) — CommonMark treats the extra space as content, so Live shows the quote shifted right of the bar. Blank quoted lines are a lone `>`. Nested quotes use `> > ` (one space after each `>`). Quoted lists: `> * item`, not `>  * item`.
 - Nested lists: use `*` bullets (preferred over `-`). Indent is **relative to the parent item’s text column and compounds at every depth**: take the parent’s own indent and add **2 spaces** for a `*` parent, **3 spaces** for a `1. ` parent (`10. ` → 4). So a bullet under `1. ` sits at 3, its own child at 5, a numbered child of that at 8 — never reset to 2/3 just because you are deeper. Never put a blank line between a parent item and its nested children — that breaks nesting. Bold labels (`* **Label:** …`): put a **short** body on the same line; for a longer explanation after the label, put it in an **indented** continuation paragraph at that item’s text column so it stays inside the item — never a flush-left (or under-indented) paragraph, which ends the list and restarts numbering at `1.`. The same indent applies to anything else inside an item: extra paragraphs, code fences, tables, images. When editing, preserve the note’s existing list markers and indent depth.
 - Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. Prefer fenced ` ```d2 ` for richer architecture text-diagrams; also ` ```mermaid `, ` ```plantuml ` / ` ```puml `, ` ```dot ` / ` ```graphviz `, ` ```markmap `. For freeform rich graphics create/edit a `.drawio` and embed `![[path/diagram.drawio]]`. In Mermaid, quote subgraph/node labels that contain `(…)`, `<br/>`, or other special chars: `subgraph id ["Title (detail)"]`, `A["Label<br/>line2"]` — unquoted parentheses inside `[…]` cause parse errors.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
@@ -152,14 +153,16 @@ link text. Clicking opens the note or activates its existing editor tab.
 Use this whenever you create, open, or cite a note, so the user can jump to it.
 Targets are vault-relative and must not contain `|` in the path segment. A literal `#` in a folder or file name is allowed.
 
-## Embeds (Draw.io only)
+## Embeds (Draw.io and audio)
 
 | On disk | Meaning |
 |---|---|
 | `![[diagram.drawio]]` | Embed a `.drawio` file (default preview width 480) |
 | `![[folder/diagram.drawio\|480]]` | Embed with explicit preview width (pixels) |
+| `![[listening.wav]]` | Embed an audio player (file next to the note, or vault-relative if the path has `/`) |
+| `![[folder/clip.mp3]]` | Same for `.mp3` / `.m4a` / `.ogg` / `.aac` |
 
-Only paths ending in `.drawio` are embeds. General note embeds `![[SomeNote]]` are **not** supported.
+Only paths ending in `.drawio` or those audio extensions are embeds. General note embeds `![[SomeNote]]` are **not** supported.
 
 Legacy HTML `<div data-drawio-src="…">` may still round-trip to `![[…]]`; prefer the wiki embed form when writing new content.
 
@@ -255,7 +258,7 @@ Supported via the editor (typical on-disk forms):
 | Headings | `#` … `######` |
 | Paragraphs | blank-line separated |
 | Bold / italic / strike / inline code | `**` `*` `~~` `` ` `` |
-| Blockquote | `> …` |
+| Blockquote | `> …` — one space after `>` (see below) |
 | Bullet / numbered lists | `* ` (preferred) or `- ` / `1. ` — see Lists |
 | Task lists | `- [ ]` / `- [x]` |
 | Toggle lists | HTML `<details>` / `<summary>` (structure may flatten on export) |
@@ -265,6 +268,28 @@ Supported via the editor (typical on-disk forms):
 | Math | `$inline$` / `$$display$$` (KaTeX) |
 
 Slash menu hides video/audio/file blocks; do not invent those block types in markdown.
+
+### Blockquotes
+
+Write `>` plus **one** space, then the line. That space is the quote marker, not padding.
+
+```md
+> **Goal:** Band 7.0 – 7.5 (General Training)
+> **Level:** B2
+>
+> * Nested bullet inside the quote.
+```
+
+Wrong — two (or more) spaces after `>` put a leading space in the quoted paragraph; Live then sits the text a character to the right of the bar:
+
+```md
+>  **Goal:** Band 7.0
+```
+
+- Every continued line of the same quote still starts with `> `.
+- A blank line inside the quote is `>` with nothing after it.
+- Nested quote: `> > inner`.
+- Do not indent quoted lines with extra spaces beyond that single marker space.
 
 ## Lists
 
@@ -381,5 +406,5 @@ Do **not** generate any of the following — the editor will treat them as plain
 - Footnotes (`[^1]`)
 - Block IDs (`^block-id`)
 - Wiki heading anchors (`[[Note#heading]]`)
-- Note embeds in note bodies (`![[OtherNote]]` — only `.drawio` embeds work). Chat replies may use `![[path/Note.md]]` as a clickable note reference (see above); that is not an embed.
+- Note embeds in note bodies (`![[OtherNote]]` — only `.drawio` and audio `.wav`/`.mp3`/`.m4a`/`.ogg`/`.aac` embeds work). Chat replies may use `![[path/Note.md]]` as a clickable note reference (see above); that is not an embed.
 - MDX / custom directives

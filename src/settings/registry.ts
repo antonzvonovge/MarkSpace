@@ -2,6 +2,7 @@ import type { PrefKey, Prefs } from "./types";
 import {
   DEFAULT_PREFS,
   NATIVE_LANGUAGE_OPTIONS,
+  USER_GENDER_OPTIONS,
 } from "./types";
 
 export type SettingCategory =
@@ -32,6 +33,9 @@ export type SettingControl =
       type: "text";
       placeholder?: string;
       maxLength?: number;
+    }
+  | {
+      type: "date";
     };
 
 export type SettingDescriptor = {
@@ -84,6 +88,29 @@ export const SETTINGS_REGISTRY: SettingDescriptor[] = [
       maxLength: 80,
     },
     default: DEFAULT_PREFS.userName,
+  },
+  {
+    id: "userGender",
+    category: "profile",
+    label: "Gender",
+    description:
+      "When set, the chat agent can address you with the matching grammatical gender.",
+    control: {
+      type: "enum",
+      options: USER_GENDER_OPTIONS,
+    },
+    default: DEFAULT_PREFS.userGender,
+  },
+  {
+    id: "userBirthday",
+    category: "profile",
+    label: "Date of birth",
+    description:
+      "When set, the chat agent knows your birthday and approximate age.",
+    control: {
+      type: "date",
+    },
+    default: DEFAULT_PREFS.userBirthday,
   },
   {
     id: "nativeLanguage",

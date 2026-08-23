@@ -183,11 +183,13 @@ export async function synthesizeIeltsSpeech(params: {
 export async function synthesizeIeltsListening(params: {
   settings: AiSettings;
   lines: DialogueLine[];
+  onStatus?: (message: string) => void;
 }): Promise<{ bytes: Uint8Array; filename: "listening.mp3" | "listening.wav" }> {
   const route = pickIeltsTts(params.settings);
   if (!route) throw new Error("No TTS key");
   if (route.provider === "azure") {
     try {
+      params.onStatus?.("Generating speech…");
       const bytes = await azureTts(
         route.region,
         route.apiKey,
@@ -195,6 +197,7 @@ export async function synthesizeIeltsListening(params: {
       );
       return { bytes, filename: "listening.wav" };
     } catch {
+      params.onStatus?.("Azure failed — trying backup voices…");
       return synthesizeIeltsListening({
         settings: {
           ...params.settings,
@@ -202,12 +205,17 @@ export async function synthesizeIeltsListening(params: {
           azureSpeechRegion: "",
         },
         lines: params.lines,
+        onStatus: params.onStatus,
       });
     }
   }
   const turns = groupDialogueTurns(params.lines);
   const clipBytes: Uint8Array[] = [];
-  for (const turn of turns) {
+  for (let i = 0; i < turns.length; i++) {
+    const turn = turns[i]!;
+    params.onStatus?.(
+      `Generating speech (${i + 1} of ${turns.length})…`,
+    );
     clipBytes.push(
       await synthesizeIeltsSpeech({
         settings: params.settings,
@@ -216,6 +224,7 @@ export async function synthesizeIeltsListening(params: {
       }),
     );
   }
+  params.onStatus?.("Stitching audio…");
   const prepared = await prepareIeltsPlaybackWav(clipBytes);
   if (prepared) {
     return { bytes: prepared.bytes, filename: "listening.wav" };

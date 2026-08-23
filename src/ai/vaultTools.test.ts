@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import type { TreeNode } from "../lib/vaultApi";
 import { SPECIALIST_PRESETS } from "./toolPacks";
-import { _test, buildSystemPrompt, buildVaultTools } from "./vaultTools";
+import { _test, buildSystemPrompt, buildVaultTools, userProfilePromptLines } from "./vaultTools";
 import { useMcpStore } from "../store/mcpStore";
 
 beforeEach(() => {
@@ -21,7 +21,7 @@ function file(name: string, path: string): TreeNode {
 }
 
 describe("vault agent tools", () => {
-  it("Ask keeps read tools; Agent orchestrator includes ielts_practice", () => {
+  it("Ask keeps read tools; Agent orchestrator is a small tool set", () => {
     const askTools = buildVaultTools("ask");
     const agentTools = buildVaultTools("agent");
 
@@ -39,14 +39,13 @@ describe("vault agent tools", () => {
     expect(askTools).not.toHaveProperty("auto_tag_note");
     expect(askTools).not.toHaveProperty("open_or_create_daily_note");
     expect(askTools).toHaveProperty("pick_vault_folder");
-    expect(askTools).toHaveProperty("ielts_practice");
+    expect(askTools).not.toHaveProperty("ielts_practice");
     expect(askTools).toHaveProperty("scrape_url");
     expect(askTools).not.toHaveProperty("run_specialist");
 
     const agentIds = Object.keys(agentTools).sort();
     expect(agentIds).toEqual([
       "ask_user",
-      "ielts_practice",
       "list_folder",
       "memory",
       "open_note",
@@ -73,7 +72,7 @@ describe("vault agent tools", () => {
     try {
       const agentTools = buildVaultTools("agent");
       expect(agentTools).toHaveProperty("run_terminal");
-      expect(Object.keys(agentTools)).toHaveLength(11);
+      expect(Object.keys(agentTools)).toHaveLength(10);
       const prompt = buildSystemPrompt({
         mode: "agent",
         vaultPath: null,
@@ -137,6 +136,7 @@ describe("vault agent tools", () => {
     expect(askPrompt).toContain("Folder notes:");
     expect(askPrompt).toContain("{folder}/.folder.md");
     expect(askPrompt).toContain("not some other note inside the folder");
+    expect(askPrompt).toContain("remap it to `{name}/.folder.md`");
     expect(askPrompt).toContain(
       "In **chat replies**, reference vault files with `[[vault/path/Note.md]]`",
     );
@@ -376,6 +376,47 @@ describe("vault agent tools", () => {
     }
   });
 
+  it("injects profile gender and birthday into the system prompt when set", async () => {
+    const { usePrefsStore } = await import("../store/prefsStore");
+    const { DEFAULT_PREFS } = await import("../settings/types");
+    const prev = usePrefsStore.getState().prefs;
+    usePrefsStore.setState({
+      prefs: {
+        ...DEFAULT_PREFS,
+        userGender: "female",
+        userBirthday: "1990-08-23",
+      },
+      hydrated: true,
+    });
+    try {
+      const prompt = buildSystemPrompt({
+        mode: "ask",
+        vaultPath: null,
+        activePath: null,
+        activeExcerpt: null,
+      });
+      expect(prompt).toContain("The user's gender is female.");
+      expect(prompt).toContain("The user's date of birth is 1990-08-23");
+      expect(prompt).not.toContain("The user's gender is male.");
+
+      const lines = userProfilePromptLines(
+        { ...DEFAULT_PREFS, userGender: "", userBirthday: "" },
+        new Date(2026, 7, 23),
+      );
+      expect(lines.some((l) => l.includes("gender"))).toBe(false);
+      expect(lines.some((l) => l.includes("date of birth"))).toBe(false);
+
+      const birthdayLines = userProfilePromptLines(
+        { ...DEFAULT_PREFS, userBirthday: "1990-08-23" },
+        new Date(2026, 7, 23),
+      );
+      expect(birthdayLines.join("\n")).toContain("it is their birthday");
+      expect(birthdayLines.join("\n")).toContain("age 36");
+    } finally {
+      usePrefsStore.setState({ prefs: prev });
+    }
+  });
+
   it("injects global and active-project memories into the system prompt", async () => {
     const { useAgentMemoryStore } = await import("../store/agentMemoryStore");
     const prev = useAgentMemoryStore.getState().doc;
@@ -493,6 +534,9 @@ describe("vault agent tools", () => {
 
     expect(_test.findFolderNode(tree, "Missing")).toBeNull();
     expect(_test.findFolderNode(tree, "Welcome.md")).toBeNull();
+    expect(_test.findTreeEntry(tree, "Welcome.md")?.isDir).toBe(false);
+    expect(_test.findTreeEntry(tree, "Ideas/A.md")?.isDir).toBe(false);
+    expect(_test.findTreeEntry(tree, "Ideas/Missing.md")).toBeNull();
 
     const shallow = _test.collectFolderEntries(ideas!, false);
     expect(shallow).toEqual([

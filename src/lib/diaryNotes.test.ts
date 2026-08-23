@@ -6,6 +6,7 @@ import {
   dailyNotePath,
   dayKey,
   diaryProjectRootForPath,
+  languageLearningProjectRootForPath,
   formatDailyNoteHeading,
   formatDailyNoteStem,
   isoDateOnly,
@@ -33,6 +34,13 @@ const diaryProps: Record<string, ProjectProperties> = {
     learningLanguage: "",
     color: "",
   },
+  English: {
+    path: "English",
+    about: "",
+    projectType: "languageLearning",
+    learningLanguage: "en",
+    color: "",
+  },
 };
 
 describe("vaultProjectRootOf", () => {
@@ -56,6 +64,19 @@ describe("diaryProjectRootForPath", () => {
   it("isUnderDiaryProject mirrors root lookup", () => {
     expect(isUnderDiaryProject("Journal/2026", diaryProps)).toBe(true);
     expect(isUnderDiaryProject("Work", diaryProps)).toBe(false);
+  });
+});
+
+describe("languageLearningProjectRootForPath", () => {
+  it("detects the project root and nested folders", () => {
+    expect(languageLearningProjectRootForPath("English", diaryProps)).toBe(
+      "English",
+    );
+    expect(
+      languageLearningProjectRootForPath("English/IELTS/Listening", diaryProps),
+    ).toBe("English");
+    expect(languageLearningProjectRootForPath("Work", diaryProps)).toBeNull();
+    expect(languageLearningProjectRootForPath("", diaryProps)).toBeNull();
   });
 });
 

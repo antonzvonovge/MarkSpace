@@ -19,8 +19,31 @@ export type NativeLanguageId =
   | "pl"
   | "ka";
 
+/** Profile gender. Empty string = not set. */
+export type UserGenderId = "" | "male" | "female";
+
+export const USER_GENDER_OPTIONS: {
+  value: UserGenderId;
+  label: string;
+}[] = [
+  { value: "", label: "Not set" },
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+];
+
+export function isUserGenderId(value: unknown): value is UserGenderId {
+  return value === "" || value === "male" || value === "female";
+}
+
+export function userGenderLabel(gender: UserGenderId): string {
+  return USER_GENDER_OPTIONS.find((o) => o.value === gender)?.label ?? gender;
+}
+
 export type Prefs = {
   userName: string;
+  /** ISO date `YYYY-MM-DD`, or empty if not set. */
+  userBirthday: string;
+  userGender: UserGenderId;
   nativeLanguage: NativeLanguageId;
   theme: ThemeId;
   uiDensity: UiDensityId;
@@ -36,6 +59,8 @@ export type Prefs = {
 
 export const DEFAULT_PREFS: Prefs = {
   userName: "",
+  userBirthday: "",
+  userGender: "",
   nativeLanguage: "ru",
   theme: "light",
   uiDensity: "comfortable",

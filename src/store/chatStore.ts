@@ -8,7 +8,6 @@ import {
 } from "../ai/chatAttachments";
 import { generateChatTitle } from "../ai/generateChatTitle";
 import { cancelAllPendingAskUser } from "../ai/askUser";
-import { cancelAllPendingIeltsPaper } from "../ai/ieltsPaper";
 import { cancelAllPendingPickVaultFolder } from "../ai/pickVaultFolder";
 import {
   cancelAllPendingTerminal,
@@ -29,7 +28,6 @@ import {
   hasCredentialsForModel,
   missingCredentialsMessage,
 } from "../ai/languageModel";
-import { pickIeltsTextModelId, missingIeltsTextKeyMessage } from "../ai/ieltsFit";
 import { settleIncompleteToolCalls } from "../ai/incompleteToolCalls";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
@@ -73,7 +71,6 @@ import {
 } from "../lib/vaultApi";
 import { getGem } from "../lib/gemsApi";
 import { useAiSettingsStore } from "./aiSettingsStore";
-import { useIeltsUiStore } from "./ieltsUiStore";
 import {
   helperModelCallParams,
   vaultChatModelId,
@@ -808,22 +805,9 @@ async function runAssistantTurn(params: {
 
   const settings = useAiSettingsStore.getState().settings;
   const keys = credentialsFromSettings(settings);
-  const ieltsSession = useIeltsUiStore.getState().session;
-  const wantsIelts =
-    params.skillIds.some((id) => id.startsWith("ielts-")) ||
-    (ieltsSession != null && ieltsSession.threadId === get().activeThreadId) ||
-    /\bielts\b/i.test(lastUserText(params.messages));
-  const ieltsModel = wantsIelts ? pickIeltsTextModelId(settings) : null;
-  if (wantsIelts && !ieltsModel) {
-    set({
-      error: missingIeltsTextKeyMessage(),
-      status: "error",
-    });
-    return;
-  }
   const modelId = resolveModelId(
     settings.baseUrl,
-    ieltsModel || get().modelId || vaultChatModelId(),
+    get().modelId || vaultChatModelId(),
   );
   if (!hasCredentialsForModel(modelId, keys)) {
     set({
@@ -1842,7 +1826,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   stop: () => {
     const { abort } = get();
     cancelAllPendingAskUser("stopped");
-    cancelAllPendingIeltsPaper("stopped");
     cancelAllPendingPickVaultFolder("stopped");
     cancelAllPendingTerminal("stopped");
     void killAllRunningTerminalJobs();

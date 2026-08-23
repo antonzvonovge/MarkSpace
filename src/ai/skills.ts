@@ -8,10 +8,6 @@ import {
   skillPathForId,
   type TreeNode,
 } from "../lib/vaultApi";
-import {
-  listBuiltinIeltsSkills,
-  loadBuiltinIeltsSkill,
-} from "./ieltsBuiltinSkills";
 
 export type SkillMeta = {
   id: string;
@@ -77,15 +73,6 @@ export function isCatalogSkill(meta: SkillMeta): boolean {
   );
 }
 
-function mergeBuiltinSkills(out: SkillMeta[]): SkillMeta[] {
-  const seen = new Set(out.map((s) => s.id));
-  for (const builtin of listBuiltinIeltsSkills()) {
-    if (seen.has(builtin.id)) continue;
-    out.push(builtin);
-  }
-  out.sort((a, b) => a.id.localeCompare(b.id));
-  return out;
-}
 /** List skill metadata from the open vault's Skills/ folder. */
 export async function listSkills(): Promise<SkillMeta[]> {
   const tree = await listTree();
@@ -104,7 +91,8 @@ export async function listSkills(): Promise<SkillMeta[]> {
       }
     }
   }
-  return mergeBuiltinSkills(out);
+  out.sort((a, b) => a.id.localeCompare(b.id));
+  return out;
 }
 
 /** Load one skill by id (filename stem). */
@@ -120,7 +108,7 @@ export async function loadSkill(id: string): Promise<LoadedSkill | null> {
       raw,
     };
   } catch {
-    return loadBuiltinIeltsSkill(id);
+    return null;
   }
 }
 

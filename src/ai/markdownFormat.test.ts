@@ -61,6 +61,15 @@ describe("markdownFormat", () => {
     expect(rules).toMatch(/holiday/);
   });
 
+  it("documents blockquote marker spacing in core and guide", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/Blockquotes/i);
+    expect(rules).toMatch(/>  /);
+    expect(rules).toMatch(/exactly one/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/###\s+Blockquotes/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toContain("> **Goal:**");
+  });
+
   it("documents nested list indent rules in core and guide", () => {
     const rules = markdownCoreRules().join("\n");
     expect(rules).toMatch(/Nested lists/i);

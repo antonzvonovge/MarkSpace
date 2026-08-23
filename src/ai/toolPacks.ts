@@ -40,7 +40,6 @@ export const ORCHESTRATOR_TOOL_NAMES = [
   "pick_vault_folder",
   "memory",
   "read_skill",
-  "ielts_practice",
   "run_specialist",
 ] as const;
 

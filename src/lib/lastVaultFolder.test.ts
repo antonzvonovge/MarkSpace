@@ -3,6 +3,7 @@ import type { TreeNode } from "../lib/vaultApi";
 import {
   ancestorFolderPaths,
   folderExistsInTree,
+  folderPickerExpandedPaths,
   getLastVaultFolder,
   setLastVaultFolder,
 } from "./lastVaultFolder";
@@ -71,6 +72,11 @@ describe("lastVaultFolder", () => {
     expect(ancestorFolderPaths("English/IELTS/Listening")).toEqual([
       "English",
       "English/IELTS",
+    ]);
+    expect(folderPickerExpandedPaths("English/IELTS/Listening")).toEqual([
+      "English",
+      "English/IELTS",
+      "English/IELTS/Listening",
     ]);
   });
 });

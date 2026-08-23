@@ -36,7 +36,11 @@ import {
   treeRevealTarget,
   type ProjectProperties,
 } from "../lib/vaultApi";
-import { diaryProjectRootForPath, vaultProjectRootOf } from "../lib/diaryNotes";
+import {
+  diaryProjectRootForPath,
+  languageLearningProjectRootForPath,
+  vaultProjectRootOf,
+} from "../lib/diaryNotes";
 import { isVaultLexiconFolder, isVaultLexiconMdNote } from "../lib/lexiconNotes";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
@@ -52,6 +56,8 @@ import { nativeLanguageLabel } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";
 import { useChatStore } from "../store/chatStore";
 import { useChatUiStore } from "../store/chatUiStore";
+import type { IeltsSkill } from "../ai/ieltsFit";
+import { IeltsTrainerDialog } from "./ielts/IeltsTrainerDialog";
 import {
   PromptDialog,
   ConfirmDialog,
@@ -77,6 +83,7 @@ import {
   FcReadingEbook,
   FcWorkflow,
 } from "react-icons/fc";
+import { MdChevronRight } from "react-icons/md";
 import {
   beginDrawioTreeDrag,
   DRAWIO_TREE_MIME,
@@ -612,9 +619,11 @@ function TreeContextMenu({
   onCopyAbsolutePath,
   onToggleFavorite,
   onProjectProperties,
+  onIeltsTrainer,
   translateLabel,
   translateReplaceLabel,
   diaryProjectRoot,
+  languageLearningProject,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
@@ -638,12 +647,16 @@ function TreeContextMenu({
   onCopyAbsolutePath: () => void;
   onToggleFavorite: () => void;
   onProjectProperties: () => void;
+  onIeltsTrainer: (skill: IeltsSkill) => void;
   translateLabel: string;
   translateReplaceLabel: string;
   /** Non-null when the menu target is inside a diary project. */
   diaryProjectRoot: string | null;
+  languageLearningProject: boolean;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [ieltsOpen, setIeltsOpen] = useState(false);
+  const [newItemOpen, setNewItemOpen] = useState(false);
   const isSkills = isSkillsFolder(menu.path, menu.isDir);
   const isDiary = diaryProjectRoot !== null;
   const unsupportedFile = isUnsupportedTreeFile(menu.isDir, menu.path);
@@ -762,129 +775,202 @@ function TreeContextMenu({
     );
   }
 
+  if (menu.isDir && languageLearningProject) {
+    sections.push(
+      <div
+        key="ielts"
+        className="tree-context-submenu-wrap"
+        onMouseEnter={() => setIeltsOpen(true)}
+        onMouseLeave={() => setIeltsOpen(false)}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={(e) => {
+            e.preventDefault();
+            setIeltsOpen((v) => !v);
+          }}
+        >
+          <FcReading size={16} />
+          <span>IELTS Trainer</span>
+          <MdChevronRight size={16} className="tree-context-chevron" />
+        </button>
+        {ieltsOpen ? (
+          <div className="tree-context-submenu" role="menu">
+            {(
+              [
+                ["reading", "Reading"],
+                ["writing", "Writing"],
+                ["listening", "Listening"],
+                ["speaking", "Speaking"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="menuitem"
+                className="tree-context-item"
+                onClick={() => {
+                  onClose();
+                  onIeltsTrainer(id);
+                }}
+              >
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>,
+    );
+  }
+
   if (showCreate) {
     sections.push(
       <div key="create">
-        {showSkillCreate ? (
+        <div
+          className="tree-context-submenu-wrap"
+          onMouseEnter={() => setNewItemOpen(true)}
+          onMouseLeave={() => setNewItemOpen(false)}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={(e) => {
+              e.preventDefault();
+              setNewItemOpen((v) => !v);
+            }}
+          >
+            <PlusIcon />
+            <span>New item</span>
+            <MdChevronRight size={16} className="tree-context-chevron" />
+          </button>
+          {newItemOpen ? (
+            <div className="tree-context-submenu" role="menu">
+              {showSkillCreate ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="tree-context-item"
+                  onClick={() => {
+                    onClose();
+                    onNewSkill();
+                  }}
+                >
+                  <PlusIcon />
+                  <span>New skill…</span>
+                </button>
+              ) : null}
+              {showStandardCreate ? (
+                <>
+                  {isDiary ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tree-context-item"
+                      onClick={() => {
+                        onClose();
+                        onNewDailyNote();
+                      }}
+                    >
+                      <PlusIcon />
+                      <span>New daily note</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tree-context-item"
+                      onClick={() => {
+                        onClose();
+                        onNewNote();
+                      }}
+                    >
+                      <FcDocument size={16} />
+                      <span>New note</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-context-item"
+                    onClick={() => {
+                      onClose();
+                      onNewDiagram();
+                    }}
+                  >
+                    <DiagramIcon />
+                    <span>New diagram</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-context-item"
+                    onClick={() => {
+                      onClose();
+                      onNewLinks();
+                    }}
+                  >
+                    <LinksIcon />
+                    <span>New links</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-context-item"
+                    onClick={() => {
+                      onClose();
+                      onNewDictionary();
+                    }}
+                  >
+                    <DictionaryIcon />
+                    <span>New dictionary</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-context-item"
+                    onClick={() => {
+                      onClose();
+                      onNewHabitTracker();
+                    }}
+                  >
+                    <HabitTrackerIcon />
+                    <span>New habit tracker</span>
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        {showNewFolder ? (
           <button
             type="button"
             role="menuitem"
             className="tree-context-item"
             onClick={() => {
               onClose();
-              onNewSkill();
+              onNewFolder();
             }}
           >
-            <PlusIcon />
-            <span>New skill…</span>
+            <CollectionPlusIcon />
+            <span>New folder</span>
           </button>
         ) : null}
-        {showStandardCreate ? (
-          <>
-            {isDiary ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="tree-context-item"
-                onClick={() => {
-                  onClose();
-                  onNewDailyNote();
-                }}
-              >
-                <PlusIcon />
-                <span>New daily note</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                role="menuitem"
-                className="tree-context-item"
-                onClick={() => {
-                  onClose();
-                  onNewNote();
-                }}
-              >
-                <PlusIcon />
-                <span>New note</span>
-              </button>
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              className="tree-context-item"
-              onClick={() => {
-                onClose();
-                onNewDiagram();
-              }}
-            >
-              <DiagramIcon />
-              <span>New diagram</span>
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="tree-context-item"
-              onClick={() => {
-                onClose();
-                onNewLinks();
-              }}
-            >
-              <LinksIcon />
-              <span>New links</span>
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="tree-context-item"
-              onClick={() => {
-                onClose();
-                onNewDictionary();
-              }}
-            >
-              <DictionaryIcon />
-              <span>New dictionary</span>
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="tree-context-item"
-              onClick={() => {
-                onClose();
-                onNewHabitTracker();
-              }}
-            >
-              <HabitTrackerIcon />
-              <span>New habit tracker</span>
-            </button>
-            {showNewFolder ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="tree-context-item"
-                onClick={() => {
-                  onClose();
-                  onNewFolder();
-                }}
-              >
-                <CollectionPlusIcon />
-                <span>New folder</span>
-              </button>
-            ) : null}
-            {showTurnIntoFolder ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="tree-context-item"
-                onClick={() => {
-                  onClose();
-                  onTurnIntoFolder();
-                }}
-              >
-                <CollectionPlusIcon />
-                <span>Turn into folder</span>
-              </button>
-            ) : null}
-          </>
+        {showTurnIntoFolder ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onTurnIntoFolder();
+            }}
+          >
+            <CollectionPlusIcon />
+            <span>Turn into folder</span>
+          </button>
         ) : null}
       </div>,
     );
@@ -1416,6 +1502,11 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const [promptKind, setPromptKind] = useState<PromptKind | null>(null);
   const [clipFolder, setClipFolder] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [ieltsTrainer, setIeltsTrainer] = useState<{
+    skill: IeltsSkill;
+    projectPath: string;
+    folderPath: string;
+  } | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [pendingOsImport, setPendingOsImport] =
@@ -2053,6 +2144,14 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         }}
       />
 
+      <IeltsTrainerDialog
+        open={ieltsTrainer != null}
+        skill={ieltsTrainer?.skill ?? "reading"}
+        projectPath={ieltsTrainer?.projectPath ?? ""}
+        folderPath={ieltsTrainer?.folderPath ?? ""}
+        onClose={() => setIeltsTrainer(null)}
+      />
+
       <PromptDialog
         open={clipFolder !== null}
         title="Download article"
@@ -2082,6 +2181,26 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             contextMenu.path,
             projectPropertiesByPath,
           )}
+          languageLearningProject={
+            contextMenu.isDir &&
+            !contextMenu.createOnly &&
+            languageLearningProjectRootForPath(
+              contextMenu.path,
+              projectPropertiesByPath,
+            ) != null
+          }
+          onIeltsTrainer={(skill) => {
+            const folder = contextMenu.path;
+            setIeltsTrainer({
+              skill,
+              projectPath:
+                languageLearningProjectRootForPath(
+                  folder,
+                  projectPropertiesByPath,
+                ) ?? vaultProjectRootOf(folder) ?? folder,
+              folderPath: folder,
+            });
+          }}
           onClose={() => setContextMenu(null)}
           onNewNote={() => {
             selectFolder(
