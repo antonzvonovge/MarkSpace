@@ -27,7 +27,6 @@ import {
 import type { IeltsPaperAnswerItem } from "../../ai/ieltsPaper";
 import { deleteFolderIfEmpty, deletePath, readNote } from "../../lib/vaultApi";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
-import { useVaultStore } from "../../store/vaultStore";
 import { DialogShell } from "../AppDialog";
 import { VaultFolderBrowseDialog } from "../VaultFolderBrowseDialog";
 import { Select } from "../ui/Select";

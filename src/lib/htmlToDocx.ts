@@ -13,7 +13,7 @@ import {
   TextRun,
   WidthType,
   type FileChild,
-  type IRunOptions,
+  type IParagraphOptions,
   type ParagraphChild,
 } from "docx";
 
@@ -52,15 +52,13 @@ function headingLevel(tag: string): (typeof HeadingLevel)[keyof typeof HeadingLe
 }
 
 function run(text: string, marks: Marks): TextRun {
-  const opts: IRunOptions = { text };
-  if (marks.bold) opts.bold = true;
-  if (marks.italics) opts.italics = true;
-  if (marks.strike) opts.strike = true;
-  if (marks.code) {
-    opts.font = "Courier New";
-    opts.size = 20;
-  }
-  return new TextRun(opts);
+  return new TextRun({
+    text,
+    ...(marks.bold ? { bold: true } : {}),
+    ...(marks.italics ? { italics: true } : {}),
+    ...(marks.strike ? { strike: true } : {}),
+    ...(marks.code ? { font: "Courier New" as const, size: 20 } : {}),
+  });
 }
 
 function withMark(el: Element, marks: Marks): Marks {
@@ -100,10 +98,7 @@ function inlinesFromNode(node: Node, marks: Marks): ParagraphChild[] {
   return [...el.childNodes].flatMap((c) => inlinesFromNode(c, withMark(el, marks)));
 }
 
-function paragraphFromElement(
-  el: Element,
-  extra?: ConstructorParameters<typeof Paragraph>[0],
-): Paragraph {
+function paragraphFromElement(el: Element, extra?: IParagraphOptions): Paragraph {
   const children = [...el.childNodes].flatMap((c) => inlinesFromNode(c, {}));
   return new Paragraph({
     ...extra,
