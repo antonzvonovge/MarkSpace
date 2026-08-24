@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ToolSet, UIMessage } from "ai";
 import {
+  createToolCallTracker,
   executeIncompleteParts,
   hasIncompleteToolCalls,
   INCOMPLETE_TOOL_REASON_ABORTED,
@@ -102,5 +103,42 @@ describe("executeIncompleteParts", () => {
     const part = parts[0] as { state: string; errorText?: string };
     expect(part.state).toBe("output-error");
     expect(part.errorText).toBe(INCOMPLETE_TOOL_REASON_ABORTED);
+  });
+});
+
+describe("createToolCallTracker", () => {
+  it("lets the recovery pass wait for a slow eager run instead of repeating it", async () => {
+    let release: (() => void) | undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ ok: true, summary: "wrote the note" });
+        }),
+    );
+    const tools = { run_specialist: { execute } } as unknown as ToolSet;
+    const parts: UIMessage["parts"] = [specialistPart("input-available")];
+
+    const tracker = createToolCallTracker();
+    tracker.track(
+      "call_1",
+      executeIncompleteParts({ parts: [parts[0]!], tools }).then((done) => {
+        parts[0] = done.parts[0]!;
+      }),
+    );
+
+    // The stream ends while the specialist is still writing.
+    expect(parts.some(isIncompleteToolPart)).toBe(true);
+    release?.();
+    await tracker.settle();
+
+    expect(parts.some(isIncompleteToolPart)).toBe(false);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(tracker.size).toBe(0);
+  });
+
+  it("settles even when an eager run rejects", async () => {
+    const tracker = createToolCallTracker();
+    tracker.track("call_1", Promise.reject(new Error("boom")));
+    await expect(tracker.settle()).resolves.toBeUndefined();
   });
 });

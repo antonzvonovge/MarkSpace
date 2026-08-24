@@ -2,6 +2,34 @@ import { OPENROUTER_BASE_URL, OPENROUTER_MODELS } from "./models";
 
 export type ChatMode = "ask" | "agent";
 
+/** Composer reasoning: forced off, worker decides per turn, or always on. */
+export type ReasoningMode = "off" | "auto" | "on";
+
+export function isReasoningMode(value: unknown): value is ReasoningMode {
+  return value === "off" || value === "auto" || value === "on";
+}
+
+export function cycleReasoningMode(current: ReasoningMode): ReasoningMode {
+  if (current === "off") return "auto";
+  if (current === "auto") return "on";
+  return "off";
+}
+
+/** New chats default to Auto. Older threads without `reasoningMode` stay On/Off. */
+export function resolveThreadReasoningMode(opts: {
+  supports: boolean;
+  reasoningMode?: string | null;
+  enableReasoning?: boolean | null;
+  /** When neither field is stored (brand-new thread). */
+  defaultAuto?: boolean;
+}): ReasoningMode {
+  if (!opts.supports) return "off";
+  if (isReasoningMode(opts.reasoningMode)) return opts.reasoningMode;
+  if (opts.enableReasoning === false) return "off";
+  if (opts.enableReasoning === true) return "on";
+  return opts.defaultAuto ? "auto" : "on";
+}
+
 export type AiModelVendor = "openai" | "anthropic" | "google";
 
 /** How the model is meant to be used — thinking tokens in the chat picker. */

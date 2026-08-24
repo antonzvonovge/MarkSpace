@@ -2,8 +2,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Manager};
+
+static ATOMIC_WRITE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -46,6 +49,9 @@ pub struct ChatThreadFile {
     /// Sticky Reasoning toggle (composer). Absent on older threads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enable_reasoning: Option<bool>,
+    /// `off` | `auto` | `on`. Absent on older threads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_mode: Option<String>,
     /// Skip per-command terminal approval for this thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_allow_for_chat: Option<bool>,
@@ -98,12 +104,84 @@ fn vault_dir(app: &AppHandle, vault_path: &str) -> Result<PathBuf, String> {
     Ok(chats_root(app)?.join(vault_key(path)))
 }
 
-fn index_path(dir: &PathBuf) -> PathBuf {
+fn index_path(dir: &Path) -> PathBuf {
     dir.join("index.json")
 }
 
-fn thread_path(dir: &PathBuf, thread_id: &str) -> PathBuf {
+fn thread_path(dir: &Path, thread_id: &str) -> PathBuf {
     dir.join(format!("{thread_id}.json"))
+}
+
+fn meta_from_thread(thread: &ChatThreadFile) -> ChatThreadMeta {
+    ChatThreadMeta {
+        id: thread.id.clone(),
+        title: thread.title.clone(),
+        created_at: thread.created_at,
+        updated_at: thread.updated_at,
+        mode: thread.mode.clone(),
+        model_id: thread.model_id.clone(),
+        project_path: thread.project_path.clone(),
+        gem_id: thread.gem_id.clone(),
+        title_locked: thread.title_locked.filter(|locked| *locked),
+    }
+}
+
+fn is_thread_filename(name: &str) -> bool {
+    name.ends_with(".json")
+        && name != "index.json"
+        && !name.starts_with('.')
+        && !name.ends_with(".tmp")
+}
+
+fn thread_ids_on_disk(dir: &Path) -> std::collections::HashSet<String> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return std::collections::HashSet::new(),
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !is_thread_filename(&name) {
+                return None;
+            }
+            Some(name.trim_end_matches(".json").to_string())
+        })
+        .collect()
+}
+
+fn reconcile_index(dir: &Path, mut index: ChatIndex) -> (ChatIndex, bool) {
+    let disk_ids = thread_ids_on_disk(dir);
+    let index_ids: std::collections::HashSet<String> =
+        index.threads.iter().map(|t| t.id.clone()).collect();
+    if disk_ids == index_ids {
+        sanitize_open_tabs(&mut index);
+        return (index, false);
+    }
+
+    index.threads.retain(|t| disk_ids.contains(&t.id));
+    let known: std::collections::HashSet<String> =
+        index.threads.iter().map(|t| t.id.clone()).collect();
+    for id in &disk_ids {
+        if known.contains(id) {
+            continue;
+        }
+        let path = thread_path(dir, id);
+        let Ok(raw) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(thread) = parse_thread_json(&raw) else {
+            continue;
+        };
+        if thread.id.trim().is_empty() {
+            continue;
+        }
+        index.threads.push(meta_from_thread(&thread));
+    }
+    index.threads.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    sanitize_open_tabs(&mut index);
+    (index, true)
 }
 
 fn sanitize_open_tabs(index: &mut ChatIndex) {
@@ -133,15 +211,19 @@ fn sanitize_open_tabs(index: &mut ChatIndex) {
     }
 }
 
-fn read_index(dir: &PathBuf) -> Result<ChatIndex, String> {
+fn load_index_file(dir: &Path) -> ChatIndex {
     let path = index_path(dir);
-    if !path.exists() {
-        return Ok(ChatIndex::default());
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return ChatIndex::default();
+    };
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
+fn read_index(dir: &PathBuf) -> Result<ChatIndex, String> {
+    let (index, changed) = reconcile_index(dir, load_index_file(dir));
+    if changed {
+        write_index(dir, &index)?;
     }
-    let raw = fs::read_to_string(&path).map_err(|e| format!("Cannot read chat index: {e}"))?;
-    let mut index: ChatIndex =
-        serde_json::from_str(&raw).map_err(|e| format!("Invalid chat index: {e}"))?;
-    sanitize_open_tabs(&mut index);
     Ok(index)
 }
 
@@ -152,16 +234,48 @@ fn write_index(dir: &PathBuf, index: &ChatIndex) -> Result<(), String> {
     atomic_write(&path, &raw)
 }
 
-fn atomic_write(path: &PathBuf, raw: &str) -> Result<(), String> {
-    let tmp = path.with_extension("json.tmp");
+fn atomic_write(path: &Path, raw: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Cannot write {}", path.display()))?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file.json".into());
+    let seq = ATOMIC_WRITE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = parent.join(format!(".{}.{}.{}.tmp", name, std::process::id(), seq));
     fs::write(&tmp, raw).map_err(|e| format!("Cannot write {}: {e}", tmp.display()))?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| format!("Cannot replace {}: {e}", path.display()))?;
+
+    #[cfg(windows)]
+    {
+        let bak = parent.join(format!(".{}.{}.bak", name, seq));
+        let had_dest = path.exists();
+        if had_dest {
+            if let Err(e) = fs::rename(path, &bak) {
+                let _ = fs::remove_file(&tmp);
+                return Err(format!("Cannot replace {}: {e}", path.display()));
+            }
+        }
+        if let Err(e) = fs::rename(&tmp, path) {
+            if had_dest {
+                let _ = fs::rename(&bak, path);
+            }
+            let _ = fs::remove_file(&tmp);
+            return Err(format!("Cannot replace {}: {e}", path.display()));
+        }
+        if had_dest {
+            let _ = fs::remove_file(&bak);
+        }
+        return Ok(());
     }
-    fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        format!("Cannot replace {}: {e}", path.display())
-    })
+
+    #[cfg(not(windows))]
+    {
+        fs::rename(&tmp, path).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("Cannot replace {}: {e}", path.display())
+        })
+    }
 }
 
 fn parse_thread_json(raw: &str) -> Result<ChatThreadFile, String> {
@@ -255,17 +369,7 @@ pub fn upsert_chat_thread(
         serde_json::to_string_pretty(&thread).map_err(|e| format!("Cannot serialize thread: {e}"))?;
     atomic_write(&path, &raw)?;
 
-    let meta = ChatThreadMeta {
-        id: thread.id.clone(),
-        title: thread.title.clone(),
-        created_at: thread.created_at,
-        updated_at: thread.updated_at,
-        mode: thread.mode.clone(),
-        model_id: thread.model_id.clone(),
-        project_path: thread.project_path.clone(),
-        gem_id: thread.gem_id.clone(),
-        title_locked: thread.title_locked.filter(|locked| *locked),
-    };
+    let meta = meta_from_thread(&thread);
 
     let mut index = read_index(&dir)?;
     if let Some(existing) = index.threads.iter_mut().find(|t| t.id == meta.id) {
@@ -359,4 +463,88 @@ pub fn set_open_chat_tabs(
         open_tab_ids: index.open_tab_ids,
         pinned_tab_ids: index.pinned_tab_ids,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn tmp_dir() -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "markspace-chat-history-{}-{}",
+            std::process::id(),
+            nanos
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn sample_thread(id: &str, title: &str, updated_at: i64) -> String {
+        format!(
+            r#"{{
+  "id": "{id}",
+  "title": "{title}",
+  "createdAt": 1,
+  "updatedAt": {updated_at},
+  "mode": "ask",
+  "modelId": "test",
+  "messages": []
+}}"#
+        )
+    }
+
+    #[test]
+    fn atomic_write_replaces_without_leaving_tmp() {
+        let dir = tmp_dir();
+        let path = dir.join("index.json");
+        atomic_write(&path, "{\"ok\":1}").unwrap();
+        atomic_write(&path, "{\"ok\":2}").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"ok\":2}");
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path() != path)
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_index_rebuilds_from_thread_files_when_index_is_stale() {
+        let dir = tmp_dir();
+        fs::write(dir.join("aaa.json"), sample_thread("aaa", "First", 20)).unwrap();
+        fs::write(dir.join("bbb.json"), sample_thread("bbb", "Second", 10)).unwrap();
+        fs::write(
+            dir.join("index.json"),
+            r#"{"threads":[{"id":"aaa","title":"First","createdAt":1,"updatedAt":20,"mode":"ask","modelId":"test"}],"activeThreadId":"aaa","openTabIds":["aaa"]}"#,
+        )
+        .unwrap();
+
+        let index = read_index(&dir).unwrap();
+        let ids: Vec<_> = index.threads.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, vec!["aaa", "bbb"]);
+        assert_eq!(index.threads[1].title, "Second");
+
+        let persisted: ChatIndex =
+            serde_json::from_str(&fs::read_to_string(dir.join("index.json")).unwrap()).unwrap();
+        assert_eq!(persisted.threads.len(), 2);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_index_recovers_when_index_is_missing() {
+        let dir = tmp_dir();
+        fs::write(dir.join("aaa.json"), sample_thread("aaa", "Only", 5)).unwrap();
+        let index = read_index(&dir).unwrap();
+        assert_eq!(index.threads.len(), 1);
+        assert_eq!(index.threads[0].id, "aaa");
+        assert!(dir.join("index.json").exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

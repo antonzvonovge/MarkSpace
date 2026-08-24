@@ -319,6 +319,59 @@ export type RunSpecialistResult = {
   error?: string;
 };
 
+const completedByTurn = new WeakMap<AbortSignal, Map<string, RunSpecialistResult>>();
+
+/**
+ * Only an identical brief counts as a repeat. Keying on id or paths would also
+ * swallow a legitimate second edit of the same file in one turn.
+ */
+function specialistMemoKey(kind: string, task: string): string {
+  return `${kind}\n${task.trim().replace(/\s+/g, " ")}`;
+}
+
+function recallCompletedSpecialist(
+  signal: AbortSignal | undefined,
+  key: string,
+): RunSpecialistResult | null {
+  if (!signal) return null;
+  return completedByTurn.get(signal)?.get(key) ?? null;
+}
+
+function rememberCompletedSpecialist(
+  signal: AbortSignal | undefined,
+  key: string,
+  result: RunSpecialistResult,
+) {
+  if (!signal || !result.ok) return;
+  let map = completedByTurn.get(signal);
+  if (!map) {
+    map = new Map();
+    completedByTurn.set(signal, map);
+  }
+  map.set(key, result);
+}
+
+/**
+ * Report the earlier run verbatim. Any "did not re-run" wording reads as a
+ * failure to the model, which then retries the same write with a new id.
+ */
+function alreadyDoneResult(prior: RunSpecialistResult): RunSpecialistResult {
+  return { ...prior, steps: [] };
+}
+
+function resultFromDep(dep: SpecialistDepResult): RunSpecialistResult {
+  const kind = isSpecialistKind(dep.kind) ? dep.kind : "research";
+  return {
+    ok: dep.ok,
+    kind,
+    title: dep.title,
+    summary: dep.summary,
+    changedPaths: dep.changedPaths,
+    steps: [],
+    ...(dep.error ? { error: dep.error } : {}),
+  };
+}
+
 export async function runSpecialist(params: {
   toolCallId: string;
   kind: SpecialistKind;
@@ -658,6 +711,7 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
       const cardTitle = title.trim();
       const waveId = id?.trim() || toolCallId;
       const dependsOn = depends_on ?? [];
+      const memoKey = specialistMemoKey(kind, task);
       let handle: SpecialistWaveHandle;
       try {
         handle = beginSpecialistWave({
@@ -672,6 +726,26 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
           ok: false as const,
           error: message,
         };
+      }
+
+      if (handle.reused) {
+        try {
+          const [prior] = await handle.waitForDeps();
+          if (prior) return alreadyDoneResult(resultFromDep(prior));
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          return { ok: false as const, error: message };
+        }
+        return {
+          ok: false as const,
+          error: "Duplicate specialist id in this round (no prior result).",
+        };
+      }
+
+      const cached = recallCompletedSpecialist(abortSignal, memoKey);
+      if (cached) {
+        handle.release(toDepResult(cached));
+        return alreadyDoneResult(cached);
       }
 
       const releaseFail = (result: RunSpecialistResult) => {
@@ -731,6 +805,7 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
         abortSignal,
         ctx,
       });
+      rememberCompletedSpecialist(abortSignal, memoKey, result);
       handle.release(toDepResult(result));
       return result;
     },

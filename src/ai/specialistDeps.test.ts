@@ -162,21 +162,24 @@ describe("specialist dependency wave", () => {
     a.release(doneA);
   });
 
-  it("rejects duplicate ids in the same wave and reuses after the wave ends", () => {
+  it("reuses an in-flight slot instead of rejecting a duplicate id", async () => {
     const first = beginSpecialistWave({
       id: "diag",
       title: "A",
       dependsOn: [],
     });
-    expect(() =>
-      beginSpecialistWave({ id: "diag", title: "B", dependsOn: [] }),
-    ).toThrow(/Duplicate specialist id/);
+    const dup = beginSpecialistWave({ id: "diag", title: "B", dependsOn: [] });
+    expect(dup.reused).toBe(true);
+    const pending = dup.waitForDeps();
     first.release(doneA);
+    await expect(pending).resolves.toEqual([doneA]);
+    dup.release(doneA);
     const next = beginSpecialistWave({
       id: "diag",
       title: "C",
       dependsOn: [],
     });
+    expect(next.reused).toBeFalsy();
     next.release(doneA);
   });
 

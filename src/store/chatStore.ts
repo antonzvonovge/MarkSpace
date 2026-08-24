@@ -7,6 +7,7 @@ import {
   type ChatAttachment,
 } from "../ai/chatAttachments";
 import { generateChatTitle } from "../ai/generateChatTitle";
+import { shouldUseReasoning } from "../ai/shouldUseReasoning";
 import { cancelAllPendingAskUser } from "../ai/askUser";
 import { cancelAllPendingPickVaultFolder } from "../ai/pickVaultFolder";
 import {
@@ -35,7 +36,12 @@ import { listSkills, loadSkills, type SkillMeta } from "../ai/skills";
 import { buildSystemPrompt } from "../ai/vaultTools";
 import { collectChatFolderAbouts, type FolderAbout } from "../lib/folderContext";
 import { modelSupportsReasoning } from "../ai/models";
-import { contextWindowForModel, type ChatMode } from "../ai/types";
+import {
+  contextWindowForModel,
+  resolveThreadReasoningMode,
+  type ChatMode,
+  type ReasoningMode,
+} from "../ai/types";
 import {
   deleteChatThread,
   getChatThread,
@@ -166,11 +172,7 @@ type ChatStore = {
   messages: UIMessage[];
   mode: ChatMode;
   modelId: string;
-  /**
-   * Sticky Reasoning toggle for this thread. Auto-on when picking a reasoning
-   * model; user may turn it off. Forced off when the model has no reasoning.
-   */
-  enableReasoning: boolean;
+  reasoningMode: ReasoningMode;
   /**
    * Skip per-command terminal approval for this thread. Only effective while
    * Settings → Allow agent terminal is on.
@@ -230,7 +232,7 @@ type ChatStore = {
   clearAttachments: () => void;
   setMode: (mode: ChatMode) => void;
   setModelId: (modelId: string) => void;
-  setEnableReasoning: (enableReasoning: boolean) => void;
+  setReasoningMode: (mode: ReasoningMode) => void;
   setTerminalAllowForChat: (allow: boolean) => void;
   setProjectPath: (projectPath: string | null) => Promise<void>;
   /** Start a new chat thread with the given Gem (model + instructions). */
@@ -266,14 +268,14 @@ type ChatStore = {
 function defaultsFromSettings(): {
   mode: ChatMode;
   modelId: string;
-  enableReasoning: boolean;
+  reasoningMode: ReasoningMode;
 } {
   const s = useAiSettingsStore.getState().settings;
   const modelId = vaultChatModelId();
   return {
     mode: s.defaultMode,
     modelId,
-    enableReasoning: modelSupportsReasoning(modelId),
+    reasoningMode: modelSupportsReasoning(modelId) ? "auto" : "off",
   };
 }
 
@@ -367,7 +369,7 @@ async function writeActiveThread(get: () => ChatStore): Promise<void> {
     modelId,
     projectPath,
     gemId,
-    enableReasoning,
+    reasoningMode,
     terminalAllowForChat,
     contextAnchorTokens,
     contextAnchorMessageCount,
@@ -396,7 +398,8 @@ async function writeActiveThread(get: () => ChatStore): Promise<void> {
     modelId,
     projectPath,
     gemId,
-    enableReasoning,
+    enableReasoning: reasoningMode !== "off",
+    reasoningMode,
     terminalAllowForChat,
     contextAnchorTokens,
     contextAnchorMessageCount,
@@ -487,7 +490,7 @@ type GemContext = {
   gemId: string | null;
   gemName: string;
   gemInstructions: string;
-  enableReasoning: boolean;
+  reasoningMode: ReasoningMode;
   /** Model from the gem when found; null if none / missing. */
   modelId: string | null;
 };
@@ -502,7 +505,7 @@ const EMPTY_GEM_CONTEXT: GemContext = {
   gemId: null,
   gemName: "",
   gemInstructions: "",
-  enableReasoning: true,
+  reasoningMode: "auto",
   modelId: null,
 };
 
@@ -531,7 +534,7 @@ async function loadGemContext(gemId: string | null): Promise<GemContext> {
       gemId: gem.id,
       gemName: gem.name,
       gemInstructions: gem.instructions,
-      enableReasoning: gem.enableReasoning !== false,
+      reasoningMode: gem.enableReasoning !== false ? "auto" : "off",
       modelId: gem.modelId,
     };
   } catch {
@@ -579,9 +582,13 @@ async function createNewThread(
     ? resolveModelId(settings.baseUrl, gem.modelId)
     : defaultModelId;
   const supports = modelSupportsReasoning(modelId);
-  const enableReasoning = gem.gemId
-    ? supports && gem.enableReasoning
-    : supports;
+  const reasoningMode: ReasoningMode = gem.gemId
+    ? supports
+      ? gem.reasoningMode
+      : "off"
+    : supports
+      ? "auto"
+      : "off";
   const empty = {
     id,
     title: "New chat",
@@ -591,7 +598,8 @@ async function createNewThread(
     modelId,
     projectPath: inheritedProject,
     gemId: gem.gemId,
-    enableReasoning,
+    enableReasoning: reasoningMode !== "off",
+    reasoningMode,
     terminalAllowForChat: false,
     messages: [] as UIMessage[],
   };
@@ -608,7 +616,7 @@ async function createNewThread(
     messages: [],
     mode: meta.mode === "agent" ? "agent" : "ask",
     modelId: meta.modelId || modelId,
-    enableReasoning,
+    reasoningMode,
     terminalAllowForChat: false,
     projectPath: inheritedProject,
     projectAbout: project.about,
@@ -652,10 +660,12 @@ async function loadThreadIntoState(
       : null;
   const resolvedModelId = resolveModelId(baseUrl, thread.modelId || modelId);
   const supports = modelSupportsReasoning(resolvedModelId);
-  const enableReasoning =
-    typeof thread.enableReasoning === "boolean"
-      ? thread.enableReasoning && supports
-      : supports;
+  const reasoningMode = resolveThreadReasoningMode({
+    supports,
+    reasoningMode: thread.reasoningMode,
+    enableReasoning: thread.enableReasoning,
+    defaultAuto: false,
+  });
   const terminalAllowForChat = thread.terminalAllowForChat === true;
   setTerminalThreadAutoAllow(terminalAllowForChat);
   const rawMessages = Array.isArray(thread.messages) ? thread.messages : [];
@@ -673,7 +683,7 @@ async function loadThreadIntoState(
     messages,
     mode: thread.mode === "agent" ? ("agent" as const) : ("ask" as const),
     modelId: resolvedModelId,
-    enableReasoning,
+    reasoningMode,
     terminalAllowForChat,
     projectPath,
     projectAbout: project.about,
@@ -1022,6 +1032,23 @@ async function runAssistantTurn(params: {
   void get().persistActive();
 
   try {
+    const enableReasoning = await resolveTurnReasoning({
+      mode: get().reasoningMode,
+      modelId,
+      messages,
+      keys,
+      abortSignal: controller.signal,
+    });
+    if (controller.signal.aborted || get().abort !== controller) {
+      set({
+        status: "ready",
+        abort: null,
+        streamStartedAt: null,
+        streamReasoningText: null,
+      });
+      await get().persistActive();
+      return;
+    }
     const { messages: finalMessages, lastStepInputTokens } = await runChat({
       messages,
       mode,
@@ -1037,7 +1064,7 @@ async function runAssistantTurn(params: {
       projectLearningLanguage: project.learningLanguage,
       gemName: get().gemName,
       gemInstructions: get().gemInstructions,
-      enableReasoning: get().enableReasoning,
+      enableReasoning,
       skills,
       forcedSkills,
       forcedTools,
@@ -1142,6 +1169,23 @@ async function runAssistantTurn(params: {
   }
 }
 
+async function resolveTurnReasoning(opts: {
+  mode: ReasoningMode;
+  modelId: string;
+  messages: UIMessage[];
+  keys: ReturnType<typeof credentialsFromSettings>;
+  abortSignal: AbortSignal;
+}): Promise<boolean> {
+  if (!modelSupportsReasoning(opts.modelId) || opts.mode === "off") return false;
+  if (opts.mode === "on") return true;
+  return shouldUseReasoning({
+    messages: opts.messages,
+    keys: opts.keys,
+    ...helperModelCallParams(),
+    abortSignal: opts.abortSignal,
+  });
+}
+
 /** Replace provisional title with a short LLM-generated name (best-effort). */
 async function maybeRefreshTitle(
   threadId: string,
@@ -1203,7 +1247,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   mode: "ask",
   modelId: DEFAULT_MODEL_PLACEHOLDER(),
-  enableReasoning: modelSupportsReasoning(DEFAULT_MODEL_PLACEHOLDER()),
+  reasoningMode: modelSupportsReasoning(DEFAULT_MODEL_PLACEHOLDER())
+    ? "auto"
+    : "off",
   terminalAllowForChat: false,
   projectPath: null,
   projectAbout: "",
@@ -1392,18 +1438,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const supports = modelSupportsReasoning(resolved);
     set({
       modelId: resolved,
-      // Selecting a reasoning model sticks Reasoning on; chat models force off.
-      enableReasoning: supports,
+      reasoningMode: supports ? "auto" : "off",
       contextAnchorTokens: null,
       contextAnchorMessageCount: null,
     });
     void get().persistActive();
   },
 
-  setEnableReasoning: (enableReasoning) => {
+  setReasoningMode: (mode) => {
     const supports = modelSupportsReasoning(get().modelId);
     set({
-      enableReasoning: supports ? enableReasoning : false,
+      reasoningMode: supports ? mode : "off",
       contextAnchorTokens: null,
       contextAnchorMessageCount: null,
     });

@@ -39,6 +39,8 @@ export type ChatThreadFile = {
   contextAnchorMessageCount?: number | null;
   /** Sticky Reasoning toggle; omit on older threads. */
   enableReasoning?: boolean | null;
+  /** Off / Auto / On. Older threads omit this and use `enableReasoning`. */
+  reasoningMode?: "off" | "auto" | "on" | null;
   /**
    * Skip per-command terminal approval for this thread (still requires
    * Settings → Allow agent terminal). Omit on older threads.

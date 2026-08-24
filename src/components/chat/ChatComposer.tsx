@@ -165,8 +165,8 @@ export function ChatComposer() {
   const setProjectPath = useChatStore((s) => s.setProjectPath);
   const modelId = useChatStore((s) => s.modelId);
   const setModelId = useChatStore((s) => s.setModelId);
-  const enableReasoning = useChatStore((s) => s.enableReasoning);
-  const setEnableReasoning = useChatStore((s) => s.setEnableReasoning);
+  const enableReasoning = useChatStore((s) => s.reasoningMode);
+  const setEnableReasoning = useChatStore((s) => s.setReasoningMode);
   const terminalAllowForChat = useChatStore((s) => s.terminalAllowForChat);
   const setTerminalAllowForChat = useChatStore((s) => s.setTerminalAllowForChat);
   const status = useChatStore((s) => s.status);
@@ -816,7 +816,7 @@ export function ChatComposer() {
 
         <ReasoningToggle
           supported={modelSupportsReasoning(modelId, modelOptions)}
-          value={enableReasoning}
+          mode={enableReasoning}
           disabled={streaming}
           onChange={setEnableReasoning}
         />

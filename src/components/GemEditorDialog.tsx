@@ -216,9 +216,10 @@ export function GemEditorDialog({
             />
             <ReasoningToggle
               supported={reasoningSupported}
-              value={enableReasoning}
+              mode={enableReasoning ? "on" : "off"}
+              allowAuto={false}
               disabled={saving}
-              onChange={setEnableReasoning}
+              onChange={(next) => setEnableReasoning(next !== "off")}
             />
           </div>
 

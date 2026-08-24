@@ -174,8 +174,8 @@ export function AiSettingsPanel() {
         <h3 className="sync-block-title">Worker model</h3>
         <p className="sync-block-desc">
           Used for agent specialists and helpers (translate, tags, titles,
-          dictionary, IELTS review, history compact). Prefer a cheaper, faster
-          model. Stored in this vault with the chat model.
+          dictionary, IELTS review, history compact, Auto reasoning). Prefer a
+          cheaper, faster model. Stored in this vault with the chat model.
         </p>
         <ChatModelPicker
           models={settings.models}
@@ -224,6 +224,15 @@ export function AiSettingsPanel() {
             setSettings({ agentMaxSteps: clampAgentMaxSteps(raw) });
           }}
         />
+      </section>
+
+      <section className="sync-block">
+        <h3 className="sync-block-title">Reasoning</h3>
+        <p className="sync-block-desc">
+          In the composer, Reasoning cycles Off / Auto / On. Auto asks the
+          worker model whether this message needs thinking (greetings and
+          simple lookups skip it). New chats default to Auto.
+        </p>
       </section>
 
       <section className="sync-block">

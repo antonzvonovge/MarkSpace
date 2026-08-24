@@ -1,10 +1,12 @@
-import { isTextUIPart, type UIMessage } from "ai";
+import { isReasoningUIPart, isTextUIPart, type UIMessage } from "ai";
 
 function words(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/\[\[.*?\]\]/g, " ")
-    .match(/[\p{L}\p{N}]+/gu) ?? [];
+  return (
+    text
+      .toLowerCase()
+      .replace(/\[\[.*?\]\]/g, " ")
+      .match(/[\p{L}\p{N}]+/gu) ?? []
+  );
 }
 
 function wikiTargets(text: string): string[] {
@@ -46,6 +48,30 @@ export function assistantTextPartsAreDuplicates(a: string, b: string): boolean {
   return wordOverlap(a, b) >= 0.45;
 }
 
+/** Last tool (or other non-text/thinking) part — recaps after it belong to this step. */
+function lastBarrierIndex(parts: UIMessage["parts"]): number {
+  let barrier = -1;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]!;
+    if (!isTextUIPart(p) && !isReasoningUIPart(p)) barrier = i;
+  }
+  return barrier;
+}
+
+function findDuplicateTextIndex(
+  parts: UIMessage["parts"],
+  text: string,
+): number {
+  const from = lastBarrierIndex(parts) + 1;
+  for (let i = from; i < parts.length; i++) {
+    const prev = parts[i]!;
+    if (isTextUIPart(prev) && assistantTextPartsAreDuplicates(prev.text, text)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 export function collapseDuplicateTextParts(
   parts: UIMessage["parts"],
 ): UIMessage["parts"] {
@@ -55,10 +81,12 @@ export function collapseDuplicateTextParts(
       out.push(part);
       continue;
     }
-    const prev = out[out.length - 1];
-    if (prev && isTextUIPart(prev) && assistantTextPartsAreDuplicates(prev.text, part.text)) {
+    const prevIdx = findDuplicateTextIndex(out, part.text);
+    const prev = prevIdx >= 0 ? out[prevIdx] : undefined;
+    if (prev && isTextUIPart(prev)) {
       if (part.text.trim().length > prev.text.trim().length) {
-        out[out.length - 1] = part;
+        out.splice(prevIdx, 1);
+        out.push(part);
       }
       continue;
     }

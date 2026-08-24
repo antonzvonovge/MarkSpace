@@ -11,6 +11,7 @@ import {
   type UIMessage,
 } from "ai";
 import {
+  createToolCallTracker,
   executeIncompleteParts,
   INCOMPLETE_TOOL_REASON_ABORTED,
   INCOMPLETE_TOOL_REASON_DROPPED,
@@ -433,6 +434,7 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
   let hitStepLimit = false;
   let lastFinishWasToolCalls = false;
   let recoveryRounds = 0;
+  const inFlightToolCalls = createToolCallTracker();
 
   while (remainingSteps > 0) {
     if (params.abortSignal?.aborted) {
@@ -582,8 +584,8 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
           const collapsed = collapseDuplicateTextParts(parts);
           if (collapsed.length !== parts.length) {
             parts.splice(0, parts.length, ...collapsed);
-            emit(true);
           }
+          emit(true);
           break;
         }
         case "tool-call": {
@@ -598,7 +600,7 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
           const callId = part.toolCallId;
           const toolName = part.toolName;
           const input = part.input;
-          void executeIncompleteParts({
+          const running = executeIncompleteParts({
             parts: [
               {
                 type: `tool-${toolName}`,
@@ -622,6 +624,8 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
             parts[idx] = done as AssistantPart;
             emit(true);
           });
+          // The recovery pass below must not start a second run of this call.
+          inFlightToolCalls.track(callId, running);
           break;
         }
         case "tool-result": {
@@ -694,11 +698,16 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
       const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
       const n = last?.usage?.inputTokens;
       if (n != null && n > 0) lastStepInputTokens = n;
-      if (last?.finishReason === "tool-calls") lastFinishWasToolCalls = true;
+      // Must assign, not `|=` — a later text-only step has to stop the loop.
+      lastFinishWasToolCalls = last?.finishReason === "tool-calls";
       if (remainingSteps <= 0) hitStepLimit = true;
     } catch {
       /* stream already consumed */
     }
+
+    // Eager runs started on `tool-call` may still be going; without this the
+    // recovery pass would execute the same call a second time.
+    await inFlightToolCalls.settle();
 
     if (aborted || params.abortSignal?.aborted) {
       aborted = true;
@@ -706,8 +715,8 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     }
 
     if (parts.some(isIncompleteToolPart)) {
-      // Provider ended the stream after a tool-call without executing it (Gemini),
-      // or execute started on tool-call and is still waiting on the UI.
+      // Provider ended the stream after a tool-call we never saw start
+      // (no eager run above), so run it here.
       recoveryRounds += 1;
       if (recoveryRounds > maxSteps) break;
 

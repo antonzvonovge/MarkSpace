@@ -10080,7 +10080,8 @@ button.status-bar-jobs-menu-item:hover {
   cursor: pointer;
 }
 
-.chat-mode-switch button.is-active {
+.chat-mode-switch button.is-active,
+.chat-mode-switch button.is-auto {
   background: var(--sidebar-active);
   color: var(--accent);
 }

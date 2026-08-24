@@ -121,6 +121,29 @@ async function readExecuteResult(
 }
 
 /**
+ * Tool calls already started from the stream. The recovery pass has to await
+ * these; re-running a slow one (a specialist, an `ask_user` dialog) executes
+ * the same write twice.
+ */
+export function createToolCallTracker() {
+  const inFlight = new Map<string, Promise<unknown>>();
+  return {
+    get size(): number {
+      return inFlight.size;
+    },
+    track(toolCallId: string, run: Promise<unknown>): void {
+      inFlight.set(toolCallId, run);
+      void run.catch(() => {});
+    },
+    async settle(): Promise<void> {
+      if (inFlight.size === 0) return;
+      await Promise.allSettled([...inFlight.values()]);
+      inFlight.clear();
+    },
+  };
+}
+
+/**
  * Run tools the model requested but the SDK stream dropped (no tool-result).
  * Used when Gemini/OpenRouter ends a step after emitting a tool-call.
  */

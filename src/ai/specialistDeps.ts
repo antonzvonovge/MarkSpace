@@ -122,6 +122,7 @@ function finishSlot(wave: Wave, signal?: AbortSignal) {
 
 export type SpecialistWaveHandle = {
   id: string;
+  reused?: boolean;
   depTitles: () => string[];
   waitForDeps: () => Promise<SpecialistDepResult[]>;
   release: (result: SpecialistDepResult) => void;
@@ -141,7 +142,13 @@ export function beginSpecialistWave(params: {
   const wave = getWave(params.signal);
   const existing = wave.slots.get(id);
   if (existing?.registered) {
-    throw new Error(`Duplicate specialist id in this round: ${id}`);
+    return {
+      id,
+      reused: true,
+      depTitles: () => [existing.title || id],
+      waitForDeps: () => waitWithAbort(existing.promise, params.signal).then((r) => [r]),
+      release: () => {},
+    };
   }
 
   wave.inFlight += 1;
