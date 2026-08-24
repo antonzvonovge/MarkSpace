@@ -7,6 +7,9 @@ import {
   extractSkillIdsFromDraft,
   extractToolIdsFromDraft,
   extractVaultPathsFromDraft,
+  composerDraftToHtml,
+  htmlToComposerDraft,
+  insertComposerDraft,
   formatVaultPathForModel,
   renderComposerFromDraft,
   replaceAtWithToolChip,
@@ -220,5 +223,38 @@ describe("replaceAtWithToolChip", () => {
 
     replaceAtWithToolChip(root, "web_search", atRange);
     expect(serializeComposer(root)).toBe("⟪web_search⟫ hello");
+  });
+});
+
+describe("composer clipboard / insert draft", () => {
+  it("serializes a chip element itself (not only its label)", () => {
+    const chip = createPathChipElement("Notes/todo.md");
+    expect(serializeComposer(chip)).toBe(wrapVaultPathMarker("Notes/todo.md"));
+  });
+
+  it("round-trips chips from HTML clipboard", () => {
+    const html = composerDraftToHtml(`see ${wrapVaultPathMarker("Notes/todo.md")}`);
+    expect(htmlToComposerDraft(html)).toBe(
+      `see ${wrapVaultPathMarker("Notes/todo.md")}`,
+    );
+  });
+
+  it("inserts a chip in the middle of existing text", () => {
+    document.body.replaceChildren();
+    const root = document.createElement("div");
+    root.contentEditable = "true";
+    document.body.appendChild(root);
+    root.appendChild(document.createTextNode("hello world"));
+    const text = root.firstChild as Text;
+    const caret = document.createRange();
+    caret.setStart(text, 6);
+    caret.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(caret);
+    insertComposerDraft(root, wrapVaultPathMarker("Notes/todo.md"));
+    expect(serializeComposer(root)).toBe(
+      `hello ${wrapVaultPathMarker("Notes/todo.md")}world`,
+    );
   });
 });

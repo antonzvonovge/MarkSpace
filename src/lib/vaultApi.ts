@@ -889,6 +889,24 @@ export async function setVaultAiSettings(args: {
   });
 }
 
+export type VaultAppearanceDoc = {
+  version: number;
+  accentColor: string;
+  persisted: boolean;
+};
+
+export async function getVaultAppearance(): Promise<VaultAppearanceDoc> {
+  return invoke<VaultAppearanceDoc>("get_vault_appearance");
+}
+
+export async function setVaultAppearance(
+  accentColor: string,
+): Promise<VaultAppearanceDoc> {
+  return invoke<VaultAppearanceDoc>("set_vault_appearance", {
+    args: { accentColor },
+  });
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000;
   let binary = "";

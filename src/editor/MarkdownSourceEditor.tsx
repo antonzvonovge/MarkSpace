@@ -31,7 +31,7 @@ const markdownHighlightStyle = HighlightStyle.define([
   { tag: t.strong, color: "var(--text)", fontWeight: "700" },
   { tag: t.emphasis, color: "var(--text)", fontStyle: "italic" },
   { tag: t.strikethrough, textDecoration: "line-through", color: "var(--muted)" },
-  { tag: t.monospace, color: "var(--accent-strong)", backgroundColor: "rgba(203, 17, 171, 0.06)" },
+  { tag: t.monospace, color: "var(--accent-strong)", backgroundColor: "color-mix(in srgb, var(--accent) 6%, transparent)" },
   { tag: t.link, color: "var(--accent-wb)", textDecoration: "underline" },
   { tag: t.url, color: "#7a5a9a" },
   { tag: t.quote, color: "var(--muted)", fontStyle: "italic" },
@@ -92,16 +92,16 @@ const markspaceTheme = EditorView.theme({
     minWidth: "2.75rem",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "rgba(203, 17, 171, 0.06)",
+    backgroundColor: "color-mix(in srgb, var(--accent) 6%, transparent)",
   },
   ".cm-activeLine": {
-    backgroundColor: "rgba(203, 17, 171, 0.04)",
+    backgroundColor: "color-mix(in srgb, var(--accent) 4%, transparent)",
   },
   ".cm-cursor": {
     borderLeftColor: "var(--accent-wb)",
   },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-    backgroundColor: "rgba(203, 17, 171, 0.14) !important",
+    backgroundColor: "color-mix(in srgb, var(--accent) 14%, transparent) !important",
   },
 });
 

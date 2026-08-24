@@ -1,5 +1,6 @@
 import { Store } from "@tauri-apps/plugin-store";
 import { parseIsoDateOnly } from "./diaryNotes";
+import { normalizeAccentHex } from "./accentColor";
 import {
   DEFAULT_PREFS,
   isNativeLanguageId,
@@ -27,6 +28,7 @@ function parseFontFamily(
 type LegacyPrefs = Partial<Prefs> & {
   editorFontSize?: number;
   editorFontFamily?: EditorFontFamilyId;
+  accentColor?: string;
 };
 
 function mergePrefs(raw: LegacyPrefs | null | undefined): Prefs {
@@ -110,6 +112,21 @@ export async function savePrefs(prefs: Prefs): Promise<void> {
   const store = await Store.load(STORE_FILE);
   await store.set(PREFS_KEY, prefs);
   await store.save();
+}
+
+/** One-shot: copy accent out of machine prefs (pre-vault storage) and drop it. */
+export async function peekAndClearLegacyAccentColor(): Promise<string | null> {
+  const store = await Store.load(STORE_FILE);
+  const raw = await store.get<LegacyPrefs>(PREFS_KEY);
+  if (!raw || typeof raw !== "object") return null;
+  if (typeof raw.accentColor !== "string" || !raw.accentColor.trim()) {
+    return null;
+  }
+  const hex = normalizeAccentHex(raw.accentColor);
+  const { accentColor: _dropped, ...rest } = raw;
+  await store.set(PREFS_KEY, rest);
+  await store.save();
+  return hex;
 }
 
 export async function loadLastVault(): Promise<string | null> {

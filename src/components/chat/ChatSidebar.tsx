@@ -6,6 +6,7 @@ import { useChatStore } from "../../store/chatStore";
 import { useDiarySettingsStore } from "../../store/diarySettingsStore";
 import { useIndexingSettingsStore } from "../../store/indexingSettingsStore";
 import { useVaultAiSettingsStore } from "../../store/vaultAiSettingsStore";
+import { useVaultAppearanceStore } from "../../store/vaultAppearanceStore";
 import { usePrefsStore } from "../../store/prefsStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatComposer } from "./ChatComposer";
@@ -21,6 +22,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
   const hydrateDiary = useDiarySettingsStore((s) => s.hydrateForVault);
   const hydrateIndexing = useIndexingSettingsStore((s) => s.hydrateForVault);
   const hydrateVaultAi = useVaultAiSettingsStore((s) => s.hydrateForVault);
+  const hydrateAppearance = useVaultAppearanceStore((s) => s.hydrateForVault);
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const openTabIds = useChatStore((s) => s.openTabIds);
   const messages = useChatStore((s) => s.messages);
@@ -37,6 +39,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
     void hydrateDiary(vaultPath);
     void hydrateIndexing(vaultPath);
     void hydrateVaultAi(vaultPath);
+    void hydrateAppearance(vaultPath);
   }, [
     vaultPath,
     hydrateForVault,
@@ -44,12 +47,14 @@ export const ChatSidebar = memo(function ChatSidebar() {
     hydrateDiary,
     hydrateIndexing,
     hydrateVaultAi,
+    hydrateAppearance,
   ]);
 
   const hasOpenTabs = openTabIds.length > 0 && !!activeThreadId;
+  const composerAtTop = hasOpenTabs && messages.length === 0;
 
   return (
-    <aside className="chat-panel">
+    <aside className={composerAtTop ? "chat-panel is-composer-top" : "chat-panel"}>
       <ChatTabBar />
 
       {!vaultPath ? (
@@ -81,6 +86,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
       ) : (
         <>
           <ChatGemBanner />
+          {composerAtTop && <ChatComposer />}
           <ChatMessages
             messages={messages}
             streaming={status === "streaming" || status === "compacting"}
@@ -99,7 +105,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
             </div>
           )}
           <ChatTerminalApprovalBar />
-          <ChatComposer />
+          {!composerAtTop && <ChatComposer />}
         </>
       )}
     </aside>

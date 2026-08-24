@@ -10,6 +10,7 @@ import {
 import type { PrefKey } from "../../settings/types";
 import { usePrefsStore, useSettingsTabActive } from "../../store/prefsStore";
 import { AboutSettingsPanel } from "./AboutSettingsPanel";
+import { AccentColorRow } from "./AccentColorRow";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DiarySettingsPanel } from "./DiarySettingsPanel";
 import { IndexingSettingsPanel } from "./IndexingSettingsPanel";
@@ -144,6 +145,18 @@ function queryMatchesMcp(query: string): boolean {
   );
 }
 
+function queryMatchesAccent(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    q.includes("accent") ||
+    q.includes("color") ||
+    q.includes("colour") ||
+    q.includes("highlight") ||
+    q.includes("appearance.json")
+  );
+}
+
 function queryMatchesAbout(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
@@ -187,6 +200,7 @@ export function SettingsPage({ onClose }: Props) {
   const showDiaryInSearch = searching && queryMatchesDiary(query);
   const showIndexingInSearch = searching && queryMatchesIndexing(query);
   const showAboutInSearch = searching && queryMatchesAbout(query);
+  const showAccentInSearch = searching && queryMatchesAccent(query);
 
   const rows = useMemo(() => {
     if (searching) {
@@ -218,6 +232,8 @@ export function SettingsPage({ onClose }: Props) {
     (!searching && category === "indexing") || showIndexingInSearch;
   const showAboutPanel =
     (!searching && category === "about") || showAboutInSearch;
+  const showAccentRow =
+    (!searching && category === "appearance") || showAccentInSearch;
 
   return (
     <div className="settings-page">
@@ -280,7 +296,8 @@ export function SettingsPage({ onClose }: Props) {
             !showMemoryPanel &&
             !showDiaryPanel &&
             !showIndexingPanel &&
-            !showAboutPanel && (
+            !showAboutPanel &&
+            !showAccentRow && (
               <div className="settings-empty">
                 No settings match “{query.trim()}”
               </div>
@@ -298,8 +315,19 @@ export function SettingsPage({ onClose }: Props) {
                     onChange={(value) => setPref(setting.id as PrefKey, value)}
                   />
                 ))}
+                {group.id === "appearance" && showAccentInSearch && (
+                  <AccentColorRow />
+                )}
               </section>
             ))}
+
+          {showAccentInSearch &&
+            !grouped?.some((g) => g.id === "appearance") && (
+              <section className="settings-section">
+                <h2 className="settings-section-title">Appearance</h2>
+                <AccentColorRow />
+              </section>
+            )}
 
           {showKeysPanel && (
             <section className="settings-section">
@@ -362,12 +390,16 @@ export function SettingsPage({ onClose }: Props) {
           {!searching &&
             !PANEL_CATEGORIES.has(category) &&
             rows.map((setting) => (
-              <SettingRow
-                key={setting.id}
-                setting={setting}
-                value={prefs[setting.id]}
-                onChange={(value) => setPref(setting.id as PrefKey, value)}
-              />
+              <div key={setting.id}>
+                <SettingRow
+                  setting={setting}
+                  value={prefs[setting.id]}
+                  onChange={(value) => setPref(setting.id as PrefKey, value)}
+                />
+                {setting.id === "theme" && showAccentRow ? (
+                  <AccentColorRow />
+                ) : null}
+              </div>
             ))}
         </div>
       </div>

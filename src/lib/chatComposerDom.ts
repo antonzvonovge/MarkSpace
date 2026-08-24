@@ -18,6 +18,9 @@ export const SKILL_CLOSE = "⦄";
 export const TOOL_OPEN = "⟪";
 export const TOOL_CLOSE = "⟫";
 
+/** Clipboard / DnD payload: composer draft with chip markers. */
+export const COMPOSER_DRAFT_MIME = "text/x-markspace-composer";
+
 const PATH_MARKER_RE = /⟦([^⟧]*)⟧/g;
 const SKILL_MARKER_RE = /⦃([^⦄]*)⦄/g;
 const TOOL_MARKER_RE = /⟪([^⟫]*)⟫/g;
@@ -150,12 +153,17 @@ export function chipLabelForPath(path: string): string {
   return isDir ? `${name}/` : name;
 }
 
+function decorateChip(span: HTMLSpanElement): HTMLSpanElement {
+  span.contentEditable = "false";
+  span.draggable = true;
+  return span;
+}
+
 export function createPathChipElement(path: string): HTMLSpanElement {
-  const span = document.createElement("span");
+  const span = decorateChip(document.createElement("span"));
   span.className = path.endsWith("/")
     ? "chat-path-chip is-dir"
     : "chat-path-chip";
-  span.contentEditable = "false";
   span.dataset.vaultPath = path;
   span.title = path;
   span.textContent = chipLabelForPath(path);
@@ -163,9 +171,8 @@ export function createPathChipElement(path: string): HTMLSpanElement {
 }
 
 export function createSkillChipElement(id: string): HTMLSpanElement {
-  const span = document.createElement("span");
+  const span = decorateChip(document.createElement("span"));
   span.className = "chat-path-chip chat-skill-chip";
-  span.contentEditable = "false";
   span.dataset.skillId = id;
   span.title = `/${id}`;
   span.textContent = `/${id}`;
@@ -173,9 +180,8 @@ export function createSkillChipElement(id: string): HTMLSpanElement {
 }
 
 export function createToolChipElement(id: string): HTMLSpanElement {
-  const span = document.createElement("span");
+  const span = decorateChip(document.createElement("span"));
   span.className = "chat-path-chip chat-tool-chip";
-  span.contentEditable = "false";
   span.dataset.toolId = id;
   span.title = `@${id}`;
   span.textContent = `@${id}`;
@@ -192,7 +198,7 @@ export function createSelectionChipElement(
   span.className = isComment
     ? "chat-path-chip chat-selection-chip chat-comment-chip"
     : "chat-path-chip chat-selection-chip";
-  span.contentEditable = "false";
+  decorateChip(span);
   span.dataset.selectionId = id;
   if (typeof refOrText === "string") {
     span.textContent = selectionChipLabel(refOrText);
@@ -244,8 +250,18 @@ function isComposerChip(el: HTMLElement): boolean {
   );
 }
 
+function serializeChipElement(el: HTMLElement): string | null {
+  if (isSkillChip(el)) return wrapSkillMarker(el.dataset.skillId!);
+  if (isToolChip(el)) return wrapToolMarker(el.dataset.toolId!);
+  if (isSelectionChip(el)) return wrapSelectionMarker(el.dataset.selectionId!);
+  if (isPathChip(el)) return wrapVaultPathMarker(el.dataset.vaultPath!);
+  return null;
+}
+
 /** Serialize contentEditable DOM → draft string with markers. */
 export function serializeComposer(root: HTMLElement): string {
+  const asChip = serializeChipElement(root);
+  if (asChip != null) return asChip;
   const parts: string[] = [];
 
   const walk = (el: HTMLElement) => {
@@ -383,6 +399,88 @@ function charAfterRange(range: Range): string {
   return "";
 }
 
+export function hasComposerMarkers(text: string): boolean {
+  return /⟦[^⟧]*⟧|⦃[^⦄]*⦄|⟬[^⟭]*⟭|⟪[^⟫]*⟫/.test(text);
+}
+
+/** Serialize a live selection inside the composer (chips → markers). */
+export function serializeComposerSelection(root: HTMLElement): string | null {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) return null;
+  const holder = document.createElement("div");
+  holder.appendChild(range.cloneContents());
+  return serializeComposer(holder);
+}
+
+function fragmentFromDraft(
+  draft: string,
+  resolveSelectionText?: SelectionTextResolver,
+): DocumentFragment {
+  const holder = document.createElement("div");
+  renderComposerFromDraft(holder, draft, resolveSelectionText);
+  const frag = document.createDocumentFragment();
+  while (holder.firstChild) frag.appendChild(holder.firstChild);
+  return frag;
+}
+
+export function composerDraftToHtml(draft: string): string {
+  const holder = document.createElement("div");
+  renderComposerFromDraft(holder, draft);
+  return holder.innerHTML;
+}
+
+export function htmlToComposerDraft(html: string): string | null {
+  if (!html.includes("chat-path-chip") && !html.includes("chat-selection-chip")) {
+    return null;
+  }
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const draft = serializeComposer(parsed.body);
+  return draft.length > 0 ? draft : null;
+}
+
+export function draftFromDataTransfer(
+  data: DataTransfer | null | undefined,
+): string | null {
+  if (!data) return null;
+  const typed = data.getData(COMPOSER_DRAFT_MIME).trim();
+  if (typed) return typed;
+  const html = data.getData("text/html");
+  if (html) {
+    const fromHtml = htmlToComposerDraft(html);
+    if (fromHtml) return fromHtml;
+  }
+  const plain = data.getData("text/plain");
+  if (plain && hasComposerMarkers(plain)) return plain;
+  return null;
+}
+
+export function writeComposerDraftToDataTransfer(
+  data: DataTransfer,
+  draft: string,
+): void {
+  data.setData(COMPOSER_DRAFT_MIME, draft);
+  data.setData("text/plain", draft);
+  data.setData("text/html", composerDraftToHtml(draft));
+}
+
+let draggingChip: HTMLElement | null = null;
+
+export function beginComposerChipDrag(chip: HTMLElement, data: DataTransfer) {
+  draggingChip = chip;
+  writeComposerDraftToDataTransfer(data, serializeComposer(chip));
+  data.effectAllowed = "copyMove";
+}
+
+export function composerChipDragSource(): HTMLElement | null {
+  return draggingChip;
+}
+
+export function endComposerChipDrag() {
+  draggingChip = null;
+}
+
 function placeCaretAfter(node: Node) {
   const sel = window.getSelection();
   if (!sel) return;
@@ -393,23 +491,75 @@ function placeCaretAfter(node: Node) {
   sel.addRange(range);
 }
 
+function enclosingChip(node: Node, root: HTMLElement): HTMLElement | null {
+  let cur: Node | null = node;
+  while (cur && cur !== root) {
+    if (cur.nodeType === Node.ELEMENT_NODE && isComposerChip(cur as HTMLElement)) {
+      return cur as HTMLElement;
+    }
+    cur = cur.parentNode;
+  }
+  return null;
+}
+
+function caretRangeFromClientPoint(clientX: number, clientY: number): Range | null {
+  if (typeof document.caretRangeFromPoint === "function") {
+    const atPoint = document.caretRangeFromPoint(clientX, clientY);
+    if (atPoint) return atPoint;
+  }
+  const doc = document as Document & {
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null;
+  };
+  const pos = doc.caretPositionFromPoint?.(clientX, clientY);
+  if (!pos?.offsetNode) return null;
+  const range = document.createRange();
+  try {
+    range.setStart(pos.offsetNode, pos.offset);
+    range.collapse(true);
+    return range;
+  } catch {
+    return null;
+  }
+}
+
 function rangeAtPoint(
   root: HTMLElement,
   clientX?: number,
   clientY?: number,
+  collapseToPoint = false,
 ): Range {
-  if (
-    clientX != null &&
-    clientY != null &&
-    typeof document.caretRangeFromPoint === "function"
-  ) {
-    const atPoint = document.caretRangeFromPoint(clientX, clientY);
-    if (atPoint && root.contains(atPoint.startContainer)) return atPoint;
+  if (clientX != null && clientY != null) {
+    const atPoint = caretRangeFromClientPoint(clientX, clientY);
+    if (atPoint) {
+      const container = atPoint.startContainer;
+      if (root.contains(container) || container === root) {
+        const chip = enclosingChip(container, root);
+        if (chip) {
+          const rect = chip.getBoundingClientRect();
+          const after = clientX > rect.left + rect.width / 2;
+          const around = document.createRange();
+          if (after) around.setStartAfter(chip);
+          else around.setStartBefore(chip);
+          around.collapse(true);
+          return around;
+        }
+        const r = atPoint.cloneRange();
+        r.collapse(true);
+        return r;
+      }
+    }
   }
   const sel = window.getSelection();
   if (sel && sel.rangeCount > 0) {
     const r = sel.getRangeAt(0);
-    if (root.contains(r.commonAncestorContainer)) return r.cloneRange();
+    if (root.contains(r.commonAncestorContainer)) {
+      const next = r.cloneRange();
+      if (collapseToPoint) next.collapse(true);
+      return next;
+    }
   }
   const end = document.createRange();
   end.selectNodeContents(root);
@@ -425,8 +575,9 @@ function insertChipNodes(
   alwaysSpaceAfter = false,
 ): void {
   root.focus();
-  const range = rangeAtPoint(root, clientX, clientY);
-  range.deleteContents();
+  const range = rangeAtPoint(root, clientX, clientY, clientX != null);
+  if (clientX == null) range.deleteContents();
+  else range.collapse(true);
 
   const before = charBeforeRange(range);
   const after = charAfterRange(range);
@@ -449,6 +600,25 @@ function insertChipNodes(
   for (const n of nodes) frag.appendChild(n);
   range.insertNode(frag);
   placeCaretAfter(afterNode);
+}
+
+/** Insert a draft fragment (text + chips) at the caret or drop point. */
+export function insertComposerDraft(
+  root: HTMLElement,
+  draft: string,
+  clientX?: number,
+  clientY?: number,
+  resolveSelectionText?: SelectionTextResolver,
+): void {
+  if (!draft) return;
+  root.focus();
+  const range = rangeAtPoint(root, clientX, clientY, clientX != null);
+  if (clientX == null) range.deleteContents();
+  else range.collapse(true);
+  const frag = fragmentFromDraft(draft, resolveSelectionText);
+  const last = frag.lastChild;
+  range.insertNode(frag);
+  if (last) placeCaretAfter(last);
 }
 
 /** Insert a vault path chip at the caret (or drop point), always followed by a space. */

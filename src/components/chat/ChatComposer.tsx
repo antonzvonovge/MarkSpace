@@ -19,10 +19,17 @@ import {
   readTextFromSystemClipboard,
 } from "../../editor/pasteImages";
 import {
+  beginComposerChipDrag,
   chipLabelForPath,
+  composerChipDragSource,
+  composerDraftToHtml,
+  draftFromDataTransfer,
+  endComposerChipDrag,
   focusComposerEnd,
   getComposerAtQuery,
   getComposerSlashQuery,
+  hasComposerMarkers,
+  insertComposerDraft,
   insertPathChip,
   insertSkillChip,
   isComposerVisuallyEmpty,
@@ -30,9 +37,11 @@ import {
   replaceAtWithToolChip,
   replaceSlashWithSkillChip,
   serializeComposer,
+  serializeComposerSelection,
+  writeComposerDraftToDataTransfer,
 } from "../../lib/chatComposerDom";
 import { expandSelectionMarkers } from "../../lib/chatSelectionChips";
-import { writeClipboardText } from "../../lib/clipboardText";
+import { writeClipboardHtml } from "../../lib/clipboardText";
 import {
   clearVaultTreeDrag,
   isVaultTreeDrag,
@@ -399,6 +408,7 @@ export function ChatComposer() {
   };
 
   const dragKindFrom = (dt: DataTransfer): DragKind | null => {
+    if (composerChipDragSource()) return null;
     if (isVaultTreeDrag(dt)) return "vault";
     if (Array.from(dt.types as ArrayLike<string>).includes("Files")) {
       return "files";
@@ -459,7 +469,8 @@ export function ChatComposer() {
       e.preventDefault();
       e.stopPropagation();
       const el = inputRef.current;
-      const selected = el ? selectionTextIn(el) : "";
+      const selectedDraft = el ? serializeComposerSelection(el) : null;
+      const selected = selectedDraft ?? (el ? selectionTextIn(el) : "");
       const sel = window.getSelection();
       pendingEditRef.current = {
         text: selected,
@@ -493,7 +504,7 @@ export function ChatComposer() {
     if (streaming) return;
     const { text, range } = pendingEditRef.current;
     if (!text) return;
-    await writeClipboardText(text);
+    await writeClipboardHtml(composerDraftToHtml(text), text);
     if (range && inputRef.current) {
       restorePendingRange();
       range.deleteContents();
@@ -505,13 +516,14 @@ export function ChatComposer() {
   const copyComposerSelection = useCallback(async () => {
     const { text } = pendingEditRef.current;
     if (!text) return;
-    await writeClipboardText(text);
+    await writeClipboardHtml(composerDraftToHtml(text), text);
   }, []);
 
   const pasteIntoComposer = useCallback(async () => {
     if (streaming) return;
     restorePendingRange();
-    if (!pendingEditRef.current.range) inputRef.current?.focus();
+    const el = inputRef.current;
+    if (!pendingEditRef.current.range) el?.focus();
     const images = await readImagesFromSystemClipboard(2);
     if (images.length) {
       await ingestFiles(images);
@@ -519,8 +531,9 @@ export function ChatComposer() {
       return;
     }
     const text = await readTextFromSystemClipboard();
-    if (text) {
-      document.execCommand("insertText", false, text);
+    if (text && el) {
+      if (hasComposerMarkers(text)) insertComposerDraft(el, text);
+      else document.execCommand("insertText", false, text);
       syncDraftFromDom();
     }
     pendingEditRef.current = { text: "", range: null };
@@ -590,9 +603,15 @@ export function ChatComposer() {
         e.preventDefault();
         e.stopPropagation();
         if (streaming) return;
+        if (composerChipDragSource()) {
+          e.dataTransfer.dropEffect = e.ctrlKey || e.altKey ? "copy" : "move";
+          return;
+        }
         const kind = dragKindFrom(e.dataTransfer);
         if (kind) {
           showDropHint(kind);
+          e.dataTransfer.dropEffect = "copy";
+        } else if (draftFromDataTransfer(e.dataTransfer) || e.dataTransfer.getData("text/plain")) {
           e.dataTransfer.dropEffect = "copy";
         }
       }}
@@ -601,15 +620,45 @@ export function ChatComposer() {
         e.stopPropagation();
         hideDropHint();
         if (streaming) return;
+        const el = inputRef.current;
+        const chipDraft = draftFromDataTransfer(e.dataTransfer);
+        const sourceChip = composerChipDragSource();
+        if (el && chipDraft && (sourceChip || hasComposerMarkers(chipDraft))) {
+          const moving =
+            sourceChip &&
+            el.contains(sourceChip) &&
+            e.dataTransfer.dropEffect !== "copy" &&
+            !e.ctrlKey &&
+            !e.altKey;
+          if (moving) sourceChip.remove();
+          insertComposerDraft(
+            el,
+            chipDraft,
+            e.clientX,
+            e.clientY,
+            (id) => useChatStore.getState().draftSelections[id],
+          );
+          syncDraftFromDom();
+          focusInput();
+          endComposerChipDrag();
+          clearVaultTreeDrag();
+          return;
+        }
         const vaultPath = vaultPathFromDrop(e.dataTransfer);
         clearVaultTreeDrag();
         if (vaultPath) {
-          const el = inputRef.current;
           if (el) {
             insertPathChip(el, vaultPath, e.clientX, e.clientY);
             syncDraftFromDom();
             focusInput();
           }
+          return;
+        }
+        const plain = e.dataTransfer.getData("text/plain");
+        if (el && plain && !e.dataTransfer.files?.length) {
+          insertComposerDraft(el, plain, e.clientX, e.clientY);
+          syncDraftFromDom();
+          focusInput();
           return;
         }
         if (e.dataTransfer.files?.length) {
@@ -696,6 +745,44 @@ export function ChatComposer() {
           if (activeThreadId) clearThreadAttention(activeThreadId);
         }}
         onContextMenu={openComposerContextMenu}
+        onDragStart={(e) => {
+          const dt = e.dataTransfer;
+          const el = inputRef.current;
+          if (!dt || !el) return;
+          const target = e.target;
+          if (target instanceof HTMLElement) {
+            const chip = target.closest(
+              ".chat-path-chip, .chat-selection-chip",
+            );
+            if (chip instanceof HTMLElement && el.contains(chip)) {
+              beginComposerChipDrag(chip, dt);
+              return;
+            }
+          }
+          const selected = serializeComposerSelection(el);
+          if (selected) writeComposerDraftToDataTransfer(dt, selected);
+        }}
+        onDragEnd={() => endComposerChipDrag()}
+        onCopy={(e) => {
+          const el = inputRef.current;
+          if (!el || !e.clipboardData) return;
+          const draft = serializeComposerSelection(el);
+          if (draft == null) return;
+          e.preventDefault();
+          writeComposerDraftToDataTransfer(e.clipboardData, draft);
+        }}
+        onCut={(e) => {
+          if (streaming) return;
+          const el = inputRef.current;
+          if (!el || !e.clipboardData) return;
+          const draft = serializeComposerSelection(el);
+          if (draft == null) return;
+          e.preventDefault();
+          writeComposerDraftToDataTransfer(e.clipboardData, draft);
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) sel.getRangeAt(0).deleteContents();
+          syncDraftFromDom();
+        }}
         onInput={() => {
           syncDraftFromDom();
           syncMentionMenus();
@@ -723,8 +810,20 @@ export function ChatComposer() {
             void tryAttachClipboardImages();
             return;
           }
-          // Plain text only — avoid pasted HTML/chrome from rich sources.
           e.preventDefault();
+          const el = inputRef.current;
+          const chipDraft = draftFromDataTransfer(data);
+          if (el && chipDraft) {
+            insertComposerDraft(
+              el,
+              chipDraft,
+              undefined,
+              undefined,
+              (id) => useChatStore.getState().draftSelections[id],
+            );
+            syncDraftFromDom();
+            return;
+          }
           const text = data.getData("text/plain");
           if (text) {
             document.execCommand("insertText", false, text);

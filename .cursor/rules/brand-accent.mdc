@@ -5,9 +5,9 @@ alwaysApply: true
 
 # Brand accent
 
-Primary accent is **Wildberries magenta**: `#cb11ab` (`--accent-wb` / `--accent`).
+Default accent is **Wildberries magenta**: `#cb11ab` (`--accent-wb` / `--accent`). The user can override it in Appearance with an RGB picker; `--accent-rgb` is the same color as `r, g, b` for `rgba(var(--accent-rgb), α)`.
 
-- Use `--accent` / `--accent-wb` / `--accent-strong` for interactive highlights, selected states, carets, switchers, focus rings, and similar UI chrome.
-- Do **not** introduce teal/green accents (e.g. `#2f8f7b`, `#237463`, `rgba(47, 143, 123, …)`) for brand UI.
+- Use `--accent` / `--accent-wb` / `--accent-strong` (or `rgba(var(--accent-rgb), …)`) for interactive highlights, selected states, carets, switchers, focus rings, and similar UI chrome.
+- Do **not** hard-code a second brand accent (e.g. teal `#2f8f7b`) in product chrome.
 - Prefer CSS variables over hard-coded hex when styling React/CSS.
-- Darker companion: `--accent-strong` (`#a00e89`).
+- Darker companion: `--accent-strong` (derived from the current accent; default `#a00e89`).

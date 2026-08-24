@@ -54,16 +54,16 @@ const plainTheme = EditorView.theme({
     minWidth: "2.75rem",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "rgba(203, 17, 171, 0.06)",
+    backgroundColor: "color-mix(in srgb, var(--accent) 6%, transparent)",
   },
   ".cm-activeLine": {
-    backgroundColor: "rgba(203, 17, 171, 0.04)",
+    backgroundColor: "color-mix(in srgb, var(--accent) 4%, transparent)",
   },
   ".cm-cursor": {
     borderLeftColor: "var(--accent-wb)",
   },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-    backgroundColor: "rgba(203, 17, 171, 0.14) !important",
+    backgroundColor: "color-mix(in srgb, var(--accent) 14%, transparent) !important",
   },
 });
 

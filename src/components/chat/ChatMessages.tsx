@@ -29,7 +29,8 @@ import {
 } from "../../lib/chatSelectionChips";
 import { chipLabelForPath } from "../../lib/chatComposerDom";
 import { commentQuoteLabel } from "../../lib/commentAnchors";
-import { writeClipboardText } from "../../lib/clipboardText";
+import { chatMarkdownToPasteHtml } from "../../lib/chatCopyHtml";
+import { writeClipboardHtml, writeClipboardText } from "../../lib/clipboardText";
 import { findModel, OPENROUTER_MODELS } from "../../ai/models";
 import { displayAgentStepLimitNotice, isAgentStepLimitNotice } from "../../ai/runChat";
 import { resolveModelId } from "../../ai/resolveModelId";
@@ -209,6 +210,7 @@ function UserText({ text }: { text: string }) {
                   ? "chat-path-chip is-dir"
                   : "chat-path-chip"
               }
+              data-vault-path={segment.path}
               title={segment.path}
             >
               {chipLabelForPath(segment.path)}
@@ -217,14 +219,24 @@ function UserText({ text }: { text: string }) {
         }
         if (segment.kind === "skill") {
           return (
-            <span key={i} className="chat-path-chip chat-skill-chip" title={`/${segment.id}`}>
+            <span
+              key={i}
+              className="chat-path-chip chat-skill-chip"
+              data-skill-id={segment.id}
+              title={`/${segment.id}`}
+            >
               /{segment.id}
             </span>
           );
         }
         if (segment.kind === "tool") {
           return (
-            <span key={i} className="chat-path-chip chat-tool-chip" title={`@${segment.id}`}>
+            <span
+              key={i}
+              className="chat-path-chip chat-tool-chip"
+              data-tool-id={segment.id}
+              title={`@${segment.id}`}
+            >
               @{segment.id}
             </span>
           );
@@ -669,8 +681,8 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
             className={
               copied ? "chat-msg-action-btn is-copied" : "chat-msg-action-btn"
             }
-            title={copied ? "Copied" : "Copy markdown"}
-            aria-label={copied ? "Copied" : "Copy markdown"}
+            title={copied ? "Copied" : "Copy"}
+            aria-label={copied ? "Copied" : "Copy"}
             onClick={(e) => {
               e.stopPropagation();
               onCopyMarkdown(message.id, saveText);
@@ -748,16 +760,18 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
 
   const copyMarkdown = useCallback((messageId: string, content: string) => {
     if (!content.trim()) return;
-    void writeClipboardText(content).then(() => {
-      if (copiedClearRef.current != null) {
-        window.clearTimeout(copiedClearRef.current);
-      }
-      setCopiedMessageId(messageId);
-      copiedClearRef.current = window.setTimeout(() => {
-        setCopiedMessageId((id) => (id === messageId ? null : id));
-        copiedClearRef.current = null;
-      }, 1500);
-    });
+    void writeClipboardHtml(chatMarkdownToPasteHtml(content), content).then(
+      () => {
+        if (copiedClearRef.current != null) {
+          window.clearTimeout(copiedClearRef.current);
+        }
+        setCopiedMessageId(messageId);
+        copiedClearRef.current = window.setTimeout(() => {
+          setCopiedMessageId((id) => (id === messageId ? null : id));
+          copiedClearRef.current = null;
+        }, 1500);
+      },
+    );
   }, []);
 
   const onRetry = useCallback(

@@ -2560,7 +2560,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
               rootId={TREE_ROOT}
               sort={false}
               insertDroppableFirst={false}
-              dropTargetOffset={10}
+              /* Edges = sibling placeholder; middle = nest into folder.
+                 Keep the edge band small so closed folders are easy to hit. */
+              dropTargetOffset={4}
               initialOpen={initialOpen}
               classes={{
                 root: "dnd-tree-root",

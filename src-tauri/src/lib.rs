@@ -17,6 +17,7 @@ mod projects;
 mod terminal;
 mod vault;
 mod vault_ai;
+mod vault_appearance;
 
 #[cfg(feature = "embeddings-sidecar")]
 pub use embeddings::run_stdio_server;
@@ -230,6 +231,8 @@ pub fn run() {
             diary::set_diary_settings,
             vault_ai::get_vault_ai_settings,
             vault_ai::set_vault_ai_settings,
+            vault_appearance::get_vault_appearance,
+            vault_appearance::set_vault_appearance,
             mcp::mcp_list_snapshot,
             mcp::mcp_sync,
             mcp::mcp_get_vault,

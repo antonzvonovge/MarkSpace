@@ -180,11 +180,11 @@ function buildEditorTheme(
       },
       hovered: {
         text: dark ? "#e7eef2" : "#1c2428",
-        background: "rgba(203, 17, 171, 0.12)",
+        background: "color-mix(in srgb, var(--accent) 12%, transparent)",
       },
       selected: {
         text: dark ? "#e7eef2" : "#1c2428",
-        background: "rgba(203, 17, 171, 0.18)",
+        background: "color-mix(in srgb, var(--accent) 18%, transparent)",
       },
       disabled: {
         text: dark ? "#6b7c86" : "#9aa7af",

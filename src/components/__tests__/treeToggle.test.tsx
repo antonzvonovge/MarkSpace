@@ -109,7 +109,7 @@ function Harness() {
             rootId={TREE_ROOT}
             sort={false}
             insertDroppableFirst={false}
-            dropTargetOffset={10}
+            dropTargetOffset={4}
             initialOpen={initialOpen}
             canDrag={(node) => node?.id !== VAULT_ID}
             onChangeOpen={(openIds) => {
@@ -194,7 +194,7 @@ function RenameHarness() {
             rootId={TREE_ROOT}
             sort={false}
             insertDroppableFirst={false}
-            dropTargetOffset={10}
+            dropTargetOffset={4}
             initialOpen={initialOpen}
             canDrag={(node) => node?.id !== VAULT_ID}
             onChangeOpen={(openIds) => {
@@ -358,7 +358,7 @@ function RevealHarness() {
             rootId={TREE_ROOT}
             sort={false}
             insertDroppableFirst={false}
-            dropTargetOffset={10}
+            dropTargetOffset={4}
             initialOpen={initialOpen}
             canDrag={(node) => node?.id !== VAULT_ID}
             onChangeOpen={(openIds) => {
