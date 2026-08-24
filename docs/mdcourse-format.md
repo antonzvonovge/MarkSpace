@@ -13,7 +13,7 @@ Call `read_mdcourse_format` for this full guide when unsure.
 - Each track starts with its **name** (unique in the file, case-insensitive).
 - Required: `question:` (day quiz), `start: YYYY-MM-DD`, and either `days: N` (N ≥ 1) or `ongoing: true` — not both.
 - Optional `weekdays:` is a space-separated list of `Mon`…`Sun` (or `1`–`7` with Monday = 1). Omit or `all` = every day in the window. The track is inactive on other weekdays.
-- Optional `time:` is one or more 24-hour `HH:MM` clocks (space-separated), in the same order as daily segments. Optional `when:` is a free-text hint (not a clock). Optional `color:` is a project-palette hex. Optional `times:` is 1–8 (default 1), daily multiplicity.
+- Optional `time:` is one 24-hour `HH:MM` per daily segment, space-separated, same order as segments. Use `-` for a segment without a clock. Optional `when:` is a free-text hint (not a clock). Optional `color:` is a project-palette hex. Optional `times:` is 1–8 (default 1), daily multiplicity.
 - Log: one compact `log: YYYY-MM-DD:k …` line. `k` is 0…times. Missing days are skip. `k=0` is an explicit miss. Do not use `dates:` / `no:`.
 - Do not put `|` pipe tables or blank lines inside a track entry.
 <!-- core-rules:end -->
@@ -57,7 +57,7 @@ log: 2026-08-24:1
 - Metadata (order flexible):
   - `question: …` — single line; shown in the day quiz
   - `when: …` — optional free-text hint
-  - `time: HH:MM …` — optional 24-hour clocks
+  - `time: HH:MM …` — optional; one clock per segment (`-` = none)
   - `weekdays: Mon Tue …` — optional; omit = every day
   - `color: #rrggbb` — optional project color
   - `times: N` — optional 1–8; default 1

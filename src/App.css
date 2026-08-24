@@ -12665,6 +12665,139 @@ button.status-bar-jobs-menu-item:hover {
   border-color: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+.course-tracker .habit-tracker-habit.is-dim {
+  opacity: 0.35;
+}
+
+.course-aside-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.app-dialog.course-fields-dialog {
+  width: min(100%, 520px);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.course-fields-body {
+  overflow: auto;
+  min-height: 0;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.course-fields-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.course-fields-legend {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.course-fields-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+  row-gap: 6px;
+  align-items: center;
+}
+
+.course-fields-row > .app-dialog-label {
+  margin: 0;
+}
+
+.course-fields-row > .app-dialog-input {
+  margin: 0;
+  height: 2.25rem;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.course-fields-row > .course-chip-row {
+  min-height: 2.25rem;
+}
+
+.course-fields-row .course-chip {
+  height: 2.25rem;
+}
+
+.course-fields-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.course-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.course-chip {
+  height: 1.85rem;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.course-chip.is-on {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+}
+
+.course-days-custom {
+  width: 4.5rem;
+}
+
+.course-days-custom .app-dialog-input {
+  margin: 0;
+  padding: 4px 8px;
+  height: 1.85rem;
+}
+
+.course-seg-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+.course-seg-time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 8.5rem;
+  min-width: 8.5rem;
+}
+
+.course-seg-time-row span {
+  min-width: 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.course-seg-time-row .app-dialog-input {
+  flex: 1;
+  margin: 0;
+}
+
 .habit-tracker-habit-dot {
   width: 10px;
   height: 10px;
@@ -13237,6 +13370,7 @@ button.status-bar-jobs-menu-item:hover {
 .course-bar-body {
   display: flex;
   flex-direction: column;
+  position: relative;
   gap: 4px;
   width: max-content;
   min-width: 100%;
@@ -13246,6 +13380,12 @@ button.status-bar-jobs-menu-item:hover {
   display: grid;
   position: relative;
   min-height: 28px;
+  opacity: 1;
+  transition: opacity 0.16s ease;
+}
+
+.course-bar-row.is-dim {
+  opacity: 0.28;
 }
 
 .course-bar-frame {
@@ -13257,6 +13397,14 @@ button.status-bar-jobs-menu-item:hover {
   border-radius: 5px;
   pointer-events: none;
   z-index: 2;
+}
+
+.course-bar-frame.is-selected {
+  z-index: 5;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--course-frame) 55%, transparent),
+    0 0 10px 2px color-mix(in srgb, var(--course-frame) 50%, transparent),
+    0 0 22px 4px color-mix(in srgb, var(--course-frame) 28%, transparent);
 }
 
 .course-bar-cell {
@@ -13280,10 +13428,15 @@ button.status-bar-jobs-menu-item:hover {
   box-shadow: inset 1px 0 0 var(--line);
 }
 
-.course-bar-cell.is-today {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  z-index: 1;
+.course-bar-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--habit-missed);
+  pointer-events: none;
+  z-index: 4;
 }
 
 .course-bar-seg {

@@ -133,7 +133,9 @@ export function buildMdcourseTools(mode: ChatMode) {
         time: z
           .string()
           .optional()
-          .describe("Optional 24-hour clocks, space-separated, e.g. 08:00 20:00"),
+          .describe(
+            "One 24-hour HH:MM per segment, space-separated. Use - for a segment without a clock, e.g. 08:00 - 20:00",
+          ),
         weekdays: z
           .string()
           .optional()
@@ -209,7 +211,9 @@ export function buildMdcourseTools(mode: ChatMode) {
           .string()
           .nullable()
           .optional()
-          .describe("24-hour clocks, space-separated; empty or null clears"),
+          .describe(
+            "One HH:MM per segment, space-separated; - for none; empty or null clears",
+          ),
         weekdays: z
           .string()
           .nullable()

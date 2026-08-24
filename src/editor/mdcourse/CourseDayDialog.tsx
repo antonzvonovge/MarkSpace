@@ -5,7 +5,7 @@ export type CourseDayRow = {
   name: string;
   question: string;
   when: string;
-  time: string;
+  segmentTimes: string[];
   color: string;
   times: number;
   /** Logged count, or null if skip. */
@@ -20,10 +20,8 @@ type Props = {
   onSave: (answers: Record<string, number | null>) => void;
 };
 
-function clockLabels(time: string, times: number): string[] {
-  const parts = time.split(/\s+/).filter(Boolean);
-  if (parts.length === times) return parts;
-  return [];
+function clockLabels(segmentTimes: string[], times: number): string[] {
+  return Array.from({ length: times }, (_, i) => segmentTimes[i] || String(i + 1));
 }
 
 export function CourseDayDialog({
@@ -111,10 +109,8 @@ export function CourseDayDialog({
           <ul className="course-day-list">
             {rows.map((row) => {
               const k = counts[row.name] ?? null;
-              const clocks = clockLabels(row.time, row.times);
-              const hint = [row.time && clocks.length === 0 ? row.time : "", row.when]
-                .filter(Boolean)
-                .join(" · ");
+              const clocks = clockLabels(row.segmentTimes, row.times);
+              const hint = row.when;
               return (
                 <li key={row.name} className="course-day-track">
                   <div className="course-day-track-meta">

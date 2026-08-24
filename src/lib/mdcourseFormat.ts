@@ -182,7 +182,11 @@ export function parseClockTimes(raw: string, lineNo?: number): string[] {
   const text = raw.trim();
   if (!text) return [];
   const out: string[] = [];
-  for (const part of text.split(/[\s,]+/).filter(Boolean)) {
+  for (const part of text.split(/[\s,]+/).filter((p) => p.length > 0)) {
+    if (part === "-") {
+      out.push("");
+      continue;
+    }
     const m = /^(\d{1,2}):(\d{2})$/.exec(part);
     if (!m) {
       const where = lineNo != null ? ` at line ${lineNo}` : "";
@@ -204,9 +208,22 @@ export function parseClockTimes(raw: string, lineNo?: number): string[] {
   return out;
 }
 
-export function serializeClockTimes(time: string[]): string | null {
-  const parsed = parseClockTimes(time.join(" "));
-  return parsed.length > 0 ? parsed.join(" ") : null;
+export function padSegmentTimes(time: string[], times: number): string[] {
+  const n = clampTimes(times);
+  return Array.from({ length: n }, (_, i) => time[i] ?? "");
+}
+
+export function serializeClockTimes(
+  time: string[],
+  times: number,
+): string | null {
+  const cells = padSegmentTimes(time, times).map((cell) => {
+    const t = cell.trim();
+    if (!t || t === "-") return "-";
+    return parseClockTimes(t)[0] ?? "-";
+  });
+  if (cells.every((c) => c === "-")) return null;
+  return cells.join(" ");
 }
 
 export function formatTrackSchedule(track: MdcourseTrack): string {
@@ -524,7 +541,7 @@ export function serializeMdcourse(doc: MdcourseDoc): string {
     parts.push(track.name.trim());
     parts.push(`question: ${track.question.trim()}`);
     if (track.when.trim()) parts.push(`when: ${track.when.trim()}`);
-    const timeLine = serializeClockTimes(track.time);
+    const timeLine = serializeClockTimes(track.time, clampTimes(track.times));
     if (timeLine) parts.push(`time: ${timeLine}`);
     const weekdayLine = serializeWeekdays(track.weekdays);
     if (weekdayLine) parts.push(`weekdays: ${weekdayLine}`);

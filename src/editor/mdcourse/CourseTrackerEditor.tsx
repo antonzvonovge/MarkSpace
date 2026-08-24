@@ -6,7 +6,7 @@ import {
   type CourseFieldsValue,
 } from "../../components/AppDialog";
 import { CourseDayDialog, type CourseDayRow } from "./CourseDayDialog";
-import { CloseIcon, PencilIcon, PlusIcon } from "../../components/treeIcons";
+import { CloseIcon, PencilIcon, PlusIcon, TodayCheckIcon } from "../../components/treeIcons";
 import { useListReorder } from "../../hooks/useListReorder";
 import {
   applyTrackDay,
@@ -17,7 +17,7 @@ import {
   formatTrackSchedule,
   isMonday,
   localIsoDate,
-  parseClockTimes,
+  padSegmentTimes,
   parseMdcourse,
   scheduledDaysCount,
   serializeMdcourse,
@@ -94,7 +94,7 @@ const EMPTY_FIELDS = (today: string): CourseFieldsValue => ({
   name: "",
   question: "",
   when: "",
-  time: "",
+  segmentTimes: [""],
   weekdays: [],
   color: "",
   start: today,
@@ -122,13 +122,6 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
     [onChange],
   );
 
-  const selectedIndex =
-    selectedName == null
-      ? -1
-      : doc.tracks.findIndex(
-          (t) => t.name.toLowerCase() === selectedName.toLowerCase(),
-        );
-  const selectedTrack = selectedIndex >= 0 ? doc.tracks[selectedIndex] : null;
   const deleteTrack =
     deleteName == null
       ? null
@@ -161,7 +154,7 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
         name: track.name,
         question: track.question,
         when: track.when,
-        time: track.time.join(" "),
+        segmentTimes: padSegmentTimes(track.time, track.times),
         color: track.color,
         times: track.times,
         count: trackLogOnDay(track, dayIso),
@@ -176,7 +169,7 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
           name: t.name,
           question: t.question,
           when: t.when,
-          time: t.time.join(" "),
+          segmentTimes: padSegmentTimes(t.time, t.times),
           weekdays: t.weekdays,
           color: t.color,
           start: t.start,
@@ -211,13 +204,21 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
                 <div className="course-bar-scroll">
                   <div className="course-bar-body">
                     {barTracks.map((track) => {
-                      const span = track.color
-                        ? trackSpanOnBar(track, days)
-                        : null;
+                      const span = trackSpanOnBar(track, days);
+                      const selected =
+                        selectedName != null &&
+                        track.name.toLowerCase() === selectedName.toLowerCase();
+                      const dim = selectedName != null && !selected;
                       return (
                       <div
                         key={track.name}
-                        className="course-bar-row"
+                        className={[
+                          "course-bar-row",
+                          dim ? "is-dim" : "",
+                          selected ? "is-selected" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
                         style={colStyle}
                       >
                         {days.map((iso) => {
@@ -228,7 +229,6 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
                               type="button"
                               className={[
                                 "course-bar-cell",
-                                iso === today ? "is-today" : "",
                                 isMonday(iso) ? "is-week" : "",
                               ]
                                 .filter(Boolean)
@@ -257,11 +257,18 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
                             </button>
                           );
                         })}
-                        {span ? (
+                        {span && (track.color || selected) ? (
                           <div
-                            className="course-bar-frame"
+                            className={[
+                              "course-bar-frame",
+                              selected ? "is-selected" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
                             style={{
-                              borderColor: track.color,
+                              ["--course-frame" as string]:
+                                track.color || "var(--accent)",
+                              borderColor: track.color || "var(--accent)",
                               left: span.from * BAR_STRIDE_PX,
                               width:
                                 (span.to - span.from + 1) * BAR_STRIDE_PX -
@@ -290,6 +297,16 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
                         </span>
                       ))}
                     </div>
+                    {days.includes(today) ? (
+                      <div
+                        className="course-bar-today"
+                        style={{
+                          left:
+                            days.indexOf(today) * BAR_STRIDE_PX +
+                            BAR_COL_PX / 2,
+                        }}
+                      />
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -298,15 +315,26 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
             <aside className="habit-tracker-aside">
               <div className="habit-tracker-aside-header">
                 <h2>Tracks</h2>
-                <button
-                  type="button"
-                  className="habit-tracker-add-btn"
-                  title="Add track"
-                  aria-label="Add track"
-                  onClick={() => setTrackDialog({ mode: "add" })}
-                >
-                  <PlusIcon />
-                </button>
+                <div className="course-aside-actions">
+                  <button
+                    type="button"
+                    className="habit-tracker-add-btn"
+                    title="Today’s status"
+                    aria-label="Today’s status"
+                    onClick={() => setDayIso(today)}
+                  >
+                    <TodayCheckIcon />
+                  </button>
+                  <button
+                    type="button"
+                    className="habit-tracker-add-btn"
+                    title="Add track"
+                    aria-label="Add track"
+                    onClick={() => setTrackDialog({ mode: "add" })}
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
               </div>
               {doc.tracks.length === 0 ? (
                 <p className="habit-tracker-aside-empty">No tracks yet.</p>
@@ -314,7 +342,10 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
                 <ul className="habit-tracker-habit-list">
                   {doc.tracks.map((track, index) => {
                     const bind = bindReorder(index);
-                    const selected = selectedTrack?.name === track.name;
+                    const selected =
+                      selectedName != null &&
+                      track.name.toLowerCase() === selectedName.toLowerCase();
+                    const dim = selectedName != null && !selected;
                     const done = completeDaysCount(track);
                     return (
                       <li key={track.name}>
@@ -322,6 +353,7 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
                           className={[
                             "habit-tracker-habit",
                             selected ? "is-selected" : "",
+                            dim ? "is-dim" : "",
                             bind.className,
                           ]
                             .filter(Boolean)
@@ -334,7 +366,12 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
                           onDrop={bind.onDrop}
                           onClick={() => {
                             if (bind.shouldIgnoreClick()) return;
-                            setSelectedName(track.name);
+                            setSelectedName((cur) =>
+                              cur != null &&
+                              cur.toLowerCase() === track.name.toLowerCase()
+                                ? null
+                                : track.name,
+                            );
                           }}
                         >
                           <span
@@ -409,7 +446,7 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
             name: value.name,
             question: value.question,
             when: value.when,
-            time: parseClockTimes(value.time),
+            time: padSegmentTimes(value.segmentTimes, value.times),
             weekdays: value.weekdays,
             color: value.color,
             start: value.start,
@@ -423,7 +460,6 @@ export function CourseTrackerEditor({ path, content, onChange }: Props) {
           };
           if (trackDialog?.mode === "edit") {
             tracks[trackDialog.index] = next;
-            setSelectedName(value.name);
           } else {
             tracks.push(next);
           }

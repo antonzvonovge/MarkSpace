@@ -216,4 +216,19 @@ times: 2
       weekdays: [1, 3, 5],
     });
   });
+
+  it("keeps a blank clock per skipped segment", () => {
+    const doc = parseMdcourse(`${MDCOURSE_HEADER}
+created: 2026-08-24
+
+Pills
+question: Q
+time: 08:00 - 20:00
+times: 3
+start: 2026-08-24
+days: 7
+`);
+    expect(doc.tracks[0]!.time).toEqual(["08:00", "", "20:00"]);
+    expect(serializeMdcourse(doc)).toContain("time: 08:00 - 20:00");
+  });
 });

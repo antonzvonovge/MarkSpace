@@ -13,6 +13,35 @@ export function PlusIcon() {
   );
 }
 
+export function TodayCheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="3.25"
+        width="11"
+        height="10.25"
+        rx="1.4"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M5.25 2.5v1.8M10.75 2.5v1.8M2.75 6.4h10.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5.6 10.15 7.15 11.6 10.5 8.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function CloseIcon({ size = 14 }: { size?: number }) {
   return (
     <svg
