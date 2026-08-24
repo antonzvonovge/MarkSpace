@@ -28,6 +28,7 @@ const TEXT_EXTS = new Set([
   "mdlnks",
   "mddict",
   "mdhabit",
+  "mdcourse",
   "txt",
   "json",
   "csv",

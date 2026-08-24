@@ -9,6 +9,10 @@ import {
 } from "../lib/vaultApi";
 import { PROJECT_COLOR_SWATCHES } from "../lib/projectColors";
 import {
+  COURSE_WEEKDAY_SHORT,
+  parseClockTimes,
+} from "../lib/mdcourseFormat";
+import {
   NATIVE_LANGUAGE_OPTIONS,
   nativeLanguageLabel,
   type NativeLanguageId,
@@ -1125,4 +1129,286 @@ export function HabitFieldsDialog({
     </DialogShell>
   );
 }
+
+export type CourseFieldsValue = {
+  name: string;
+  question: string;
+  when: string;
+  time: string;
+  weekdays: number[];
+  color: string;
+  start: string;
+  days: number;
+  ongoing: boolean;
+  times: number;
+};
+
+export function CourseFieldsDialog({
+  open,
+  mode,
+  initial,
+  existingNames,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  mode: "add" | "edit";
+  initial: CourseFieldsValue;
+  existingNames: string[];
+  onCancel: () => void;
+  onConfirm: (value: CourseFieldsValue) => void;
+}) {
+  const nameId = useId();
+  const questionId = useId();
+  const whenId = useId();
+  const timeId = useId();
+  const startId = useId();
+  const daysId = useId();
+  const timesId = useId();
+  const weekdaysId = useId();
+  const colorGroupId = useId();
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState(initial.name);
+  const [question, setQuestion] = useState(initial.question);
+  const [when, setWhen] = useState(initial.when);
+  const [time, setTime] = useState(initial.time);
+  const [weekdays, setWeekdays] = useState<number[]>(initial.weekdays);
+  const [color, setColor] = useState(initial.color);
+  const [start, setStart] = useState(initial.start);
+  const [days, setDays] = useState(String(initial.days));
+  const [ongoing, setOngoing] = useState(initial.ongoing);
+  const [times, setTimes] = useState(String(initial.times));
+
+  useEffect(() => {
+    if (!open) return;
+    setName(initial.name);
+    setQuestion(initial.question);
+    setWhen(initial.when);
+    setTime(initial.time);
+    setWeekdays(initial.weekdays);
+    setColor(initial.color);
+    setStart(initial.start);
+    setDays(String(initial.days));
+    setOngoing(initial.ongoing);
+    setTimes(String(initial.times));
+    const id = window.requestAnimationFrame(() => {
+      nameRef.current?.focus();
+      nameRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open, initial]);
+
+  const taken = new Set(
+    existingNames
+      .map((n) => n.trim().toLowerCase())
+      .filter((n) => n && n !== initial.name.trim().toLowerCase()),
+  );
+  const nameKey = name.trim().toLowerCase();
+  const duplicate = Boolean(nameKey) && taken.has(nameKey);
+  const daysNum = Number.parseInt(days, 10);
+  const timesNum = Number.parseInt(times, 10);
+  const daysOk = ongoing || (Number.isInteger(daysNum) && daysNum >= 1);
+  const timesOk = Number.isInteger(timesNum) && timesNum >= 1 && timesNum <= 8;
+  const startOk = /^\d{4}-\d{2}-\d{2}$/.test(start);
+  let timeOk = !time.trim();
+  let parsedTime: string[] = [];
+  if (time.trim()) {
+    try {
+      parsedTime = parseClockTimes(time);
+      timeOk = parsedTime.length > 0;
+    } catch {
+      timeOk = false;
+    }
+  }
+  const weekdaySet = new Set(weekdays);
+  const allWeekdays = weekdaySet.size === 0 || weekdaySet.size === 7;
+  const canSubmit =
+    Boolean(name.trim()) &&
+    Boolean(question.trim()) &&
+    !duplicate &&
+    daysOk &&
+    timesOk &&
+    startOk &&
+    timeOk;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    onConfirm({
+      name: name.trim(),
+      question: question.trim(),
+      when: when.trim(),
+      time: parsedTime.join(" "),
+      weekdays: allWeekdays ? [] : [...weekdaySet].sort((a, b) => a - b),
+      color,
+      start,
+      days: ongoing ? 1 : daysNum,
+      ongoing,
+      times: timesNum,
+    });
+  };
+
+  return (
+    <DialogShell
+      open={open}
+      title={mode === "add" ? "Add track" : "Edit track"}
+      onCancel={onCancel}
+      footer={
+        <>
+          <button type="button" className="app-dialog-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="app-dialog-btn is-primary"
+            disabled={!canSubmit}
+            onClick={submit}
+          >
+            {mode === "add" ? "Add" : "Save"}
+          </button>
+        </>
+      }
+    >
+      <div className="app-dialog-body">
+        <label className="app-dialog-label" htmlFor={nameId}>
+          Name
+        </label>
+        <input
+          ref={nameRef}
+          id={nameId}
+          className="app-dialog-input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+        />
+        {duplicate ? (
+          <p className="app-dialog-desc">A track with this name already exists.</p>
+        ) : null}
+        <label className="app-dialog-label" htmlFor={questionId}>
+          Question
+        </label>
+        <input
+          id={questionId}
+          className="app-dialog-input"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Did you…?"
+        />
+        <label className="app-dialog-label" htmlFor={whenId}>
+          Note
+        </label>
+        <input
+          id={whenId}
+          className="app-dialog-input"
+          value={when}
+          onChange={(e) => setWhen(e.target.value)}
+          placeholder="after meals (optional)"
+        />
+        <label className="app-dialog-label" htmlFor={timeId}>
+          Time
+        </label>
+        <input
+          id={timeId}
+          className="app-dialog-input"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+          placeholder="08:00 20:00 (optional)"
+          spellCheck={false}
+        />
+        {!timeOk && time.trim() ? (
+          <p className="app-dialog-desc">Use 24-hour times like 08:00 20:00.</p>
+        ) : null}
+        <div className="app-dialog-label" id={weekdaysId}>
+          Weekdays
+        </div>
+        <div className="course-weekday-picks" role="group" aria-labelledby={weekdaysId}>
+          {COURSE_WEEKDAY_SHORT.map((label, i) => {
+            const dow = i + 1;
+            const on = allWeekdays || weekdaySet.has(dow);
+            return (
+              <button
+                key={label}
+                type="button"
+                className={["course-weekday-pick", on ? "is-on" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
+                aria-pressed={on}
+                onClick={() => {
+                  const next = new Set(
+                    allWeekdays ? [1, 2, 3, 4, 5, 6, 7] : weekdaySet,
+                  );
+                  if (next.has(dow)) next.delete(dow);
+                  else next.add(dow);
+                  if (next.size === 0) {
+                    setWeekdays([]);
+                    return;
+                  }
+                  setWeekdays(
+                    next.size === 7 ? [] : [...next].sort((a, b) => a - b),
+                  );
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <label className="app-dialog-label" htmlFor={startId}>
+          Start
+        </label>
+        <input
+          id={startId}
+          className="app-dialog-input"
+          type="date"
+          value={start}
+          onChange={(e) => setStart(e.target.value)}
+        />
+        <label className="app-dialog-row">
+          <input
+            type="checkbox"
+            checked={ongoing}
+            onChange={(e) => setOngoing(e.target.checked)}
+          />
+          Ongoing
+        </label>
+        {!ongoing ? (
+          <>
+            <label className="app-dialog-label" htmlFor={daysId}>
+              Days
+            </label>
+            <input
+              id={daysId}
+              className="app-dialog-input"
+              type="number"
+              min={1}
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+            />
+          </>
+        ) : null}
+        <label className="app-dialog-label" htmlFor={timesId}>
+          Times per day
+        </label>
+        <input
+          id={timesId}
+          className="app-dialog-input"
+          type="number"
+          min={1}
+          max={8}
+          value={times}
+          onChange={(e) => setTimes(e.target.value)}
+        />
+        <div className="app-dialog-label" id={colorGroupId} role="presentation">
+          Color
+        </div>
+        <ProjectColorPicker
+          color={color}
+          onChange={setColor}
+          labelledBy={colorGroupId}
+        />
+      </div>
+    </DialogShell>
+  );
+}
+
 

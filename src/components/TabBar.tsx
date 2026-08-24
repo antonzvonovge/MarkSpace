@@ -24,6 +24,7 @@ import {
 } from "./TabContextMenu";
 import {
   CloseIcon,
+  CourseTrackerIcon,
   DiagramIcon,
   GraphIcon,
   IncomingSectionIcon,
@@ -96,6 +97,8 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
         <FcReading size={14} />
       ) : kind === "mdhabit" ? (
         <FcCalendar size={14} />
+      ) : kind === "mdcourse" ? (
+        <CourseTrackerIcon size={14} />
       ) : kind === "pdf" ? (
         <PdfIcon />
       ) : (

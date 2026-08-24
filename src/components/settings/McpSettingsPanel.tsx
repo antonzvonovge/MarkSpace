@@ -4,6 +4,7 @@ import {
   DiagramIcon,
   DictionaryIcon,
   HabitTrackerIcon,
+  CourseTrackerIcon,
   LinksIcon,
   RefreshIcon,
 } from "../treeIcons";
@@ -194,6 +195,8 @@ function SpecialistGlyph({ kind }: { kind: SpecialistKind }) {
       return <DictionaryIcon />;
     case "habits":
       return <HabitTrackerIcon />;
+    case "courses":
+      return <CourseTrackerIcon />;
     case "terminal":
       return <TerminalGlyph />;
   }

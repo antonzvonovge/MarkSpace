@@ -48,6 +48,7 @@ import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
 import { DictionaryEditor } from "./editor/mddict/DictionaryEditor";
 import { HabitTrackerEditor } from "./editor/mdhabit/HabitTrackerEditor";
+import { CourseTrackerEditor } from "./editor/mdcourse/CourseTrackerEditor";
 import { DictPracticeDialog } from "./editor/mddict/DictPracticeDialog";
 import { PdfViewer } from "./editor/pdf/PdfViewer";
 import type { VaultChange } from "./lib/vaultApi";
@@ -263,6 +264,33 @@ const DocumentTab = memo(function DocumentTab({
             </div>
           ) : null}
         </>
+      ) : docKind === "mdcourse" ? (
+        <>
+          <div
+            className={
+              liveSlotActive
+                ? "document-editor-slot is-active"
+                : "document-editor-slot"
+            }
+          >
+            <CourseTrackerEditor
+              path={path}
+              content={content}
+              onChange={(next) => onEditorChange(path, next)}
+            />
+          </div>
+          {isActive && viewMode === "source" ? (
+            <div className="document-editor-slot is-active">
+              <div className="source-editor-wrap">
+                <PlainSourceEditor
+                  path={path}
+                  content={content}
+                  onChange={(text) => onEditorChange(path, text)}
+                />
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <>
           <div
@@ -352,7 +380,8 @@ const MainPane = memo(function MainPane({
                     kind === "markdown" ||
                     kind === "mdlnks" ||
                     kind === "mddict" ||
-                    kind === "mdhabit";
+                    kind === "mdhabit" ||
+                    kind === "mdcourse";
                   // One toolbar above the editor slots — not inside Live keep-alive
                   // editors, or Source would stack a second path/Live/Source row
                   // over the warm Live chrome.
@@ -785,7 +814,7 @@ function App() {
         if (tab && !isFileTab(tab)) return;
         if (tab && isIncomingTab(tab)) return;
         const kind = documentKind(path);
-        if (kind !== "markdown" && kind !== "mdlnks" && kind !== "mddict" && kind !== "mdhabit") return;
+        if (kind !== "markdown" && kind !== "mdlnks" && kind !== "mddict" && kind !== "mdhabit" && kind !== "mdcourse") return;
         toggleViewMode();
       }
       if (e.key === "," || code === "Comma") {

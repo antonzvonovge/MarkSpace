@@ -31,6 +31,7 @@ function skipMarkdownNormalize(path: string): boolean {
     lower.endsWith(".mdlnks") ||
     lower.endsWith(".mddict") ||
     lower.endsWith(".mdhabit") ||
+    lower.endsWith(".mdcourse") ||
     lower.endsWith(".json")
   );
 }
@@ -80,6 +81,13 @@ export async function createMdhabit(
   return invoke("create_mdhabit", { path, year, created });
 }
 
+export async function createMdcourse(
+  path: string,
+  created: string,
+): Promise<string> {
+  return invoke("create_mdcourse", { path, created });
+}
+
 /** Embed path for a .drawio: vault-relative if already inside, else copy next to the note. */
 export async function importDrawio(
   notePath: string,
@@ -97,7 +105,7 @@ export async function importPaths(
   return invoke("import_paths", { parent, sources, overwrite });
 }
 
-/** Write a .md / .drawio / .mdlnks / .mddict / .mdhabit / .pdf from bytes into a vault folder. */
+/** Write a .md / .drawio / .mdlnks / .mddict / .mdhabit / .mdcourse / .pdf from bytes into a vault folder. */
 export async function importDocumentBytes(
   parent: string,
   fileName: string,
@@ -930,6 +938,7 @@ export function candidateFolderNotePath(path: string): string | null {
     lower.endsWith(".mddict") ||
     lower.endsWith(".mdlnks") ||
     lower.endsWith(".mdhabit") ||
+    lower.endsWith(".mdcourse") ||
     lower.endsWith(".drawio") ||
     lower.endsWith(".pdf") ||
     lower.endsWith(".json")
@@ -1027,6 +1036,7 @@ export type DocumentKind =
   | "mdlnks"
   | "mddict"
   | "mdhabit"
+  | "mdcourse"
   | "pdf";
 
 export function isVaultDocumentPath(path: string): boolean {
@@ -1037,6 +1047,7 @@ export function isVaultDocumentPath(path: string): boolean {
     lower.endsWith(".mdlnks") ||
     lower.endsWith(".mddict") ||
     lower.endsWith(".mdhabit") ||
+    lower.endsWith(".mdcourse") ||
     lower.endsWith(".pdf")
   );
 }
@@ -1047,6 +1058,7 @@ export function documentKind(path: string): DocumentKind {
   if (lower.endsWith(".mdlnks")) return "mdlnks";
   if (lower.endsWith(".mddict")) return "mddict";
   if (lower.endsWith(".mdhabit")) return "mdhabit";
+  if (lower.endsWith(".mdcourse")) return "mdcourse";
   if (lower.endsWith(".pdf")) return "pdf";
   return "markdown";
 }
@@ -1065,6 +1077,10 @@ export function isMddictPath(path: string): boolean {
 
 export function isMdhabitPath(path: string): boolean {
   return documentKind(path) === "mdhabit";
+}
+
+export function isMdcoursePath(path: string): boolean {
+  return documentKind(path) === "mdcourse";
 }
 
 export function isPdfPath(path: string): boolean {

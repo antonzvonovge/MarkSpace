@@ -6,6 +6,7 @@ export type SpecialistKind =
   | "links"
   | "dict"
   | "habits"
+  | "courses"
   | "terminal";
 
 export const SPECIALIST_KIND_ORDER: readonly SpecialistKind[] = [
@@ -15,6 +16,7 @@ export const SPECIALIST_KIND_ORDER: readonly SpecialistKind[] = [
   "links",
   "dict",
   "habits",
+  "courses",
   "terminal",
 ];
 
@@ -90,6 +92,8 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "read_dictionary",
       "read_mdhabit_format",
       "read_habits",
+      "read_mdcourse_format",
+      "read_course",
       "web_search",
       "fetch_url",
       "scrape_url",
@@ -102,7 +106,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     writes: true,
     system: [
       "You are a MarkSpace note editor. Create/edit markdown notes, folders, and assets.",
-      "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, .mddict, or .mdhabit — those need other specialists.",
+      "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, .mddict, .mdhabit, or .mdcourse — those need other specialists.",
       "To tag a note from its content, prefer auto_tag_note (reuses the vault tag catalog) over inventing tags in edit_note.",
       "Follow MarkSpace Markdown dialect; call read_format_guide when unsure.",
       "Diary daily notes: {project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md via open_or_create_daily_note.",
@@ -221,6 +225,27 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "set_habit_day",
     ],
   },
+  courses: {
+    kind: "courses",
+    label: "Courses",
+    writes: true,
+    system: [
+      "You are a MarkSpace .mdcourse course-tracker specialist. Use course tools only — never raw edit_note on .mdcourse.",
+      "Set weekdays (Mon–Sun) and time (HH:MM) with add_course_track / update_course_track; do not stuff clocks into when.",
+      "Call read_mdcourse_format when unsure. End with summary and changedPaths.",
+    ].join(" "),
+    toolNames: [
+      "list_folder",
+      "open_note",
+      "read_mdcourse_format",
+      "read_course",
+      "create_course",
+      "add_course_track",
+      "update_course_track",
+      "remove_course_track",
+      "set_course_day",
+    ],
+  },
   terminal: {
     kind: "terminal",
     label: "Terminal",
@@ -230,7 +255,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "Match the Host OS / shell line in this prompt — do not guess Windows vs Unix.",
       "The user must approve each command unless they enabled Allow for this chat.",
       "If the task is heavy, dangerous, or involves writing and running custom scripts, and it does not already say the user approved the plan: do not run commands; reply that you need confirmation of the plan (needs clarification).",
-      "Do not edit notes, diagrams, .mdlnks, .mddict, or .mdhabit via the shell — other specialists own those.",
+      "Do not edit notes, diagrams, .mdlnks, .mddict, .mdhabit, or .mdcourse via the shell — other specialists own those.",
       "Prefer list_folder / read_note to inspect vault files. End with a summary of commands and results.",
     ].join(" "),
     toolNames: ["run_terminal", "list_folder", "read_note"],

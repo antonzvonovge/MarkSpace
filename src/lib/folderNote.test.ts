@@ -56,5 +56,6 @@ describe("folder note path helpers", () => {
       candidateFolderNotePath("English/IELTS/План подготовки/.folder.md"),
     ).toBeNull();
     expect(candidateFolderNotePath("Tracker.mdhabit")).toBeNull();
+    expect(candidateFolderNotePath("Skin.mdcourse")).toBeNull();
   });
 });

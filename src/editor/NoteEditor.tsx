@@ -781,7 +781,7 @@ export const NoteEditor = memo(function NoteEditor({
           let resolved = await resolveWikiTarget(wikiTarget);
           if (!resolved) {
             // Specialized vault docs must already exist — never invent a .md sibling.
-            if (/\.(mddict|mdlnks|mdhabit|drawio|pdf)$/i.test(wikiTarget.trim())) {
+            if (/\.(mddict|mdlnks|mdhabit|mdcourse|drawio|pdf)$/i.test(wikiTarget.trim())) {
               await go(wikiTarget.trim().replace(/^\/+/, ""));
               return;
             }

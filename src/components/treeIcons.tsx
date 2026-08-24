@@ -1,3 +1,5 @@
+import { FcTimeline } from "react-icons/fc";
+
 export function PlusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -252,6 +254,10 @@ export function HabitTrackerIcon() {
       />
     </svg>
   );
+}
+
+export function CourseTrackerIcon({ size = 16 }: { size?: number }) {
+  return <FcTimeline size={size} />;
 }
 
 export function PdfIcon() {

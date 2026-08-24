@@ -108,6 +108,7 @@ import {
   DictionaryIcon,
   FavoritesSectionIcon,
   HabitTrackerIcon,
+  CourseTrackerIcon,
   LinksIcon,
   PdfIcon,
   PlusIcon,
@@ -605,6 +606,7 @@ function TreeContextMenu({
   onNewLinks,
   onNewDictionary,
   onNewHabitTracker,
+  onNewCourse,
   onNewFolder,
   onTurnIntoFolder,
   onNewSkill,
@@ -633,6 +635,7 @@ function TreeContextMenu({
   onNewLinks: () => void;
   onNewDictionary: () => void;
   onNewHabitTracker: () => void;
+  onNewCourse: () => void;
   onNewFolder: () => void;
   onTurnIntoFolder: () => void;
   onNewSkill: () => void;
@@ -938,6 +941,18 @@ function TreeContextMenu({
                   >
                     <HabitTrackerIcon />
                     <span>New habit tracker</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-context-item"
+                    onClick={() => {
+                      onClose();
+                      onNewCourse();
+                    }}
+                  >
+                    <CourseTrackerIcon />
+                    <span>New course</span>
                   </button>
                 </>
               ) : null}
@@ -1257,6 +1272,7 @@ function FavoritesTreeRows({
         const isMdlnks = !isDir && path.toLowerCase().endsWith(".mdlnks");
         const isMddict = !isDir && path.toLowerCase().endsWith(".mddict");
         const isMdhabit = !isDir && path.toLowerCase().endsWith(".mdhabit");
+        const isMdcourse = !isDir && path.toLowerCase().endsWith(".mdcourse");
         const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
         const unsupported = isUnsupportedTreeFile(isDir, path);
         const selected =
@@ -1401,6 +1417,8 @@ function FavoritesTreeRows({
                   <FcReading size={20} />
                 ) : isMdhabit ? (
                   <FcCalendar size={20} />
+                ) : isMdcourse ? (
+                  <CourseTrackerIcon size={20} />
                 ) : isPdf ? (
                   <span className="tree-pdf-icon">
                     <PdfIcon />
@@ -1475,6 +1493,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const createMdlnksInSelection = useVaultStore((s) => s.createMdlnksInSelection);
   const createMddictInSelection = useVaultStore((s) => s.createMddictInSelection);
   const createMdhabitInSelection = useVaultStore((s) => s.createMdhabitInSelection);
+  const createMdcourseInSelection = useVaultStore((s) => s.createMdcourseInSelection);
   const createFolderInSelection = useVaultStore((s) => s.createFolderInSelection);
   const createSkill = useVaultStore((s) => s.createSkill);
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
@@ -2079,6 +2098,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     if (kind === "mdhabit") {
       return;
     }
+    if (kind === "mdcourse") {
+      void createMdcourseInSelection(name).then(revealActiveInTree);
+      return;
+    }
     void createFolderInSelection(name).then(() => {
       revealPathInTree(useVaultStore.getState().selectedFolderPath, {
         isDir: true,
@@ -2099,7 +2122,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 ? "New links"
                 : promptKind === "mddict"
                   ? "New dictionary"
-                  : promptKind === "skill"
+                  : promptKind === "mdcourse"
+                    ? "New course"
+                    : promptKind === "skill"
                     ? "New skill"
                     : "New note"
         }
@@ -2112,7 +2137,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 ? "Create a links collection in the selected location."
                 : promptKind === "mddict"
                   ? "Create a vocabulary dictionary in the selected location."
-                  : promptKind === "skill"
+                  : promptKind === "mdcourse"
+                    ? "Create a course tracker in the selected location."
+                    : promptKind === "skill"
                     ? "Skill id: lowercase letters, digits, and hyphens (e.g. meeting-notes)."
                     : "Create a markdown note in the selected location."
         }
@@ -2126,7 +2153,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 ? "Links"
                 : promptKind === "mddict"
                   ? "Dictionary"
-                  : promptKind === "skill"
+                  : promptKind === "mdcourse"
+                    ? "Course"
+                    : promptKind === "skill"
                     ? "my-skill"
                     : "Untitled"
         }
@@ -2237,6 +2266,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             );
             setPromptKind("mdhabit");
           }}
+          onNewCourse={() => {
+            selectFolder(
+              contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
+            );
+            setPromptKind("mdcourse");
+          }}
           onNewFolder={() => {
             selectFolder(
               contextMenu.isDir ? contextMenu.path : parentPath(contextMenu.path),
@@ -2337,6 +2372,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   ? "Delete dictionary"
                   : deleteTarget?.path.endsWith(".mdhabit")
                     ? "Delete habit tracker"
+                    : deleteTarget?.path.endsWith(".mdcourse")
+                      ? "Delete course"
                     : deleteTarget?.path.endsWith(".pdf")
                     ? "Delete PDF"
                     : "Delete note"
@@ -2620,6 +2657,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                   !isDir && path.toLowerCase().endsWith(".mddict");
                 const isMdhabit =
                   !isDir && path.toLowerCase().endsWith(".mdhabit");
+                const isMdcourse =
+                  !isDir && path.toLowerCase().endsWith(".mdcourse");
                 const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
                 const unsupported = isUnsupportedTreeFile(isDir, path);
                 const selected =
@@ -2789,6 +2828,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                         <FcReading size={20} />
                       ) : isMdhabit ? (
                         <FcCalendar size={20} />
+                      ) : isMdcourse ? (
+                        <CourseTrackerIcon size={20} />
                       ) : isPdf ? (
                         <span className="tree-pdf-icon">
                           <PdfIcon />

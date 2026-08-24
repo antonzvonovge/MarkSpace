@@ -23,6 +23,8 @@
   --habit-today: #d4a017;
   --habit-today-glow: #f0c94a;
   --habit-before: color-mix(in srgb, var(--muted) 10%, var(--editor-surface));
+  --course-plan: color-mix(in srgb, var(--muted) 28%, var(--editor-surface));
+  --course-unmarked: #d4a017;
   --search-hit-bg: #ffe566;
   --search-hit-border: #e6b800;
   /* Page tags: matte Material blue (Blue 50/100 tint, Blue 800 ink). */
@@ -87,6 +89,8 @@
   --habit-today: #f0c53a;
   --habit-today-glow: #ffe58a;
   --habit-before: color-mix(in srgb, var(--muted) 10%, var(--editor-surface));
+  --course-plan: color-mix(in srgb, var(--muted) 28%, var(--editor-surface));
+  --course-unmarked: #d4a017;
   --search-hit-bg: rgba(255, 213, 79, 0.45);
   --search-hit-border: rgba(255, 213, 79, 0.85);
   --tag-bg: rgba(100, 181, 246, 0.14);
@@ -12448,16 +12452,28 @@ button.status-bar-jobs-menu-item:hover {
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  width: 100%;
+  background: var(--editor-surface);
+  --editor-measure: 760px;
+  --editor-gutter: 12px;
+  --editor-side-pad: max(
+    var(--editor-gutter),
+    calc((100% - var(--editor-measure)) / 2)
+  );
 }
 
 .habit-tracker {
   display: flex;
   gap: 20px;
   min-height: 0;
+  min-width: 0;
   flex: 1;
-  overflow: auto;
-  padding: 16px 20px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  width: 100%;
+  padding: 16px var(--editor-side-pad) 24px;
   background: var(--editor-surface);
+  box-sizing: border-box;
 }
 
 .habit-tracker-main {
@@ -13178,4 +13194,297 @@ button.status-bar-jobs-menu-item:hover {
 :root[data-theme="dark"] .mcp-switch-thumb {
   background: #f4f1f4;
 }
+
+.course-tracker {
+  flex-direction: column;
+  gap: 16px;
+}
+
+.course-tracker-main {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.course-tracker .habit-tracker-aside {
+  width: 100%;
+  max-width: none;
+  flex-shrink: 1;
+}
+
+.course-tracker .habit-tracker-habit-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.course-bar {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+
+.course-bar-scroll {
+  padding: 10px 12px 8px;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.course-bar-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.course-bar-row {
+  display: grid;
+  position: relative;
+  min-height: 28px;
+}
+
+.course-bar-frame {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  border: 2px solid;
+  border-radius: 5px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.course-bar-cell {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 2px 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  min-width: 0;
+  width: 8px;
+  max-width: 8px;
+  min-height: 24px;
+  gap: 1px;
+  appearance: none;
+}
+
+.course-bar-cell.is-week {
+  box-shadow: inset 1px 0 0 var(--line);
+}
+
+.course-bar-cell.is-today {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.course-bar-seg {
+  flex: 1;
+  min-height: 8px;
+  border-radius: 2px;
+}
+
+.course-bar-seg.is-out {
+  background: transparent;
+}
+
+.course-bar-seg.is-plan {
+  background: var(--course-plan);
+}
+
+.course-bar-seg.is-unmarked {
+  background: var(--course-unmarked);
+}
+
+.course-bar-seg.is-missed {
+  background: var(--habit-missed);
+}
+
+.course-bar-seg.is-done {
+  background: var(--habit-done);
+}
+
+.course-bar-axis {
+  display: grid;
+  margin-top: 4px;
+  min-height: 1.4em;
+}
+
+.course-bar-tick {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.2;
+  height: auto;
+  overflow: visible;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+  transform: none;
+}
+
+.course-bar-tick.is-week {
+  box-shadow: inset 1px 0 0 var(--line);
+  position: relative;
+  z-index: 1;
+}
+
+.course-track-meta {
+  display: block;
+  font-size: 0.75em;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.app-dialog.course-day-dialog {
+  width: min(100%, 640px);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.course-day-body {
+  overflow: auto;
+  min-height: 0;
+}
+
+.course-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.course-day-track {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.course-day-track-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.course-day-track-text {
+  min-width: 0;
+}
+
+.course-day-track-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.course-day-track-hint {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.course-day-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.course-day-segs {
+  display: flex;
+  gap: 4px;
+}
+
+.course-day-seg {
+  min-width: 2.4rem;
+  height: 2rem;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--course-plan);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.course-day-seg.is-done {
+  background: var(--habit-done);
+  border-color: transparent;
+  color: #fff;
+}
+
+.course-day-seg.is-missed-idle {
+  opacity: 0.45;
+}
+
+.course-day-miss {
+  height: 2rem;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.course-day-miss.is-on {
+  background: var(--habit-missed);
+  border-color: transparent;
+  color: #fff;
+}
+
+.course-weekday-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.course-weekday-pick {
+  min-width: 2.25rem;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.course-weekday-pick.is-on {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+}
+
+.course-check-counts {
+  flex-wrap: wrap;
+}
+
+.app-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.9rem;
+}
+
 

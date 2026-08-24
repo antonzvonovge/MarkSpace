@@ -9,6 +9,7 @@ import {
   DictionaryIcon,
   GraphIcon,
   HabitTrackerIcon,
+  CourseTrackerIcon,
   LinksIcon,
   LocateIcon,
   PlusIcon,
@@ -22,6 +23,7 @@ export type TreeCreateKind =
   | "mdlnks"
   | "mddict"
   | "mdhabit"
+  | "mdcourse"
   | "folder";
 
 function TreeCreateMenu({
@@ -127,6 +129,15 @@ function TreeCreateMenu({
           >
             <HabitTrackerIcon />
             <span>New habit tracker</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-create-item"
+            onClick={() => pick("mdcourse")}
+          >
+            <CourseTrackerIcon />
+            <span>New course</span>
           </button>
           <button
             type="button"

@@ -113,6 +113,10 @@ fn is_mdhabit(name: &str) -> bool {
     name.ends_with(".mdhabit")
 }
 
+fn is_mdcourse(name: &str) -> bool {
+    name.ends_with(".mdcourse")
+}
+
 fn is_pdf(name: &str) -> bool {
     name.ends_with(".pdf")
 }
@@ -123,6 +127,7 @@ fn is_vault_document(name: &str) -> bool {
         || is_mdlnks(name)
         || is_mddict(name)
         || is_mdhabit(name)
+        || is_mdcourse(name)
         || is_pdf(name)
 }
 
@@ -634,6 +639,8 @@ fn strip_known_doc_ext(rel: &mut String) {
         rel.truncate(rel.len() - 7);
     } else if rel.ends_with(".mdhabit") {
         rel.truncate(rel.len() - 8);
+    } else if rel.ends_with(".mdcourse") {
+        rel.truncate(rel.len() - 9);
     } else if rel.ends_with(".pdf") {
         rel.truncate(rel.len() - 4);
     }
@@ -676,6 +683,13 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         }
         return to_rel;
     }
+    if is_mdcourse(&from_name) {
+        if !to_rel.ends_with(".mdcourse") {
+            strip_known_doc_ext(&mut to_rel);
+            to_rel.push_str(".mdcourse");
+        }
+        return to_rel;
+    }
     if is_pdf(&from_name) {
         if !to_rel.ends_with(".pdf") {
             strip_known_doc_ext(&mut to_rel);
@@ -689,6 +703,7 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         && !to_rel.ends_with(".mdlnks")
         && !to_rel.ends_with(".mddict")
         && !to_rel.ends_with(".mdhabit")
+        && !to_rel.ends_with(".mdcourse")
         && !to_rel.ends_with(".pdf")
     {
         to_rel.push_str(".md");
@@ -1298,6 +1313,42 @@ pub fn create_mdhabit(
     Ok(created_path)
 }
 
+#[tauri::command(async)]
+pub fn create_mdcourse(
+    path: String,
+    created: String,
+    state: State<VaultState>,
+) -> Result<String, String> {
+    let created = created.trim().to_string();
+    if !valid_iso_date(&created) {
+        return Err("Invalid created date (expected YYYY-MM-DD)".into());
+    }
+    let root = get_root(&state)?;
+    let mut rel = path.trim().trim_start_matches('/').to_string();
+    if !rel.ends_with(".mdcourse") {
+        strip_known_doc_ext(&mut rel);
+        rel.push_str(".mdcourse");
+    }
+    let full = ensure_inside(&root, Path::new(&rel))?;
+    if full.exists() {
+        return Err("Course already exists".into());
+    }
+    if let Some(parent) = full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
+    }
+    let seed = format!("# MarkSpace course v1\ncreated: {created}\n");
+    fs::write(&full, seed).map_err(|e| format!("Cannot create course: {e}"))?;
+
+    let created_path = relative_to_root(&root, &full);
+    let parent = parent_rel(&created_path);
+    let name = entry_name(&created_path);
+    let mut order = read_order(&root);
+    order_insert_child(&mut order, &parent, &name, None);
+    write_order(&root, &order)?;
+
+    Ok(created_path)
+}
+
 /// Resolve a .drawio path for embedding next to a note.
 /// If `source` is already inside the vault, returns its vault-relative path.
 /// Otherwise copies the file into the note's folder and returns the new relative path.
@@ -1361,7 +1412,7 @@ pub fn import_drawio(
 }
 
 /// Copy external files/folders (from OS clipboard / explorer) into a vault folder.
-/// Vault documents (`.md` / `.drawio` / `.mdlnks` / `.mddict` / `.mdhabit` / `.pdf`) are imported;
+/// Vault documents (`.md` / `.drawio` / `.mdlnks` / `.mddict` / `.mdhabit` / `.mdcourse` / `.pdf`) are imported;
 /// directory structure is preserved. When `overwrite` is false, name conflicts get a
 /// unique sibling (`note-1.md`). When true, existing files are replaced and folders merge.
 #[tauri::command(async)]
@@ -1539,7 +1590,7 @@ pub fn import_document_bytes(
     let name = sanitize_asset_filename(&file_name);
     if !is_vault_document(&name) {
         return Err(
-            "Only .md, .drawio, .mdlnks, .mddict, .mdhabit, and .pdf files can be imported".into(),
+            "Only .md, .drawio, .mdlnks, .mddict, .mdhabit, .mdcourse, and .pdf files can be imported".into(),
         );
     }
 
@@ -2133,6 +2184,7 @@ pub fn resolve_wiki_target(
         || lower.ends_with(".mdlnks")
         || lower.ends_with(".mddict")
         || lower.ends_with(".mdhabit")
+        || lower.ends_with(".mdcourse")
     {
         target.to_string()
     } else {
@@ -2151,6 +2203,7 @@ pub fn resolve_wiki_target(
         || lower.ends_with(".mdlnks")
         || lower.ends_with(".mddict")
         || lower.ends_with(".mdhabit")
+        || lower.ends_with(".mdcourse")
     {
         None
     } else if lower.ends_with(".md") {
@@ -2185,6 +2238,8 @@ pub fn resolve_wiki_target(
         Some("mdlnks")
     } else if lower.ends_with(".mdhabit") {
         Some("mdhabit")
+    } else if lower.ends_with(".mdcourse") {
+        Some("mdcourse")
     } else if lower.ends_with(".drawio") {
         Some("drawio")
     } else if lower.ends_with(".md") {
@@ -2262,6 +2317,7 @@ pub fn resolve_wiki_target(
                     || ext.eq_ignore_ascii_case("mdlnks")
                     || ext.eq_ignore_ascii_case("mddict")
                     || ext.eq_ignore_ascii_case("mdhabit")
+                    || ext.eq_ignore_ascii_case("mdcourse")
             }
         };
         if !ext_ok {
@@ -3102,7 +3158,7 @@ struct WikiResolveIndex {
 fn vault_doc_ext(path: &Path) -> Option<String> {
     let ext = path.extension()?.to_str()?.to_lowercase();
     match ext.as_str() {
-        "md" | "pdf" | "drawio" | "mdlnks" | "mddict" | "mdhabit" => Some(ext),
+        "md" | "pdf" | "drawio" | "mdlnks" | "mddict" | "mdhabit" | "mdcourse" => Some(ext),
         _ => None,
     }
 }
@@ -3195,6 +3251,7 @@ fn resolve_wiki_with_index(index: &WikiResolveIndex, target: &str) -> Option<Str
         || lower.ends_with(".mdlnks")
         || lower.ends_with(".mddict")
         || lower.ends_with(".mdhabit")
+        || lower.ends_with(".mdcourse")
     {
         target.to_string()
     } else {
@@ -3209,6 +3266,7 @@ fn resolve_wiki_with_index(index: &WikiResolveIndex, target: &str) -> Option<Str
         || lower.ends_with(".mdlnks")
         || lower.ends_with(".mddict")
         || lower.ends_with(".mdhabit")
+        || lower.ends_with(".mdcourse")
     {
         None
     } else if lower.ends_with(".md") {
@@ -3248,6 +3306,8 @@ fn resolve_wiki_with_index(index: &WikiResolveIndex, target: &str) -> Option<Str
         Some("mdlnks")
     } else if lower.ends_with(".mdhabit") {
         Some("mdhabit")
+    } else if lower.ends_with(".mdcourse") {
+        Some("mdcourse")
     } else if lower.ends_with(".drawio") {
         Some("drawio")
     } else if lower.ends_with(".md") {

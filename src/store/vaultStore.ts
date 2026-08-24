@@ -11,6 +11,7 @@ import {
   createFolder,
   createMddict,
   createMdhabit,
+  createMdcourse,
   createMdlnks,
   createNote,
   deleteNoteComment,
@@ -331,6 +332,7 @@ type VaultStore = {
   createMdlnksInSelection: (name: string) => Promise<void>;
   createMddictInSelection: (name: string) => Promise<void>;
   createMdhabitInSelection: (name: string, year: number) => Promise<void>;
+  createMdcourseInSelection: (name: string) => Promise<void>;
   createFolderInSelection: (name: string) => Promise<void>;
   /**
    * Open a daily note under a diary project, creating
@@ -551,6 +553,7 @@ function tabLabel(path: string, kind?: TabKind): string {
     .replace(/\.mdlnks$/i, "")
     .replace(/\.mddict$/i, "")
     .replace(/\.mdhabit$/i, "")
+    .replace(/\.mdcourse$/i, "")
     .replace(/\.pdf$/i, "");
 }
 
@@ -2485,6 +2488,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       .replace(/\.mdlnks$/i, "")
       .replace(/\.mddict$/i, "")
       .replace(/\.mdhabit$/i, "")
+      .replace(/\.mdcourse$/i, "")
       .replace(/\.drawio$/i, "")
       .replace(/\.md$/i, "");
     if (!trimmed) return;
@@ -2531,6 +2535,27 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     try {
       const rel = joinPath(selectedFolderPath, trimmed);
       const created = await createMdhabit(rel, year, localIsoDate());
+      await get().refreshTree();
+      await get().openNote(created, { preview: false });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  createMdcourseInSelection: async (name) => {
+    const { selectedFolderPath } = get();
+    const trimmed = name
+      .trim()
+      .replace(/\.mdcourse$/i, "")
+      .replace(/\.mdhabit$/i, "")
+      .replace(/\.mddict$/i, "")
+      .replace(/\.mdlnks$/i, "")
+      .replace(/\.drawio$/i, "")
+      .replace(/\.md$/i, "");
+    if (!trimmed) return;
+    try {
+      const rel = joinPath(selectedFolderPath, trimmed);
+      const created = await createMdcourse(rel, localIsoDate());
       await get().refreshTree();
       await get().openNote(created, { preview: false });
     } catch (e) {
@@ -2833,6 +2858,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (to === from || to === from.replace(/\.mddict$/i, "")) return null;
     } else if (fromKind === "mdhabit") {
       if (to === from || to === from.replace(/\.mdhabit$/i, "")) return null;
+    } else if (fromKind === "mdcourse") {
+      if (to === from || to === from.replace(/\.mdcourse$/i, "")) return null;
     } else if (to === from || to === from.replace(/\.md$/i, "")) {
       return null;
     }

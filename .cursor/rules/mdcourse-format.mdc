@@ -1,0 +1,11 @@
+---
+description: Keep docs/mdcourse-format.md in sync when .mdcourse format or tools change
+alwaysApply: false
+globs: src/lib/mdcourseFormat.ts,src/ai/mdcourse/**,src/editor/mdcourse/**,docs/mdcourse-format.md
+---
+
+# Course format (`.mdcourse`)
+
+Spec: [`docs/mdcourse-format.md`](docs/mdcourse-format.md). Core rules live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
+
+If you change on-disk syntax, parse/serialize, or agent tools for course-tracker files, **update `docs/mdcourse-format.md` in the same change** (including the core-rules block when agent-critical).

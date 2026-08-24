@@ -166,6 +166,7 @@ pub fn run() {
             vault::create_mdlnks,
             vault::create_mddict,
             vault::create_mdhabit,
+            vault::create_mdcourse,
             vault::import_drawio,
             vault::import_paths,
             vault::import_document_bytes,
