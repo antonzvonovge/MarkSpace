@@ -4,7 +4,6 @@ import {
   useVaultStore,
   tabLabel,
   isGraphTab,
-  isIncomingTab,
   isSettingsTab,
   isVirtualTab,
   type EditorTab,
@@ -27,7 +26,6 @@ import {
   CourseTrackerIcon,
   DiagramIcon,
   GraphIcon,
-  IncomingSectionIcon,
   PdfIcon,
   PinIcon,
 } from "./treeIcons";
@@ -61,13 +59,6 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
     return (
       <span className="editor-tab-icon" aria-hidden>
         <GraphIcon />
-      </span>
-    );
-  }
-  if (isIncomingTab(tab)) {
-    return (
-      <span className="editor-tab-icon" aria-hidden>
-        <IncomingSectionIcon />
       </span>
     );
   }
@@ -148,9 +139,7 @@ function TabItem({
     ? "Tag graph"
     : isSettingsTab(tab)
       ? "Settings"
-      : isIncomingTab(tab)
-        ? "Incoming"
-        : tab.path;
+      : tab.path;
   const label = tabLabel(tab.path, tab.kind);
 
   return (

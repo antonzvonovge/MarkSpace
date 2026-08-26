@@ -14,6 +14,7 @@ describe("vault skills helpers", () => {
     expect(isSkillsFolder("Skills", false)).toBe(false);
     expect(isSkillsFolder("Other")).toBe(false);
     expect(isVaultProjectFolder("Skills", true)).toBe(false);
+    expect(isVaultProjectFolder("Incoming", true)).toBe(false);
     expect(isVaultProjectFolder("Work", true)).toBe(true);
   });
 

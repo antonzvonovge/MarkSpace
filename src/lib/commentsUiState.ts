@@ -114,6 +114,7 @@ export function saveDocCommentsWidth(
 
 /** Sidebar inbox: show resolved comments. */
 const INBOX_SHOW_RESOLVED_KEY = "markspace-comments-inbox-show-resolved-v1";
+const INBOX_LIST_KEY = "markspace-comments-inbox-list-v1";
 const INBOX_COLLAPSED_KEY = "markspace-comments-inbox-collapsed-v1";
 
 export function loadCommentsInboxShowResolved(): boolean {
@@ -127,6 +128,23 @@ export function loadCommentsInboxShowResolved(): boolean {
 export function saveCommentsInboxShowResolved(show: boolean): void {
   try {
     localStorage.setItem(INBOX_SHOW_RESOLVED_KEY, show ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
+
+/** Sidebar inbox: flat list instead of folder tree. */
+export function loadCommentsInboxList(): boolean {
+  try {
+    return localStorage.getItem(INBOX_LIST_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveCommentsInboxList(list: boolean): void {
+  try {
+    localStorage.setItem(INBOX_LIST_KEY, list ? "1" : "0");
   } catch {
     // ignore
   }

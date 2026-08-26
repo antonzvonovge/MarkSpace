@@ -15,7 +15,7 @@ import {
   PlusIcon,
   RefreshIcon,
 } from "./treeIcons";
-import { GRAPH_TAB_PATH, INCOMING_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
+import { GRAPH_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
 
 export type TreeCreateKind =
   | "note"
@@ -181,6 +181,44 @@ export function SectionCollapseButton({
   );
 }
 
+/** Sticky: Comments inbox as a flat list (vs folder tree). */
+export function CommentsListSticky({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={active ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
+      title={active ? "Show as tree" : "Show as list"}
+      aria-label={active ? "Show as tree" : "Show as list"}
+      aria-pressed={active}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      <ListViewIcon />
+    </button>
+  );
+}
+
+function ListViewIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.25 4h9.5M3.25 8h9.5M3.25 12h9.5"
+        stroke="currentColor"
+        strokeWidth="1.45"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** Sticky “show resolved” toggle for the Comments section header. */
 export function CommentsResolvedSticky({
   active,
@@ -249,8 +287,7 @@ export function WorkspaceHeaderActions({
   const canLocate =
     Boolean(activePath) &&
     activePath !== GRAPH_TAB_PATH &&
-    activePath !== SETTINGS_TAB_PATH &&
-    activePath !== INCOMING_TAB_PATH;
+    activePath !== SETTINGS_TAB_PATH;
   const createDisabled = isUnderDiaryProject(
     selectedFolderPath,
     projectPropertiesByPath,

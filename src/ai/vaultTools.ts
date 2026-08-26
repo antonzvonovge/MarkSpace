@@ -16,6 +16,7 @@ import {
   getEmbeddingModelStatus,
   getFileTags,
   isFolderNotePath,
+  isIncomingFolder,
   listNoteTags,
   listTree,
   listVaultTags,
@@ -616,7 +617,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
 
     open_note: tool({
       description:
-        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, dictionary (.mddict), links file (.mdlnks), habit tracker (.mdhabit), course (.mdcourse), or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page. For a folder path, `{folder}/.folder.md`, or a former `{name}.md` that is now a folder, opens that folder’s hidden overview note, creating it if missing.",
+        "Open a vault file in the editor as a tab, activate it if already open, and reveal it in the file tree. Use when the user asks to open/show/switch to a note, diagram, dictionary (.mddict), links file (.mdlnks), habit tracker (.mdhabit), course (.mdcourse), or PDF, or when they should see the file you are discussing. Does not replace read_note for reading contents. For PDFs, pass page to jump to a 1-based page. For Incoming or Incoming/.folder.md, selects Incoming and opens today’s diary daily note when a diary project exists. For other folder paths, `{folder}/.folder.md`, or a former `{name}.md` that is now a folder, opens that folder’s hidden overview note, creating it if missing.",
       inputSchema: z.object({
         path: z
           .string()
@@ -645,6 +646,19 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
         const asPreview = preview !== false;
 
         const folderFromNote = folderPathFromFolderNote(rel);
+        if (folderFromNote && isIncomingFolder(folderFromNote)) {
+          await store.openIncomingTab();
+          await yieldToUi();
+          const after = useVaultStore.getState();
+          return {
+            ok: true as const,
+            path: after.activePath ?? folderFromNote,
+            already_open: false,
+            already_active: false,
+            preview: false,
+            incoming: true,
+          };
+        }
         if (folderFromNote) {
           try {
             rel = await ensureFolderNote(folderFromNote);
@@ -666,6 +680,20 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
             }
           }
           if (folderRel) {
+            if (isIncomingFolder(folderRel)) {
+              await store.openIncomingTab();
+              await yieldToUi();
+              const after = useVaultStore.getState();
+              useSidebarUiStore.getState().revealPathInTree(folderRel);
+              return {
+                ok: true as const,
+                path: after.activePath ?? folderRel,
+                already_open: false,
+                already_active: false,
+                preview: false,
+                incoming: true,
+              };
+            }
             await store.openOrCreateFolderNote(folderRel);
             await yieldToUi();
             const after = useVaultStore.getState();
@@ -1577,7 +1605,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     }),
     delete_path: tool({
       description:
-        "Permanently delete a vault file or folder (folders delete recursively with all contents). Use only when the user clearly asks to delete/remove. Cannot delete the reserved Skills folder. Prefer delete_folder_if_empty when cleaning up a folder that should only go away if vacant.",
+        "Permanently delete a vault file or folder (folders delete recursively with all contents). Use only when the user clearly asks to delete/remove. Cannot delete the reserved Skills or Incoming folders. Prefer delete_folder_if_empty when cleaning up a folder that should only go away if vacant.",
       inputSchema: z.object({
         path: z
           .string()
@@ -1953,7 +1981,8 @@ export function buildSystemPrompt(opts: {
     "When you need a vault folder (save location): call pick_vault_folder. The UI remembers the last folder across chats and lets the user Browse the vault tree. Do not use ask_user for folder paths.",
     "When you need a decision, confirmation, or clarification with clear choices: use ask_user instead of listing A/B/C in plain chat text.",
     "Paths are vault-relative.",
-    "Folder notes: every vault folder (except the vault root) has a special hidden overview note at `{folder}/.folder.md` (not listed in the tree). When the user pastes/drops a folder into chat, the message names both the folder and its folder note path separately. If they ask to read/edit/open the folder note / overview for a mentioned folder, they mean that exact `{folder}/.folder.md` — not some other note inside the folder. Pass a folder path or `{folder}/.folder.md` to open_note (created if missing); use read_note / edit_note on `{folder}/.folder.md` for contents. If a note was converted into a folder, the old `{name}.md` path is no longer a file — tools remap it to `{name}/.folder.md`; prefer that path in later calls.",
+    "Folder notes: every vault folder (except the vault root and Incoming) has a special hidden overview note at `{folder}/.folder.md` (not listed in the tree). When the user pastes/drops a folder into chat, the message names both the folder and its folder note path separately. If they ask to read/edit/open the folder note / overview for a mentioned folder, they mean that exact `{folder}/.folder.md` — not some other note inside the folder. Pass a folder path or `{folder}/.folder.md` to open_note (created if missing); use read_note / edit_note on `{folder}/.folder.md` for contents. If a note was converted into a folder, the old `{name}.md` path is no longer a file — tools remap it to `{name}/.folder.md`; prefer that path in later calls.",
+    "Incoming: reserved inbox folder `Incoming/` at the vault root. It is hidden from the workspace tree and shown only in the Incoming sidebar section. Opening Incoming selects that folder (for create/import) and opens today’s diary daily note `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` when a Diary project exists — not Incoming/.folder.md and not a note inside Incoming. Users drop quick notes and other files into Incoming to sort later.",
     "When the user asks to open/show a file, call open_note.",
     "MarkSpace Markdown dialect — follow these rules; call read_format_guide when unsure:",
     ...markdownCoreRules(),

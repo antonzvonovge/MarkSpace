@@ -16,7 +16,7 @@ import { documentKind, readNote } from "../lib/vaultApi";
 import { useBackgroundJobsStore } from "../store/backgroundJobsStore";
 import { useDocumentFindStore } from "../store/documentFindStore";
 import { usePrefsStore } from "../store/prefsStore";
-import { useVaultStore, type ViewMode, isIncomingTab } from "../store/vaultStore";
+import { useVaultStore, type ViewMode } from "../store/vaultStore";
 import { DocumentFindBar } from "./DocumentFindBar";
 
 const MODES: { mode: ViewMode; label: string }[] = [
@@ -140,11 +140,6 @@ export function DocumentToolbar({
   const unresolvedCommentCount = useVaultStore(
     (s) => s.activeNoteComments.filter((c) => !c.resolved).length,
   );
-  const incomingActive = useVaultStore((s) => {
-    const tab = s.tabs.find((t) => t.path === s.activePath);
-    return Boolean(tab && isIncomingTab(tab));
-  });
-
   const findOpen = useDocumentFindStore((s) => s.open);
 
   const pathLabel =
@@ -158,8 +153,8 @@ export function DocumentToolbar({
     documentKind(activePath!) === "markdown";
 
   const liveMode = viewMode === "live";
-  const showOutlineBtn = liveMode && showOutlineToggle && !incomingActive;
-  const showCommentsBtn = liveMode && showCommentsToggle && !incomingActive;
+  const showOutlineBtn = liveMode && showOutlineToggle;
+  const showCommentsBtn = liveMode && showCommentsToggle;
 
   const commentsBadge =
     unresolvedCommentCount > 99
@@ -196,8 +191,6 @@ export function DocumentToolbar({
         <div className="document-toolbar-path is-empty" />
       )}
       <div className="document-toolbar-actions">
-        {incomingActive ? null : (
-          <>
             {activePath && isVaultLexiconMdNote(activePath) ? (
               <LexiconTranslateToolbarButton path={activePath} />
             ) : null}
@@ -224,8 +217,6 @@ export function DocumentToolbar({
                 </button>
               ))}
             </div>
-          </>
-        )}
       </div>
       {showCommentsBtn ? (
         <button

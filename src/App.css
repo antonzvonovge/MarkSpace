@@ -854,34 +854,11 @@ select {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
-.incoming-section-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--tree-row-gap);
-  width: 100%;
-  min-height: var(--tree-row-height);
-  /* Align icon with Favorites star (skip chevron column). */
-  padding: 2px var(--tree-pad-x) 2px
-    calc(
-      var(--tree-pad-x) + var(--tree-chevron-size) + var(--tree-row-gap)
-    );
-  border: 0;
-  background: transparent;
-  color: var(--sidebar-text);
-  font-size: var(--tree-label-size);
+.incoming-section-row {
   font-weight: 600;
-  letter-spacing: normal;
-  text-align: left;
+  /* Same horizontal inset as Favorites / Comments headers and vault root. */
+  padding: 2px var(--tree-pad-x);
   cursor: pointer;
-  user-select: none;
-}
-
-.incoming-section-btn:hover {
-  background: var(--sidebar-hover);
-}
-
-.incoming-section-btn.is-active {
-  background: var(--sidebar-active);
 }
 
 .incoming-section-icon {
@@ -1019,7 +996,6 @@ select {
   padding-bottom: 8px;
   margin-bottom: 4px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  max-height: 40%;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1058,9 +1034,12 @@ select {
 }
 
 .comments-inbox-tree {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   min-height: 0;
-  flex: 1;
+  /* ~10 rows; % max-height is ignored inside .tree-scroll (height: auto). */
+  max-height: calc(var(--tree-row-height) * 10);
+  overscroll-behavior: contain;
 }
 
 .comments-inbox-row {
@@ -1127,12 +1106,20 @@ select {
   white-space: nowrap;
 }
 
-.comments-inbox-count {
+.comments-inbox-count,
+.comments-inbox-note {
   margin-left: auto;
   flex-shrink: 0;
   font-size: 0.7rem;
   color: var(--sidebar-muted);
   opacity: 0.8;
+}
+
+.comments-inbox-note {
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .comments-inbox-chevron {

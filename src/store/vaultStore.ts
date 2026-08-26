@@ -17,6 +17,7 @@ import {
   deleteNoteComment,
   deletePath,
   documentKind,
+  ensureFolder,
   ensureFolderNote,
   folderPathFromFolderNote,
   importDocumentBytes,
@@ -26,6 +27,8 @@ import {
   isPdfPath,
   isVaultDocumentPath,
   isSkillsFolder,
+  isIncomingFolder,
+  INCOMING_FOLDER,
   isValidSkillId,
   joinPath,
   listAllComments,
@@ -129,7 +132,7 @@ function scheduleTagCatalogRefresh(refresh: () => Promise<void>) {
   }, TAG_CATALOG_REFRESH_MS);
 }
 
-export type TabKind = "file" | "graph" | "settings" | "incoming";
+export type TabKind = "file" | "graph" | "settings";
 
 export type ViewMode = "live" | "source";
 
@@ -139,8 +142,20 @@ export const GRAPH_TAB_PATH = "markspace:graph";
 /** Singleton virtual path for the settings tab. */
 export const SETTINGS_TAB_PATH = "markspace:settings";
 
-/** Singleton virtual path for Incoming when no diary project exists. */
+/** Legacy virtual Incoming tab; migrated to today's Incoming note. */
 export const INCOMING_TAB_PATH = "markspace:incoming";
+
+function isLegacyIncomingTab(tab: { kind?: string; path: string }): boolean {
+  return tab.kind === "incoming" || tab.path === INCOMING_TAB_PATH;
+}
+
+async function treeWithIncomingFolder(tree: TreeNode): Promise<TreeNode> {
+  if (tree.children?.some((c) => isIncomingFolder(c.path, c.isDir))) {
+    return tree;
+  }
+  await ensureFolder(INCOMING_FOLDER);
+  return listTree();
+}
 
 export type EditorTab = {
   path: string;
@@ -272,7 +287,7 @@ type VaultStore = {
     syncTreeSelection?: boolean;
     skipNavHistory?: boolean;
   }) => Promise<void>;
-  /** Open Incoming: today's daily note in Live, if a diary project exists. */
+  /** Select Incoming and open today's diary daily note (if a diary project exists). */
   openIncomingTab: (options?: {
     syncTreeSelection?: boolean;
     skipNavHistory?: boolean;
@@ -405,29 +420,18 @@ export function isSettingsTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
   return tab.kind === "settings" || tab.path === SETTINGS_TAB_PATH;
 }
 
-export function isIncomingTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
-  return tab.kind === "incoming" || tab.path === INCOMING_TAB_PATH;
-}
-
-/** Incoming with no daily-note file (no diary project). */
-export function isIncomingPlaceholder(
-  tab: Pick<EditorTab, "kind" | "path">,
-): boolean {
-  return isIncomingTab(tab) && tab.path === INCOMING_TAB_PATH;
-}
-
-/** Tabs backed by app UI instead of a vault file (graph, settings, empty Incoming). */
+/** Tabs backed by app UI instead of a vault file (graph, settings). */
 export function isVirtualTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
-  return isGraphTab(tab) || isSettingsTab(tab) || isIncomingPlaceholder(tab);
+  return isGraphTab(tab) || isSettingsTab(tab);
 }
 
 export function isFileTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
   return !isVirtualTab(tab);
 }
 
-/** Active-tab Live/Source; Incoming and virtual tabs are always Live. */
+/** Active-tab Live/Source; virtual tabs are always Live. */
 function resolveTabViewMode(tab: EditorTab | undefined): ViewMode {
-  if (!tab || isIncomingTab(tab) || isVirtualTab(tab)) return "live";
+  if (!tab || isVirtualTab(tab)) return "live";
   return tab.viewMode === "source" ? "source" : "live";
 }
 
@@ -541,7 +545,6 @@ function flushActiveEditorBuffer(get: () => VaultStore): void {
 function tabLabel(path: string, kind?: TabKind): string {
   if (kind === "graph" || path === GRAPH_TAB_PATH) return "Graph";
   if (kind === "settings" || path === SETTINGS_TAB_PATH) return "Settings";
-  if (kind === "incoming" || path === INCOMING_TAB_PATH) return "Incoming";
   if (isFolderNotePath(path)) {
     const folder = parentPath(path);
     return folder.split("/").pop() || folder || "Folder";
@@ -754,8 +757,7 @@ function recordRecentFile(
   if (
     !path ||
     path === GRAPH_TAB_PATH ||
-    path === SETTINGS_TAB_PATH ||
-    path === INCOMING_TAB_PATH
+    path === SETTINGS_TAB_PATH
   ) {
     return;
   }
@@ -1467,7 +1469,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   openVaultAt: async (path) => {
     set({ loading: true, error: null });
     try {
-      const tree = await openVault(path);
+      const tree = await treeWithIncomingFolder(await openVault(path));
       const [
         expandedPaths,
         favoritePaths,
@@ -1497,9 +1499,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
               ? "graph"
               : isSettingsTab({ kind: t.kind ?? "file", path: t.path })
                 ? "settings"
-                : isIncomingTab({ kind: t.kind ?? "file", path: t.path })
-                  ? "incoming"
-                  : "file",
+                : "file",
             pinned: Boolean(t.pinned),
             viewMode: t.viewMode === "source" ? ("source" as const) : undefined,
           })),
@@ -1543,7 +1543,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
             ? session.activePath
             : restoredTabs[0].path;
         const activeTab = restoredTabs.find((t) => t.path === active);
-        if (activeTab && isIncomingTab(activeTab)) {
+        if (activeTab && isLegacyIncomingTab(activeTab)) {
           await get().openIncomingTab({ syncTreeSelection: false });
           return;
         }
@@ -1553,6 +1553,16 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
         const preview = activeTab?.preview ?? false;
         await get().openNote(active, { preview, syncTreeSelection: false });
+        return;
+      }
+
+      const sessionActive = session?.tabs.find((t) => t.path === session.activePath);
+      if (
+        session &&
+        (session.activePath === INCOMING_TAB_PATH ||
+          (sessionActive && isLegacyIncomingTab(sessionActive)))
+      ) {
+        await get().openIncomingTab({ syncTreeSelection: false });
         return;
       }
 
@@ -1584,12 +1594,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       while (pending) {
         pending = false;
         try {
-          const [tree, favoritePaths, projectPropertiesByPath] =
+          const [rawTree, favoritePaths, projectPropertiesByPath] =
             await Promise.all([
               listTree(),
               loadFavoritePaths(),
               loadProjectPropertiesMap(),
             ]);
+          const tree = await treeWithIncomingFolder(rawTree);
           if (pending) continue;
           const prev = get();
           const nextFav = sameStringArray(prev.favoritePaths, favoritePaths)
@@ -1851,39 +1862,32 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   openIncomingTab: async (options) => {
-    const syncTreeSelection = options?.syncTreeSelection === true;
+    const syncTreeSelection = options?.syncTreeSelection !== false;
     const skipNavHistory = options?.skipNavHistory === true;
-    const st = get();
-    let chatProjectPath: string | null = null;
     try {
-      const { useChatStore } = await import("./chatStore");
-      chatProjectPath = useChatStore.getState().projectPath;
-    } catch {
-      chatProjectPath = null;
-    }
-    const projectRoot = preferredDiaryProjectRoot({
-      selectedFolderPath: st.selectedFolderPath,
-      activePath: st.activePath,
-      chatProjectPath,
-      projectPropertiesByPath: st.projectPropertiesByPath,
-    });
+      await ensureFolder(INCOMING_FOLDER);
+      if (syncTreeSelection) {
+        get().selectFolder(INCOMING_FOLDER);
+      }
 
-    if (!projectRoot) {
-      await openSingletonTab(
-        set,
-        get,
-        INCOMING_TAB_PATH,
-        "incoming",
-        syncTreeSelection,
-        skipNavHistory,
-      );
-      set({ viewMode: "live", showOutline: false, showComments: false });
-      return;
-    }
+      const st = get();
+      let chatProjectPath: string | null = null;
+      try {
+        const { useChatStore } = await import("./chatStore");
+        chatProjectPath = useChatStore.getState().projectPath;
+      } catch {
+        chatProjectPath = null;
+      }
+      const projectRoot = preferredDiaryProjectRoot({
+        selectedFolderPath: st.selectedFolderPath,
+        activePath: st.activePath,
+        chatProjectPath,
+        projectPropertiesByPath: st.projectPropertiesByPath,
+      });
+      if (!projectRoot) return;
 
-    const day = new Date();
-    const rel = dailyNotePath(projectRoot, day);
-    try {
+      const day = new Date();
+      const rel = dailyNotePath(projectRoot, day);
       try {
         await readNote(rel);
       } catch {
@@ -1896,87 +1900,14 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         await get().refreshTree();
         void get().refreshVaultTags();
       }
-
-      flushActiveEditorBuffer(get);
-      const leavingPath = get().activePath;
-      const stashed = stashActiveIntoTabs(
-        get().tabs,
-        leavingPath,
-        get().content,
-        get().dirty,
-      );
-      if (stashed !== get().tabs) {
-        set({ tabs: stashed });
-      }
-
-      const leavingDirty =
-        leavingPath != null &&
-        leavingPath !== rel &&
-        Boolean(get().tabs.find((t) => t.path === leavingPath)?.dirty);
-
-      const tabs = get().tabs;
-      const outgoing = tabs.filter(
-        (t) => isIncomingTab(t) && t.path !== rel,
-      );
-      for (const tab of outgoing) {
-        if (tab.dirty) void persistDirtyTab(set, get, tab.path);
-      }
-
-      let nextTabs = tabs.filter((t) => !isIncomingTab(t) || t.path === rel);
-      if (!nextTabs.some((t) => t.path === rel)) {
-        nextTabs = [
-          ...nextTabs,
-          { path: rel, kind: "incoming", preview: false },
-        ];
-      } else {
-        nextTabs = nextTabs.map((t) =>
-          t.path === rel ? { ...t, kind: "incoming", preview: false } : t,
-        );
-      }
-
-      const existing = nextTabs.find((t) => t.path === rel);
-      if (get().activePath === rel && existing && isIncomingTab(existing)) {
-        set({
-          tabs: nextTabs,
-          viewMode: "live",
-          showOutline: false,
-          showComments: false,
-          ...(syncTreeSelection
-            ? {
-                selectedFolderExplicit: false,
-                treeSelectedFilePath: null,
-                treeSelectionVisible: true,
-              }
-            : { treeSelectionVisible: false }),
-        });
-        persistSession(get());
-        return;
-      }
-
-      const loadBody = async (): Promise<{ body: string; dirty: boolean }> => {
-        if (existing?.body !== undefined) {
-          return { body: existing.body, dirty: Boolean(existing.dirty) };
-        }
-        return { body: await readNote(rel), dirty: false };
-      };
-
-      const { body, dirty } = await loadBody();
-      activateLoaded(
-        set,
-        get().vaultPath,
-        rel,
-        body,
-        nextTabs,
-        dirty,
-        syncTreeSelection,
-      );
-      set({ viewMode: "live", showOutline: false, showComments: false });
-      persistSession(get());
-      recordRecentFile(set, get, rel);
-      if (!skipNavHistory) recordNavVisit(set, get, rel);
-      void get().loadActiveNoteComments();
-      if (leavingDirty && leavingPath) {
-        void persistDirtyTab(set, get, leavingPath);
+      await get().openNote(rel, {
+        preview: false,
+        // Keep Incoming as the selected create target, not the diary path.
+        syncTreeSelection: false,
+        skipNavHistory,
+      });
+      if (syncTreeSelection) {
+        get().selectFolder(INCOMING_FOLDER);
       }
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -2137,7 +2068,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     let nextTabs = tabs;
     if (activePath != null) {
       const mapped = tabs.map((t) =>
-        t.path === activePath && isFileTab(t) && !isIncomingTab(t)
+        t.path === activePath && isFileTab(t)
           ? t.viewMode === mode
             ? t
             : { ...t, viewMode: mode }
@@ -2156,7 +2087,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     let nextTabs = tabs;
     if (activePath != null) {
       const mapped = tabs.map((t) =>
-        t.path === activePath && isFileTab(t) && !isIncomingTab(t)
+        t.path === activePath && isFileTab(t)
           ? t.viewMode === mode
             ? t
             : { ...t, viewMode: mode }
@@ -2347,6 +2278,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const cleaned = folder.replace(/^\/+|\/+$/g, "");
     if (!cleaned) {
       get().selectFolder("");
+      return;
+    }
+    if (isIncomingFolder(cleaned)) {
+      await get().openIncomingTab();
       return;
     }
     get().selectFolder(cleaned);
@@ -2622,6 +2557,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   moveTreeEntry: async (from, toParent, toIndex) => {
+    if (isIncomingFolder(from)) {
+      set({ error: "Cannot move the Incoming folder" });
+      return null;
+    }
     if (isSkillsFolder(from) && toParent !== "") {
       set({ error: "Cannot move the Skills folder into another folder" });
       return null;
@@ -2689,8 +2628,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   nestTreeEntryUnderNote: async (from, notePath, toIndex = 0) => {
-    if (isSkillsFolder(from)) {
-      set({ error: "Cannot move the Skills folder" });
+    if (isIncomingFolder(from) || isSkillsFolder(from)) {
+      set({ error: "Cannot move the reserved folder" });
       return null;
     }
     const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
@@ -2837,6 +2776,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   renameTreeEntry: async (from, nextName) => {
+    if (isIncomingFolder(from)) {
+      set({ error: "Cannot rename the Incoming folder" });
+      return null;
+    }
     if (isSkillsFolder(from)) {
       set({ error: "Cannot rename the Skills folder" });
       return null;
@@ -2847,6 +2790,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const to = joinPath(parentPath(from), trimmed);
     if (isSkillsFolder(to)) {
       set({ error: "Cannot rename to the reserved Skills folder" });
+      return null;
+    }
+    if (isIncomingFolder(to)) {
+      set({ error: "Cannot rename to the reserved Incoming folder" });
       return null;
     }
     const fromKind = documentKind(from);
@@ -2953,6 +2900,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   removePath: async (path) => {
+    if (isIncomingFolder(path)) {
+      set({ error: "Cannot delete the Incoming folder" });
+      return false;
+    }
     if (isSkillsFolder(path)) {
       set({ error: "Cannot delete the Skills folder" });
       return false;

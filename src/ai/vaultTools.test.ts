@@ -135,6 +135,8 @@ describe("vault agent tools", () => {
     expect(askPrompt).not.toContain("terminal plan confirmation");
     expect(askPrompt).toContain("Folder notes:");
     expect(askPrompt).toContain("{folder}/.folder.md");
+    expect(askPrompt).toContain("Incoming:");
+    expect(askPrompt).toContain("diary daily note");
     expect(askPrompt).toContain("not some other note inside the folder");
     expect(askPrompt).toContain("remap it to `{name}/.folder.md`");
     expect(askPrompt).toContain(

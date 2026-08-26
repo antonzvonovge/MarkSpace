@@ -5,12 +5,15 @@ import { isVaultProjectFolder } from "../lib/vaultApi";
 import { commentQuoteLabel } from "../lib/commentAnchors";
 import {
   loadCommentsInboxCollapsed,
+  loadCommentsInboxList,
   loadCommentsInboxShowResolved,
   saveCommentsInboxCollapsed,
+  saveCommentsInboxList,
   saveCommentsInboxShowResolved,
 } from "../lib/commentsUiState";
 import { useVaultStore } from "../store/vaultStore";
 import {
+  CommentsListSticky,
   CommentsResolvedSticky,
   SectionCollapseButton,
 } from "./TreeToolbar";
@@ -107,6 +110,21 @@ function snippet(text: string, max = 48): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
+function noteStem(path: string): string {
+  const name = path.split("/").filter(Boolean).pop() ?? path;
+  return name.replace(/\.md$/i, "");
+}
+
+function commentLabel(ref: CommentRef): string {
+  return ref.comment.body || commentQuoteLabel(ref.comment.quote);
+}
+
+function sortCommentRefs(a: CommentRef, b: CommentRef): number {
+  const byPath = a.notePath.localeCompare(b.notePath);
+  if (byPath !== 0) return byPath;
+  return a.comment.createdAt.localeCompare(b.comment.createdAt);
+}
+
 function rowPad(depth: number): string {
   // +1 — align with first branch under vault root.
   return `calc(var(--tree-pad-x) + ${depth + 1} * var(--tree-indent))`;
@@ -118,6 +136,7 @@ export function CommentsInboxSection() {
   const [showResolved, setShowResolved] = useState(
     () => loadCommentsInboxShowResolved(),
   );
+  const [listMode, setListMode] = useState(() => loadCommentsInboxList());
   const [collapsed, setCollapsed] = useState(() => loadCommentsInboxCollapsed());
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
@@ -130,6 +149,10 @@ export function CommentsInboxSection() {
   );
 
   const tree = useMemo(() => buildCommentsTree(visible), [visible]);
+  const list = useMemo(
+    () => [...visible].sort(sortCommentRefs),
+    [visible],
+  );
 
   const toggleExpanded = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -143,6 +166,11 @@ export function CommentsInboxSection() {
   const onShowResolvedChange = useCallback((next: boolean) => {
     setShowResolved(next);
     saveCommentsInboxShowResolved(next);
+  }, []);
+
+  const onListModeChange = useCallback((next: boolean) => {
+    setListMode(next);
+    saveCommentsInboxList(next);
   }, []);
 
   const toggleCollapsed = useCallback(() => {
@@ -198,15 +226,21 @@ export function CommentsInboxSection() {
           ) : null}
         </button>
         <div className="section-header-actions">
+          <CommentsListSticky
+            active={listMode}
+            onToggle={() => onListModeChange(!listMode)}
+          />
           <CommentsResolvedSticky
             active={showResolved}
             onToggle={() => onShowResolvedChange(!showResolved)}
           />
-          <SectionCollapseButton
-            onCollapse={collapseToTopLevel}
-            disabled={expanded.size === 0}
-            title="Collapse to top level"
-          />
+          {!listMode ? (
+            <SectionCollapseButton
+              onCollapse={collapseToTopLevel}
+              disabled={expanded.size === 0}
+              title="Collapse to top level"
+            />
+          ) : null}
         </div>
       </div>
       {!collapsed ? (
@@ -214,19 +248,64 @@ export function CommentsInboxSection() {
           <p className="comments-inbox-empty">No open comments</p>
         ) : (
           <div className="comments-inbox-tree">
-            <FolderRows
-              node={tree}
-              depth={0}
-              expanded={expanded}
-              onToggle={toggleExpanded}
-              onOpenComment={(notePath, id) => {
-                void openComment(notePath, id);
-              }}
-            />
+            {listMode ? (
+              <CommentListRows
+                refs={list}
+                onOpenComment={(notePath, id) => {
+                  void openComment(notePath, id);
+                }}
+              />
+            ) : (
+              <FolderRows
+                node={tree}
+                depth={0}
+                expanded={expanded}
+                onToggle={toggleExpanded}
+                onOpenComment={(notePath, id) => {
+                  void openComment(notePath, id);
+                }}
+              />
+            )}
           </div>
         )
       ) : null}
     </div>
+  );
+}
+
+function CommentListRows({
+  refs,
+  onOpenComment,
+}: {
+  refs: CommentRef[];
+  onOpenComment: (notePath: string, commentId: string) => void;
+}) {
+  return (
+    <>
+      {refs.map((ref) => {
+        const text = commentLabel(ref);
+        return (
+          <button
+            key={`${ref.notePath}:${ref.comment.id}`}
+            type="button"
+            className={
+              ref.comment.resolved
+                ? "comments-inbox-row is-comment is-resolved"
+                : "comments-inbox-row is-comment"
+            }
+            style={{ paddingLeft: rowPad(0) }}
+            title={`${text}\n${ref.notePath}`}
+            onClick={() => onOpenComment(ref.notePath, ref.comment.id)}
+          >
+            <span className="comments-inbox-row-icon" aria-hidden>
+              <CommentsSectionIcon />
+            </span>
+            <span className="comments-inbox-label">{snippet(text)}</span>
+            <span className="comments-inbox-note">{noteStem(ref.notePath)}</span>
+          </button>
+        );
+      })}
+    </>
   );
 }
 

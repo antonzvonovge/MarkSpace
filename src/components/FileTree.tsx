@@ -28,6 +28,9 @@ import {
   getProjectProperties,
   isFolderNotePath,
   isSkillsFolder,
+  isIncomingFolder,
+  isIncomingPath,
+  INCOMING_FOLDER,
   isVaultDocumentPath,
   isVaultProjectFolder,
   joinPath,
@@ -93,6 +96,7 @@ import {
   beginVaultTreeDrag,
   endVaultTreeDrag,
   isVaultTreeDrag,
+  vaultPathFromDrop,
   VAULT_TREE_MIME,
 } from "../lib/vaultTreeDrag";
 import {
@@ -110,6 +114,7 @@ import {
   HabitTrackerIcon,
   CourseTrackerIcon,
   LinksIcon,
+  IncomingSectionIcon,
   PdfIcon,
   PlusIcon,
   VaultSectionIcon,
@@ -179,6 +184,13 @@ function FolderTreeIcon({
   /** When set for a language-learning project, show that country's flag. */
   learningLanguage?: string | null;
 }) {
+  if (isIncomingFolder(path, true)) {
+    return (
+      <span className="incoming-section-icon" aria-hidden>
+        <IncomingSectionIcon />
+      </span>
+    );
+  }
   if (isSkillsFolder(path)) return <FcWorkflow size={size} />;
   if (isVaultLexiconFolder(path, true)) {
     return <FcReadingEbook size={size} />;
@@ -361,6 +373,7 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
     });
     if (node.isDir) {
       for (const child of children) {
+        if (isIncomingFolder(child.path, child.isDir)) continue;
         walk(child, id);
       }
     }
@@ -663,7 +676,9 @@ function TreeContextMenu({
   const isSkills = isSkillsFolder(menu.path, menu.isDir);
   const isDiary = diaryProjectRoot !== null;
   const unsupportedFile = isUnsupportedTreeFile(menu.isDir, menu.path);
-  const showEditActions = !menu.createOnly && menu.path !== "" && !isSkills;
+  const isIncomingRoot = isIncomingFolder(menu.path, menu.isDir);
+  const showEditActions =
+    !menu.createOnly && menu.path !== "" && !isSkills && !isIncomingRoot;
   const showCopyPath = !menu.createOnly && menu.path !== "";
   const showFavorite =
     !menu.createOnly && menu.path !== "" && !unsupportedFile;
@@ -1504,6 +1519,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const selectFolder = useVaultStore((s) => s.selectFolder);
   const selectInTree = useVaultStore((s) => s.selectInTree);
   const openOrCreateFolderNote = useVaultStore((s) => s.openOrCreateFolderNote);
+  const openIncomingTab = useVaultStore((s) => s.openIncomingTab);
   const openNote = useVaultStore((s) => s.openNote);
   const toggleExpanded = useVaultStore((s) => s.toggleExpanded);
   const addToFavorites = useVaultStore((s) => s.addToFavorites);
@@ -1688,10 +1704,14 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   /** Vault root stays open; all nested folders close (first level only). */
   const collapseAllInTree = useCallback(() => {
     const { expandedPaths } = useVaultStore.getState();
-    if (expandedPaths.length === 0) return;
-    // Close all nested folders in one call (looped close() hits stale openIds).
-    treeRef.current?.close(expandedPaths.map(toNodeId));
-    useVaultStore.getState().collapseAllFolders();
+    const toClose = expandedPaths.filter((p) => !isIncomingPath(p));
+    if (toClose.length === 0) return;
+    treeRef.current?.close(toClose.map(toNodeId));
+    const next = expandedPaths.filter((p) => isIncomingPath(p));
+    useVaultStore.setState({ expandedPaths: next });
+    if (useVaultStore.getState().vaultPath) {
+      void saveExpandedPaths(useVaultStore.getState().vaultPath!, next);
+    }
   }, []);
 
   /** Favorites list only: close nested folders under favorite roots. */
@@ -1839,7 +1859,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         } else if (activePath) {
           target = activePath;
         }
-        if (!target || isSkillsFolder(target)) return;
+        if (!target || isSkillsFolder(target) || isIncomingFolder(target)) return;
         e.preventDefault();
         setContextMenu(null);
         setRenamingPath(target);
@@ -1856,10 +1876,20 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         return;
       }
 
-      const children = vaultTree?.children ?? [];
-      if (!children.length) return;
+      const workspaceChildren = (vaultTree?.children ?? []).filter(
+        (n) => !isIncomingFolder(n.path, n.isDir),
+      );
+      const incomingNode = vaultTree?.children?.find((n) =>
+        isIncomingFolder(n.path, n.isDir),
+      );
+      if (!workspaceChildren.length && !incomingNode) return;
 
-      const rows = collectVisibleTreeRows(children, expandedPaths);
+      const rows = [
+        ...(incomingNode
+          ? collectVisibleTreeRows([incomingNode], expandedPaths)
+          : []),
+        ...collectVisibleTreeRows(workspaceChildren, expandedPaths),
+      ];
       if (!rows.length) return;
 
       const currentPath =
@@ -2003,6 +2033,20 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     () => buildUnresolvedCommentCounts(allComments),
     [allComments],
   );
+
+  const incomingNode = useMemo((): TreeNode => {
+    const found = tree?.children?.find((n) =>
+      isIncomingFolder(n.path, n.isDir),
+    );
+    return (
+      found ?? {
+        name: INCOMING_FOLDER,
+        path: INCOMING_FOLDER,
+        isDir: true,
+        children: [],
+      }
+    );
+  }, [tree]);
 
   const favoriteNodes = useMemo(() => {
     if (!tree) return [] as TreeNode[];
@@ -2445,7 +2489,15 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           setOsDropRowPath(row.path);
         }}
         onDragOverCapture={(e) => {
-          if (isVaultTreeDrag(e.dataTransfer)) return;
+          if (isVaultTreeDrag(e.dataTransfer)) {
+            const row = vaultRowFromPointerTarget(e.target);
+            const dest = importParentFromRow(row.path, row.isDir);
+            if (isIncomingPath(dest)) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+            }
+            return;
+          }
           if (!clipboardHasOsFiles(e.dataTransfer)) return;
           e.preventDefault();
           e.stopPropagation();
@@ -2461,7 +2513,24 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         }}
         onDropCapture={(e) => {
           if (isVaultTreeDrag(e.dataTransfer)) {
+            const row = vaultRowFromPointerTarget(e.target);
+            const dest = importParentFromRow(row.path, row.isDir);
+            const from = (vaultPathFromDrop(e.dataTransfer) ?? "").replace(
+              /\/+$/,
+              "",
+            );
             setOsDropRowPath(null);
+            if (
+              from &&
+              isIncomingPath(dest) &&
+              from !== dest &&
+              !dest.startsWith(`${from}/`) &&
+              !isIncomingFolder(from)
+            ) {
+              e.preventDefault();
+              e.stopPropagation();
+              void moveTreeEntry(from, dest, 0);
+            }
             return;
           }
           if (!clipboardHasOsFiles(e.dataTransfer)) {
@@ -2476,7 +2545,56 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           beginOsImport(parent, e.dataTransfer);
         }}
       >
-        <IncomingSection />
+        <IncomingSection
+          expanded={expandedPaths.includes(INCOMING_FOLDER)}
+          selected={
+            treeSelectionVisible &&
+            selectedFolderExplicit &&
+            selectedFolderPath === INCOMING_FOLDER
+          }
+          hasChildren={(incomingNode.children ?? []).length > 0}
+          onToggle={() => toggleExpanded(INCOMING_FOLDER)}
+          onOpenIncoming={() => {
+            void openIncomingTab();
+          }}
+          onContextMenu={(x, y) => {
+            setContextMenu({
+              x,
+              y,
+              path: INCOMING_FOLDER,
+              name: INCOMING_FOLDER,
+              isDir: true,
+              isFavorite: favoriteSet.has(INCOMING_FOLDER),
+            });
+            selectInTree(INCOMING_FOLDER, true);
+          }}
+        >
+          <FavoritesTreeRows
+            nodes={incomingNode.children ?? []}
+            depth={0}
+            expandedPaths={expandedPaths}
+            activePath={activePath}
+            selectedFolderPath={selectedFolderPath}
+            selectedFolderExplicit={selectedFolderExplicit}
+            treeSelectedFilePath={treeSelectedFilePath}
+            treeSelectionVisible={treeSelectionVisible}
+            renamingPath={renamingPath}
+            favoriteSet={favoriteSet}
+            projectPropertiesByPath={projectPropertiesByPath}
+            unresolvedCounts={unresolvedCounts}
+            onOpenContextMenu={setContextMenu}
+            onSelectInTree={selectInTree}
+            onOpenFolder={(path) => {
+              void openOrCreateFolderNote(path);
+            }}
+            onOpenNote={(path, options) => {
+              void openNote(path, options);
+            }}
+            onToggleExpanded={toggleExpanded}
+            onRenameCommit={commitInlineRename}
+            onRenameCancel={cancelInlineRename}
+          />
+        </IncomingSection>
         {favoriteNodes.length > 0 ? (
           <div className="favorites-section">
             <div className="favorites-header">

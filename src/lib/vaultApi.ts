@@ -997,9 +997,24 @@ export async function ensureFolderNote(folder: string): Promise<string> {
 /** Reserved vault-root folder for agent skills (one .md file per skill). */
 export const SKILLS_FOLDER = "Skills";
 
+/** Reserved inbox folder: hidden from the workspace tree, shown in the Incoming section. */
+export const INCOMING_FOLDER = "Incoming";
+
 /** True for the protected root-level Skills/ folder. */
 export function isSkillsFolder(path: string, isDir = true): boolean {
   return isDir && path === SKILLS_FOLDER;
+}
+
+/** True for the reserved root-level Incoming/ folder. */
+export function isIncomingFolder(path: string, isDir = true): boolean {
+  return isDir && path === INCOMING_FOLDER;
+}
+
+/** Incoming folder or any path inside it. */
+export function isIncomingPath(path: string): boolean {
+  return (
+    path === INCOMING_FOLDER || path.startsWith(`${INCOMING_FOLDER}/`)
+  );
 }
 
 /** Skill id = filename stem under Skills/ (lowercase letters, digits, hyphens). */
@@ -1028,14 +1043,15 @@ export function skillPathForId(id: string): string {
 /**
  * A MarkSpace "project" is a first-level folder under the vault root
  * (path has no `/`). Nested folders are ordinary folders, not projects.
- * The reserved Skills/ folder is not a project.
+ * The reserved Skills/ and Incoming/ folders are not projects.
  */
 export function isVaultProjectFolder(path: string, isDir: boolean): boolean {
   return (
     isDir &&
     path.length > 0 &&
     !path.includes("/") &&
-    !isSkillsFolder(path, true)
+    !isSkillsFolder(path, true) &&
+    !isIncomingFolder(path, true)
   );
 }
 

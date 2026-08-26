@@ -5,7 +5,10 @@ alwaysApply: true
 
 # Vault projects
 
-In MarkSpace, a **project** is a first-level folder directly under the vault root (relative path with no `/`). Nested folders are ordinary folders, not projects.
+In MarkSpace, a **project** is a first-level folder directly under the vault root (relative path with no `/`). Nested folders are ordinary folders, not projects. Reserved root folders **Skills** and **Incoming** are not projects.
+
+- Helper: `isVaultProjectFolder(path, isDir)` in `src/lib/vaultApi.ts`.
+- **Incoming** is a vault-root inbox folder (`Incoming/`). It is omitted from the workspace tree and shown only in the Incoming sidebar section. Clicking Incoming selects that folder and opens today’s diary daily note `{diary}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` when a Diary project exists (not `.folder.md`, not a note inside Incoming). Inside Incoming, create/move any vault objects like a normal folder. The folder cannot be renamed, moved, or deleted.
 
 - Helper: `isVaultProjectFolder(path, isDir)` in `src/lib/vaultApi.ts`.
 - Tree UI uses a package icon (`FcPackage`) for projects; nested dirs keep folder icons.

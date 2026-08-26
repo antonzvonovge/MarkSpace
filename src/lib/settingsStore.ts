@@ -270,7 +270,7 @@ export async function saveGraphUiSettings(
   await store.save();
 }
 
-export type SavedTabKind = "file" | "graph" | "settings" | "incoming";
+export type SavedTabKind = "file" | "graph" | "settings";
 
 export type SavedEditorTab = {
   path: string;
@@ -292,7 +292,6 @@ const VAULT_SESSIONS_KEY = "vaultSessions";
 function normalizeSavedTabKind(kind: unknown, path: string): SavedTabKind {
   if (kind === "graph" || path === "markspace:graph") return "graph";
   if (kind === "settings" || path === "markspace:settings") return "settings";
-  if (kind === "incoming" || path === "markspace:incoming") return "incoming";
   return "file";
 }
 
