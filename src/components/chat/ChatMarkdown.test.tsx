@@ -118,6 +118,28 @@ describe("ChatMarkdown note references", () => {
     });
   });
 
+  it("heals hybrid [[folder/[Note.md](https://Note.md)]] into a clickable note link", async () => {
+    const openNote = vi.fn().mockResolvedValue(undefined);
+    useVaultStore.setState({ openNote });
+    resolveWikiTargetMock.mockResolvedValue("English/IELTS/Speaking.md");
+
+    render(
+      <ChatMarkdown
+        text="Документ [[English/IELTS/[Speaking.md](https://Speaking.md)|Speaking Overview]] обновлен."
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "Speaking Overview" });
+    fireEvent.click(link);
+
+    await waitFor(() => {
+      expect(resolveWikiTargetMock).toHaveBeenCalledWith(
+        "English/IELTS/Speaking.md",
+      );
+      expect(openNote).toHaveBeenCalledWith("English/IELTS/Speaking.md");
+    });
+  });
+
   it("leaves note-reference examples inside code untouched", () => {
     render(
       <ChatMarkdown text={"```\n![[Sources/example.md]]\n```\n\n`[[Inline]]`"} />,

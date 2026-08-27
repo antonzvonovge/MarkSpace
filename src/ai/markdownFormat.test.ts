@@ -53,6 +53,7 @@ describe("markdownFormat", () => {
   it("forbids fake https://file.md vault links in core rules", () => {
     const rules = markdownCoreRules().join("\n");
     expect(rules).toMatch(/https:\/\/Note\.md|https:\/\/file\.md/i);
+    expect(rules).toMatch(/\[\[folder\/\[Note\.md\]/);
   });
 
   it("documents diary day markers in core rules", () => {

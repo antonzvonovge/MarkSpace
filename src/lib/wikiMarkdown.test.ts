@@ -4,7 +4,45 @@ import {
   wikiToMarkdown,
   wikiTargetFromHref,
   extractWikiLinkTargets,
+  healFakeHttpsVaultLinks,
 } from "./wikiMarkdown";
+
+describe("healFakeHttpsVaultLinks", () => {
+  it("unwraps nested [file.md](https://file.md) inside wiki brackets", () => {
+    expect(
+      healFakeHttpsVaultLinks(
+        "[[English/IELTS/[Speaking.md](https://Speaking.md)|Speaking Overview]]",
+      ),
+    ).toBe("[[English/IELTS/Speaking.md|Speaking Overview]]");
+
+    expect(
+      healFakeHttpsVaultLinks(
+        "[[English/IELTS/Writing/Task 2/[25.08.2026.md](https://25.08.2026.md)]]",
+      ),
+    ).toBe("[[English/IELTS/Writing/Task 2/25.08.2026.md]]");
+  });
+
+  it("converts standalone fake https vault links to wiki-links", () => {
+    expect(healFakeHttpsVaultLinks("[Speaking.md](https://Speaking.md)")).toBe(
+      "[[Speaking.md]]",
+    );
+    expect(
+      healFakeHttpsVaultLinks("[Speaking Overview](https://Speaking.md)"),
+    ).toBe("[[Speaking.md|Speaking Overview]]");
+  });
+
+  it("leaves real website .md URLs alone", () => {
+    const src = "[docs](https://example.com/guide.md)";
+    expect(healFakeHttpsVaultLinks(src)).toBe(src);
+  });
+
+  it("is applied by wikiToMarkdown before conversion", () => {
+    const mid = wikiToMarkdown(
+      "See [[folder/[Note.md](https://Note.md)|Alias]]",
+    );
+    expect(mid).toBe("See [Alias](wiki:folder%2FNote.md)");
+  });
+});
 
 describe("wikiToMarkdown / markdownToWiki", () => {
   it("round-trips a simple wiki link", () => {

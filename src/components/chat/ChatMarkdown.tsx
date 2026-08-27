@@ -16,6 +16,7 @@ import { highlightCodeToHtml } from "../../lib/codeHighlight";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { normalizeDisplayMath } from "../../lib/mathMarkdown";
 import { ensureFolderNote, folderPathFromFolderNote, resolveWikiTarget } from "../../lib/vaultApi";
+import { healFakeHttpsVaultLinks } from "../../lib/wikiMarkdown";
 import { useVaultStore } from "../../store/vaultStore";
 import { ChatDiagram, diagramEngineForLang } from "./ChatDiagram";
 
@@ -304,7 +305,7 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
           pre: ({ children }) => <ChatPre>{children}</ChatPre>,
         }}
       >
-        {normalizeDisplayMath(text)}
+        {normalizeDisplayMath(healFakeHttpsVaultLinks(text))}
       </ReactMarkdown>
       {caret ? <span className="chat-caret" aria-hidden="true" /> : null}
     </div>

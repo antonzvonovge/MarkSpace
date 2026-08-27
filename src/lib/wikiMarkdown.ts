@@ -1,13 +1,63 @@
 /** Convert [[wiki|alias]] and ![[drawio|width]] / ![[audio]] into forms TipTap/BlockNote understand. */
 export const AUDIO_WIKI_EMBED_EXT = /\.(?:wav|mp3|m4a|ogg|aac)$/i;
 
+const VAULT_LINK_FILE_EXT =
+  String.raw`md|mddict|mdlnks|mdhabit|mdcourse|drawio|pdf|wav|mp3|m4a|ogg|aac`;
+
+/** LLM anti-pattern: `[Note.md](https://Note.md)` — host is a vault filename, not a site. */
+function fakeHttpsVaultLinkRe(): RegExp {
+  return new RegExp(
+    String.raw`\[([^\]]*)\]\(https?:\/\/([^/?#\s)]+\.(?:${VAULT_LINK_FILE_EXT}))\)`,
+    "gi",
+  );
+}
+
 export function isAudioWikiEmbedTarget(target: string): boolean {
   return AUDIO_WIKI_EMBED_EXT.test(target.trim());
 }
 
+/**
+ * Heal hybrid wiki+markdown vault links that models sometimes emit:
+ * - `[[folder/[Note.md](https://Note.md)]]` → `[[folder/Note.md]]`
+ * - `[[folder/[Note.md](https://Note.md)|Label]]` → `[[folder/Note.md|Label]]`
+ * - `[Note.md](https://Note.md)` → `[[Note.md]]`
+ * - `[Label](https://Note.md)` → `[[Note.md|Label]]`
+ *
+ * Real URLs like `[docs](https://example.com/a.md)` are left alone (path has `/`).
+ */
+export function healFakeHttpsVaultLinks(text: string): string {
+  const unwrapBare = (segment: string) =>
+    segment.replace(fakeHttpsVaultLinkRe(), (_m, _label: string, file: string) => file);
+
+  // Inside [[…]] / ![[…]]: unwrap nested markdown so the wiki target is a plain path.
+  let next = text.replace(
+    /(!?\[\[)([\s\S]*?)(\]\])/g,
+    (_m, open: string, body: string, close: string) =>
+      `${open}${unwrapBare(body)}${close}`,
+  );
+
+  // Standalone fakes → proper wiki-links.
+  next = next.replace(
+    fakeHttpsVaultLinkRe(),
+    (_m, label: string, file: string) => {
+      const textLabel = (label ?? "").trim();
+      if (
+        !textLabel ||
+        textLabel === file ||
+        textLabel === file.replace(/\.[^.]+$/i, "")
+      ) {
+        return `[[${file}]]`;
+      }
+      return `[[${file}|${textLabel}]]`;
+    },
+  );
+
+  return next;
+}
+
 export function wikiToMarkdown(source: string): string {
   // Audio file embeds → fenced code (same trick as Draw.io).
-  let next = source.replace(
+  let next = healFakeHttpsVaultLinks(source).replace(
     /!\[\[([^\]|]+\.(?:wav|mp3|m4a|ogg|aac))(?:\|([^\]]+))?\]\]/gi,
     (_match, target: string) => {
       const src = target.trim();
