@@ -31,6 +31,7 @@ describe("vault agent tools", () => {
     expect(askTools).toHaveProperty("read_drawio_format");
     expect(askTools).toHaveProperty("search_shapes");
     expect(askTools).not.toHaveProperty("move_path");
+    expect(askTools).not.toHaveProperty("rename_path");
     expect(askTools).not.toHaveProperty("delete_path");
     expect(askTools).not.toHaveProperty("ensure_folder");
     expect(askTools).not.toHaveProperty("delete_folder_if_empty");

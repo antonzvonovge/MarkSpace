@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ChatMode } from "../../ai/types";
+import { chatComposerAtTop } from "../../lib/chatMenuPlacement";
 
 const MODE_OPTIONS: {
   value: ChatMode;
@@ -45,7 +46,10 @@ export function ChatModePicker({ value, disabled, onChange }: Props) {
     const r = el.getBoundingClientRect();
     const spaceAbove = r.top - MENU_GAP;
     const spaceBelow = window.innerHeight - r.bottom - MENU_GAP;
-    const up = spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
+    // Empty-chat composer is under the tabs — open down into free space.
+    const up = chatComposerAtTop(el)
+      ? false
+      : spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
     const width = Math.max(r.width, 180);
     setPos({
       left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),

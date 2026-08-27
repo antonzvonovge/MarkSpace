@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { skillTemplate } from "../ai/skills";
+import { ensureDefaultSkills, skillTemplate } from "../ai/skills";
 import { flushDrawioEditor } from "../editor/drawio/drawioEditorFlush";
 import { warmDrawioPreview } from "../editor/drawio/warmPreview";
 import { flushLiveEditor } from "../editor/liveEditorFlush";
@@ -1469,7 +1469,15 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   openVaultAt: async (path) => {
     set({ loading: true, error: null });
     try {
-      const tree = await treeWithIncomingFolder(await openVault(path));
+      let tree = await treeWithIncomingFolder(await openVault(path));
+      try {
+        const seeded = await ensureDefaultSkills();
+        if (seeded.length > 0) {
+          tree = await treeWithIncomingFolder(await listTree());
+        }
+      } catch {
+        /* optional seed */
+      }
       const [
         expandedPaths,
         favoritePaths,

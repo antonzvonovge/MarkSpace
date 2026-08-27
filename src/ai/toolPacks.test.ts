@@ -50,6 +50,11 @@ describe("toolPacks", () => {
     expect(SPECIALIST_PRESETS.edit_notes.system).toContain("auto_tag_note");
   });
 
+  it("edit_notes can rename paths in place", () => {
+    expect(SPECIALIST_PRESETS.edit_notes.toolNames).toContain("rename_path");
+    expect(SPECIALIST_PRESETS.edit_notes.system).toContain("rename_path");
+  });
+
   it("pickTools keeps only requested keys", () => {
     const picked = pickTools(
       { a: 1, b: 2, c: 3 },

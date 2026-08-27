@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  LEXICON_REORGANIZE_SKILL_ID,
+  LEXICON_REORGANIZE_SKILL_MARKDOWN,
+} from "./defaultSkills/lexiconReorganize";
+import {
   formatForcedSkillsLines,
   formatSkillsCatalogLines,
   isCatalogSkill,
@@ -15,6 +19,19 @@ describe("skills", () => {
     expect(md).toContain("description:");
     expect(md).toContain("disable-model-invocation: false");
     expect(md).toContain("# meeting-notes");
+  });
+
+  it("seeds lexicon-reorganize as slash-only", () => {
+    const meta = parseSkillMeta(
+      LEXICON_REORGANIZE_SKILL_ID,
+      `Skills/${LEXICON_REORGANIZE_SKILL_ID}.md`,
+      LEXICON_REORGANIZE_SKILL_MARKDOWN,
+    );
+    expect(meta.disableModelInvocation).toBe(true);
+    expect(meta.description.length).toBeGreaterThan(20);
+    expect(isCatalogSkill(meta)).toBe(false);
+    expect(LEXICON_REORGANIZE_SKILL_MARKDOWN).toContain("rename_path");
+    expect(LEXICON_REORGANIZE_SKILL_MARKDOWN).toContain("ask_user");
   });
 
   it("parses skill meta from frontmatter", () => {

@@ -1,4 +1,7 @@
-import type { QuickTranslateResult } from "../ai/quickTranslate";
+import {
+  dictHeadwordLang,
+  type QuickTranslateResult,
+} from "../ai/quickTranslate";
 import { vaultProjectRootOf } from "./diaryNotes";
 import {
   mergeFrontmatter,
@@ -68,6 +71,21 @@ export function lexiconMdSegments(path: string, projectPath: string): string[] |
   return rest.split("/").filter(Boolean);
 }
 
+/** Max whitespace-separated tokens for a Lexicon card (phrasal verbs / short chunks OK). */
+export const LEXICON_MAX_WORDS = 4;
+
+/**
+ * Whether a Quick Translate query is short enough to save as a Lexicon lemma card.
+ * Skips full sentences and long phrases; the translate dialog may still show a result.
+ */
+export function isLexiconWorthyQuery(text: string): boolean {
+  const trimmed = text.normalize("NFC").replace(/\s+/g, " ").trim();
+  if (!trimmed) return false;
+  if (/[.!?;]/.test(trimmed)) return false;
+  const words = trimmed.split(" ").filter(Boolean);
+  return words.length <= LEXICON_MAX_WORDS;
+}
+
 export function lexiconSlug(lemma: string): string {
   const trimmed = lemma.normalize("NFC").replace(/\s+/g, " ").trim();
   const slug = trimmed
@@ -76,6 +94,29 @@ export function lexiconSlug(lemma: string): string {
     .replace(/\.+$/g, "")
     .trim();
   return slug || "word";
+}
+
+/**
+ * Learning-language headword for Lexicon filename / frontmatter `lemma`
+ * (same side as .mddict headword — not the native-query citation form).
+ */
+export function lexiconHeadword(
+  result: QuickTranslateResult,
+  foreignLanguageCode: string,
+  nativeLanguageCode: string,
+): string {
+  const headLang = dictHeadwordLang(nativeLanguageCode, foreignLanguageCode);
+  const queryIsHead =
+    result.queryLang.trim().toLowerCase() === headLang.trim().toLowerCase();
+  if (queryIsHead) {
+    return result.lemma.trim() || result.query.trim() || "word";
+  }
+  return (
+    result.translation.trim() ||
+    result.lemma.trim() ||
+    result.query.trim() ||
+    "word"
+  );
 }
 
 export function pickLexiconProject(
@@ -200,9 +241,10 @@ export function buildLexiconMarkdown(
   existing: string | null,
   result: QuickTranslateResult,
   foreignLanguageCode: string,
+  nativeLanguageCode: string,
   generatedBody?: string,
 ): string {
-  const lemma = result.lemma.trim() || result.query.trim();
+  const lemma = lexiconHeadword(result, foreignLanguageCode, nativeLanguageCode);
   const heading = `# ${lemma}`;
   const article = (generatedBody ?? LEXICON_ARTICLE_PENDING).trim();
   const generatedBlock = article.startsWith("#")
@@ -229,6 +271,7 @@ export function buildLexiconMarkdown(
     aliases.push(line);
   };
   push(result.query);
+  push(result.lemma);
   push(result.didYouMean);
   push(result.translation);
   for (const form of result.forms) push(form);
@@ -354,9 +397,14 @@ export async function upsertLexiconNote(params: {
   existingPath?: string | null;
   result: QuickTranslateResult;
   foreignLanguageCode: string;
+  nativeLanguageCode: string;
   generatedBody?: string;
 }): Promise<{ path: string; created: boolean; hasExtraNotes: boolean }> {
-  const lemma = params.result.lemma.trim() || params.result.query.trim();
+  const lemma = lexiconHeadword(
+    params.result,
+    params.foreignLanguageCode,
+    params.nativeLanguageCode,
+  );
   const desired = params.existingPath?.trim()
     ? params.existingPath.trim()
     : `${lexiconRoot(params.projectPath)}/${lexiconSlug(lemma)}.md`;
@@ -384,6 +432,7 @@ export async function upsertLexiconNote(params: {
     existing,
     params.result,
     params.foreignLanguageCode,
+    params.nativeLanguageCode,
     params.generatedBody,
   );
   const store = useVaultStore.getState();
@@ -402,6 +451,7 @@ export async function patchLexiconGeneratedBody(
   path: string,
   result: QuickTranslateResult,
   foreignLanguageCode: string,
+  nativeLanguageCode: string,
   generatedBody: string,
 ): Promise<string> {
   const existing = await readNote(path);
@@ -409,6 +459,7 @@ export async function patchLexiconGeneratedBody(
     existing,
     result,
     foreignLanguageCode,
+    nativeLanguageCode,
     generatedBody,
   );
   const store = useVaultStore.getState();

@@ -1,5 +1,4 @@
 import { generateText } from "ai";
-import { maybeStartLexiconReorgs } from "./lexiconRevision";
 import {
   credentialsFromSettings,
   resolveLanguageModel,
@@ -14,6 +13,7 @@ import {
 } from "../lib/folderContext";
 import { splitFrontmatter } from "../lib/noteFrontmatter";
 import {
+  lexiconHeadword,
   patchLexiconGeneratedBody,
 } from "../lib/lexiconNotes";
 import {
@@ -181,7 +181,11 @@ export async function generateLexiconArticle(params: {
   abortSignal?: AbortSignal;
   onProgress?: (progress: number, detail?: string) => void;
 }): Promise<string> {
-  const lemma = params.result.lemma.trim() || params.result.query.trim();
+  const lemma = lexiconHeadword(
+    params.result,
+    params.foreignLanguageCode,
+    params.nativeLanguageCode,
+  );
   params.onProgress?.(15, "Writing article");
   const senses = params.result.senses
     .map((s) => [s.pos, s.meaning].filter(Boolean).join(" — "))
@@ -250,12 +254,15 @@ export type StartLexiconArticleJobParams = {
 };
 
 /**
- * Fire-and-forget: write a full lexicon article. Folder review is a separate
- * job, triggered after enough new lemmas (not on every Translate / lookup).
+ * Fire-and-forget: write a full lexicon article for one lemma note.
  */
 export function startLexiconArticleJob(params: StartLexiconArticleJobParams): void {
   const path0 = params.notePath.trim();
-  const lemma = params.result.lemma.trim() || params.result.query.trim();
+  const lemma = lexiconHeadword(
+    params.result,
+    params.foreignLanguageCode,
+    params.nativeLanguageCode,
+  );
   const jobId = lexiconArticleJobId(path0);
   const label = `Lexicon · ${lemma}`;
 
@@ -299,6 +306,7 @@ export function startLexiconArticleJob(params: StartLexiconArticleJobParams): vo
         path0,
         params.result,
         params.foreignLanguageCode,
+        params.nativeLanguageCode,
         article,
       );
 
@@ -334,7 +342,6 @@ export function startLexiconArticleJob(params: StartLexiconArticleJobParams): vo
       if (activeAbortByJob.get(jobId) === ac) {
         activeAbortByJob.delete(jobId);
       }
-      void maybeStartLexiconReorgs();
     }
   })();
 }

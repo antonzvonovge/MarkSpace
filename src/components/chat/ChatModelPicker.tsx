@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { KIND_LABEL, TIER_LABEL, VENDOR_LABEL } from "../../ai/models";
 import type { AiModelOption, AiModelVendor } from "../../ai/types";
+import { chatComposerAtTop } from "../../lib/chatMenuPlacement";
 
 const VENDOR_ORDER: AiModelVendor[] = ["anthropic", "openai", "google"];
 
@@ -83,7 +84,10 @@ export function ChatModelPicker({
     const r = el.getBoundingClientRect();
     const spaceAbove = r.top - MENU_GAP;
     const spaceBelow = window.innerHeight - r.bottom - MENU_GAP;
-    const up = spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
+    // Empty-chat composer is under the tabs — open down into free space.
+    const up = chatComposerAtTop(el)
+      ? false
+      : spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
     const width = Math.max(r.width, 220);
     setPos({
       left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),

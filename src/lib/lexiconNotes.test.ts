@@ -4,15 +4,16 @@ import {
   buildLexiconMarkdown,
   LEXICON_MAX_MD_SEGMENTS,
   formatLexiconFolderLoad,
+  isLexiconWorthyQuery,
   isVaultLexiconFolder,
   isVaultLexiconMdNote,
+  lexiconHeadword,
   lexiconSlug,
   pickLexiconProject,
   resolveLexiconMovePath,
   splitLexiconBody,
   validateLexiconMove,
 } from "./lexiconNotes";
-import { filterLexiconMoves, parseLexiconMoves } from "../ai/lexiconReorg";
 import type { QuickTranslateResult } from "../ai/quickTranslate";
 import type { ProjectProperties } from "./vaultApi";
 
@@ -27,6 +28,20 @@ const word: QuickTranslateResult = {
   forms: ["goes", "went", "gone"],
   synonyms: [],
   senses: [{ pos: "verb", meaning: "двигаться", register: "", usage: "", collocations: [] }],
+  examples: [],
+};
+
+const fromNative: QuickTranslateResult = {
+  query: "подросток",
+  queryLang: "ru",
+  lemma: "подросток",
+  transcript: "",
+  translation: "teenager",
+  translationTranscript: "",
+  didYouMean: "",
+  forms: ["teenagers"],
+  synonyms: [],
+  senses: [],
   examples: [],
 };
 
@@ -48,18 +63,44 @@ describe("lexiconNotes", () => {
   });
 
   it("rebuilds markdown without wiping notes", () => {
-    const existing = buildLexiconMarkdown(null, word, "en");
+    const existing = buildLexiconMarkdown(null, word, "en", "ru");
     const withNotes = existing.replace("## Notes\n", "## Notes\n\nKeep me\n");
     const next = buildLexiconMarkdown(
       withNotes,
       word,
       "en",
+      "ru",
       "# go\n\nFull article here.",
     );
     expect(next).toContain("Keep me");
     expect(next).toContain("lemma: go");
     expect(next).toContain("Full article here.");
     expect(next).toContain("went");
+  });
+
+  it("names cards after the learning-language headword", () => {
+    expect(lexiconHeadword(word, "en", "ru")).toBe("go");
+    expect(lexiconHeadword(fromNative, "en", "ru")).toBe("teenager");
+    const md = buildLexiconMarkdown(null, fromNative, "en", "ru");
+    expect(md).toContain("lemma: teenager");
+    expect(md).toContain("подросток");
+    expect(md).toMatch(/^# teenager$/m);
+  });
+
+  it("skips long phrases and sentences for Lexicon cards", () => {
+    expect(isLexiconWorthyQuery("free up")).toBe(true);
+    expect(isLexiconWorthyQuery("in turn")).toBe(true);
+    expect(isLexiconWorthyQuery("leisure activity")).toBe(true);
+    expect(isLexiconWorthyQuery("one two three four")).toBe(true);
+    expect(isLexiconWorthyQuery("one two three four five")).toBe(false);
+    expect(
+      isLexiconWorthyQuery(
+        "Firstly, hobbies are key for personal rising as it bring about creativeness",
+      ),
+    ).toBe(false);
+    expect(isLexiconWorthyQuery("Hello!")).toBe(false);
+    expect(isLexiconWorthyQuery("wait; what")).toBe(false);
+    expect(isLexiconWorthyQuery("")).toBe(false);
   });
 
   it("picks the active language-learning project", () => {
@@ -203,20 +244,5 @@ describe("lexicon moves", () => {
         occupied,
       ),
     ).toBeNull();
-  });
-
-  it("parses moves and drops no-ops", () => {
-    const moves = parseLexiconMoves(
-      `{"moves":[{"from":"En/Lexicon/go.md","to":"En/Lexicon/go.md"},{"from":"En/Lexicon/go.md","to":"En/Lexicon/verbs/go.md"}]}`,
-    );
-    const { accepted, warnings } = filterLexiconMoves(
-      moves,
-      project,
-      occupied,
-    );
-    expect(warnings).toEqual([]);
-    expect(accepted).toEqual([
-      { from: "En/Lexicon/go.md", to: "En/Lexicon/verbs/go.md" },
-    ]);
   });
 });

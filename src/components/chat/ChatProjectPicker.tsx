@@ -9,6 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import { FcPackage, FcPlanner } from "react-icons/fc";
 import { LearningLanguageFlag } from "../LearningLanguageFlag";
+import { chatComposerAtTop } from "../../lib/chatMenuPlacement";
 import { learningLanguageFlagSvg } from "../../lib/languageFlags";
 import { listVaultProjects } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
@@ -19,7 +20,14 @@ type Props = {
   onChange: (projectPath: string | null) => void;
 };
 
-type MenuPos = { left: number; bottom: number; width: number };
+type MenuPos = {
+  left: number;
+  top: number | null;
+  bottom: number | null;
+  width: number;
+};
+
+const MENU_GAP = 6;
 
 function ProjectIcon({
   path,
@@ -74,10 +82,13 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
+    const width = Math.max(r.width, 160);
+    const openAbove = !chatComposerAtTop(el);
     setPos({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - 200)),
-      bottom: window.innerHeight - r.top + 6,
-      width: Math.max(r.width, 160),
+      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+      top: openAbove ? null : r.bottom + MENU_GAP,
+      bottom: openAbove ? window.innerHeight - r.top + MENU_GAP : null,
+      width,
     });
   };
 
@@ -128,7 +139,8 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
             style={{
               position: "fixed",
               left: pos.left,
-              bottom: pos.bottom,
+              top: pos.top ?? undefined,
+              bottom: pos.bottom ?? undefined,
               width: pos.width,
               zIndex: 10000,
             }}

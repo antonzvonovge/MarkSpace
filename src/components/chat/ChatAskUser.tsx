@@ -74,7 +74,7 @@ function QuestionForm({
 
   return (
     <fieldset className="chat-ask-user-q" disabled={disabled}>
-      <legend className="chat-ask-user-prompt">{question.prompt}</legend>
+      <div className="chat-ask-user-prompt">{question.prompt}</div>
       <div className="chat-ask-user-options" role={multi ? "group" : "radiogroup"}>
         {question.options.map((opt) => {
           const selected = value.selectedOptionIds.includes(opt.id);

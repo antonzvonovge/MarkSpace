@@ -137,6 +137,17 @@ function unwrapMessagesForModel(messages: UIMessage[]): UIMessage[] {
 /** Cap tool payloads in live UI state; full data stays in `parts` for the final message. */
 const UI_TOOL_STRING_CAP = 480;
 
+/** Interactive tools whose input the user must read in full while answering. */
+function toolUiName(part: AssistantPart): string {
+  if ("toolName" in part && typeof part.toolName === "string") {
+    return part.toolName;
+  }
+  if (typeof part.type === "string" && part.type.startsWith("tool-")) {
+    return part.type.slice("tool-".length);
+  }
+  return "";
+}
+
 function slimJsonValue(value: unknown, depth = 0): unknown {
   if (value == null) return value;
   if (typeof value === "string") {
@@ -165,6 +176,9 @@ function slimJsonValue(value: unknown, depth = 0): unknown {
 
 function slimToolPart(part: AssistantPart): AssistantPart {
   if (!isToolUIPart(part)) return part;
+  const name = toolUiName(part);
+  // ask_user / folder pick: the user is answering from this input — never truncate prompts.
+  if (name === "ask_user" || name === "pick_vault_folder") return part;
   const next = { ...part } as AssistantPart & {
     input?: unknown;
     output?: unknown;

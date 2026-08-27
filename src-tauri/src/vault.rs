@@ -928,10 +928,61 @@ fn order_remove_child(order: &mut OrderMap, parent: &str, name: &str) {
     }
 }
 
+/// Insert index: directories before files, then case-insensitive name order.
+fn natural_order_index(root: &Path, parent: &str, siblings: &[String], name: &str) -> usize {
+    let parent_dir = if parent.is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(parent)
+    };
+    let name_is_dir = parent_dir.join(name).is_dir();
+    let name_key = name.to_lowercase();
+    let mut idx = 0usize;
+    for sib in siblings {
+        if sib == name {
+            continue;
+        }
+        let sib_is_dir = parent_dir.join(sib).is_dir();
+        match (name_is_dir, sib_is_dir) {
+            (true, false) => break,
+            (false, true) => {
+                idx += 1;
+                continue;
+            }
+            _ => {
+                if sib.to_lowercase() > name_key {
+                    break;
+                }
+                idx += 1;
+            }
+        }
+    }
+    idx
+}
+
 fn order_insert_child(order: &mut OrderMap, parent: &str, name: &str, index: Option<usize>) {
     let list = order.entry(parent.to_string()).or_default();
     list.retain(|n| n != name);
     let idx = index.unwrap_or(list.len()).min(list.len());
+    list.insert(idx, name.to_string());
+}
+
+/// Insert keeping directories-first + case-insensitive alphabetical order among siblings.
+fn order_insert_child_natural(root: &Path, order: &mut OrderMap, parent: &str, name: &str) {
+    let list = order.entry(parent.to_string()).or_default();
+    list.retain(|n| n != name);
+    let idx = natural_order_index(root, parent, list, name);
+    list.insert(idx, name.to_string());
+}
+
+/// Like [`order_insert_child_natural`], but if `name` is already in the parent's order,
+/// leave its position alone (create/ensure must not reshuffle existing siblings).
+fn order_ensure_child_natural(root: &Path, order: &mut OrderMap, parent: &str, name: &str) {
+    let list = order.entry(parent.to_string()).or_default();
+    if list.iter().any(|n| n == name) {
+        return;
+    }
+    let idx = natural_order_index(root, parent, list, name);
     list.insert(idx, name.to_string());
 }
 
@@ -1651,10 +1702,18 @@ pub fn create_folder(path: String, state: State<VaultState>) -> Result<String, S
     fs::create_dir_all(&full).map_err(|e| format!("Cannot create folder: {e}"))?;
 
     let created = relative_to_root(&root, &full);
-    let parent = parent_rel(&created);
-    let name = entry_name(&created);
     let mut order = read_order(&root);
-    order_insert_child(&mut order, &parent, &name, None);
+    let mut acc = String::new();
+    for seg in created.split('/').filter(|s| !s.is_empty()) {
+        let parent = acc.clone();
+        if !acc.is_empty() {
+            acc.push('/');
+        }
+        acc.push_str(seg);
+        if root.join(&acc).is_dir() {
+            order_ensure_child_natural(&root, &mut order, &parent, seg);
+        }
+    }
     write_order(&root, &order)?;
 
     Ok(created)
@@ -1691,10 +1750,21 @@ pub fn ensure_folder(
 
     fs::create_dir_all(&full).map_err(|e| format!("Cannot create folder: {e}"))?;
     let created = relative_to_root(&root, &full);
-    let parent = parent_rel(&created);
-    let name = entry_name(&created);
+    // Register each new segment (including intermediate parents create_dir_all made)
+    // without moving names that were already in order.json.
     let mut order = read_order(&root);
-    order_insert_child(&mut order, &parent, &name, None);
+    let mut acc = String::new();
+    for seg in created.split('/').filter(|s| !s.is_empty()) {
+        let parent = acc.clone();
+        if !acc.is_empty() {
+            acc.push('/');
+        }
+        acc.push_str(seg);
+        let seg_full = root.join(&acc);
+        if seg_full.is_dir() {
+            order_ensure_child_natural(&root, &mut order, &parent, seg);
+        }
+    }
     write_order(&root, &order)?;
 
     Ok(EnsureFolderResult {
@@ -1858,8 +1928,10 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
         }
     } else {
         order_remove_child(&mut order, &from_parent, &from_name);
+        // Drop stale names left in the source folder's order list.
+        materialize_parent_order(&root, &mut order, &from_parent)?;
         materialize_parent_order(&root, &mut order, &to_parent)?;
-        order_insert_child(&mut order, &to_parent, &to_name, None);
+        order_insert_child_natural(&root, &mut order, &to_parent, &to_name);
     }
     if was_dir {
         rewrite_order_keys_after_move(&mut order, &from_rel, &to_rel);
@@ -1943,7 +2015,15 @@ pub fn move_entry(
         order_remove_child(&mut order, &from_parent, &name);
         // After FS rename, materialize again so missing/new are correct, then insert
         materialize_parent_order(&root, &mut order, &to_parent)?;
-        order_insert_child(&mut order, &to_parent, &name, Some(to_index));
+        // Agent `move_path` passes a huge to_index (JS MAX_SAFE_INTEGER) meaning "no
+        // explicit slot". Append would scramble batch reorgs (e.g. Lexicon); use
+        // directories-first alphabetical order instead. UI drag-and-drop always sends a
+        // real small index.
+        if to_index >= 1_000_000 {
+            order_insert_child_natural(&root, &mut order, &to_parent, &name);
+        } else {
+            order_insert_child(&mut order, &to_parent, &name, Some(to_index));
+        }
         if was_dir {
             rewrite_order_keys_after_move(&mut order, &from, &new_rel);
         }

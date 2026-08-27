@@ -2720,6 +2720,8 @@ button.status-bar-jobs-menu-item:hover {
   min-width: 0;
   width: 100%;
   overflow: hidden;
+  /* Opaque so a warm inactive tab cannot show through transparent editors. */
+  background: var(--editor-surface);
 }
 
 .document-instance.is-active {
@@ -2751,9 +2753,15 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .document-editor-slot.is-active {
+  z-index: 1;
+}
+
+/* `visibility` / `pointer-events` on a child override the parent. Inactive
+   tabs keep a warm Live slot with `.is-active`, so visibility must be gated
+   on the document instance — otherwise the previous tab paints through. */
+.document-instance.is-active .document-editor-slot.is-active {
   visibility: visible;
   pointer-events: auto;
-  z-index: 1;
 }
 
 .note-path {
@@ -8908,10 +8916,15 @@ button.status-bar-jobs-menu-item:hover {
 
 .chat-ask-user-prompt {
   padding: 0;
-  margin-bottom: 6px;
+  margin: 0 0 8px;
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: min(50vh, 28rem);
+  overflow-y: auto;
+  line-height: 1.45;
 }
 
 .chat-ask-user-options {
@@ -10892,6 +10905,7 @@ button.status-bar-jobs-menu-item:hover {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  background: var(--editor-surface);
 }
 
 .links-editor {

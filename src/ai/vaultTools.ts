@@ -1563,7 +1563,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     }),
     move_path: tool({
       description:
-        "Move a vault file or folder into another folder while keeping its name. For Markdown notes, referenced files in the sibling .assets folder are migrated automatically and links are updated.",
+        "Move a vault file or folder into another folder while keeping its name. Places it in directories-first alphabetical order among siblings (not at the end). For Markdown notes, referenced files in the sibling .assets folder are migrated automatically and links are updated.",
       inputSchema: z.object({
         path: z
           .string()
@@ -1600,6 +1600,47 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           ok: true as const,
           from,
           path: moved,
+        };
+      },
+    }),
+    rename_path: tool({
+      description:
+        "Rename a vault file or folder in place (same parent folder). Pass the new basename only, including the extension for files (e.g. teenager.md). To move into another folder, use move_path first (or after). Cannot rename the reserved Skills or Incoming folders.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .describe("Vault-relative source path, e.g. English/Lexicon/подросток.md"),
+        new_name: z
+          .string()
+          .describe(
+            "New file or folder name in the same parent, e.g. teenager.md",
+          ),
+      }),
+      execute: async ({ path, new_name: newName }) => {
+        const from = normalizeToolPath(path).replace(/\/+$/, "");
+        const name = newName.trim().replace(/[\\/]/g, "");
+        if (!from) {
+          return { ok: false as const, error: "Source path required" };
+        }
+        if (!name) {
+          return { ok: false as const, error: "New name required" };
+        }
+
+        const store = useVaultStore.getState();
+        const renamed = await store.renameTreeEntry(from, name);
+        await yieldToUi();
+        if (!renamed) {
+          return {
+            ok: false as const,
+            error:
+              useVaultStore.getState().error ??
+              `Could not rename ${from} to ${name}`,
+          };
+        }
+        return {
+          ok: true as const,
+          from,
+          path: renamed,
         };
       },
     }),

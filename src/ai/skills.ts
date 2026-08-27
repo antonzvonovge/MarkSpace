@@ -1,13 +1,19 @@
 import { splitFrontmatter } from "../lib/noteFrontmatter";
 import {
   SKILLS_FOLDER,
+  createNote,
   isValidSkillId,
   listTree,
   readNote,
   skillIdFromPath,
   skillPathForId,
+  writeNote,
   type TreeNode,
 } from "../lib/vaultApi";
+import {
+  LEXICON_REORGANIZE_SKILL_ID,
+  LEXICON_REORGANIZE_SKILL_MARKDOWN,
+} from "./defaultSkills/lexiconReorganize";
 
 export type SkillMeta = {
   id: string;
@@ -71,6 +77,38 @@ export function isCatalogSkill(meta: SkillMeta): boolean {
     meta.description.length > 0 &&
     !meta.disableModelInvocation
   );
+}
+
+/**
+ * Write built-in skills into Skills/ when missing (does not overwrite user edits).
+ * Returns paths that were created.
+ */
+export async function ensureDefaultSkills(): Promise<string[]> {
+  const created: string[] = [];
+  const defaults: { id: string; markdown: string }[] = [
+    {
+      id: LEXICON_REORGANIZE_SKILL_ID,
+      markdown: LEXICON_REORGANIZE_SKILL_MARKDOWN,
+    },
+  ];
+  for (const skill of defaults) {
+    if (!isValidSkillId(skill.id)) continue;
+    const path = skillPathForId(skill.id);
+    try {
+      await readNote(path);
+      continue;
+    } catch {
+      /* missing — seed */
+    }
+    try {
+      const notePath = await createNote(path);
+      await writeNote(notePath, skill.markdown);
+      created.push(notePath);
+    } catch {
+      /* vault not ready / Skills missing */
+    }
+  }
+  return created;
 }
 
 /** List skill metadata from the open vault's Skills/ folder. */

@@ -1,7 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { credentialsFromSettings } from "../ai/languageModel";
 import { startLexiconArticleJob } from "../ai/lexiconArticle";
-import { recordLexiconLemmaCreated } from "../ai/lexiconRevision";
 import {
   collectLearningLanguageCodes,
   DEFAULT_FOREIGN_LANG,
@@ -20,6 +19,7 @@ import {
   sortMddictPathsForPicker,
 } from "../editor/mddict/dictPractice";
 import {
+  isLexiconWorthyQuery,
   loadLexiconHits,
   lookupLexiconHit,
   pickLexiconProject,
@@ -377,11 +377,12 @@ export function QuickTranslateDialog({
       );
       await saveQuickTranslateCache(cache);
 
-      if (project) {
+      if (project && isLexiconWorthyQuery(trimmed)) {
         const saved = await upsertLexiconNote({
           projectPath: project,
           result: next,
           foreignLanguageCode: foreignLang,
+          nativeLanguageCode: nativeLanguage,
         });
         cache = upsertCachedTranslation(
           cache,
@@ -392,9 +393,6 @@ export function QuickTranslateDialog({
         );
         await saveQuickTranslateCache(cache);
         setLexiconPath(saved.path);
-        if (saved.created) {
-          void recordLexiconLemmaCreated(project);
-        }
         startLexiconArticleJob({
           notePath: saved.path,
           projectPath: project,

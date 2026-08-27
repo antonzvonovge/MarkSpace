@@ -107,6 +107,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     system: [
       "You are a MarkSpace note editor. Create/edit markdown notes, folders, and assets.",
       "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, .mddict, .mdhabit, or .mdcourse — those need other specialists.",
+      "To rename a file or folder in place use rename_path (new basename); to change folders use move_path.",
       "To tag a note from its content, prefer auto_tag_note (reuses the vault tag catalog) over inventing tags in edit_note.",
       "Follow MarkSpace Markdown dialect; call read_format_guide when unsure.",
       "Diary daily notes: {project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md via open_or_create_daily_note.",
@@ -129,6 +130,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "create_folder",
       "ensure_folder",
       "move_path",
+      "rename_path",
       "delete_path",
       "delete_folder_if_empty",
       "save_attachment",
