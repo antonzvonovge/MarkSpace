@@ -1,0 +1,174 @@
+/* Styles inside shadow root — :host targets the light-DOM host element. */
+
+:host {
+  position: fixed !important;
+  z-index: 2147483646 !important;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-family: var(--font-ui, system-ui, sans-serif);
+  line-height: normal;
+  pointer-events: auto;
+  display: block;
+  background: transparent;
+  overflow: visible;
+}
+
+.context-gem-mount {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 1px solid var(--line, rgba(28, 36, 40, 0.1));
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(20, 30, 34, 0.18);
+  overflow: hidden;
+  background: var(--editor-surface, #ffffff);
+}
+
+.context-gem-mount .chat-panel {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+  background: transparent;
+}
+
+.context-gem-mount.is-resizing {
+  box-shadow: 0 8px 32px rgba(20, 30, 34, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--accent, #1a73e8) 35%, transparent);
+}
+
+.context-gem-resize-edge {
+  position: absolute;
+  z-index: 6;
+  touch-action: none;
+}
+
+.context-gem-resize-edge--n {
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.context-gem-resize-edge--s {
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.context-gem-resize-edge--e {
+  top: 10px;
+  right: 0;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.context-gem-resize-edge--w {
+  top: 10px;
+  left: 0;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.context-gem-resize-edge--ne {
+  top: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+
+.context-gem-resize-edge--nw {
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+.context-gem-resize-edge--se {
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+}
+
+.context-gem-resize-edge--sw {
+  left: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+
+.context-gem-resize-edge--se::before {
+  content: "";
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 0 0 3px 0;
+  opacity: 0.55;
+  background:
+    radial-gradient(circle, var(--muted, #5f6368) 1.1px, transparent 1.2px)
+      6px 6px / 4px 4px no-repeat,
+    radial-gradient(circle, var(--muted, #5f6368) 1.1px, transparent 1.2px)
+      2px 6px / 4px 4px no-repeat,
+    radial-gradient(circle, var(--muted, #5f6368) 1.1px, transparent 1.2px)
+      6px 2px / 4px 4px no-repeat,
+    radial-gradient(circle, var(--muted, #5f6368) 1.1px, transparent 1.2px)
+      2px 2px / 4px 4px no-repeat;
+  transition: opacity 0.15s ease;
+}
+
+.context-gem-resize-edge--se::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border-right: 1.5px solid color-mix(in srgb, var(--muted, #5f6368) 70%, transparent);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--muted, #5f6368) 70%, transparent);
+  border-radius: 0 0 4px 0;
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.context-gem-resize-edge--se:hover::before,
+.context-gem-resize-edge--se:hover::after,
+.context-gem-resize-edge--se.is-resizing::before,
+.context-gem-resize-edge--se.is-resizing::after {
+  opacity: 0.95;
+}
+
+.context-gem-drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.context-gem-drag-handle.is-dragging {
+  cursor: grabbing;
+}
+
+.context-gem-drag-handle .chat-tabbar {
+  cursor: grab;
+}
+
+.context-gem-drag-handle.is-dragging .chat-tabbar {
+  cursor: grabbing;
+}

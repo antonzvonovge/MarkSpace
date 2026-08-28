@@ -29,3 +29,7 @@ public/.drawio-download/
 
 # Tauri externalBin sidecars (staged by scripts/stage-embeddings-sidecar.mjs)
 src-tauri/binaries/markspace-embeddings-*
+
+# ContextGem Chrome extension build output
+extensions/context-gem/dist/
+extensions/context-gem/node_modules/

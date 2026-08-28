@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ContextGem Settings</title>
+    <link rel="stylesheet" href="./options.css" />
+  </head>
+  <body>
+    <main class="options-page">
+      <h1>ContextGem</h1>
+      <p class="subtitle">
+        Expert English breakdown for selected text. Configure your Google AI key
+        and preferences below.
+      </p>
+
+      <form id="settings-form">
+        <div class="field">
+          <label for="google-api-key">Google AI API key</label>
+          <input
+            type="password"
+            id="google-api-key"
+            name="googleApiKey"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="AIza…"
+          />
+          <p class="hint">
+            Same key as MarkSpace → Settings → API keys → Google AI API key, or
+            create one at
+            <a
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noreferrer"
+              >Google AI Studio</a
+            >.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="model">Model</label>
+          <select id="model" name="model"></select>
+        </div>
+
+        <div class="field">
+          <label>Explanation language</label>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input type="radio" name="explanationLanguage" value="en" checked />
+              English
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="explanationLanguage" value="ru" />
+              Russian
+            </label>
+          </div>
+          <p class="hint">
+            Language for expert breakdown and follow-up replies. Example
+            sentences stay in English.
+          </p>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn-primary">Save</button>
+          <span class="status" id="status" aria-live="polite"></span>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>
