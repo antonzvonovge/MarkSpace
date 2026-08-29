@@ -271,6 +271,26 @@ select {
   font: inherit;
 }
 
+/* Icon beside label/meta: vertical center (kills SVG baseline gap). */
+.icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+/* Only the SVG — never the wrapper/button (that forces a second row). */
+.icon-text > svg,
+.icon-text .icon-text-glyph svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.icon-text .icon-text-glyph {
+  flex-shrink: 0;
+}
+
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -4021,6 +4041,11 @@ button.status-bar-jobs-menu-item:hover {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+  line-height: 0;
+}
+
+.page-movie-watched-eye svg {
+  display: block;
 }
 
 .page-movie-watched-eye:hover {
@@ -4158,6 +4183,7 @@ button.status-bar-jobs-menu-item:hover {
 .page-movie-card-watched-stats {
   font-size: 1.05rem;
   font-weight: 500;
+  line-height: 1.2;
   color: var(--muted);
 }
 

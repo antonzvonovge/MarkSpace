@@ -1,0 +1,24 @@
+---
+description: Vertically center icons beside labels via .icon-text
+globs: src/**/*.{tsx,css}
+alwaysApply: false
+---
+
+# Icon + text alignment
+
+When an icon sits beside a label, caption, or meta string (stats, toolbar labels, card chrome):
+
+1. Wrap icon + text in a container with class **`icon-text`** (`App.css`) — `inline-flex` + `align-items: center`.
+2. Put the interactive/icon host on **`icon-text-glyph`** (button or span wrapping the SVG).
+3. Apply `display: block` **only to the SVG**, never to `.icon-text-glyph` — that makes the button full-width and pushes the label onto a second row.
+4. If another class sets `display: block` on the same element (e.g. `.page-movie-card-line`), re-assert `display: inline-flex` on the more specific row class.
+5. Do **not** rely on inline SVG baseline / `vertical-align` alone.
+
+```tsx
+<span className="icon-text some-local-class">
+  <button type="button" className="icon-text-glyph …">
+    <SomeIcon size={24} aria-hidden="true" />
+  </button>
+  <span>1x · last Aug 29, 2026</span>
+</span>
+```

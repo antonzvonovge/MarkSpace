@@ -246,10 +246,10 @@ export function PageMovieProps({ path, content, onChange }: Props) {
                 >
                   <DetailsBody attrs={attrs} />
                 </button>
-                <span className="page-movie-card-line page-movie-card-watched">
+                <span className="page-movie-card-line page-movie-card-watched icon-text">
                   <button
                     type="button"
-                    className="page-movie-watched-eye"
+                    className="page-movie-watched-eye icon-text-glyph"
                     onClick={markWatched}
                     aria-label="I watched"
                     title="I watched"
