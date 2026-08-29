@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { HexColorPicker } from "react-colorful";
 import { DEFAULT_ACCENT_HEX, normalizeAccentHex } from "../../lib/accentColor";
+import { placeAnchoredMenu } from "../../lib/menuPlacement";
 
 type MenuPos = {
   left: number;
@@ -32,12 +33,18 @@ export function RgbPicker({ value, onChange, ariaLabel, disabled }: Props) {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - r.bottom - MENU_GAP;
-    const up = spaceBelow < MENU_HEIGHT && r.top > spaceBelow;
+    const placed = placeAnchoredMenu(r, {
+      gap: MENU_GAP,
+      width: MENU_WIDTH,
+      maxHeight: MENU_HEIGHT,
+      minHeight: MENU_HEIGHT,
+      prefer: "below",
+      align: "end",
+    });
     setPos({
-      left: Math.max(8, Math.min(r.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8)),
-      top: up ? null : r.bottom + MENU_GAP,
-      bottom: up ? window.innerHeight - r.top + MENU_GAP : null,
+      left: placed.left,
+      top: placed.top,
+      bottom: placed.bottom,
     });
   };
 

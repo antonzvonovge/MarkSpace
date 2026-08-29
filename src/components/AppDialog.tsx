@@ -760,7 +760,6 @@ export function ProjectPropertiesDialog({
             </label>
             <Select
               variant="field"
-              menuPlacement="below"
               aria-label="Project type"
               value={type}
               options={PROJECT_TYPE_OPTIONS}
@@ -777,7 +776,6 @@ export function ProjectPropertiesDialog({
                 </label>
                 <Select
                   variant="field"
-                  menuPlacement="below"
                   aria-label="Learning language"
                   value={(language || "") as "" | NativeLanguageId}
                   options={LEARNING_LANGUAGE_OPTIONS}

@@ -150,13 +150,16 @@ export function setNoteDayMarker(markdown: string, markerId: string): string {
 }
 
 export type MovieAttrs = {
+  /** Localized / native-language title (preferred for auto `{year}-{title}` file names). */
+  title: string;
+  /** Title in the original language, when different or known. */
+  originalTitle: string;
   kind: MovieKindId | "";
   genres: string[];
   year: number | null;
   rating: number | null;
   director: string;
   status: MovieStatusId | "";
-  originalTitle: string;
   imdbId: string;
   kinopoiskId: number | null;
 };
@@ -178,13 +181,14 @@ function parsePositiveInt(value: unknown): number | null {
 
 export function emptyMovieAttrs(): MovieAttrs {
   return {
+    title: "",
+    originalTitle: "",
     kind: "",
     genres: [],
     year: null,
     rating: null,
     director: "",
     status: "",
-    originalTitle: "",
     imdbId: "",
     kinopoiskId: null,
   };
@@ -196,6 +200,9 @@ export function getMovieAttrs(markdown: string): MovieAttrs {
   const kindRaw = data.kind;
   const statusRaw = data.status;
   return {
+    title: typeof data.title === "string" ? data.title.trim() : "",
+    originalTitle:
+      typeof data.original_title === "string" ? data.original_title.trim() : "",
     kind: isMovieKindId(kindRaw) ? kindRaw : "",
     genres: normalizeGenreList(data.genres),
     year: parsePositiveInt(data.year),
@@ -206,8 +213,6 @@ export function getMovieAttrs(markdown: string): MovieAttrs {
     })(),
     director: typeof data.director === "string" ? data.director.trim() : "",
     status: isMovieStatusId(statusRaw) ? statusRaw : "",
-    originalTitle:
-      typeof data.original_title === "string" ? data.original_title.trim() : "",
     imdbId: normalizeImdbId(data.imdb_id),
     kinopoiskId: parsePositiveInt(data.kinopoisk_id),
   };
@@ -229,20 +234,29 @@ export function setMovieAttrs(
   const data: FrontmatterData = { ...(split.data ?? {}) };
   const current = getMovieAttrs(markdown);
   const next: MovieAttrs = {
+    title: attrs.title !== undefined ? attrs.title : current.title,
+    originalTitle:
+      attrs.originalTitle !== undefined
+        ? attrs.originalTitle
+        : current.originalTitle,
     kind: attrs.kind !== undefined ? attrs.kind : current.kind,
     genres: attrs.genres !== undefined ? attrs.genres : current.genres,
     year: attrs.year !== undefined ? attrs.year : current.year,
     rating: attrs.rating !== undefined ? attrs.rating : current.rating,
     director: attrs.director !== undefined ? attrs.director : current.director,
     status: attrs.status !== undefined ? attrs.status : current.status,
-    originalTitle:
-      attrs.originalTitle !== undefined
-        ? attrs.originalTitle
-        : current.originalTitle,
     imdbId: attrs.imdbId !== undefined ? attrs.imdbId : current.imdbId,
     kinopoiskId:
       attrs.kinopoiskId !== undefined ? attrs.kinopoiskId : current.kinopoiskId,
   };
+
+  const title = next.title.trim();
+  if (title) data.title = title;
+  else delete data.title;
+
+  const originalTitle = next.originalTitle.trim();
+  if (originalTitle) data.original_title = originalTitle;
+  else delete data.original_title;
 
   if (next.kind && isMovieKindId(next.kind)) data.kind = next.kind;
   else delete data.kind;
@@ -264,10 +278,6 @@ export function setMovieAttrs(
 
   if (next.status && isMovieStatusId(next.status)) data.status = next.status;
   else delete data.status;
-
-  const originalTitle = next.originalTitle.trim();
-  if (originalTitle) data.original_title = originalTitle;
-  else delete data.original_title;
 
   const imdbId = normalizeImdbId(next.imdbId);
   if (imdbId) data.imdb_id = imdbId;

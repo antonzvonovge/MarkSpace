@@ -1,0 +1,31 @@
+---
+description: Comboboxes and button dropdown menus — neutral colors, auto up/down placement
+globs: src/components/**/*.{tsx,css},src/lib/menuPlacement.ts,src/lib/chatMenuPlacement.ts,src/App.css
+alwaysApply: false
+---
+
+# Dropdown menus & comboboxes
+
+## Appearance
+
+Dropdown **menus** (the panel that opens from a select / picker / menu button) are **neutral** — not brand accent.
+
+- Panel background: `var(--editor-surface)` (or equivalent chrome surface), not `--accent` / `--accent-wb`.
+- Item hover / selected: `var(--menu-item-hover)` / `var(--menu-item-active)` (or `var(--sidebar-hover)`). Do **not** use `--sidebar-active`, `rgba(var(--accent-rgb), …)`, or `color: var(--accent)` on menu items.
+- Triggers may still use accent for focus / expanded border; the **menu panel and its items** stay neutral.
+- Exception: destructive items may use `--danger`.
+
+## Placement (up vs down)
+
+Decide open direction **when building the control**, using viewport space — never hard-code `above`/`below` “for now” and leave a follow-up.
+
+- Use `placeAnchoredMenu` from `src/lib/menuPlacement.ts` (or `placeChatComposerMenu` for chat-composer anchors).
+- Default `prefer: "below"`; bottom-docked UI (chat composer) uses `prefer: "above"` via `placeChatComposerMenu`.
+- Do not pass `menuPlacement="below"|"above"` on `Select` unless there is a hard layout constraint; default is `auto`.
+- Recompute on open, resize, and scroll (existing Select / picker pattern).
+
+## Checklist for a new dropdown
+
+1. Portal + fixed position (or absolute only when the parent never clips and sits at a viewport edge).
+2. `placeAnchoredMenu` / `placeChatComposerMenu` for side + `maxHeight`.
+3. Neutral menu CSS — no accent fill or accent selected text.

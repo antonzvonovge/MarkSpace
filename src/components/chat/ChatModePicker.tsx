@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ChatMode } from "../../ai/types";
-import { chatComposerAtTop } from "../../lib/chatMenuPlacement";
+import { placeChatComposerMenu } from "../../lib/chatMenuPlacement";
 
 const MODE_OPTIONS: {
   value: ChatMode;
@@ -44,22 +44,19 @@ export function ChatModePicker({ value, disabled, onChange }: Props) {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const spaceAbove = r.top - MENU_GAP;
-    const spaceBelow = window.innerHeight - r.bottom - MENU_GAP;
-    // Empty-chat composer is under the tabs — open down into free space.
-    const up = chatComposerAtTop(el)
-      ? false
-      : spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
-    const width = Math.max(r.width, 180);
+    const placed = placeChatComposerMenu(r, {
+      from: el,
+      gap: MENU_GAP,
+      width: Math.max(r.width, 180),
+      maxHeight: MENU_MAX_HEIGHT,
+      minHeight: MENU_MIN_HEIGHT,
+    });
     setPos({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
-      top: up ? null : r.bottom + MENU_GAP,
-      bottom: up ? window.innerHeight - r.top + MENU_GAP : null,
-      width,
-      maxHeight: Math.max(
-        MENU_MIN_HEIGHT,
-        Math.min(MENU_MAX_HEIGHT, (up ? spaceAbove : spaceBelow) - 8),
-      ),
+      left: placed.left,
+      top: placed.top,
+      bottom: placed.bottom,
+      width: placed.width,
+      maxHeight: placed.maxHeight,
     });
   };
 

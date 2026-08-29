@@ -8,6 +8,7 @@ alwaysApply: true
 Default accent is **Wildberries magenta**: `#cb11ab` (`--accent-wb` / `--accent`). The user can override it in Appearance with an RGB picker; `--accent-rgb` is the same color as `r, g, b` for `rgba(var(--accent-rgb), α)`.
 
 - Use `--accent` / `--accent-wb` / `--accent-strong` (or `rgba(var(--accent-rgb), …)`) for interactive highlights, selected states, carets, switchers, focus rings, and similar UI chrome.
+- **Exception:** dropdown / combobox **menu panels and their items** stay neutral (see `dropdown-menus.mdc`) — not accent fill or accent selected text.
 - Do **not** hard-code a second brand accent (e.g. teal `#2f8f7b`) in product chrome.
 - Prefer CSS variables over hard-coded hex when styling React/CSS.
 - Darker companion: `--accent-strong` (derived from the current accent; default `#a00e89`).

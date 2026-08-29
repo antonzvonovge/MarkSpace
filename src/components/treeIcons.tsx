@@ -1,4 +1,11 @@
-import { FcTimeline } from "react-icons/fc";
+import {
+  FcCalendar,
+  FcFlowChart,
+  FcFolder,
+  FcLink,
+  FcReading,
+  FcTimeline,
+} from "react-icons/fc";
 
 export function PlusIcon() {
   return (
@@ -157,132 +164,24 @@ export function LocateIcon() {
   );
 }
 
-export function CollectionPlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="2.5"
-        y="4.5"
-        width="8"
-        height="8"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M6.5 2.5h5.5A1.5 1.5 0 0 1 13.5 4v5.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-      <path
-        d="M6.5 7.5v3M5 9h3"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+export function CollectionPlusIcon({ size = 16 }: { size?: number }) {
+  return <FcFolder size={size} />;
 }
 
-export function DiagramIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="2.5"
-        y="2.5"
-        width="5"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <rect
-        x="8.5"
-        y="9.5"
-        width="5"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M5 6.5v2.2c0 .7.5 1.3 1.2 1.3H8.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+export function DiagramIcon({ size = 16 }: { size?: number }) {
+  return <FcFlowChart size={size} />;
 }
 
-export function LinksIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M6.5 9.5a2.75 2.75 0 0 0 3.9 0l1.6-1.6a2.75 2.75 0 1 0-3.9-3.9L7.3 4.8"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.5 6.5a2.75 2.75 0 0 0-3.9 0L4 8.1a2.75 2.75 0 1 0 3.9 3.9l.8-.8"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+export function LinksIcon({ size = 16 }: { size?: number }) {
+  return <FcLink size={size} />;
 }
 
-export function DictionaryIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M3.5 2.5h7.2c.7 0 1.3.6 1.3 1.3v9.4c0 .5-.4.8-.8.8H4.3c-.7 0-1.3-.6-1.3-1.3V3.3c0-.4.4-.8.5-.8Z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M5.5 5h5M5.5 7.5h5M5.5 10h3.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+export function DictionaryIcon({ size = 16 }: { size?: number }) {
+  return <FcReading size={size} />;
 }
 
-export function HabitTrackerIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="2.5"
-        y="3.25"
-        width="11"
-        height="10.25"
-        rx="1.4"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M5.25 2.5v1.8M10.75 2.5v1.8M2.75 6.4h10.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-      <path
-        d="M5.6 9.1 7.15 10.6 10.4 7.6"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+export function HabitTrackerIcon({ size = 16 }: { size?: number }) {
+  return <FcCalendar size={size} />;
 }
 
 export function CourseTrackerIcon({ size = 16 }: { size?: number }) {

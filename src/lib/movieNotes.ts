@@ -44,7 +44,7 @@ export function movieStatusLabel(status: MovieStatusId | string): string {
   return MOVIE_STATUS_OPTIONS.find((o) => o.value === status)?.label ?? "";
 }
 
-/** Sanitize a film title into a vault note file stem (no `.md`). */
+/** Sanitize a film title into a vault note file stem fragment (no `.md`, no year). */
 export function sanitizeFilmNoteName(title: string): string {
   const cleaned = title
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
@@ -54,14 +54,65 @@ export function sanitizeFilmNoteName(title: string): string {
   return cleaned || "Untitled film";
 }
 
-export const FILM_NOTE_BODY_TEMPLATE = `## Why I liked it
+/**
+ * Auto file stem for app/agent-created film notes: `{year}-{title}`.
+ * Prefers localized `title`, falls back to `originalTitle`. Year omitted if unknown.
+ */
+export function filmNoteFileStem(opts: {
+  title?: string;
+  originalTitle?: string;
+  year?: number | null;
+}): string {
+  const native = (opts.title ?? "").trim();
+  const original = (opts.originalTitle ?? "").trim();
+  const name = sanitizeFilmNoteName(native || original);
+  const year =
+    opts.year != null && Number.isFinite(opts.year) && opts.year > 0
+      ? Math.round(opts.year)
+      : null;
+  if (year == null) return name;
+  const titlePart = name.slice(0, 100);
+  return `${year}-${titlePart}`;
+}
 
-## Notes
-`;
+export const FILM_NOTE_BODY_TEMPLATE = "";
 
 /** Leading poster markdown image, or null if body has none at the start. */
 const LEADING_POSTER_RE =
   /^(?:\s*\n)*!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)\s*(?:\n|$)/;
+
+const FILM_SECTION_HEADING_RE =
+  /^##[ \t]+(?:Why I liked it|Notes)[ \t]*\r?\n?/gim;
+
+/**
+ * Collapse legacy `## Why I liked it` / `## Notes` headings into free body text.
+ * Keeps poster and content under those headings.
+ */
+export function collapseFilmNoteBodySections(body: string): string {
+  const posterMatch = body.match(LEADING_POSTER_RE);
+  const poster = posterMatch?.[0]?.trimEnd() ?? "";
+  let rest = posterMatch ? body.slice(posterMatch[0].length) : body;
+  rest = rest.replace(FILM_SECTION_HEADING_RE, "");
+  rest = rest.replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "");
+  if (poster && rest) return `${poster}\n\n${rest}\n`;
+  if (poster) return `${poster}\n\n`;
+  if (rest) return `${rest}\n`;
+  return "";
+}
+
+/** First non-empty lines of film body after the poster (for catalog tiles). */
+export function filmNoteCommentPreview(body: string, maxLines = 2): string {
+  const collapsed = collapseFilmNoteBodySections(body);
+  const withoutPoster = collapsed.replace(LEADING_POSTER_RE, "").trim();
+  if (!withoutPoster) return "";
+  const lines = withoutPoster
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const take = lines.slice(0, Math.max(1, maxLines));
+  const text = take.join("\n");
+  return lines.length > maxLines ? `${text}…` : text;
+}
 
 export function leadingPosterUrl(body: string): string | null {
   const m = body.match(LEADING_POSTER_RE);
@@ -77,6 +128,7 @@ export function withLeadingPoster(body: string, assetUrl: string, width = 240): 
 }
 
 export function buildFilmNoteMarkdown(opts: {
+  title?: string;
   kind?: MovieKindId | "";
   genres?: string[];
   year?: number | null;
@@ -90,6 +142,10 @@ export function buildFilmNoteMarkdown(opts: {
   body?: string;
 }): string {
   const lines: string[] = ["---"];
+  const title = (opts.title ?? "").trim();
+  if (title) lines.push(`title: ${title}`);
+  const originalTitle = (opts.originalTitle ?? "").trim();
+  if (originalTitle) lines.push(`original_title: ${originalTitle}`);
   if (opts.kind && isMovieKindId(opts.kind)) {
     lines.push(`kind: ${opts.kind}`);
   }
@@ -109,8 +165,6 @@ export function buildFilmNoteMarkdown(opts: {
   if (opts.status && isMovieStatusId(opts.status)) {
     lines.push(`status: ${opts.status}`);
   }
-  const originalTitle = (opts.originalTitle ?? "").trim();
-  if (originalTitle) lines.push(`original_title: ${originalTitle}`);
   const imdbId = normalizeImdbId(opts.imdbId ?? "");
   if (imdbId) lines.push(`imdb_id: ${imdbId}`);
   if (

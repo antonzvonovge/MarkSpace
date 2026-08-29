@@ -9,7 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import { FcClapperboard, FcPackage, FcPlanner } from "react-icons/fc";
 import { LearningLanguageFlag } from "../LearningLanguageFlag";
-import { chatComposerAtTop } from "../../lib/chatMenuPlacement";
+import { placeChatComposerMenu } from "../../lib/chatMenuPlacement";
 import { learningLanguageFlagSvg } from "../../lib/languageFlags";
 import { listVaultProjects } from "../../lib/vaultApi";
 import { useVaultStore } from "../../store/vaultStore";
@@ -25,9 +25,12 @@ type MenuPos = {
   top: number | null;
   bottom: number | null;
   width: number;
+  maxHeight: number;
 };
 
 const MENU_GAP = 6;
+const MENU_MAX_HEIGHT = 280;
+const MENU_MIN_HEIGHT = 120;
 
 function ProjectIcon({
   path,
@@ -85,13 +88,19 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const width = Math.max(r.width, 160);
-    const openAbove = !chatComposerAtTop(el);
+    const placed = placeChatComposerMenu(r, {
+      from: el,
+      gap: MENU_GAP,
+      width: Math.max(r.width, 160),
+      maxHeight: MENU_MAX_HEIGHT,
+      minHeight: MENU_MIN_HEIGHT,
+    });
     setPos({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
-      top: openAbove ? null : r.bottom + MENU_GAP,
-      bottom: openAbove ? window.innerHeight - r.top + MENU_GAP : null,
-      width,
+      left: placed.left,
+      top: placed.top,
+      bottom: placed.bottom,
+      width: placed.width,
+      maxHeight: placed.maxHeight,
     });
   };
 
@@ -145,6 +154,7 @@ export function ChatProjectPicker({ value, disabled, onChange }: Props) {
               top: pos.top ?? undefined,
               bottom: pos.bottom ?? undefined,
               width: pos.width,
+              maxHeight: pos.maxHeight,
               zIndex: 10000,
             }}
           >

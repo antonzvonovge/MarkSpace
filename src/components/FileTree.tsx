@@ -85,6 +85,7 @@ import {
   FcPackage,
   FcPlanner,
   FcClapperboard,
+  FcPlus,
   FcReading,
   FcReadingEbook,
   FcWorkflow,
@@ -119,7 +120,6 @@ import {
   LinksIcon,
   IncomingSectionIcon,
   PdfIcon,
-  PlusIcon,
   VaultSectionIcon,
 } from "./treeIcons";
 import type { TreeCreateKind } from "./TreeToolbar";
@@ -871,7 +871,7 @@ function TreeContextMenu({
               setNewItemOpen((v) => !v);
             }}
           >
-            <PlusIcon />
+            <FcPlus size={16} />
             <span>New item</span>
             <MdChevronRight size={16} className="tree-context-chevron" />
           </button>
@@ -887,7 +887,7 @@ function TreeContextMenu({
                     onNewSkill();
                   }}
                 >
-                  <PlusIcon />
+                  <FcWorkflow size={16} />
                   <span>New skill…</span>
                 </button>
               ) : null}
@@ -903,7 +903,7 @@ function TreeContextMenu({
                         onNewDailyNote();
                       }}
                     >
-                      <PlusIcon />
+                      <FcPlanner size={16} />
                       <span>New daily note</span>
                     </button>
                   ) : isMovies ? (
@@ -942,7 +942,7 @@ function TreeContextMenu({
                       onNewDiagram();
                     }}
                   >
-                    <DiagramIcon />
+                    <DiagramIcon size={16} />
                     <span>New diagram</span>
                   </button>
                   <button
@@ -954,7 +954,7 @@ function TreeContextMenu({
                       onNewLinks();
                     }}
                   >
-                    <LinksIcon />
+                    <LinksIcon size={16} />
                     <span>New links</span>
                   </button>
                   <button
@@ -966,7 +966,7 @@ function TreeContextMenu({
                       onNewDictionary();
                     }}
                   >
-                    <DictionaryIcon />
+                    <DictionaryIcon size={16} />
                     <span>New dictionary</span>
                   </button>
                   <button
@@ -978,7 +978,7 @@ function TreeContextMenu({
                       onNewHabitTracker();
                     }}
                   >
-                    <HabitTrackerIcon />
+                    <HabitTrackerIcon size={16} />
                     <span>New habit tracker</span>
                   </button>
                   <button
@@ -990,7 +990,7 @@ function TreeContextMenu({
                       onNewCourse();
                     }}
                   >
-                    <CourseTrackerIcon />
+                    <CourseTrackerIcon size={16} />
                     <span>New course</span>
                   </button>
                 </>
@@ -1008,7 +1008,7 @@ function TreeContextMenu({
               onNewFolder();
             }}
           >
-            <CollectionPlusIcon />
+            <CollectionPlusIcon size={16} />
             <span>New folder</span>
           </button>
         ) : null}
@@ -1022,7 +1022,7 @@ function TreeContextMenu({
               onTurnIntoFolder();
             }}
           >
-            <CollectionPlusIcon />
+            <CollectionPlusIcon size={16} />
             <span>Turn into folder</span>
           </button>
         ) : null}
@@ -1447,9 +1447,7 @@ function FavoritesTreeRows({
                     }
                   />
                 ) : isDrawio ? (
-                  <span className="tree-drawio-icon">
-                    <DiagramIcon />
-                  </span>
+                  <DiagramIcon size={20} />
                 ) : isMdlnks ? (
                   <FcLink size={20} />
                 ) : isMddict ? (
@@ -2985,9 +2983,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                           />
                         )
                       ) : isDrawio ? (
-                        <span className="tree-drawio-icon">
-                          <DiagramIcon />
-                        </span>
+                        <DiagramIcon size={20} />
                       ) : isMdlnks ? (
                         <FcLink size={20} />
                       ) : isMddict ? (

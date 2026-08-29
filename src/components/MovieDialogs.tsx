@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import {
   MOVIE_KIND_OPTIONS,
   MOVIE_STATUS_OPTIONS,
+  filmNoteFileStem,
   type MovieKindId,
   type MovieStatusId,
 } from "../lib/movieNotes";
@@ -64,6 +65,7 @@ export function MoviePropertiesDialog({
 }: MoviePropertiesDialogProps) {
   const yearId = useId();
   const directorId = useId();
+  const titleFieldId = useId();
   const originalId = useId();
   const posterId = useId();
   const queryId = useId();
@@ -79,6 +81,7 @@ export function MoviePropertiesDialog({
   );
   const [director, setDirector] = useState(initial.director);
   const [status, setStatus] = useState<MovieStatusId | "">(initial.status);
+  const [movieTitle, setMovieTitle] = useState(initial.title);
   const [originalTitle, setOriginalTitle] = useState(initial.originalTitle);
   const [imdbId, setImdbId] = useState(initial.imdbId);
   const [kinopoiskId, setKinopoiskId] = useState<number | null>(
@@ -100,6 +103,7 @@ export function MoviePropertiesDialog({
     setRating(initial.rating != null ? String(initial.rating) : "");
     setDirector(initial.director);
     setStatus(initial.status);
+    setMovieTitle(initial.title);
     setOriginalTitle(initial.originalTitle);
     setImdbId(initial.imdbId);
     setKinopoiskId(initial.kinopoiskId);
@@ -113,6 +117,8 @@ export function MoviePropertiesDialog({
     const y = year.trim() ? Number(year.trim()) : null;
     const r = rating.trim() ? Number(rating.trim()) : null;
     onConfirm({
+      title: movieTitle.trim(),
+      originalTitle: originalTitle.trim(),
       kind,
       genres,
       year: y != null && Number.isFinite(y) && y > 0 ? Math.round(y) : null,
@@ -122,7 +128,6 @@ export function MoviePropertiesDialog({
           : null,
       director: director.trim(),
       status,
-      originalTitle: originalTitle.trim(),
       imdbId,
       kinopoiskId,
       posterUrl: posterUrl.trim(),
@@ -163,10 +168,11 @@ export function MoviePropertiesDialog({
         kinopoiskApiKey: kpKey,
         omdbApiKey: omdbKey,
       });
+      setMovieTitle(details.title);
+      setOriginalTitle(details.originalTitle);
       setYear(details.year != null ? String(details.year) : "");
       setDirector(details.director);
       setGenres(details.genres);
-      setOriginalTitle(details.originalTitle);
       setImdbId(details.imdbId);
       setKinopoiskId(details.kinopoiskId);
       if (details.posterUrl) setPosterUrl(details.posterUrl);
@@ -269,6 +275,18 @@ export function MoviePropertiesDialog({
           value={director}
           onChange={(e) => setDirector(e.target.value)}
           placeholder="Director or creator"
+          disabled={lookingUp}
+        />
+
+        <label className="app-dialog-label" htmlFor={titleFieldId}>
+          Title
+        </label>
+        <input
+          id={titleFieldId}
+          className="app-dialog-input"
+          value={movieTitle}
+          onChange={(e) => setMovieTitle(e.target.value)}
+          placeholder="Title in your language"
           disabled={lookingUp}
         />
 
@@ -478,13 +496,14 @@ export function NewFilmDialog({ open, onCancel, onConfirm }: NewFilmDialogProps)
     onConfirm({
       title: name || "Untitled film",
       attrs: {
+        title: name || "Untitled film",
+        originalTitle: blank ? "" : originalTitle,
         kind,
         genres: blank ? [] : genres,
         year: blank ? null : year,
         rating: null,
         director: blank ? "" : director,
         status,
-        originalTitle: blank ? "" : originalTitle,
         imdbId: blank ? "" : imdbId,
         kinopoiskId: blank ? null : kinopoiskId,
       },
@@ -602,22 +621,29 @@ export function NewFilmDialog({ open, onCancel, onConfirm }: NewFilmDialogProps)
         ) : null}
 
         <label className="app-dialog-label" htmlFor={titleId}>
-          Note title
+          Title
         </label>
         <input
           id={titleId}
           className="app-dialog-input"
           value={title || query}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Localized title (file name)"
+          placeholder="Title in your language"
           disabled={lookingUp}
         />
 
-        {(year || director || originalTitle || genres.length > 0) && (
+        {(year || director || originalTitle || genres.length > 0 || title || query) && (
           <p className="app-dialog-desc movie-dialog-preview">
             {[
+              `File: ${filmNoteFileStem({
+                title: title || query,
+                originalTitle,
+                year,
+              })}.md`,
               year != null ? String(year) : null,
-              originalTitle ? `orig. ${originalTitle}` : null,
+              originalTitle && originalTitle !== (title || query)
+                ? `orig. ${originalTitle}`
+                : null,
               director || null,
               genres.length ? genres.join(", ") : null,
             ]

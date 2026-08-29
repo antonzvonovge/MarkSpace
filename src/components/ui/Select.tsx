@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { placeAnchoredMenu } from "../../lib/menuPlacement";
 
 export type SelectOption<T extends string = string> = {
   value: T;
@@ -26,7 +27,10 @@ type Props<T extends string> = {
   tabIndex?: number;
   /** "setting" — compact control in SettingRow; "field" — full-width form field. */
   variant?: "setting" | "field";
-  /** Preferred menu direction. `auto` picks the side with more space. */
+  /**
+   * Preferred menu direction. `auto` (default) picks up/down from viewport space.
+   * Avoid hard-coding above/below unless there is a hard layout constraint.
+   */
   menuPlacement?: "auto" | "below" | "above";
   className?: string;
   "aria-label"?: string;
@@ -61,24 +65,26 @@ export function Select<T extends string>({
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const spaceAbove = r.top - MENU_GAP;
-    const spaceBelow = window.innerHeight - r.bottom - MENU_GAP;
-    const up =
-      menuPlacement === "above"
-        ? true
-        : menuPlacement === "below"
-          ? false
-          : spaceAbove >= MENU_MIN_HEIGHT || spaceAbove >= spaceBelow;
     const width = Math.max(r.width, variant === "setting" ? 140 : r.width);
-    setPos({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
-      top: up ? null : r.bottom + MENU_GAP,
-      bottom: up ? window.innerHeight - r.top + MENU_GAP : null,
+    const placed = placeAnchoredMenu(r, {
+      gap: MENU_GAP,
       width,
-      maxHeight: Math.max(
-        MENU_MIN_HEIGHT,
-        Math.min(MENU_MAX_HEIGHT, (up ? spaceAbove : spaceBelow) - 8),
-      ),
+      maxHeight: MENU_MAX_HEIGHT,
+      minHeight: MENU_MIN_HEIGHT,
+      prefer: "below",
+      force:
+        menuPlacement === "above"
+          ? "above"
+          : menuPlacement === "below"
+            ? "below"
+            : undefined,
+    });
+    setPos({
+      left: placed.left,
+      top: placed.top,
+      bottom: placed.bottom,
+      width: placed.width,
+      maxHeight: placed.maxHeight,
     });
   };
 

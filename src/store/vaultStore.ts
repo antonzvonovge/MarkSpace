@@ -105,7 +105,7 @@ import {
 import { normalizeDayMarkerId } from "../lib/dayMarkers";
 import {
   buildFilmNoteMarkdown,
-  sanitizeFilmNoteName,
+  filmNoteFileStem,
 } from "../lib/movieNotes";
 import {
   getNoteDayMarker,
@@ -2392,7 +2392,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Film notes are only available in Media library projects." });
       return null;
     }
-    const stem = sanitizeFilmNoteName(input.title);
+    const stem = filmNoteFileStem({
+      title: input.attrs.title.trim() || input.title,
+      originalTitle: input.attrs.originalTitle,
+      year: input.attrs.year,
+    });
     try {
       set({ suppressWatchUntil: Date.now() + 1500 });
       const rel = joinPath(parent, stem);
@@ -2407,13 +2411,14 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
       }
       const markdown = buildFilmNoteMarkdown({
+        title: input.attrs.title.trim() || input.title,
+        originalTitle: input.attrs.originalTitle,
         kind: input.attrs.kind,
         genres: input.attrs.genres,
         year: input.attrs.year,
         rating: input.attrs.rating,
         director: input.attrs.director,
         status: input.attrs.status,
-        originalTitle: input.attrs.originalTitle,
         imdbId: input.attrs.imdbId,
         kinopoiskId: input.attrs.kinopoiskId,
         posterAssetUrl,

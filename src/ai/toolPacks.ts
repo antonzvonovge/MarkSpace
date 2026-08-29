@@ -257,9 +257,9 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     system: [
       "You are a MarkSpace Media library specialist for film/series/animation cards.",
       "Lookup titles with search_movies (Kinopoisk for Russian/Cyrillic, OMDb otherwise), then get_movie_details before create_film_note.",
-      "Each title is one `.md` note; file name = localized title. Front-matter: kind, genres, year, rating, director, status, original_title, imdb_id, kinopoisk_id. Genres are not page tags.",
+      "Each title is one `.md` note; auto file name `{year}-{title}` (localized title, else original_title). Front-matter: title, original_title, kind, genres, year, rating, director, status, imdb_id, kinopoisk_id. Genres are not page tags.",
       "Pass poster_url from details so create_film_note downloads the poster into .assets/. Prefer create_film_note over hand-built markdown.",
-      "When editing existing cards, keep front-matter keys and body sections (## Why I liked it, ## Notes). End with summary and changedPaths.",
+      "When editing existing cards, keep front-matter keys; body after the poster is free-form notes (no required ## sections). End with summary and changedPaths.",
     ].join(" "),
     toolNames: [
       "list_folder",

@@ -1949,12 +1949,14 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     }),
     create_film_note: tool({
       description:
-        "Create a Media library film/series/animation card note (YAML front-matter + poster + body template). Only works under a Media library project. Prefer after search_movies + get_movie_details; pass poster_url to download the poster.",
+        "Create a Media library film/series/animation card note (YAML front-matter + poster + body). Only under a Media library project. File name is auto `{year}-{title}` (localized title, else original_title). Prefer after search_movies + get_movie_details; pass poster_url to download the poster.",
       inputSchema: z.object({
         title: z
           .string()
           .min(1)
-          .describe("Localized title — used as the note file name"),
+          .describe(
+            "Localized / native-language title (YAML title; file stem prefers this over original_title)",
+          ),
         folder: z
           .string()
           .optional()
@@ -2023,13 +2025,14 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           : "want";
         const attrs = {
           ...emptyMovieAttrs(),
+          title: input.title.trim(),
+          originalTitle: (input.original_title ?? "").trim(),
           kind,
           status,
           genres: (input.genres ?? []).map((g) => g.trim()).filter(Boolean),
           year: input.year ?? null,
           rating: input.rating ?? null,
           director: (input.director ?? "").trim(),
-          originalTitle: (input.original_title ?? "").trim(),
           imdbId: (input.imdb_id ?? "").trim(),
           kinopoiskId: input.kinopoisk_id ?? null,
         };
@@ -2350,7 +2353,7 @@ export function buildSystemPrompt(opts: {
     }
     if (opts.projectType === "movies") {
       lines.push(
-        "This is a Media library catalog project. Each title is one `.md` note (file name = localized title). Structured fields live in YAML front-matter: `kind` (`film` | `series` | `animation`), `genres` (string list — not page tags), `year`, `rating` (1–10, user’s score), `director`, `status` (`want` | `watched` | `favorite`), optional `original_title` (original-language name), `imdb_id`, `kinopoisk_id`. Page `tags:` are personal labels only — do not put genres there. Poster is a normal image at the top of the body: `![|240](.assets/poster.jpg)` after a real asset write — never invent `.assets/` paths. Body template sections: `## Why I liked it` then `## Notes`.",
+        "This is a Media library catalog project. Each title is one `.md` note. Auto-created file name is `{year}-{title}` (localized YAML `title` if set, else `original_title`). Structured fields live in YAML front-matter: `title` (localized / native-language name), optional `original_title`, `kind` (`film` | `series` | `animation`), `genres` (string list — not page tags), `year`, `rating` (1–10, user’s score), `director`, `status` (`want` | `watched` | `favorite`), optional `imdb_id`, `kinopoisk_id`. Page `tags:` are personal labels only — do not put genres there. Poster is a normal image at the top of the body: `![|240](.assets/poster.jpg)` after a real asset write — never invent `.assets/` paths. Body after the poster is free-form personal notes (do not invent `## Why I liked it` / `## Notes` headings).",
       );
       lines.push(
         opts.mode === "agent"

@@ -480,7 +480,6 @@ export function QuickTranslateDialog({
           showPairPicker ? (
             <Select
               variant="field"
-              menuPlacement="below"
               tabIndex={-1}
               aria-label="Language pair"
               value={foreignLang}
@@ -770,7 +769,6 @@ export function QuickTranslateDialog({
             </label>
             <Select
               variant="field"
-              menuPlacement="below"
               aria-label="Dictionary"
               value={pickerPath}
               options={dictOptions}

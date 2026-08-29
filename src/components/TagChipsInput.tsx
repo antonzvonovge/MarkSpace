@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { placeAnchoredMenu } from "../lib/menuPlacement";
 import { sanitizeTagName } from "../lib/tagName";
 import { useVaultStore } from "../store/vaultStore";
 
@@ -85,9 +86,11 @@ export function TagChipsInput({
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const [popoverPos, setPopoverPos] = useState<{
-    top: number;
+    top: number | null;
+    bottom: number | null;
     left: number;
     width: number;
+    maxHeight: number;
   } | null>(null);
 
   const baseCatalog = catalogOverride ?? vaultTags;
@@ -151,16 +154,20 @@ export function TagChipsInput({
       if (!el) return;
       const r = el.getBoundingClientRect();
       const width = Math.min(260, Math.max(180, r.width));
-      let left = r.left;
-      if (left + width > window.innerWidth - 8) {
-        left = Math.max(8, window.innerWidth - width - 8);
-      }
-      let top = r.bottom + 4;
-      const estHeight = 220;
-      if (top + estHeight > window.innerHeight - 8) {
-        top = Math.max(8, r.top - estHeight - 4);
-      }
-      setPopoverPos({ top, left, width });
+      const placed = placeAnchoredMenu(r, {
+        gap: 4,
+        width,
+        maxHeight: 220,
+        minHeight: 100,
+        prefer: "below",
+      });
+      setPopoverPos({
+        top: placed.top,
+        bottom: placed.bottom,
+        left: placed.left,
+        width: placed.width,
+        maxHeight: placed.maxHeight,
+      });
     };
     update();
     window.addEventListener("resize", update);
@@ -257,9 +264,11 @@ export function TagChipsInput({
         portalPopover && popoverPos
           ? {
               position: "fixed",
-              top: popoverPos.top,
+              top: popoverPos.top ?? undefined,
+              bottom: popoverPos.bottom ?? undefined,
               left: popoverPos.left,
               width: popoverPos.width,
+              maxHeight: popoverPos.maxHeight,
               right: "auto",
               zIndex: 10050,
             }

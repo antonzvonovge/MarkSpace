@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { chatComposerAtTop } from "../../lib/chatMenuPlacement";
+import { placeChatComposerMenu } from "../../lib/chatMenuPlacement";
 
 export type ChatMentionItem = {
   id: string;
@@ -158,24 +158,27 @@ export function ChatSkillSlashMenu({
   }, [selectedIndex]);
 
   const menuWidth = Math.min(280, window.innerWidth - 24);
-  const openAbove = !chatComposerAtTop();
   const style: CSSProperties | undefined = anchorRect
-    ? openAbove
-      ? {
-          left: Math.max(
-            12,
-            Math.min(anchorRect.left, window.innerWidth - menuWidth - 12),
-          ),
-          top: Math.max(8, anchorRect.top - 8),
-          transform: "translateY(-100%)",
-        }
-      : {
-          left: Math.max(
-            12,
-            Math.min(anchorRect.left, window.innerWidth - menuWidth - 12),
-          ),
-          top: anchorRect.bottom + 8,
-        }
+    ? (() => {
+        const placed = placeChatComposerMenu(anchorRect, {
+          width: menuWidth,
+          maxHeight: Math.min(280, window.innerHeight * 0.4),
+          minHeight: 80,
+          gap: 8,
+        });
+        return placed.side === "above"
+          ? {
+              left: placed.left,
+              top: Math.max(8, anchorRect.top - 8),
+              transform: "translateY(-100%)",
+              maxHeight: placed.maxHeight,
+            }
+          : {
+              left: placed.left,
+              top: anchorRect.bottom + 8,
+              maxHeight: placed.maxHeight,
+            };
+      })()
     : undefined;
 
   return createPortal(

@@ -81,7 +81,7 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
   return (
     <span className="editor-tab-icon" aria-hidden>
       {kind === "drawio" ? (
-        <DiagramIcon />
+        <DiagramIcon size={14} />
       ) : kind === "mdlnks" ? (
         <FcLink size={14} />
       ) : kind === "mddict" ? (

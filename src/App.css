@@ -10,6 +10,9 @@
   --sidebar-text: #333333;
   --sidebar-hover: rgba(0, 0, 0, 0.04);
   --sidebar-active: rgba(var(--accent-rgb), 0.1);
+  /* Dropdown / combobox menu items — neutral, not accent. */
+  --menu-item-hover: rgba(0, 0, 0, 0.05);
+  --menu-item-active: rgba(0, 0, 0, 0.09);
   --accent: #cb11ab;
   --accent-strong: #a00e89;
   --accent-wb: #cb11ab;
@@ -80,6 +83,8 @@
   --sidebar-text: #e7eef2;
   --sidebar-hover: rgba(255, 255, 255, 0.05);
   --sidebar-active: rgba(var(--accent-rgb), 0.18);
+  --menu-item-hover: rgba(255, 255, 255, 0.06);
+  --menu-item-active: rgba(255, 255, 255, 0.11);
   --text: #e7eef2;
   --heading-1: #dce8f2;
   --muted: #8a9aa3;
@@ -1195,21 +1200,12 @@ select {
   z-index: 30;
   min-width: 168px;
   padding: 6px;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--accent-wb);
-  color: #ffffff;
-  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.22);
+  background: var(--editor-surface);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.16);
   animation: tree-create-in 0.16s ease;
-}
-
-.tree-create-menu::before {
-  content: "";
-  position: absolute;
-  top: -6px;
-  right: 10px;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 6px solid var(--accent-wb);
 }
 
 .tree-create-item {
@@ -1231,7 +1227,7 @@ select {
 }
 
 .tree-create-item:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--menu-item-hover);
 }
 
 .tree-create-item svg {
@@ -1655,12 +1651,11 @@ select {
 
 .tree-context-item svg {
   flex-shrink: 0;
-  opacity: 0.85;
 }
 
 .tree-context-item:hover {
-  background: rgba(var(--accent-rgb), 0.1);
-  color: var(--accent-strong);
+  background: var(--menu-item-hover);
+  color: var(--text);
 }
 
 .tree-context-item:disabled {
@@ -2292,21 +2287,12 @@ button.status-bar-item.status-bar-timer-time:hover {
   z-index: 40;
   min-width: 168px;
   padding: 6px;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--accent-wb);
-  color: #ffffff;
-  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.22);
+  background: var(--editor-surface);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.16);
   animation: tree-create-in 0.16s ease;
-}
-
-.status-bar-menu::after {
-  content: "";
-  position: absolute;
-  right: 14px;
-  bottom: -6px;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid var(--accent-wb);
 }
 
 .status-bar-menu-item {
@@ -2328,7 +2314,7 @@ button.status-bar-item.status-bar-timer-time:hover {
 }
 
 .status-bar-menu-item:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--menu-item-hover);
 }
 
 .status-bar-menu-item:disabled {
@@ -2348,21 +2334,12 @@ button.status-bar-item.status-bar-timer-time:hover {
   min-width: 220px;
   max-width: min(420px, calc(100vw - 24px));
   padding: 6px;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--accent-wb);
-  color: #ffffff;
-  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.22);
+  background: var(--editor-surface);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.16);
   animation: tree-create-in 0.16s ease;
-}
-
-.status-bar-jobs-menu::after {
-  content: "";
-  position: absolute;
-  left: 14px;
-  bottom: -6px;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid var(--accent-wb);
 }
 
 .status-bar-jobs-menu-item {
@@ -2387,11 +2364,11 @@ button.status-bar-jobs-menu-item {
 }
 
 button.status-bar-jobs-menu-item:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--menu-item-hover);
 }
 
 .status-bar-jobs-menu-item.is-conflict {
-  color: #ffe8e6;
+  color: var(--danger);
 }
 
 .status-bar-jobs-menu-item svg {
@@ -4221,11 +4198,11 @@ button.status-bar-jobs-menu-item:hover {
 
 .page-tags-suggestion.is-active,
 .page-tags-suggestion:hover {
-  background: var(--sidebar-hover);
+  background: var(--menu-item-hover);
 }
 
 .page-tags-suggestion strong {
-  color: var(--accent);
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -5446,11 +5423,6 @@ button.status-bar-jobs-menu-item:hover {
   display: block;
 }
 
-.tree-drawio-icon {
-  display: inline-flex;
-  color: var(--accent);
-}
-
 .tree-pdf-icon {
   display: inline-flex;
   color: var(--text-muted, var(--text));
@@ -5888,11 +5860,11 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .ms-select-option:hover {
-  background: var(--sidebar-hover);
+  background: var(--menu-item-hover);
 }
 
 .ms-select-option.is-active {
-  background: var(--sidebar-active);
+  background: var(--menu-item-active);
 }
 
 .ms-select-option-label {
@@ -7716,11 +7688,11 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-history-item:hover {
-  background: var(--sidebar-hover);
+  background: var(--menu-item-hover);
 }
 
 .chat-history-item.is-active {
-  background: var(--sidebar-active);
+  background: var(--menu-item-active);
 }
 
 .chat-history-item-main {
@@ -7815,7 +7787,7 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-gems-create:hover {
-  background: var(--sidebar-hover);
+  background: var(--menu-item-hover);
 }
 
 .chat-gems-row {
@@ -7862,7 +7834,7 @@ button.status-bar-jobs-menu-item:hover {
 
 /* Monolithic highlight when hovering the select (main) part. */
 .chat-gems-row:has(.chat-gems-select:hover) {
-  background: var(--sidebar-hover);
+  background: var(--menu-item-hover);
 }
 
 .chat-gems-row:has(.chat-gems-select:hover) .chat-gems-edit {
@@ -7871,12 +7843,12 @@ button.status-bar-jobs-menu-item:hover {
 
 /* Edit-only hover: highlight just the pencil, not the row. */
 .chat-gems-edit:hover {
-  background: var(--sidebar-hover);
+  background: var(--menu-item-hover);
   color: var(--text);
 }
 
 .chat-gems-row.is-active {
-  background: var(--sidebar-active);
+  background: var(--menu-item-active);
 }
 
 .chat-gems-row.is-active .chat-gems-edit {
@@ -10084,7 +10056,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .chat-skill-slash-item:hover,
 .chat-skill-slash-item.is-active {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: var(--menu-item-hover);
 }
 
 .chat-skill-slash-id {
@@ -10096,7 +10068,7 @@ button.status-bar-jobs-menu-item:hover {
   white-space: nowrap;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--accent-strong);
+  color: var(--text);
 }
 
 .chat-skill-slash-desc {
@@ -10288,12 +10260,12 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-project-option:hover {
-  background: var(--sidebar-hover);
+  background: var(--menu-item-hover);
 }
 
 .chat-project-option.is-active {
-  background: var(--sidebar-active);
-  color: var(--accent);
+  background: var(--menu-item-active);
+  color: var(--text);
 }
 
 .chat-project-option-name {
@@ -10308,7 +10280,7 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-project-option.is-active .chat-project-option-name.is-none {
-  color: var(--accent);
+  color: var(--muted);
   font-style: italic;
 }
 
@@ -10594,11 +10566,11 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-model-option:hover {
-  background: var(--sidebar-hover);
+  background: var(--menu-item-hover);
 }
 
 .chat-model-option.is-active {
-  background: var(--sidebar-active);
+  background: var(--menu-item-active);
 }
 
 .chat-model-option-name {
@@ -12648,7 +12620,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .command-palette-item:hover,
 .command-palette-item.is-active {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: var(--menu-item-active);
 }
 
 .command-palette-item-name {

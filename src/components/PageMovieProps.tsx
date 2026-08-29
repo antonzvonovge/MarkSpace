@@ -27,6 +27,10 @@ type Props = {
 
 function summarize(attrs: MovieAttrs): string {
   const parts: string[] = [];
+  if (attrs.title) parts.push(attrs.title);
+  if (attrs.originalTitle && attrs.originalTitle !== attrs.title) {
+    parts.push(attrs.originalTitle);
+  }
   if (attrs.kind) parts.push(movieKindLabel(attrs.kind));
   if (attrs.genres.length) parts.push(attrs.genres.join(", "));
   const line1 = parts.join(" · ");
@@ -65,13 +69,14 @@ export function PageMovieProps({ path, content, onChange }: Props) {
     setBusy(true);
     try {
       let next = setMovieAttrs(content, {
+        title: value.title,
+        originalTitle: value.originalTitle,
         kind: value.kind,
         genres: value.genres,
         year: value.year,
         rating: value.rating,
         director: value.director,
         status: value.status,
-        originalTitle: value.originalTitle,
         imdbId: value.imdbId,
         kinopoiskId: value.kinopoiskId,
       });
@@ -112,6 +117,19 @@ export function PageMovieProps({ path, content, onChange }: Props) {
             </span>
           ) : (
             <span className="page-movie-props-summary">
+              {attrs.title || attrs.originalTitle ? (
+                <span className="page-movie-props-line">
+                  {[
+                    attrs.title || null,
+                    attrs.originalTitle &&
+                    attrs.originalTitle !== attrs.title
+                      ? attrs.originalTitle
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              ) : null}
               {attrs.kind || attrs.genres.length > 0 ? (
                 <span className="page-movie-props-line">
                   {[
@@ -129,7 +147,6 @@ export function PageMovieProps({ path, content, onChange }: Props) {
                     : null,
                   attrs.year != null ? String(attrs.year) : null,
                   attrs.rating != null ? `${attrs.rating}/10` : null,
-                  attrs.originalTitle || null,
                   attrs.director || null,
                 ]
                   .filter(Boolean)
