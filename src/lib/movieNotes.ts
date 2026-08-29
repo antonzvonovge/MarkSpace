@@ -60,6 +60,55 @@ export function movieRatingRank(rating: MovieRatingId | string | ""): number {
   return MOVIE_RATING_OPTIONS.find((o) => o.value === rating)?.rank ?? 0;
 }
 
+/**
+ * Display name for a genre shelf folder (`ужасы` → `Ужасы`).
+ * Strips path separators so the name is a single path segment.
+ */
+export function genreShelfFolderName(genre: string): string {
+  const cleaned = genre
+    .trim()
+    .replace(/[\\/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "";
+  return cleaned.charAt(0).toLocaleUpperCase() + cleaned.slice(1);
+}
+
+/**
+ * Target folder for a new film card under a Media library project.
+ *
+ * - Prefer an existing direct child whose name matches any genre (case-insensitive),
+ *   so e.g. genres `[боевик, ужасы]` land in existing `Ужасы`.
+ * - Otherwise `{projectRoot}/{FirstGenre}` from the first genre.
+ * - No genres → project root.
+ */
+export function resolveFilmShelfFolder(opts: {
+  projectRoot: string;
+  genres: string[];
+  existingChildFolders: string[];
+}): string {
+  const root = opts.projectRoot.replace(/^\/+|\/+$/g, "");
+  const genres = opts.genres.map((g) => g.trim()).filter(Boolean);
+  if (!root) return "";
+  if (genres.length === 0) return root;
+
+  const byLower = new Map<string, string>();
+  for (const name of opts.existingChildFolders) {
+    const n = name.trim();
+    if (!n || n.startsWith(".")) continue;
+    byLower.set(n.toLowerCase(), n);
+  }
+
+  for (const g of genres) {
+    const hit = byLower.get(g.toLowerCase());
+    if (hit) return `${root}/${hit}`;
+  }
+
+  const shelf = genreShelfFolderName(genres[0]!);
+  if (!shelf) return root;
+  return `${root}/${shelf}`;
+}
+
 const WATCHED_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** Validate and normalize a single watch day `YYYY-MM-DD` (local calendar). */

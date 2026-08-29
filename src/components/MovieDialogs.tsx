@@ -156,6 +156,7 @@ export function MoviePropertiesDialog({
         hit,
         kinopoiskApiKey: kpKey,
         omdbApiKey: omdbKey,
+        nativeLanguage,
       });
       setMovieTitle(details.title);
       setOriginalTitle(details.originalTitle);
@@ -460,6 +461,7 @@ export function NewFilmDialog({ open, onCancel, onConfirm }: NewFilmDialogProps)
         hit,
         kinopoiskApiKey: kpKey,
         omdbApiKey: omdbKey,
+        nativeLanguage,
       });
       // Localized title for the note; original kept separately.
       setTitle(details.title);

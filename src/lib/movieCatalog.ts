@@ -5,6 +5,7 @@ import {
   getKinopoiskDetails,
   searchKinopoisk,
 } from "./kinopoisk";
+import { localizeMovieGenres } from "./movieGenreLocales";
 import {
   getOmdbDetails,
   searchOmdb,
@@ -115,6 +116,8 @@ export async function getMovieCatalogDetails(opts: {
   hit: CatalogSearchHit;
   kinopoiskApiKey: string;
   omdbApiKey: string;
+  /** Profile native language — genres are rewritten to this locale. */
+  nativeLanguage: NativeLanguageId | string;
 }): Promise<CatalogDetails> {
   if (opts.hit.provider === "kinopoisk") {
     const id = Number(opts.hit.id);
@@ -125,7 +128,7 @@ export async function getMovieCatalogDetails(opts: {
       originalTitle: d.originalTitle,
       year: d.year,
       director: d.director,
-      genres: d.genres,
+      genres: localizeMovieGenres(d.genres, opts.nativeLanguage),
       countries: d.countries,
       posterUrl: d.posterUrl,
       imdbId: d.imdbId || opts.hit.imdbId,
@@ -140,7 +143,7 @@ export async function getMovieCatalogDetails(opts: {
     originalTitle: "",
     year: d.year,
     director: d.director,
-    genres: d.genres,
+    genres: localizeMovieGenres(d.genres, opts.nativeLanguage),
     countries: d.countries,
     posterUrl: d.posterUrl,
     imdbId: d.imdbId,

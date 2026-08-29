@@ -113,6 +113,16 @@ describe("vault agent tools", () => {
     expect(diagram).toHaveProperty("set_page");
     expect(diagram).not.toHaveProperty("add_diagram_node");
 
+    const media = buildVaultTools("agent", {
+      toolNames: [...SPECIALIST_PRESETS.media.toolNames],
+    });
+    expect(media).toHaveProperty("list_media_catalog");
+    expect(media).toHaveProperty("search_movies");
+    expect(media).toHaveProperty("create_film_note");
+    expect(media).toHaveProperty("ensure_folder");
+    expect(media).toHaveProperty("move_path");
+    expect(media).not.toHaveProperty("run_specialist");
+
     const terminal = buildVaultTools("agent", {
       toolNames: [...SPECIALIST_PRESETS.terminal.toolNames],
     });
@@ -120,6 +130,25 @@ describe("vault agent tools", () => {
     expect(terminal).toHaveProperty("list_folder");
     expect(terminal).not.toHaveProperty("edit_note");
     expect(terminal).not.toHaveProperty("run_specialist");
+  });
+
+  it("Ask exposes list_media_catalog", () => {
+    const askTools = buildVaultTools("ask");
+    expect(askTools).toHaveProperty("list_media_catalog");
+  });
+
+  it("movies project prompt steers media reorganize via catalog + move", () => {
+    const prompt = buildSystemPrompt({
+      mode: "agent",
+      vaultPath: null,
+      activePath: null,
+      activeExcerpt: null,
+      projectPath: "Медиатека",
+      projectType: "movies",
+    });
+    expect(prompt).toContain("list_media_catalog");
+    expect(prompt).toContain("move_path");
+    expect(prompt).toMatch(/\.\.\/\.assets/);
   });
 
   it("tells the model when to use tools / specialists", () => {

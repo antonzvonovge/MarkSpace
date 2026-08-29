@@ -155,9 +155,15 @@ export function filterMediaCatalogEntries(
 ): MediaCatalogEntry[] {
   const q = filters.query.trim().toLowerCase();
   const genre = filters.genre.trim();
+  const genreLower = genre.toLowerCase();
   return entries.filter((e) => {
     if (filters.kind && e.kind !== filters.kind) return false;
-    if (genre && !e.genres.includes(genre)) return false;
+    if (
+      genreLower &&
+      !e.genres.some((g) => g.trim().toLowerCase() === genreLower)
+    ) {
+      return false;
+    }
     if (!q) return true;
     const hay = [
       e.title,

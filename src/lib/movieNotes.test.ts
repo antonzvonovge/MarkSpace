@@ -6,8 +6,10 @@ import {
   filmNoteCommentPreview,
   filmNoteFileStem,
   formatMovieWatchedSummary,
+  genreShelfFolderName,
   leadingPosterUrl,
   normalizeImdbId,
+  resolveFilmShelfFolder,
   sanitizeFilmNoteName,
   withLeadingPoster,
 } from "./movieNotes";
@@ -18,6 +20,36 @@ describe("movieNotes", () => {
     expect(sanitizeFilmNoteName("Inception")).toBe("Inception");
     expect(sanitizeFilmNoteName('Foo: Bar/Baz?')).toBe("Foo BarBaz");
     expect(sanitizeFilmNoteName("   ")).toBe("Untitled film");
+  });
+
+  it("capitalizes genre shelf folder names", () => {
+    expect(genreShelfFolderName("ужасы")).toBe("Ужасы");
+    expect(genreShelfFolderName("Sci-Fi")).toBe("Sci-Fi");
+    expect(genreShelfFolderName("  a/b  ")).toBe("A b");
+  });
+
+  it("resolves film shelf folder preferring existing genre match", () => {
+    expect(
+      resolveFilmShelfFolder({
+        projectRoot: "Медиатека",
+        genres: ["боевик", "фэнтези", "ужасы"],
+        existingChildFolders: ["Ужасы", "Драма"],
+      }),
+    ).toBe("Медиатека/Ужасы");
+    expect(
+      resolveFilmShelfFolder({
+        projectRoot: "Медиатека",
+        genres: ["комедия"],
+        existingChildFolders: ["Ужасы"],
+      }),
+    ).toBe("Медиатека/Комедия");
+    expect(
+      resolveFilmShelfFolder({
+        projectRoot: "Медиатека",
+        genres: [],
+        existingChildFolders: ["Ужасы"],
+      }),
+    ).toBe("Медиатека");
   });
 
   it("strips leading poster from body", () => {

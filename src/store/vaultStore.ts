@@ -107,6 +107,7 @@ import {
   buildFilmNoteMarkdown,
   filmNoteFileStem,
   appendWatchedDate,
+  resolveFilmShelfFolder,
 } from "../lib/movieNotes";
 import {
   getMovieAttrs,
@@ -121,6 +122,27 @@ import { downloadPosterToAssets } from "../lib/omdb";
 async function nativeLanguageFromPrefs(): Promise<string> {
   const { usePrefsStore } = await import("./prefsStore");
   return usePrefsStore.getState().prefs.nativeLanguage;
+}
+
+/** Direct child folder names under `folderPath` in the vault tree. */
+function treeChildDirNames(tree: TreeNode | null, folderPath: string): string[] {
+  if (!tree) return [];
+  const target = folderPath.replace(/^\/+|\/+$/g, "");
+  const find = (node: TreeNode): TreeNode | null => {
+    const p = node.path.replace(/^\/+|\/+$/g, "");
+    if (p === target) return node;
+    for (const child of node.children ?? []) {
+      const hit = find(child);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const node =
+    target === "" || target === tree.path.replace(/^\/+|\/+$/g, "")
+      ? tree
+      : find(tree);
+  if (!node?.children) return [];
+  return node.children.filter((c) => c.isDir).map((c) => c.name);
 }
 
 async function defaultViewModeFromPrefs(): Promise<ViewMode> {
@@ -2454,12 +2476,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   createFilmNote: async (folder, input) => {
-    const { selectedFolderPath, projectPropertiesByPath } = get();
+    const { selectedFolderPath, projectPropertiesByPath, tree } = get();
     const parent = (folder || selectedFolderPath || "").replace(/\/+$/, "");
+    const projectRoot = moviesProjectRootForPath(parent, projectPropertiesByPath);
     const inMovies =
       projectPropertiesByPath[parent]?.projectType === "movies" ||
-      moviesProjectRootForPath(parent, projectPropertiesByPath) != null;
-    if (!inMovies) {
+      projectRoot != null;
+    if (!inMovies || !projectRoot) {
       set({ error: "Film notes are only available in Media library projects." });
       return null;
     }
@@ -2470,7 +2493,16 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     });
     try {
       set({ suppressWatchUntil: Date.now() + 1500 });
-      const rel = joinPath(parent, stem);
+      const targetFolder = resolveFilmShelfFolder({
+        projectRoot,
+        genres: input.attrs.genres,
+        existingChildFolders: treeChildDirNames(tree, projectRoot),
+      });
+      if (targetFolder !== projectRoot) {
+        await ensureFolder(targetFolder);
+        await ensureFolderNote(targetFolder);
+      }
+      const rel = joinPath(targetFolder, stem);
       const created = await createNote(rel);
       const poster = input.posterUrl.trim();
       let posterAssetUrl: string | null = null;

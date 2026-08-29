@@ -49,6 +49,11 @@ import {
   searchMovieCatalog,
   type CatalogSearchHit,
 } from "../lib/movieCatalog";
+import {
+  filterMediaCatalogEntries,
+  loadMediaCatalogEntries,
+} from "../lib/mediaCatalogIndex";
+import { localizeMovieGenres } from "../lib/movieGenreLocales";
 import { emptyMovieAttrs } from "../lib/noteFrontmatter";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
@@ -314,7 +319,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
 
     list_folder: tool({
       description:
-        "List the contents of a vault folder. Returns entries with kind folder or file. Use recursive=true to walk nested folders; default is immediate children only. Empty path lists the vault root, or the active project folder when a project is selected. Prefer this over list_notes when you need to see folders (including empty ones).",
+        "List the contents of a vault folder. Returns entries with kind folder or file. Use recursive=true to walk nested folders; default is immediate children only. Empty path lists the vault root, or the active project folder when a project is selected. Prefer this over list_notes when you need to see folders (including empty ones). Hidden sibling `.assets/` folders are omitted — do not invent asset paths from this listing.",
       inputSchema: z.object({
         path: z
           .string()
@@ -350,6 +355,96 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           count: entries.length,
           truncated: entries.length >= MAX_FOLDER_LIST,
           entries,
+        };
+      },
+    }),
+
+    list_media_catalog: tool({
+      description:
+        "List Media library film/series/animation cards under a folder (recursive). Returns compact metadata (path, title, genres, kind, year, rating, director, poster) without full note bodies. Prefer this over reading every card when filtering or reorganizing by genre. Folder must be under a Media library project. After move_path, do not rewrite note-relative `.assets/` poster links — assets migrate with the note.",
+      inputSchema: z.object({
+        folder: z
+          .string()
+          .optional()
+          .describe(
+            "Vault-relative folder under a Media library project. Omit to use the active media project / selection.",
+          ),
+        genre: z
+          .string()
+          .optional()
+          .describe(
+            "Filter: card must include this genre (case-insensitive; matches YAML genres)",
+          ),
+        kind: z
+          .enum(["film", "series", "animation"])
+          .optional()
+          .describe("Filter by kind"),
+        query: z
+          .string()
+          .optional()
+          .describe(
+            "Substring filter over title, original title, director, genres, countries, comment",
+          ),
+      }),
+      execute: async (input) => {
+        const store = useVaultStore.getState();
+        const projectPropertiesByPath = store.projectPropertiesByPath;
+        const folderInput = normalizeToolPath(input.folder ?? "");
+        let folder = folderInput;
+        if (folder) {
+          if (!moviesProjectRootForPath(folder, projectPropertiesByPath)) {
+            return {
+              ok: false as const,
+              error: `Not under a Media library project: ${folder}`,
+            };
+          }
+        } else {
+          const root = resolveMoviesProjectRoot({
+            selectedFolderPath: store.selectedFolderPath,
+            activePath: store.activePath,
+            chatProjectPath: projectPath,
+            projectPropertiesByPath,
+          });
+          if (!root) {
+            return {
+              ok: false as const,
+              error:
+                "No Media library project resolved. Pass folder= under a Media library project, or select one in chat / the file tree.",
+            };
+          }
+          const selected = store.selectedFolderPath.replace(/\/+$/, "");
+          folder =
+            selected &&
+            moviesProjectRootForPath(selected, projectPropertiesByPath) === root
+              ? selected
+              : root;
+        }
+
+        const tree = store.tree ?? (await listTree());
+        const entries = await loadMediaCatalogEntries(tree, folder);
+        const filtered = filterMediaCatalogEntries(entries, {
+          query: (input.query ?? "").trim(),
+          kind: isMovieKindId(input.kind) ? input.kind : "",
+          genre: (input.genre ?? "").trim(),
+        });
+        await yieldToUi();
+        return {
+          ok: true as const,
+          folder,
+          count: filtered.length,
+          entries: filtered.map((e) => ({
+            path: e.path,
+            title: e.title,
+            original_title: e.originalTitle || undefined,
+            kind: e.kind || undefined,
+            genres: e.genres,
+            countries: e.countries.length ? e.countries : undefined,
+            year: e.year,
+            rating: e.rating || undefined,
+            director: e.director || undefined,
+            watched: e.watched.length ? e.watched : undefined,
+            poster: e.posterVaultPath || undefined,
+          })),
         };
       },
     }),
@@ -1576,7 +1671,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     }),
     move_path: tool({
       description:
-        "Move a vault file or folder into another folder while keeping its name. Places it in directories-first alphabetical order among siblings (not at the end). For Markdown notes, referenced files in the sibling .assets folder are migrated automatically and links are updated.",
+        "Move a vault file or folder into another folder while keeping its name. Places it in directories-first alphabetical order among siblings (not at the end). For Markdown notes, referenced files in the sibling .assets folder are migrated automatically and links in the note are rewritten as needed — do NOT manually change `.assets/…` or invent `../.assets/` after a successful move (especially Media library posters).",
       inputSchema: z.object({
         path: z
           .string()
@@ -1893,7 +1988,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     }),
     get_movie_details: tool({
       description:
-        "Fetch full catalog details for a search_movies hit (title, original title, year, director, genres, poster URL, ids). Pass provider + id from the hit.",
+        "Fetch full catalog details for a search_movies hit (title, original title, year, director, genres in the profile native language, poster URL, ids). Pass provider + id from the hit.",
       inputSchema: z.object({
         provider: z.enum(["kinopoisk", "omdb"]),
         id: z
@@ -1920,10 +2015,12 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           imdbId: (input.imdb_id ?? "").trim(),
         };
         try {
+          const native = usePrefsStore.getState().prefs.nativeLanguage;
           const d = await getMovieCatalogDetails({
             hit,
             kinopoiskApiKey: ai.kinopoiskApiKey,
             omdbApiKey: ai.omdbApiKey,
+            nativeLanguage: native,
           });
           await yieldToUi();
           return {
@@ -1948,7 +2045,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
     }),
     create_film_note: tool({
       description:
-        "Create a Media library film/series/animation card note (YAML front-matter + poster + body). Only under a Media library project. File name is auto `{year}-{title}` (localized title, else original_title). Prefer after search_movies + get_movie_details; pass poster_url to download the poster.",
+        "Create a Media library film/series/animation card note (YAML front-matter + poster + body). Only under a Media library project. File is auto-filed into a genre shelf (`{project}/{Genre}/`) — existing folder matching any genre wins, else first genre; no genres → project root. File name is auto `{year}-{title}` (localized title, else original_title). Prefer after search_movies + get_movie_details; pass poster_url to download the poster.",
       inputSchema: z.object({
         title: z
           .string()
@@ -2018,12 +2115,16 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
           ? input.kind
           : "";
         const rating = isMovieRatingId(input.rating) ? input.rating : ("" as const);
+        const native = usePrefsStore.getState().prefs.nativeLanguage;
         const attrs: import("../lib/noteFrontmatter").MovieAttrs = {
           ...emptyMovieAttrs(),
           title: input.title.trim(),
           originalTitle: (input.original_title ?? "").trim(),
           kind,
-          genres: (input.genres ?? []).map((g) => g.trim()).filter(Boolean),
+          genres: localizeMovieGenres(
+            (input.genres ?? []).map((g) => g.trim()).filter(Boolean),
+            native,
+          ),
           year: input.year ?? null,
           rating,
           director: (input.director ?? "").trim(),
@@ -2347,12 +2448,12 @@ export function buildSystemPrompt(opts: {
     }
     if (opts.projectType === "movies") {
       lines.push(
-        "This is a Media library catalog project. Each title is one `.md` note. Auto-created file name is `{year}-{title}` (localized YAML `title` if set, else `original_title`). Structured fields live in YAML front-matter: `title` (localized / native-language name), optional `original_title`, `kind` (`film` | `series` | `animation`), `genres` (string list — not page tags), `year`, `rating` (`legend` | `quality` | `watchable` | `fine` — user’s quality, not a score), `director`, optional `imdb_id`, `kinopoisk_id`. Page `tags:` are personal labels only — do not put genres there. Poster is a normal image at the top of the body: `![|240](.assets/poster.jpg)` after a real asset write — never invent `.assets/` paths. Body after the poster is free-form personal notes (do not invent `## Why I liked it` / `## Notes` headings).",
+        "This is a Media library catalog project. Each title is one `.md` note under a genre shelf (`{project}/{Genre}/`: reuse existing child matching any genre, else first genre; no genres → project root). Auto-created file name is `{year}-{title}` (localized YAML `title` if set, else `original_title`). Structured fields live in YAML front-matter: `title` (localized / native-language name), optional `original_title`, `kind` (`film` | `series` | `animation`), `genres` (string list — not page tags), `year`, `rating` (`legend` | `quality` | `watchable` | `fine` — user’s quality, not a score), `director`, optional `imdb_id`, `kinopoisk_id`. Page `tags:` are personal labels only — do not put genres there. Poster is a normal image at the top of the body: `![|240](.assets/poster.jpg)` after a real asset write — never invent `.assets/` paths or `../.assets/`. Body after the poster is free-form personal notes (do not invent `## Why I liked it` / `## Notes` headings).",
       );
       lines.push(
         opts.mode === "agent"
-          ? "For lookup and new cards, delegate to run_specialist kind=media (search_movies → get_movie_details → create_film_note). Prefer that over inventing front-matter by hand or the New film dialog when the user asks in chat."
-          : "Lookup and card creation use Kinopoisk / OMDb via the app New film dialog (Settings → Media library for API keys).",
+          ? "For lookup/new cards and reorganize-by-genre, delegate to run_specialist kind=media: list_media_catalog (filter genre/kind) → ensure_folder → move_path; or search_movies → get_movie_details → create_film_note. Prefer list_media_catalog over reading every card. After move_path do not rewrite poster links."
+          : "Browse with list_media_catalog. Lookup and card creation use Kinopoisk / OMDb via the app New film dialog (Settings → Media library for API keys).",
       );
     }
     lines.push(

@@ -111,5 +111,10 @@ Loved it
     expect(filterMediaCatalogEntries(entries, filters).map((e) => e.title)).toEqual([
       "Alpha",
     ]);
+    filters.kind = "";
+    filters.genre = "action";
+    expect(filterMediaCatalogEntries(entries, filters).map((e) => e.title)).toEqual([
+      "Alpha",
+    ]);
   });
 });

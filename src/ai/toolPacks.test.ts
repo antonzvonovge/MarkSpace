@@ -55,6 +55,24 @@ describe("toolPacks", () => {
     expect(SPECIALIST_PRESETS.edit_notes.system).toContain("rename_path");
   });
 
+  it("edit_notes warns not to rewrite .assets after move_path", () => {
+    expect(SPECIALIST_PRESETS.edit_notes.system).toContain("move_path");
+    expect(SPECIALIST_PRESETS.edit_notes.system).toMatch(/\.assets/);
+    expect(SPECIALIST_PRESETS.edit_notes.system).toMatch(/\.\.\/\.assets/);
+  });
+
+  it("media pack can catalog and reorganize without rewriting posters", () => {
+    const names = SPECIALIST_PRESETS.media.toolNames;
+    expect(names).toContain("list_media_catalog");
+    expect(names).toContain("ensure_folder");
+    expect(names).toContain("move_path");
+    expect(names).toContain("search_movies");
+    expect(names).toContain("create_film_note");
+    expect(SPECIALIST_PRESETS.media.system).toContain("list_media_catalog");
+    expect(SPECIALIST_PRESETS.media.system).toMatch(/move_path/);
+    expect(SPECIALIST_PRESETS.media.system).toMatch(/\.\.\/\.assets/);
+  });
+
   it("pickTools keeps only requested keys", () => {
     const picked = pickTools(
       { a: 1, b: 2, c: 3 },
