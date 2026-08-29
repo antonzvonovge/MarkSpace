@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -122,6 +123,22 @@ import {
   PdfIcon,
   VaultSectionIcon,
 } from "./treeIcons";
+import {
+  MenuCopyAbsolutePathIcon,
+  MenuCopyPathIcon,
+  MenuDownloadIcon,
+  MenuFavoriteIcon,
+  MenuIeltsListeningIcon,
+  MenuIeltsReadingIcon,
+  MenuIeltsSpeakingIcon,
+  MenuIeltsWritingIcon,
+  MenuOpenChatIcon,
+  MenuPropertiesIcon,
+  MenuRenameIcon,
+  MenuRevealIcon,
+  MenuTranslateIcon,
+  MenuTrashIcon,
+} from "./menuIcons";
 import type { TreeCreateKind } from "./TreeToolbar";
 import {
   SectionCollapseButton,
@@ -389,177 +406,6 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
   return nodes;
 }
 
-function RenameIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M9.5 3.25 12.75 6.5 6 13.25H2.75V10l6.75-6.75Z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8.25 4.5 11.5 7.75"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function PropertiesIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="2.75"
-        y="2.75"
-        width="10.5"
-        height="10.5"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M5 5.75h6M5 8h6M5 10.25h3.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function TranslateIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M2.75 4.25h6.5M6 4.25c0 3.5-1.75 6.25-3.5 7.5M4.25 7.5h3.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.25 12.25 11.5 6.75l2.25 5.5M9.9 10.75h3.2"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function OpenChatIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 2.25a5.75 5.75 0 0 0-4.9 8.75L2.25 13.75l3-.7A5.75 5.75 0 1 0 8 2.25z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DownloadArticleIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 2.75v6.5M5.5 7.25 8 9.75l2.5-2.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M3.25 11.25v1a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-1"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M3.5 4.5h9M6.25 4.5V3.25h3.5V4.5M5 4.5l.5 8.25h5L11 4.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function RevealIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M2.5 5.25V12a1.25 1.25 0 0 0 1.25 1.25h8.5A1.25 1.25 0 0 0 13.5 12V5.75"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-      <path
-        d="M2.5 5.5 4.1 3.4A1 1 0 0 1 4.9 3h2.35l1.1 1.5H13a.75.75 0 0 1 .75.75V5.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.25 8.25 11.5 10.5 9.25 12.75M11.25 10.5H6.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CopyPathIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="5.25"
-        y="5.25"
-        width="7.5"
-        height="7.5"
-        rx="1.25"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <path
-        d="M3.5 10.5V3.75A1.25 1.25 0 0 1 4.75 2.5H10.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function StarIcon({ filled }: { filled?: boolean }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 2.4 9.7 5.9l3.8.4-2.9 2.6.9 3.7L8 10.7l-3.5 2 0.9-3.7-2.9-2.6 3.8-.4L8 2.4Z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-        fill={filled ? "currentColor" : "none"}
-      />
-    </svg>
-  );
-}
-
 function findTreeNode(root: TreeNode | null, path: string): TreeNode | null {
   if (!root) return null;
   if (root.path === path) return root;
@@ -755,7 +601,7 @@ function TreeContextMenu({
           onToggleFavorite();
         }}
       >
-        <StarIcon filled={menu.isFavorite} />
+        <MenuFavoriteIcon filled={menu.isFavorite} />
         <span>
           {menu.isFavorite ? "Remove from favorites" : "Add to favorites"}
         </span>
@@ -776,7 +622,7 @@ function TreeContextMenu({
           onRename();
         }}
       >
-        <RenameIcon />
+        <MenuRenameIcon />
         <span>Rename</span>
       </button>,
     );
@@ -794,7 +640,7 @@ function TreeContextMenu({
           onProjectProperties();
         }}
       >
-        <PropertiesIcon />
+        <MenuPropertiesIcon />
         <span>
           {showProjectProperties
             ? "Project properties…"
@@ -829,12 +675,28 @@ function TreeContextMenu({
           <div className="tree-context-submenu" role="menu">
             {(
               [
-                ["reading", "Reading"],
-                ["writing", "Writing"],
-                ["listening", "Listening"],
-                ["speaking", "Speaking"],
+                {
+                  id: "reading" as const,
+                  label: "Reading",
+                  Icon: MenuIeltsReadingIcon,
+                },
+                {
+                  id: "writing" as const,
+                  label: "Writing",
+                  Icon: MenuIeltsWritingIcon,
+                },
+                {
+                  id: "listening" as const,
+                  label: "Listening",
+                  Icon: MenuIeltsListeningIcon,
+                },
+                {
+                  id: "speaking" as const,
+                  label: "Speaking",
+                  Icon: MenuIeltsSpeakingIcon,
+                },
               ] as const
-            ).map(([id, label]) => (
+            ).map(({ id, label, Icon }) => (
               <button
                 key={id}
                 type="button"
@@ -845,6 +707,7 @@ function TreeContextMenu({
                   onIeltsTrainer(id);
                 }}
               >
+                <Icon />
                 <span>{label}</span>
               </button>
             ))}
@@ -1042,7 +905,7 @@ function TreeContextMenu({
             onReveal();
           }}
         >
-          <RevealIcon />
+          <MenuRevealIcon />
           <span>Reveal in file manager</span>
         </button>
         {showCopyPath ? (
@@ -1056,7 +919,7 @@ function TreeContextMenu({
                 onCopyPath();
               }}
             >
-              <CopyPathIcon />
+              <MenuCopyPathIcon />
               <span>Copy path</span>
             </button>
             <button
@@ -1068,7 +931,7 @@ function TreeContextMenu({
                 onCopyAbsolutePath();
               }}
             >
-              <CopyPathIcon />
+              <MenuCopyAbsolutePathIcon />
               <span>Copy absolute path</span>
             </button>
           </>
@@ -1090,7 +953,7 @@ function TreeContextMenu({
               onOpenChat();
             }}
           >
-            <OpenChatIcon />
+            <MenuOpenChatIcon />
             <span>Open chat</span>
           </button>
         ) : null}
@@ -1104,7 +967,7 @@ function TreeContextMenu({
               onDownloadArticle();
             }}
           >
-            <DownloadArticleIcon />
+            <MenuDownloadIcon />
             <span>Download article…</span>
           </button>
         ) : null}
@@ -1119,7 +982,7 @@ function TreeContextMenu({
                 onTranslate();
               }}
             >
-              <TranslateIcon />
+              <MenuTranslateIcon />
               <span>{translateLabel}</span>
             </button>
             <button
@@ -1131,7 +994,7 @@ function TreeContextMenu({
                 onTranslateReplace();
               }}
             >
-              <TranslateIcon />
+              <MenuTranslateIcon />
               <span>{translateReplaceLabel}</span>
             </button>
           </>
@@ -1152,7 +1015,7 @@ function TreeContextMenu({
           onDelete();
         }}
       >
-        <TrashIcon />
+        <MenuTrashIcon />
         <span>Delete</span>
       </button>,
     );
@@ -1291,7 +1154,10 @@ function FavoritesTreeRows({
   unresolvedCounts: Map<string, number>;
   onOpenContextMenu: (menu: ContextMenuState) => void;
   onSelectInTree: (path: string, isDir: boolean) => void;
-  onOpenFolder: (path: string) => void;
+  onOpenFolder: (
+    path: string,
+    options?: { preview?: boolean; replaceActive?: boolean },
+  ) => void;
   onOpenNote: (path: string, options?: { preview?: boolean }) => void;
   onToggleExpanded: (path: string) => void;
   onRenameCommit: (path: string, nextName: string) => void;
@@ -1358,17 +1224,23 @@ function FavoritesTreeRows({
               data-vault-path={path}
               data-vault-isdir={isDir ? "1" : undefined}
               data-drawio-path={isDrawio ? path : undefined}
-              onClick={() => {
+              onClick={(e) => {
                 if (renaming) return;
                 if (isDir) {
-                  onOpenFolder(path);
+                  if (e.ctrlKey || e.metaKey) {
+                    onOpenFolder(path, { preview: false });
+                  } else {
+                    onOpenFolder(path, { replaceActive: true });
+                  }
                   return;
                 }
                 if (isUnsupportedTreeFile(false, path)) {
                   onSelectInTree(path, false);
                   return;
                 }
-                onOpenNote(path, { preview: true });
+                onOpenNote(path, {
+                  preview: !(e.ctrlKey || e.metaKey),
+                });
               }}
               onDoubleClick={() => {
                 if (isDir || renaming) return;
@@ -2628,8 +2500,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             unresolvedCounts={unresolvedCounts}
             onOpenContextMenu={setContextMenu}
             onSelectInTree={selectInTree}
-            onOpenFolder={(path) => {
-              void openOrCreateFolderNote(path);
+            onOpenFolder={(path, options) => {
+              void openOrCreateFolderNote(path, options);
             }}
             onOpenNote={(path, options) => {
               void openNote(path, options);
@@ -2698,8 +2570,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 unresolvedCounts={unresolvedCounts}
                 onOpenContextMenu={setContextMenu}
                 onSelectInTree={selectInTree}
-                onOpenFolder={(path) => {
-                  void openOrCreateFolderNote(path);
+                onOpenFolder={(path, options) => {
+                  void openOrCreateFolderNote(path, options);
                 }}
                 onOpenNote={(path, options) => {
                   void openNote(path, options);
@@ -2846,7 +2718,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                 // No <button>/<a> inside the row: Chromium (WebView2) refuses to
                 // start an HTML5 drag from form controls, which killed row drags
                 // on Windows. Plain spans + a row-level click handler instead.
-                const handleRowClick = () => {
+                const handleRowClick = (e: MouseEvent) => {
                   treeFocusRef.current?.focus({ preventScroll: true });
                   if (renaming) return;
                   if (isDir) {
@@ -2854,14 +2726,22 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       selectFolder(path);
                       return;
                     }
-                    void openOrCreateFolderNote(path);
+                    if (e.ctrlKey || e.metaKey) {
+                      void openOrCreateFolderNote(path, { preview: false });
+                    } else {
+                      void openOrCreateFolderNote(path, {
+                        replaceActive: true,
+                      });
+                    }
                     return;
                   }
                   if (unsupported) {
                     selectInTree(path, false);
                     return;
                   }
-                  void openNote(path, { preview: true });
+                  void openNote(path, {
+                    preview: !(e.ctrlKey || e.metaKey),
+                  });
                 };
 
                 return (

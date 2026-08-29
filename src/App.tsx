@@ -25,6 +25,10 @@ import { SyncConflictBanner } from "./components/SyncConflictBanner";
 import { EditorChrome } from "./components/TabBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { NotePageChrome } from "./components/NotePageChrome";
+import {
+  MediaCatalogView,
+  mediaCatalogFolderForPath,
+} from "./components/MediaCatalogView";
 import { TagGraphView } from "./components/graph/TagGraphView";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { PlainSourceEditor } from "./editor/PlainSourceEditor";
@@ -109,6 +113,13 @@ const DocumentTab = memo(function DocumentTab({
   const viewMode = useVaultStore((s) =>
     isActive ? s.viewMode : "live",
   );
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
+  const mediaCatalogFolder = mediaCatalogFolderForPath(
+    path,
+    projectPropertiesByPath,
+  );
 
   if (kind === "settings") {
     return (
@@ -144,6 +155,20 @@ const DocumentTab = memo(function DocumentTab({
 
   const docKind = documentKind(path);
   const liveSlotActive = !isActive || viewMode === "live";
+
+  if (mediaCatalogFolder != null) {
+    return (
+      <div
+        className={
+          isActive ? "document-instance is-active" : "document-instance"
+        }
+        aria-hidden={!isActive}
+        inert={!isActive}
+      >
+        <MediaCatalogView folder={mediaCatalogFolder} />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -322,6 +347,9 @@ const MainPane = memo(function MainPane({
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const tabs = useVaultStore((s) => s.tabs);
   const activePath = useVaultStore((s) => s.activePath);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
   const closeSettings = usePrefsStore((s) => s.closeSettings);
   const warmLivePaths = useWarmLiveMarkdownPaths(tabs, activePath);
 
@@ -353,6 +381,14 @@ const MainPane = memo(function MainPane({
                 {(() => {
                   const activeTab = tabs.find((t) => t.path === activePath);
                   if (activeTab && !isFileTab(activeTab)) return null;
+                  if (
+                    mediaCatalogFolderForPath(
+                      activePath,
+                      projectPropertiesByPath,
+                    ) != null
+                  ) {
+                    return null;
+                  }
                   const kind = documentKind(activePath);
                   const showToolbar =
                     kind === "markdown" ||

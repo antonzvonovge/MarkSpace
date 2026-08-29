@@ -19,7 +19,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Diary daily notes may set YAML `marker:` to a catalog id from Settings → Diary (defaults include `holiday`, `important`, `sad`, …) so the sidebar calendar shows that day's emoji; omit the key (or leave it empty) to clear.
 - Language-learning projects may keep a **Lexicon** tree at `{project}/Lexicon/…` (at most two folders under `Lexicon/`, then a lemma `.md`). Quick Translate writes a full dictionary article in the background (status bar); keep YAML `lemma` / `lang` / `aliases` and the `## Notes` heading. Do not delete `## Notes` or the user’s text below it. After several **new** lemmas, the app may review and move files inside `Lexicon/`.
-- Media library projects: one `.md` per title. Front-matter `title` (localized), optional `original_title`, `kind` (`film`|`series`|`animation`), `genres` (list), `year`, `rating` (1–10), `director`, `status` (`want`|`watched`|`favorite`), optional `imdb_id`, `kinopoisk_id`. Genres ≠ page `tags:`. Auto-created file name: `{year}-{title}` (localized `title` if set, else `original_title`). Poster: `![|240](.assets/…)` after a real asset write — never invent paths. Body after the poster is free-form personal notes (no required section headings).
+- Media library projects: one `.md` per title. Front-matter `title` (localized), optional `original_title`, `kind` (`film`|`series`|`animation`), `genres` (list), `countries` (list), `year`, `rating` (`legend`|`quality`|`watchable`|`fine`), `director`, optional `imdb_id`, `kinopoisk_id`, optional `poster` (note-relative `.assets/…` path — canonical for the card chrome), optional `watched` (list of `YYYY-MM-DD` view days; duplicates = rewatches). Genres ≠ page `tags:`. Auto-created file name: `{year}-{title}` (localized `title` if set, else `original_title`). Poster file: write into `.assets/` then set `poster:` and leading `![|240](.assets/…)` — never invent paths. Body after the poster is free-form personal notes (no required section headings).
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
 - Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
@@ -54,7 +54,7 @@ marker: holiday
 
 ## Media library catalog
 
-Top-level **projects** with project type **Media library** are a personal film/series catalog. Context menu **New film…** looks up **Kinopoisk** when the profile native language is Russian (or the query is Cyrillic), otherwise **OMDb** for Latin titles. API keys live in Settings → Media library. In Agent mode, `run_specialist` kind=`media` uses the same lookup (`search_movies` / `get_movie_details` / `create_film_note`). Each title is one `.md` note; the file name is the localized title.
+Top-level **projects** with project type **Media library** are a personal film/series catalog. Opening any folder under such a project shows a recursive **tile catalog** (search, kind/genre filters). Context menu **New film…** looks up **Kinopoisk** when the profile native language is Russian (or the query is Cyrillic), otherwise **OMDb** for Latin titles. API keys live in Settings → Media library. In Agent mode, `run_specialist` kind=`media` uses the same lookup (`search_movies` / `get_movie_details` / `create_film_note`). Each title is one `.md` note; auto file name `{year}-{title}` (localized title, else original).
 
 ```md
 ---
@@ -64,12 +64,18 @@ kind: film
 genres:
   - фантастика
   - боевик
+countries:
+  - США
+  - Великобритания
 year: 2010
-rating: 9
+rating: legend
 director: Кристофер Нолан
-status: favorite
 imdb_id: tt1375666
 kinopoisk_id: 447301
+poster: .assets/poster.jpg
+watched:
+  - 2024-03-12
+  - 2026-01-05
 tags:
   - rewatch
 ---
@@ -84,12 +90,14 @@ Short personal note about the title.
 - Auto-created note file name: `{year}-{title}.md` using localized `title` when set, otherwise `original_title` (year omitted if unknown). Renaming by hand is fine.
 - `kind`: `film` | `series` | `animation` (UI: Film / Series / Animation).
 - `genres`: YAML string list — catalog genres. **Not** the same as page `tags:`.
-- `status`: `want` | `watched` | `favorite` (user only).
-- `rating`: integer 1–10 (user only).
+- `countries`: YAML string list — production countries (from Lookup when available).
+- `rating`: `legend` | `quality` | `watchable` | `fine` (user quality — not a numeric score).
+- `poster`: note-relative path to the downloaded poster (e.g. `.assets/poster.jpg`). Used by the card chrome and catalog when the leading body image is missing.
+- `watched`: optional list of view days `YYYY-MM-DD`. Length = times watched; last entry (chronologically) = most recent. Duplicate dates count as separate watches. Omit or empty = not watched.
 - `imdb_id` / `kinopoisk_id`: optional ids from Lookup.
-- Poster: download into the note’s sibling `.assets/`. Leading image `![|240](.assets/poster…)`. Never invent asset paths.
+- Poster file: download into the note’s sibling `.assets/`. Also keep a leading image `![|240](.assets/poster…)`. Never invent asset paths.
 - Body after the poster is free-form text (one comment field — no required `##` sections).
-- Live chrome above the editor shows titles, kind, genres, status, year, rating, director; click to edit.
+- Live chrome above the editor shows titles, kind, genres, countries, year, rating, director, watch summary; click details to edit. Use the eye icon on the note card to append today’s date to `watched` (no delete UI).
 
 ## Language-learning lexicon
 

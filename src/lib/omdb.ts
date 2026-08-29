@@ -20,6 +20,7 @@ export type OmdbDetails = {
   year: number | null;
   director: string;
   genres: string[];
+  countries: string[];
   posterUrl: string | null;
   type: string;
 };
@@ -159,6 +160,7 @@ type OmdbDetailsJson = {
   Year?: string;
   Director?: string;
   Genre?: string;
+  Country?: string;
   Poster?: string;
   imdbID?: string;
   Type?: string;
@@ -217,6 +219,7 @@ export async function getOmdbDetails(
     year: yearFromRaw(data.Year),
     director,
     genres: genresFromCsv(data.Genre),
+    countries: genresFromCsv(data.Country),
     posterUrl: posterOrNull(data.Poster),
     type: (data.Type ?? "").trim(),
   };

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFilmNoteMarkdown,
+  bodyWithoutLeadingPoster,
   collapseFilmNoteBodySections,
   filmNoteCommentPreview,
   filmNoteFileStem,
+  formatMovieWatchedSummary,
   leadingPosterUrl,
   normalizeImdbId,
   sanitizeFilmNoteName,
@@ -16,6 +18,12 @@ describe("movieNotes", () => {
     expect(sanitizeFilmNoteName("Inception")).toBe("Inception");
     expect(sanitizeFilmNoteName('Foo: Bar/Baz?')).toBe("Foo BarBaz");
     expect(sanitizeFilmNoteName("   ")).toBe("Untitled film");
+  });
+
+  it("strips leading poster from body", () => {
+    const body = "![|240](.assets/p.jpg)\n\nMy notes\n";
+    expect(bodyWithoutLeadingPoster(body)).toBe("My notes\n");
+    expect(bodyWithoutLeadingPoster("just notes")).toBe("just notes");
   });
 
   it("builds year-title file stems preferring native title", () => {
@@ -82,9 +90,8 @@ Rewatch someday
       kind: "film",
       genres: ["Sci-Fi"],
       year: 2010,
-      rating: 9,
+      rating: "legend",
       director: "Nolan",
-      status: "favorite",
       imdbId: "tt1375666",
       kinopoiskId: 447301,
       originalTitle: "Inception",
@@ -95,6 +102,7 @@ Rewatch someday
     expect(md).toContain("imdb_id: tt1375666");
     expect(md).toContain("kinopoisk_id: 447301");
     expect(md).toContain("original_title: Inception");
+    expect(md).toContain("poster: .assets/poster.jpg");
     expect(md).toContain("![|240](.assets/poster.jpg)");
     expect(md).not.toMatch(/Why I liked it|## Notes/);
   });
@@ -113,27 +121,32 @@ Body
       title: "Игра престолов",
       kind: "series",
       genres: ["Drama"],
+      countries: ["США", "Великобритания"],
       year: 2008,
-      rating: 8,
+      rating: "quality",
       director: "Someone",
-      status: "watched",
       originalTitle: "Game of Thrones",
       imdbId: "tt0944947",
       kinopoiskId: 453406,
+      poster: ".assets/poster.jpg",
+      watched: ["2026-01-05", "2024-03-12", "2026-01-05"],
     });
     expect(getMovieAttrs(next)).toMatchObject({
       title: "Игра престолов",
       kind: "series",
       genres: ["Drama"],
+      countries: ["США", "Великобритания"],
       year: 2008,
-      rating: 8,
+      rating: "quality",
       director: "Someone",
-      status: "watched",
       originalTitle: "Game of Thrones",
       imdbId: "tt0944947",
       kinopoiskId: 453406,
+      poster: ".assets/poster.jpg",
+      watched: ["2024-03-12", "2026-01-05", "2026-01-05"],
     });
     expect(next).toContain("rewatch");
+    expect(next).toMatch(/watched:\n\s+- 2024-03-12/);
     const tagged = setNoteTags(next, ["rewatch", "mood"]);
     expect(getMovieAttrs(tagged).kind).toBe("series");
     expect(getMovieAttrs(tagged).genres).toEqual(["Drama"]);
@@ -144,6 +157,8 @@ Body
 kind: film
 tmdb_id: 1
 tmdb_media: movie
+watched:
+  - 2020-01-01
 ---
 
 Body
@@ -152,24 +167,43 @@ Body
       title: "",
       kind: "",
       year: null,
-      status: "",
       genres: [],
+      countries: [],
       director: "",
-      rating: null,
+      rating: "",
       originalTitle: "",
       imdbId: "",
       kinopoiskId: null,
+      poster: "",
+      watched: [],
     });
     expect(getMovieAttrs(cleared)).toMatchObject({
       title: "",
       kind: "",
       year: null,
-      status: "",
       imdbId: "",
       originalTitle: "",
+      rating: "",
       kinopoiskId: null,
+      poster: "",
+      countries: [],
+      watched: [],
     });
     expect(cleared).not.toContain("tmdb_id");
     expect(cleared).not.toContain("tmdb_media");
+    expect(cleared).not.toContain("status:");
+    expect(cleared).not.toContain("watched:");
+  });
+});
+
+describe("movie watched helpers", () => {
+  it("formats watch count and last day", () => {
+    expect(formatMovieWatchedSummary([])).toBeNull();
+    expect(formatMovieWatchedSummary(["2024-03-12"])).toBe(
+      "1× · last Mar 12, 2024",
+    );
+    expect(
+      formatMovieWatchedSummary(["2026-01-05", "2024-03-12", "2026-01-05"]),
+    ).toBe("3× · last Jan 5, 2026");
   });
 });

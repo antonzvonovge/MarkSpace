@@ -2,10 +2,11 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { normalizeDayMarkerId } from "./dayMarkers";
 import {
   isMovieKindId,
-  isMovieStatusId,
+  isMovieRatingId,
   normalizeImdbId,
+  normalizeWatchedDates,
   type MovieKindId,
-  type MovieStatusId,
+  type MovieRatingId,
 } from "./movieNotes";
 
 export type FrontmatterData = Record<string, unknown>;
@@ -156,12 +157,20 @@ export type MovieAttrs = {
   originalTitle: string;
   kind: MovieKindId | "";
   genres: string[];
+  /** Production countries (e.g. Россия, США). */
+  countries: string[];
   year: number | null;
-  rating: number | null;
+  rating: MovieRatingId | "";
   director: string;
-  status: MovieStatusId | "";
   imdbId: string;
   kinopoiskId: number | null;
+  /**
+   * Note-relative poster path (e.g. `.assets/poster.jpg`).
+   * Canonical for chrome/catalog — survives Live body round-trips that drop the leading image.
+   */
+  poster: string;
+  /** Watch days `YYYY-MM-DD` (duplicates = rewatches). Empty = not watched. */
+  watched: string[];
 };
 
 function normalizeGenreList(value: unknown): string[] {
@@ -185,12 +194,14 @@ export function emptyMovieAttrs(): MovieAttrs {
     originalTitle: "",
     kind: "",
     genres: [],
+    countries: [],
     year: null,
-    rating: null,
+    rating: "",
     director: "",
-    status: "",
     imdbId: "",
     kinopoiskId: null,
+    poster: "",
+    watched: [],
   };
 }
 
@@ -198,24 +209,26 @@ export function getMovieAttrs(markdown: string): MovieAttrs {
   const { data } = splitFrontmatter(markdown);
   if (!data) return emptyMovieAttrs();
   const kindRaw = data.kind;
-  const statusRaw = data.status;
   return {
     title: typeof data.title === "string" ? data.title.trim() : "",
     originalTitle:
       typeof data.original_title === "string" ? data.original_title.trim() : "",
     kind: isMovieKindId(kindRaw) ? kindRaw : "",
     genres: normalizeGenreList(data.genres),
+    countries: normalizeGenreList(data.countries),
     year: parsePositiveInt(data.year),
-    rating: (() => {
-      const n = parsePositiveInt(data.rating);
-      if (n == null) return null;
-      return Math.min(10, Math.max(1, n));
-    })(),
+    rating: isMovieRatingId(data.rating) ? data.rating : "",
     director: typeof data.director === "string" ? data.director.trim() : "",
-    status: isMovieStatusId(statusRaw) ? statusRaw : "",
     imdbId: normalizeImdbId(data.imdb_id),
     kinopoiskId: parsePositiveInt(data.kinopoisk_id),
+    poster: normalizePosterPath(data.poster),
+    watched: normalizeWatchedDates(data.watched),
   };
+}
+
+function normalizePosterPath(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/^\.\//, "");
 }
 
 /**
@@ -241,13 +254,16 @@ export function setMovieAttrs(
         : current.originalTitle,
     kind: attrs.kind !== undefined ? attrs.kind : current.kind,
     genres: attrs.genres !== undefined ? attrs.genres : current.genres,
+    countries:
+      attrs.countries !== undefined ? attrs.countries : current.countries,
     year: attrs.year !== undefined ? attrs.year : current.year,
     rating: attrs.rating !== undefined ? attrs.rating : current.rating,
     director: attrs.director !== undefined ? attrs.director : current.director,
-    status: attrs.status !== undefined ? attrs.status : current.status,
     imdbId: attrs.imdbId !== undefined ? attrs.imdbId : current.imdbId,
     kinopoiskId:
       attrs.kinopoiskId !== undefined ? attrs.kinopoiskId : current.kinopoiskId,
+    poster: attrs.poster !== undefined ? attrs.poster : current.poster,
+    watched: attrs.watched !== undefined ? attrs.watched : current.watched,
   };
 
   const title = next.title.trim();
@@ -265,19 +281,19 @@ export function setMovieAttrs(
   if (genres.length > 0) data.genres = genres;
   else delete data.genres;
 
+  const countries = normalizeGenreList(next.countries);
+  if (countries.length > 0) data.countries = countries;
+  else delete data.countries;
+
   if (next.year != null && next.year > 0) data.year = next.year;
   else delete data.year;
 
-  if (next.rating != null && next.rating >= 1 && next.rating <= 10) {
-    data.rating = next.rating;
-  } else delete data.rating;
+  if (next.rating && isMovieRatingId(next.rating)) data.rating = next.rating;
+  else delete data.rating;
 
   const director = next.director.trim();
   if (director) data.director = director;
   else delete data.director;
-
-  if (next.status && isMovieStatusId(next.status)) data.status = next.status;
-  else delete data.status;
 
   const imdbId = normalizeImdbId(next.imdbId);
   if (imdbId) data.imdb_id = imdbId;
@@ -287,7 +303,16 @@ export function setMovieAttrs(
     data.kinopoisk_id = next.kinopoiskId;
   } else delete data.kinopoisk_id;
 
-  // Drop legacy TMDB keys if present.
+  const poster = normalizePosterPath(next.poster);
+  if (poster) data.poster = poster;
+  else delete data.poster;
+
+  const watched = normalizeWatchedDates(next.watched);
+  if (watched.length > 0) data.watched = watched;
+  else delete data.watched;
+
+  // Drop legacy keys.
+  delete data.status;
   delete data.tmdb_id;
   delete data.tmdb_media;
 

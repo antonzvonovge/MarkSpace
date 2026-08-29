@@ -1,6 +1,7 @@
 import { getBlockInfoAtNearest, getNodeId } from "@blocknote/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
+import { RiArtboard2Line, RiFolderOpenLine } from "react-icons/ri";
 import {
   absolutePath,
   createDrawio,
@@ -116,6 +117,7 @@ export function insertNewDrawioItem(
     subtext: "Create a new diagram file and embed it",
     aliases: ["drawio", "draw.io", "diagram", "new drawio", "создать"],
     group: "Diagrams",
+    icon: <RiArtboard2Line size={18} />,
     onItemClick: () => {
       void (async () => {
         const folder = parentPath(notePath);
@@ -144,6 +146,7 @@ export function insertExistingDrawioItem(
       "выбрать",
     ],
     group: "Diagrams",
+    icon: <RiFolderOpenLine size={18} />,
     onItemClick: () => {
       void (async () => {
         const defaultPath = await noteFolderAbsolute(notePath);

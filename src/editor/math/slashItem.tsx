@@ -1,5 +1,6 @@
 import { insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
+import { RiFormula, RiFunctions } from "react-icons/ri";
 import type { NoteEditor } from "../schema";
 import { DEFAULT_EQUATION_LATEX } from "./MathEquationBlock";
 
@@ -19,6 +20,7 @@ export function insertMathEquationItem(
       "block math",
     ],
     group: "Math",
+    icon: <RiFunctions size={18} />,
     onItemClick: () => {
       insertOrUpdateBlockForSlashMenu(editor, {
         type: "equation",
@@ -42,6 +44,7 @@ export function insertInlineMathItem(
       "equation",
     ],
     group: "Math",
+    icon: <RiFormula size={18} />,
     onItemClick: () => {
       editor.insertInlineContent([
         {

@@ -37,6 +37,7 @@ export type CatalogDetails = {
   year: number | null;
   director: string;
   genres: string[];
+  countries: string[];
   posterUrl: string | null;
   imdbId: string;
   kinopoiskId: number | null;
@@ -125,6 +126,7 @@ export async function getMovieCatalogDetails(opts: {
       year: d.year,
       director: d.director,
       genres: d.genres,
+      countries: d.countries,
       posterUrl: d.posterUrl,
       imdbId: d.imdbId || opts.hit.imdbId,
       kinopoiskId: d.kinopoiskId,
@@ -139,6 +141,7 @@ export async function getMovieCatalogDetails(opts: {
     year: d.year,
     director: d.director,
     genres: d.genres,
+    countries: d.countries,
     posterUrl: d.posterUrl,
     imdbId: d.imdbId,
     kinopoiskId: null,

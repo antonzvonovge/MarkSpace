@@ -1,7 +1,8 @@
-/** Media library project card helpers — kinds, statuses, note templates, poster body. */
+/** Media library project card helpers — kinds, ratings, note templates, poster body. */
 
 export type MovieKindId = "film" | "series" | "animation";
-export type MovieStatusId = "want" | "watched" | "favorite";
+/** Personal quality rating (not a 1–10 score). */
+export type MovieRatingId = "legend" | "quality" | "watchable" | "fine";
 
 export const MOVIE_KIND_OPTIONS: { value: MovieKindId; label: string }[] = [
   { value: "film", label: "Film" },
@@ -9,18 +10,29 @@ export const MOVIE_KIND_OPTIONS: { value: MovieKindId; label: string }[] = [
   { value: "animation", label: "Animation" },
 ];
 
-export const MOVIE_STATUS_OPTIONS: { value: MovieStatusId; label: string }[] = [
-  { value: "want", label: "Want to watch" },
-  { value: "watched", label: "Watched" },
-  { value: "favorite", label: "Favorite" },
+/** Higher rank = better (for sort). */
+export const MOVIE_RATING_OPTIONS: {
+  value: MovieRatingId;
+  label: string;
+  rank: number;
+}[] = [
+  { value: "legend", label: "Легенда", rank: 4 },
+  { value: "quality", label: "Качественный", rank: 3 },
+  { value: "watchable", label: "Можно посмотреть", rank: 2 },
+  { value: "fine", label: "Нормально", rank: 1 },
 ];
 
 export function isMovieKindId(value: unknown): value is MovieKindId {
   return value === "film" || value === "series" || value === "animation";
 }
 
-export function isMovieStatusId(value: unknown): value is MovieStatusId {
-  return value === "want" || value === "watched" || value === "favorite";
+export function isMovieRatingId(value: unknown): value is MovieRatingId {
+  return (
+    value === "legend" ||
+    value === "quality" ||
+    value === "watchable" ||
+    value === "fine"
+  );
 }
 
 /** Normalize IMDb id like `tt1375666`. */
@@ -40,8 +52,103 @@ export function movieKindLabel(kind: MovieKindId | string): string {
   return MOVIE_KIND_OPTIONS.find((o) => o.value === kind)?.label ?? "";
 }
 
-export function movieStatusLabel(status: MovieStatusId | string): string {
-  return MOVIE_STATUS_OPTIONS.find((o) => o.value === status)?.label ?? "";
+export function movieRatingLabel(rating: MovieRatingId | string): string {
+  return MOVIE_RATING_OPTIONS.find((o) => o.value === rating)?.label ?? "";
+}
+
+export function movieRatingRank(rating: MovieRatingId | string | ""): number {
+  return MOVIE_RATING_OPTIONS.find((o) => o.value === rating)?.rank ?? 0;
+}
+
+const WATCHED_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Validate and normalize a single watch day `YYYY-MM-DD` (local calendar). */
+export function normalizeWatchedDate(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // YAML may parse unquoted 2024-03-12 as a number in edge cases — reject.
+    return null;
+  }
+  if (typeof value !== "string") return null;
+  const m = WATCHED_DAY_RE.exec(value.trim());
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const dt = new Date(year, month - 1, day);
+  if (
+    dt.getFullYear() !== year ||
+    dt.getMonth() !== month - 1 ||
+    dt.getDate() !== day
+  ) {
+    return null;
+  }
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
+/**
+ * Parse `watched:` from YAML. Keeps duplicates (rewatches count).
+ * Invalid entries dropped; result sorted ascending for stable diffs.
+ */
+export function normalizeWatchedDates(value: unknown): string[] {
+  const raw: unknown[] = Array.isArray(value)
+    ? value
+    : typeof value === "string" && value.trim()
+      ? [value]
+      : [];
+  const out: string[] = [];
+  for (const item of raw) {
+    const iso = normalizeWatchedDate(item);
+    if (iso) out.push(iso);
+  }
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+/** Local today as `YYYY-MM-DD`. */
+export function localWatchedToday(now: Date = new Date()): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Append a watch day (default today). Duplicates allowed. */
+export function appendWatchedDate(
+  dates: readonly string[],
+  date: string = localWatchedToday(),
+): string[] {
+  const iso = normalizeWatchedDate(date);
+  if (!iso) return normalizeWatchedDates(dates);
+  return normalizeWatchedDates([...dates, iso]);
+}
+
+export function lastWatchedDate(dates: readonly string[]): string | null {
+  const normalized = normalizeWatchedDates(dates);
+  return normalized.length > 0 ? normalized[normalized.length - 1]! : null;
+}
+
+/** Short English stats for card chrome, or null if never watched. Eye icon replaces the word “Watched”. */
+export function formatMovieWatchedSummary(
+  dates: readonly string[],
+): string | null {
+  const normalized = normalizeWatchedDates(dates);
+  if (normalized.length === 0) return null;
+  const last = normalized[normalized.length - 1]!;
+  const count = normalized.length;
+  const times = count === 1 ? "1×" : `${count}×`;
+  return `${times} · last ${formatWatchedDayLabel(last)}`;
+}
+
+function formatWatchedDayLabel(iso: string): string {
+  const parsed = normalizeWatchedDate(iso);
+  if (!parsed) return iso;
+  const [y, m, d] = parsed.split("-").map(Number);
+  const date = new Date(y!, m! - 1, d!);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /** Sanitize a film title into a vault note file stem fragment (no `.md`, no year). */
@@ -119,6 +226,25 @@ export function leadingPosterUrl(body: string): string | null {
   return m?.[1] ?? null;
 }
 
+/**
+ * Prefer YAML `poster:`, else leading body image.
+ * Returns a note-relative path (e.g. `.assets/poster.jpg`).
+ */
+export function resolveFilmPosterRel(
+  posterAttr: string | undefined | null,
+  body: string,
+): string | null {
+  const fromAttr = (posterAttr ?? "").trim().replace(/^\.\//, "");
+  if (fromAttr) return fromAttr;
+  const fromBody = leadingPosterUrl(body);
+  return fromBody ? fromBody.replace(/^\.\//, "") : null;
+}
+
+/** Body without the leading poster image (notes-only). */
+export function bodyWithoutLeadingPoster(body: string): string {
+  return body.replace(LEADING_POSTER_RE, "").replace(/^\n+/, "");
+}
+
 /** Insert or replace the leading image block; keep the rest of the body. */
 export function withLeadingPoster(body: string, assetUrl: string, width = 240): string {
   const image = `![|${width}](${assetUrl})`;
@@ -131,10 +257,10 @@ export function buildFilmNoteMarkdown(opts: {
   title?: string;
   kind?: MovieKindId | "";
   genres?: string[];
+  countries?: string[];
   year?: number | null;
-  rating?: number | null;
+  rating?: MovieRatingId | "";
   director?: string;
-  status?: MovieStatusId | "";
   originalTitle?: string;
   imdbId?: string;
   kinopoiskId?: number | null;
@@ -154,17 +280,19 @@ export function buildFilmNoteMarkdown(opts: {
     lines.push("genres:");
     for (const g of genres) lines.push(`  - ${g}`);
   }
+  const countries = (opts.countries ?? []).map((c) => c.trim()).filter(Boolean);
+  if (countries.length > 0) {
+    lines.push("countries:");
+    for (const c of countries) lines.push(`  - ${c}`);
+  }
   if (opts.year != null && Number.isFinite(opts.year) && opts.year > 0) {
     lines.push(`year: ${Math.round(opts.year)}`);
   }
-  if (opts.rating != null && Number.isFinite(opts.rating) && opts.rating > 0) {
-    lines.push(`rating: ${Math.round(opts.rating)}`);
+  if (opts.rating && isMovieRatingId(opts.rating)) {
+    lines.push(`rating: ${opts.rating}`);
   }
   const director = (opts.director ?? "").trim();
   if (director) lines.push(`director: ${director}`);
-  if (opts.status && isMovieStatusId(opts.status)) {
-    lines.push(`status: ${opts.status}`);
-  }
   const imdbId = normalizeImdbId(opts.imdbId ?? "");
   if (imdbId) lines.push(`imdb_id: ${imdbId}`);
   if (
@@ -174,6 +302,8 @@ export function buildFilmNoteMarkdown(opts: {
   ) {
     lines.push(`kinopoisk_id: ${Math.round(opts.kinopoiskId)}`);
   }
+  const poster = (opts.posterAssetUrl ?? "").trim().replace(/^\.\//, "");
+  if (poster) lines.push(`poster: ${poster}`);
   lines.push("---", "");
   let body = opts.body ?? FILM_NOTE_BODY_TEMPLATE;
   if (opts.posterAssetUrl) {

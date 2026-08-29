@@ -1,5 +1,15 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import {
+  MenuAddRowIcon,
+  MenuApproveIcon,
+  MenuCopyIcon,
+  MenuCutIcon,
+  MenuDeleteRowIcon,
+  MenuDisapproveIcon,
+  MenuDuplicateIcon,
+  MenuPasteIcon,
+} from "../../components/menuIcons";
 
 export type DictContextMenuItem =
   | { type: "CUT"; action: () => void }
@@ -29,6 +39,27 @@ function itemLabel(item: DictContextMenuItem): ReactNode {
       return "Insert row below";
     case "DUPLICATE_ROW":
       return "Duplicate row";
+  }
+}
+
+function itemIcon(item: DictContextMenuItem): ReactNode {
+  switch (item.type) {
+    case "CUT":
+      return <MenuCutIcon />;
+    case "COPY":
+      return <MenuCopyIcon />;
+    case "PASTE":
+      return <MenuPasteIcon />;
+    case "MARK_KNOWN":
+      return <MenuApproveIcon />;
+    case "MARK_UNKNOWN":
+      return <MenuDisapproveIcon />;
+    case "DELETE_ROW":
+      return <MenuDeleteRowIcon />;
+    case "INSERT_ROW_BELOW":
+      return <MenuAddRowIcon />;
+    case "DUPLICATE_ROW":
+      return <MenuDuplicateIcon />;
   }
 }
 
@@ -100,6 +131,7 @@ export function DictSheetContextMenu({
         item.action();
       }}
     >
+      {itemIcon(item)}
       <span>{itemLabel(item)}</span>
     </button>
   );

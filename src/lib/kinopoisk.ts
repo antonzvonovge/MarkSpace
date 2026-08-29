@@ -22,6 +22,7 @@ export type KinopoiskDetails = {
   year: number | null;
   director: string;
   genres: string[];
+  countries: string[];
   posterUrl: string | null;
   imdbId: string;
   type: string;
@@ -147,6 +148,7 @@ type KpFilmJson = {
   year?: number | string;
   posterUrl?: string | null;
   genres?: Array<{ genre?: string }>;
+  countries?: Array<{ country?: string }>;
 };
 
 type KpStaffJson = Array<{
@@ -211,6 +213,17 @@ export async function getKinopoiskDetails(
     genres.push(name);
   }
 
+  const countries: string[] = [];
+  const seenCountry = new Set<string>();
+  for (const c of film.countries ?? []) {
+    const name = (c.country ?? "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seenCountry.has(key)) continue;
+    seenCountry.add(key);
+    countries.push(name);
+  }
+
   let director = "";
   try {
     const staff = await kpGetJson<KpStaffJson>(
@@ -238,6 +251,7 @@ export async function getKinopoiskDetails(
     year: yearFromRaw(film.year),
     director,
     genres,
+    countries,
     posterUrl: posterOrNull(film.posterUrl),
     imdbId: imdbRaw,
     type: mapKpType(film.type),

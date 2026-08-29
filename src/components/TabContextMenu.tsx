@@ -1,5 +1,14 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import {
+  MenuCloseIcon,
+  MenuCloseOthersIcon,
+  MenuCloseRemainingIcon,
+  MenuCloseToRightIcon,
+  MenuCopyPathIcon,
+  MenuPinIcon,
+  MenuRenameIcon,
+} from "./menuIcons";
 
 export type TabContextMenuState = {
   x: number;
@@ -88,6 +97,7 @@ export function TabContextMenu({
             onRename();
           }}
         >
+          <MenuRenameIcon />
           <span>Rename…</span>
         </button>
       ) : null}
@@ -101,6 +111,7 @@ export function TabContextMenu({
             onCopyPath();
           }}
         >
+          <MenuCopyPathIcon />
           <span>Copy path</span>
         </button>
       ) : null}
@@ -116,6 +127,7 @@ export function TabContextMenu({
           onCloseTab();
         }}
       >
+        <MenuCloseIcon />
         <span>Close</span>
       </button>
       <button
@@ -129,6 +141,7 @@ export function TabContextMenu({
           onCloseOthers();
         }}
       >
+        <MenuCloseOthersIcon />
         <span>Close Others</span>
       </button>
       <button
@@ -142,6 +155,7 @@ export function TabContextMenu({
           onCloseRemaining();
         }}
       >
+        <MenuCloseRemainingIcon />
         <span>Close Remaining</span>
       </button>
       <button
@@ -155,6 +169,7 @@ export function TabContextMenu({
           onCloseToTheRight();
         }}
       >
+        <MenuCloseToRightIcon />
         <span>Close to the Right</span>
       </button>
       {showPin ? (
@@ -169,6 +184,7 @@ export function TabContextMenu({
               onTogglePinned?.(!menu.pinned);
             }}
           >
+            <MenuPinIcon />
             <span>{menu.pinned ? "Unpin Tab" : "Pin Tab"}</span>
           </button>
         </>

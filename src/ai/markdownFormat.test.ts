@@ -70,6 +70,9 @@ describe("markdownFormat", () => {
     expect(MARKDOWN_FORMAT_GUIDE).toMatch(/##\s+Media library catalog/i);
     expect(MARKDOWN_FORMAT_GUIDE).toContain("original_title");
     expect(MARKDOWN_FORMAT_GUIDE).toContain("kinopoisk_id");
+    expect(MARKDOWN_FORMAT_GUIDE).toContain("watched");
+    expect(MARKDOWN_FORMAT_GUIDE).toContain("countries");
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/poster:/);
     expect(MARKDOWN_FORMAT_GUIDE).toMatch(/\{year\}-\{title\}/);
     expect(MARKDOWN_FORMAT_GUIDE).toMatch(/kind=`media`/);
   });

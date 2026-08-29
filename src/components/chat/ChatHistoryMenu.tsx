@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { groupChatHistory } from "../../lib/chatHistoryGroups";
 import { useChatStore } from "../../store/chatStore";
+import { MenuTrashIcon } from "../menuIcons";
 
 type Props = {
   open: boolean;
@@ -87,7 +88,7 @@ export function ChatHistoryMenu({ open, onClose }: Props) {
                   void deleteThread(t.id);
                 }}
               >
-                ×
+                <MenuTrashIcon />
               </button>
             </div>
           ))}

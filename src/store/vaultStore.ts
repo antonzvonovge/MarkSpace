@@ -106,9 +106,12 @@ import { normalizeDayMarkerId } from "../lib/dayMarkers";
 import {
   buildFilmNoteMarkdown,
   filmNoteFileStem,
+  appendWatchedDate,
 } from "../lib/movieNotes";
 import {
+  getMovieAttrs,
   getNoteDayMarker,
+  setMovieAttrs,
   setNoteDayMarker,
   setNoteTags,
   type MovieAttrs,
@@ -189,6 +192,12 @@ export type EditorTab = {
 type OpenNoteOptions = {
   /** VS Code preview mode — default true */
   preview?: boolean;
+  /**
+   * Replace the active file tab in-place (same tab slot), keeping its
+   * preview/pinned flags. Used by path breadcrumbs / folder navigation.
+   * Ignored when the target path is already open (activates that tab).
+   */
+  replaceActive?: boolean;
   /**
    * When false, keep the file tree without a selected/active row
    * (used when restoring a vault session on app open).
@@ -340,8 +349,13 @@ type VaultStore = {
   /**
    * Select a folder and open its hidden overview note (`{folder}/.folder.md`),
    * creating the note when missing. No-op for vault root (`""`).
+   * Pass `preview: false` (Ctrl/Cmd+click) to open a permanent tab.
+   * Pass `replaceActive: true` to navigate in the current tab slot.
    */
-  openOrCreateFolderNote: (folder: string) => Promise<void>;
+  openOrCreateFolderNote: (
+    folder: string,
+    options?: { preview?: boolean; replaceActive?: boolean },
+  ) => Promise<void>;
   toggleExpanded: (path: string) => void;
   /** Collapse every folder under the vault root (vault itself stays open). */
   collapseAllFolders: () => void;
@@ -359,6 +373,11 @@ type VaultStore = {
       posterUrl: string;
     },
   ) => Promise<string | null>;
+  /**
+   * Append today's local calendar day to Media library `watched:` and save.
+   * Returns the updated watch list, or null on failure.
+   */
+  markFilmWatched: (path: string) => Promise<string[] | null>;
   createDrawioInSelection: (name: string) => Promise<void>;
   createMdlnksInSelection: (name: string) => Promise<void>;
   createMddictInSelection: (name: string) => Promise<void>;
@@ -1813,8 +1832,53 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       const content = await loadContent();
       const viewMode = await defaultViewModeFromPrefs();
       let nextTabs = [...get().tabs];
+      const replaceActive = options?.replaceActive === true;
+      let activeIdx =
+        replaceActive && leavingPath
+          ? nextTabs.findIndex((t) => t.path === leavingPath && isFileTab(t))
+          : -1;
 
-      if (asPreview) {
+      if (replaceActive && activeIdx >= 0) {
+        // Persist the leaving note before reusing its tab slot — otherwise the
+        // dirty buffer disappears with the old path entry.
+        if (leavingDirty && leavingPath) {
+          await persistDirtyTab(set, get, leavingPath);
+          nextTabs = [...get().tabs];
+          activeIdx = nextTabs.findIndex(
+            (t) => t.path === leavingPath && isFileTab(t),
+          );
+        }
+        if (activeIdx >= 0) {
+          const prev = nextTabs[activeIdx]!;
+          nextTabs[activeIdx] = {
+            path,
+            kind: "file",
+            preview: prev.preview,
+            pinned: prev.pinned,
+            body: content,
+            dirty: false,
+            viewMode: prev.viewMode ?? viewMode,
+          };
+        } else if (asPreview) {
+          nextTabs.push({
+            path,
+            kind: "file",
+            preview: true,
+            body: content,
+            dirty: false,
+            viewMode,
+          });
+        } else {
+          nextTabs.push({
+            path,
+            kind: "file",
+            preview: false,
+            body: content,
+            dirty: false,
+            viewMode,
+          });
+        }
+      } else if (asPreview) {
         const previewIdx = nextTabs.findIndex((t) => t.preview && isFileTab(t));
         const tab: EditorTab = {
           path,
@@ -1854,7 +1918,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       recordRecentFile(set, get, path);
       if (!skipNavHistory) recordNavVisit(set, get, path);
       void get().loadActiveNoteComments();
-      afterActivate();
+      // Dirty already flushed when replaceActive reused the tab slot.
+      if (!(replaceActive && leavingDirty && leavingPath)) {
+        afterActivate();
+      }
     } catch (e) {
       set({
         loading: false,
@@ -2298,7 +2365,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     });
   },
 
-  openOrCreateFolderNote: async (folder) => {
+  openOrCreateFolderNote: async (folder, options) => {
     const cleaned = folder.replace(/^\/+|\/+$/g, "");
     if (!cleaned) {
       get().selectFolder("");
@@ -2311,7 +2378,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     get().selectFolder(cleaned);
     try {
       const notePath = await ensureFolderNote(cleaned);
-      await get().openNote(notePath, { preview: true });
+      await get().openNote(notePath, {
+        preview: options?.preview !== false,
+        replaceActive: options?.replaceActive === true,
+      });
     } catch (e) {
       set({
         error: e instanceof Error ? e.message : String(e),
@@ -2415,10 +2485,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         originalTitle: input.attrs.originalTitle,
         kind: input.attrs.kind,
         genres: input.attrs.genres,
+        countries: input.attrs.countries,
         year: input.attrs.year,
         rating: input.attrs.rating,
         director: input.attrs.director,
-        status: input.attrs.status,
         imdbId: input.attrs.imdbId,
         kinopoiskId: input.attrs.kinopoiskId,
         posterAssetUrl,
@@ -2427,6 +2497,40 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       await get().refreshTree();
       await get().openNote(created, { preview: false });
       return created;
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  },
+
+  markFilmWatched: async (path) => {
+    const cleaned = path.replace(/^\/+|\/+$/g, "");
+    if (!cleaned.toLowerCase().endsWith(".md")) return null;
+    try {
+      const { activePath, content, tabs } = get();
+      const openTab = tabs.find((t) => t.path === cleaned);
+      let md: string;
+      if (activePath === cleaned) {
+        md = content;
+      } else if (openTab?.body != null) {
+        md = openTab.body;
+      } else {
+        md = await readNote(cleaned);
+      }
+      const watched = appendWatchedDate(getMovieAttrs(md).watched);
+      const next = setMovieAttrs(md, { watched });
+      set({ suppressWatchUntil: Date.now() + 1500 });
+      const saved = await writeNote(cleaned, next);
+      if (get().activePath === cleaned) {
+        set({
+          content: saved,
+          dirty: false,
+          tabs: withTabBody(get().tabs, cleaned, saved, false),
+        });
+      } else {
+        set({ tabs: withTabBody(get().tabs, cleaned, saved, false) });
+      }
+      return watched;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
       return null;

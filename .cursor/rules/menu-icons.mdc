@@ -1,0 +1,29 @@
+---
+description: Context and dropdown menus use Flat Color (react-icons/fc) icons
+globs: src/components/**/*.{tsx,css},src/editor/**/*Menu*.tsx,src/App.css
+alwaysApply: false
+---
+
+# Menu icons (Flat Color)
+
+Product **menus** — context menus, create menus, and button dropdown menus — use **Flat Color** icons from `react-icons/fc`, not monochrome stroke SVGs and not Material/`md` outlines.
+
+## Where
+
+- Shared wrappers: `src/components/menuIcons.tsx` (actions: rename, trash, copy, sync, …).
+- Document / create kinds: `src/components/treeIcons.tsx` (`DiagramIcon`, `LinksIcon`, … already map to `Fc*`).
+- Prefer these helpers over ad-hoc SVG or mixing icon packs in the same menu.
+
+## Rules
+
+- Every **menuitem** that has a leading icon should use an `Fc*` (or a wrapper that renders one). Size **16** in menus; tree/tab file icons may use 14–20.
+- Do **not** put monochrome `currentColor` stroke icons next to Flat Color icons in the same menu.
+- Do **not** tint menu icons with `--accent`; Flat Color glyphs bring their own palette. Menu chrome stays neutral (see `dropdown-menus.mdc`).
+- Destructive rows still use `.is-danger` on the item; the icon may stay the Flat Color trash / delete glyph.
+- Toolbar chrome that is **not** a menu (e.g. spinning sync on the status bar, plain `+` create trigger) may keep a monochrome SVG when animation or `currentColor` is required.
+
+## Adding a new menu action
+
+1. Pick the closest `Fc*` from `react-icons/fc`.
+2. Add a thin wrapper in `menuIcons.tsx` (or reuse an existing one).
+3. Render `<Icon /><span>Label</span>` inside `.tree-context-item` / equivalent menu item.

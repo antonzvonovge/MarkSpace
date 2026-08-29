@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import {
   MOVIE_KIND_OPTIONS,
-  MOVIE_STATUS_OPTIONS,
+  MOVIE_RATING_OPTIONS,
   filmNoteFileStem,
+  isMovieRatingId,
   type MovieKindId,
-  type MovieStatusId,
+  type MovieRatingId,
 } from "../lib/movieNotes";
 import type { MovieAttrs } from "../lib/noteFrontmatter";
 import {
@@ -18,21 +19,14 @@ import { TagChipsInput } from "./TagChipsInput";
 import { DialogShell } from "./AppDialog";
 import { Select } from "./ui/Select";
 
-const RATING_OPTIONS: { value: string; label: string }[] = [
+const RATING_SELECT_OPTIONS: { value: MovieRatingId | ""; label: string }[] = [
   { value: "", label: "—" },
-  ...Array.from({ length: 10 }, (_, i) => {
-    const n = String(i + 1);
-    return { value: n, label: n };
-  }),
+  ...MOVIE_RATING_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
 ];
 
 const KIND_SELECT_OPTIONS: { value: MovieKindId; label: string }[] =
   MOVIE_KIND_OPTIONS;
 
-const STATUS_SELECT_OPTIONS: { value: MovieStatusId | ""; label: string }[] = [
-  { value: "", label: "—" },
-  ...MOVIE_STATUS_OPTIONS,
-];
 
 function hitSubtitle(hit: CatalogSearchHit): string {
   const parts = [hit.year != null ? String(hit.year) : null, hit.type];
@@ -42,7 +36,7 @@ function hitSubtitle(hit: CatalogSearchHit): string {
   return parts.filter(Boolean).join(" · ");
 }
 
-export type MoviePropertiesDialogValue = MovieAttrs & {
+export type MoviePropertiesDialogValue = Omit<MovieAttrs, "watched"> & {
   posterUrl: string;
 };
 
@@ -75,12 +69,10 @@ export function MoviePropertiesDialog({
 
   const [kind, setKind] = useState<MovieKindId>(initial.kind || "film");
   const [genres, setGenres] = useState<string[]>(initial.genres);
+  const [countries, setCountries] = useState<string[]>(initial.countries);
   const [year, setYear] = useState(initial.year != null ? String(initial.year) : "");
-  const [rating, setRating] = useState(
-    initial.rating != null ? String(initial.rating) : "",
-  );
+  const [rating, setRating] = useState<MovieRatingId | "">(initial.rating);
   const [director, setDirector] = useState(initial.director);
-  const [status, setStatus] = useState<MovieStatusId | "">(initial.status);
   const [movieTitle, setMovieTitle] = useState(initial.title);
   const [originalTitle, setOriginalTitle] = useState(initial.originalTitle);
   const [imdbId, setImdbId] = useState(initial.imdbId);
@@ -99,10 +91,10 @@ export function MoviePropertiesDialog({
     if (!open) return;
     setKind(initial.kind || "film");
     setGenres(initial.genres);
+    setCountries(initial.countries);
     setYear(initial.year != null ? String(initial.year) : "");
-    setRating(initial.rating != null ? String(initial.rating) : "");
+    setRating(initial.rating);
     setDirector(initial.director);
-    setStatus(initial.status);
     setMovieTitle(initial.title);
     setOriginalTitle(initial.originalTitle);
     setImdbId(initial.imdbId);
@@ -115,21 +107,18 @@ export function MoviePropertiesDialog({
 
   const submit = () => {
     const y = year.trim() ? Number(year.trim()) : null;
-    const r = rating.trim() ? Number(rating.trim()) : null;
     onConfirm({
       title: movieTitle.trim(),
       originalTitle: originalTitle.trim(),
       kind,
       genres,
+      countries,
       year: y != null && Number.isFinite(y) && y > 0 ? Math.round(y) : null,
-      rating:
-        r != null && Number.isFinite(r) && r >= 1 && r <= 10
-          ? Math.round(r)
-          : null,
+      rating: isMovieRatingId(rating) ? rating : "",
       director: director.trim(),
-      status,
       imdbId,
       kinopoiskId,
+      poster: initial.poster,
       posterUrl: posterUrl.trim(),
     });
   };
@@ -173,6 +162,7 @@ export function MoviePropertiesDialog({
       setYear(details.year != null ? String(details.year) : "");
       setDirector(details.director);
       setGenres(details.genres);
+      setCountries(details.countries);
       setImdbId(details.imdbId);
       setKinopoiskId(details.kinopoiskId);
       if (details.posterUrl) setPosterUrl(details.posterUrl);
@@ -208,76 +198,6 @@ export function MoviePropertiesDialog({
       }
     >
       <div className="app-dialog-body movie-dialog-body">
-        <label className="app-dialog-label">Kind</label>
-        <Select
-          value={kind}
-          options={KIND_SELECT_OPTIONS}
-          onChange={setKind}
-          variant="field"
-          aria-label="Kind"
-          disabled={lookingUp}
-        />
-
-        <span className="app-dialog-label">Genres</span>
-        <TagChipsInput
-          tags={genres}
-          onChange={setGenres}
-          catalog={genres}
-          placeholder="Add genre…"
-          ariaLabel="Genres"
-          disabled={lookingUp}
-        />
-
-        <label className="app-dialog-label">Status</label>
-        <Select
-          value={status}
-          options={STATUS_SELECT_OPTIONS}
-          onChange={setStatus}
-          variant="field"
-          aria-label="Status"
-          disabled={lookingUp}
-        />
-
-        <div className="movie-dialog-row">
-          <div>
-            <label className="app-dialog-label" htmlFor={yearId}>
-              Year
-            </label>
-            <input
-              id={yearId}
-              className="app-dialog-input"
-              inputMode="numeric"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              placeholder="2010"
-              disabled={lookingUp}
-            />
-          </div>
-          <div>
-            <label className="app-dialog-label">Rating</label>
-            <Select
-              value={rating}
-              options={RATING_OPTIONS}
-              onChange={setRating}
-              variant="field"
-              aria-label="Rating"
-              disabled={lookingUp}
-            />
-          </div>
-        </div>
-
-        <label className="app-dialog-label" htmlFor={directorId}>
-          Director
-        </label>
-        <input
-          id={directorId}
-          className="app-dialog-input"
-          value={director}
-          onChange={(e) => setDirector(e.target.value)}
-          placeholder="Director or creator"
-          disabled={lookingUp}
-        />
-
         <label className="app-dialog-label" htmlFor={titleFieldId}>
           Title
         </label>
@@ -299,6 +219,77 @@ export function MoviePropertiesDialog({
           value={originalTitle}
           onChange={(e) => setOriginalTitle(e.target.value)}
           placeholder="Title in the original language"
+          disabled={lookingUp}
+        />
+
+        <span className="app-dialog-label">Genres</span>
+        <TagChipsInput
+          tags={genres}
+          onChange={setGenres}
+          catalog={genres}
+          placeholder="Add genre…"
+          ariaLabel="Genres"
+          disabled={lookingUp}
+        />
+
+        <span className="app-dialog-label">Countries</span>
+        <TagChipsInput
+          tags={countries}
+          onChange={setCountries}
+          catalog={countries}
+          placeholder="Add country…"
+          ariaLabel="Countries"
+          disabled={lookingUp}
+        />
+
+        <label className="app-dialog-label">Kind</label>
+        <Select
+          value={kind}
+          options={KIND_SELECT_OPTIONS}
+          onChange={setKind}
+          variant="field"
+          aria-label="Kind"
+          disabled={lookingUp}
+        />
+
+
+        <div className="movie-dialog-row">
+          <div>
+            <label className="app-dialog-label" htmlFor={yearId}>
+              Year
+            </label>
+            <input
+              id={yearId}
+              className="app-dialog-input"
+              inputMode="numeric"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              placeholder="2010"
+              disabled={lookingUp}
+            />
+          </div>
+          <div>
+            <label className="app-dialog-label">Rating</label>
+            <Select
+              value={rating}
+              options={RATING_SELECT_OPTIONS}
+              onChange={setRating}
+              variant="field"
+              aria-label="Rating"
+              disabled={lookingUp}
+            />
+          </div>
+        </div>
+
+        <label className="app-dialog-label" htmlFor={directorId}>
+          Director
+        </label>
+        <input
+          id={directorId}
+          className="app-dialog-input"
+          value={director}
+          onChange={(e) => setDirector(e.target.value)}
+          placeholder="Director or creator"
           disabled={lookingUp}
         />
 
@@ -401,10 +392,10 @@ export function NewFilmDialog({ open, onCancel, onConfirm }: NewFilmDialogProps)
   const queryRef = useRef<HTMLInputElement>(null);
 
   const [kind, setKind] = useState<MovieKindId>("film");
-  const [status, setStatus] = useState<MovieStatusId | "">("favorite");
   const [query, setQuery] = useState("");
   const [title, setTitle] = useState("");
   const [genres, setGenres] = useState<string[]>([]);
+  const [countries, setCountries] = useState<string[]>([]);
   const [year, setYear] = useState<number | null>(null);
   const [director, setDirector] = useState("");
   const [originalTitle, setOriginalTitle] = useState("");
@@ -418,10 +409,10 @@ export function NewFilmDialog({ open, onCancel, onConfirm }: NewFilmDialogProps)
   useEffect(() => {
     if (!open) return;
     setKind("film");
-    setStatus("favorite");
     setQuery("");
     setTitle("");
     setGenres([]);
+    setCountries([]);
     setYear(null);
     setDirector("");
     setOriginalTitle("");
@@ -477,6 +468,7 @@ export function NewFilmDialog({ open, onCancel, onConfirm }: NewFilmDialogProps)
       setYear(details.year);
       setDirector(details.director);
       setGenres(details.genres);
+      setCountries(details.countries);
       setImdbId(details.imdbId);
       setKinopoiskId(details.kinopoiskId);
       if (details.posterUrl) setPosterUrl(details.posterUrl);
@@ -500,12 +492,14 @@ export function NewFilmDialog({ open, onCancel, onConfirm }: NewFilmDialogProps)
         originalTitle: blank ? "" : originalTitle,
         kind,
         genres: blank ? [] : genres,
+        countries: blank ? [] : countries,
         year: blank ? null : year,
-        rating: null,
+        rating: "",
         director: blank ? "" : director,
-        status,
         imdbId: blank ? "" : imdbId,
         kinopoiskId: blank ? null : kinopoiskId,
+        poster: "",
+        watched: [],
       },
       posterUrl: blank ? "" : posterUrl,
     });
@@ -552,15 +546,6 @@ export function NewFilmDialog({ open, onCancel, onConfirm }: NewFilmDialogProps)
           disabled={lookingUp}
         />
 
-        <label className="app-dialog-label">Status</label>
-        <Select
-          value={status}
-          options={STATUS_SELECT_OPTIONS}
-          onChange={setStatus}
-          variant="field"
-          aria-label="Status"
-          disabled={lookingUp}
-        />
 
         <label className="app-dialog-label" htmlFor={queryId}>
           Search

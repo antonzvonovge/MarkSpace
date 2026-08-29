@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import {
+  MenuCommentIcon,
+  MenuCopyIcon,
+  MenuCutIcon,
+  MenuPasteIcon,
+} from "./menuIcons";
 
 export type EditContextMenuState = {
   x: number;
@@ -80,6 +86,7 @@ export function EditContextMenu({
             onCut();
           }}
         >
+          <MenuCutIcon />
           <span>Cut</span>
         </button>
       ) : null}
@@ -94,6 +101,7 @@ export function EditContextMenu({
           onCopy();
         }}
       >
+        <MenuCopyIcon />
         <span>Copy</span>
       </button>
       {showPaste ? (
@@ -108,6 +116,7 @@ export function EditContextMenu({
             onPaste();
           }}
         >
+          <MenuPasteIcon />
           <span>Paste</span>
         </button>
       ) : null}
@@ -123,6 +132,7 @@ export function EditContextMenu({
               onComment();
             }}
           >
+            <MenuCommentIcon />
             <span>Comment</span>
           </button>
         </>

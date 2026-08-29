@@ -1,8 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type MouseEvent } from "react";
 import { startLexiconArticleJob } from "../ai/lexiconArticle";
 import { quickTranslateLanguageLabel } from "../ai/quickTranslate";
 import { vaultProjectRootOf } from "../lib/diaryNotes";
-import { formatToolbarPath } from "../lib/documentPath";
+import { toolbarPathParts } from "../lib/documentPath";
 import {
   isVaultLexiconMdNote,
   stubResultFromLexiconNote,
@@ -137,14 +137,15 @@ export function DocumentToolbar({
   const toggleOutline = useVaultStore((s) => s.toggleOutline);
   const showComments = useVaultStore((s) => s.showComments);
   const toggleComments = useVaultStore((s) => s.toggleComments);
+  const openOrCreateFolderNote = useVaultStore((s) => s.openOrCreateFolderNote);
   const unresolvedCommentCount = useVaultStore(
     (s) => s.activeNoteComments.filter((c) => !c.resolved).length,
   );
   const findOpen = useDocumentFindStore((s) => s.open);
 
-  const pathLabel =
+  const pathParts =
     activePath && !activePath.startsWith("markspace:")
-      ? formatToolbarPath(activePath)
+      ? toolbarPathParts(activePath)
       : null;
   const showFind =
     findOpen &&
@@ -162,6 +163,18 @@ export function DocumentToolbar({
       : unresolvedCommentCount > 0
         ? String(unresolvedCommentCount)
         : null;
+
+  const openFolderFromPath = useCallback(
+    (folderPath: string, event: MouseEvent) => {
+      event.preventDefault();
+      if (event.ctrlKey || event.metaKey) {
+        void openOrCreateFolderNote(folderPath, { preview: false });
+        return;
+      }
+      void openOrCreateFolderNote(folderPath, { replaceActive: true });
+    },
+    [openOrCreateFolderNote],
+  );
 
   return (
     <div className="document-toolbar">
@@ -183,10 +196,36 @@ export function DocumentToolbar({
       ) : null}
       {showFind ? (
         <DocumentFindBar />
-      ) : pathLabel ? (
-        <div className="document-toolbar-path" title={activePath ?? undefined}>
-          {pathLabel}
-        </div>
+      ) : pathParts ? (
+        <nav
+          className="document-toolbar-path"
+          aria-label="Document path"
+          title={activePath ?? undefined}
+        >
+          {pathParts.map((part, i) => (
+            <span key={`${part.kind}-${i}`} className="document-toolbar-path-item">
+              {i > 0 ? (
+                <span className="document-toolbar-path-sep" aria-hidden="true">
+                  /
+                </span>
+              ) : null}
+              {part.kind === "folder" ? (
+                <button
+                  type="button"
+                  className="document-toolbar-path-seg"
+                  title={part.path}
+                  onClick={(e) => openFolderFromPath(part.path, e)}
+                >
+                  {part.label}
+                </button>
+              ) : part.kind === "ellipsis" ? (
+                <span className="document-toolbar-path-ellipsis">…</span>
+              ) : (
+                <span className="document-toolbar-path-file">{part.label}</span>
+              )}
+            </span>
+          ))}
+        </nav>
       ) : (
         <div className="document-toolbar-path is-empty" />
       )}

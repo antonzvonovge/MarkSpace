@@ -41,9 +41,8 @@ import {
 } from "../lib/diaryNotes";
 import {
   isMovieKindId,
-  isMovieStatusId,
+  isMovieRatingId,
   type MovieKindId,
-  type MovieStatusId,
 } from "../lib/movieNotes";
 import {
   getMovieCatalogDetails,
@@ -1964,16 +1963,14 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
             "Vault-relative folder under a Media library project. Omit to use the active media project / selection.",
           ),
         kind: z.enum(["film", "series", "animation"]).optional(),
-        status: z.enum(["want", "watched", "favorite"]).optional(),
         genres: z.array(z.string()).optional(),
         year: z.number().nullable().optional(),
         rating: z
-          .number()
-          .min(1)
-          .max(10)
-          .nullable()
+          .enum(["legend", "quality", "watchable", "fine"])
           .optional()
-          .describe("User score 1–10, not catalog rating"),
+          .describe(
+            "User quality rating: legend | quality | watchable | fine (not a catalog score)",
+          ),
         director: z.string().optional(),
         original_title: z.string().optional(),
         imdb_id: z.string().optional(),
@@ -2020,18 +2017,15 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
         const kind: MovieKindId | "" = isMovieKindId(input.kind)
           ? input.kind
           : "";
-        const status: MovieStatusId | "" = isMovieStatusId(input.status)
-          ? input.status
-          : "want";
-        const attrs = {
+        const rating = isMovieRatingId(input.rating) ? input.rating : ("" as const);
+        const attrs: import("../lib/noteFrontmatter").MovieAttrs = {
           ...emptyMovieAttrs(),
           title: input.title.trim(),
           originalTitle: (input.original_title ?? "").trim(),
           kind,
-          status,
           genres: (input.genres ?? []).map((g) => g.trim()).filter(Boolean),
           year: input.year ?? null,
-          rating: input.rating ?? null,
+          rating,
           director: (input.director ?? "").trim(),
           imdbId: (input.imdb_id ?? "").trim(),
           kinopoiskId: input.kinopoisk_id ?? null,
@@ -2353,7 +2347,7 @@ export function buildSystemPrompt(opts: {
     }
     if (opts.projectType === "movies") {
       lines.push(
-        "This is a Media library catalog project. Each title is one `.md` note. Auto-created file name is `{year}-{title}` (localized YAML `title` if set, else `original_title`). Structured fields live in YAML front-matter: `title` (localized / native-language name), optional `original_title`, `kind` (`film` | `series` | `animation`), `genres` (string list — not page tags), `year`, `rating` (1–10, user’s score), `director`, `status` (`want` | `watched` | `favorite`), optional `imdb_id`, `kinopoisk_id`. Page `tags:` are personal labels only — do not put genres there. Poster is a normal image at the top of the body: `![|240](.assets/poster.jpg)` after a real asset write — never invent `.assets/` paths. Body after the poster is free-form personal notes (do not invent `## Why I liked it` / `## Notes` headings).",
+        "This is a Media library catalog project. Each title is one `.md` note. Auto-created file name is `{year}-{title}` (localized YAML `title` if set, else `original_title`). Structured fields live in YAML front-matter: `title` (localized / native-language name), optional `original_title`, `kind` (`film` | `series` | `animation`), `genres` (string list — not page tags), `year`, `rating` (`legend` | `quality` | `watchable` | `fine` — user’s quality, not a score), `director`, optional `imdb_id`, `kinopoisk_id`. Page `tags:` are personal labels only — do not put genres there. Poster is a normal image at the top of the body: `![|240](.assets/poster.jpg)` after a real asset write — never invent `.assets/` paths. Body after the poster is free-form personal notes (do not invent `## Why I liked it` / `## Notes` headings).",
       );
       lines.push(
         opts.mode === "agent"
