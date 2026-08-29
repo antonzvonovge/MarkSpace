@@ -16,6 +16,10 @@ import {
 import { insertMermaidItem } from "./mermaid/slashItem";
 import { insertPlantUmlItem } from "./plantuml/slashItem";
 import type { NoteEditor } from "./schema";
+import {
+  insertWikiLinkItem,
+  type WikiLinkPickerOpenOpts,
+} from "./wikiLink/slashItem";
 
 type SlashItem = DefaultReactSuggestionItem & { key?: string };
 
@@ -23,6 +27,7 @@ export function getNoteSlashMenuItems(
   editor: NoteEditor,
   query: string,
   notePath: string,
+  openWikiLinkPicker: (opts: WikiLinkPickerOpenOpts) => void,
 ): DefaultReactSuggestionItem[] {
   const defaults = (getDefaultReactSlashMenuItems(editor) as SlashItem[]).filter(
     (item) => {
@@ -36,6 +41,7 @@ export function getNoteSlashMenuItems(
 
   const all: DefaultReactSuggestionItem[] = [
     ...defaults,
+    insertWikiLinkItem(editor, openWikiLinkPicker),
     insertMermaidItem(editor),
     insertPlantUmlItem(editor),
     insertD2Item(editor),

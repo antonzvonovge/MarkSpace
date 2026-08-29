@@ -14,6 +14,7 @@ import {
 } from "@blocknote/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { TextSelection } from "prosemirror-state";
 import {
   memo,
   useCallback,
@@ -32,6 +33,10 @@ import {
 } from "../components/EditContextMenu";
 import { ImageLightbox } from "../components/ImageLightbox";
 import { NotePageChrome } from "../components/NotePageChrome";
+import {
+  WikiLinkPickerDialog,
+  type WikiLinkPickerResult,
+} from "../components/WikiLinkPickerDialog";
 import { decorateBrokenVaultLinks } from "../lib/brokenLinks";
 import { registerLiveEditor } from "./completedTasksCommand";
 import { registerLiveEditorFlush } from "./liveEditorFlush";
@@ -113,6 +118,7 @@ import { noteEditorSchema } from "./schema";
 import { createSelectAtomBlockAfterDropExtension } from "./selectAtomBlockAfterDrop";
 import { getNoteSlashMenuItems } from "./slashMenuItems";
 import { insertDrawioEmbed } from "./drawio/slashItem";
+import type { WikiLinkPickerOpenOpts } from "./wikiLink/slashItem";
 import {
   clearBlockNoteDropCursor,
   clearDrawioTreeDrag,
@@ -339,6 +345,10 @@ export const NoteEditor = memo(function NoteEditor({
   const [viewedImage, setViewedImage] = useState<{ src: string; alt: string } | null>(
     null,
   );
+  const [wikiLinkPicker, setWikiLinkPicker] = useState<{
+    initialLabel: string;
+  } | null>(null);
+  const wikiLinkSelRef = useRef<{ from: number; to: number } | null>(null);
   const [outlineWidth, setOutlineWidth] = useState(
     () => loadDocOutlineUi(vaultPath, path).width,
   );
@@ -699,9 +709,49 @@ export const NoteEditor = memo(function NoteEditor({
     }, LIVE_SERIALIZE_MS);
   }, editor);
 
+  const openWikiLinkPicker = useCallback(
+    (opts?: WikiLinkPickerOpenOpts) => {
+      const sel = editor.prosemirrorView.state.selection;
+      const from = opts?.from ?? sel.from;
+      const to = opts?.to ?? sel.to;
+      const initialLabel =
+        opts?.initialLabel ?? editor.getSelectedText()?.trim() ?? "";
+      wikiLinkSelRef.current = { from, to };
+      setWikiLinkPicker({ initialLabel });
+    },
+    [editor],
+  );
+
+  const confirmWikiLink = useCallback(
+    (result: WikiLinkPickerResult) => {
+      const href = `wiki:${encodeURIComponent(result.target)}`;
+      const bookmark = wikiLinkSelRef.current;
+      wikiLinkSelRef.current = null;
+      setWikiLinkPicker(null);
+
+      if (bookmark) {
+        try {
+          editor.transact((tr) => {
+            const max = tr.doc.content.size;
+            const from = Math.max(0, Math.min(bookmark.from, max));
+            const to = Math.max(0, Math.min(bookmark.to, max));
+            tr.setSelection(TextSelection.create(tr.doc, from, to));
+          });
+        } catch {
+          /* doc changed while dialog was open */
+        }
+      }
+
+      editor.createLink(href, result.label);
+      editor.focus();
+    },
+    [editor],
+  );
+
   const getSlashMenuItems = useCallback(
-    async (query: string) => getNoteSlashMenuItems(editor, query, path),
-    [editor, path],
+    async (query: string) =>
+      getNoteSlashMenuItems(editor, query, path, openWikiLinkPicker),
+    [editor, path, openWikiLinkPicker],
   );
 
   const getHashTagMenuItems = useCallback(
@@ -1286,6 +1336,7 @@ export const NoteEditor = memo(function NoteEditor({
               <NoteFormattingToolbarProvider
                 notePath={path}
                 onComment={startCommentFromSelection}
+                onInsertNoteLink={openWikiLinkPicker}
               >
                 <BlockNoteView
                   editor={editor}
@@ -1388,6 +1439,13 @@ export const NoteEditor = memo(function NoteEditor({
           onClose={() => setViewedImage(null)}
         />
       ) : null}
+      <WikiLinkPickerDialog
+        open={wikiLinkPicker != null}
+        initialLabel={wikiLinkPicker?.initialLabel ?? ""}
+        revealPath={path}
+        onCancel={() => setWikiLinkPicker(null)}
+        onConfirm={confirmWikiLink}
+      />
       {contextMenu ? (
         <EditContextMenu
           menu={contextMenu}

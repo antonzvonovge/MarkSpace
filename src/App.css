@@ -9558,6 +9558,41 @@ button.status-bar-jobs-menu-item:hover {
   white-space: nowrap;
 }
 
+.wiki-link-pick-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wiki-link-pick-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.wiki-link-pick-field-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.wiki-link-pick-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  color: inherit;
+  font: inherit;
+}
+
+.wiki-link-pick-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .chat-terminal-call {
   margin: 6px 0 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
