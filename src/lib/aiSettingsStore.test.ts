@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_AI_SETTINGS } from "../ai/types";
-import { normalizeAiSettings } from "./aiSettingsStore";
+import {
+  aiSettingsNeedPersistRewrite,
+  normalizeAiSettings,
+} from "./aiSettingsStore";
 
 describe("normalizeAiSettings", () => {
   it("returns defaults for null/invalid input", () => {
@@ -29,12 +32,26 @@ describe("normalizeAiSettings", () => {
       googleApiKey: "AIza",
       tavilyApiKey: "tvly",
       firecrawlApiKey: "fc-",
+      omdbApiKey: "omdb",
+      kinopoiskApiKey: "kp",
     });
     expect(merged.openaiApiKey).toBe("sk-openai");
     expect(merged.anthropicApiKey).toBe("sk-ant");
     expect(merged.googleApiKey).toBe("AIza");
     expect(merged.tavilyApiKey).toBe("tvly");
     expect(merged.firecrawlApiKey).toBe("fc-");
+    expect(merged.omdbApiKey).toBe("omdb");
+    expect(merged.kinopoiskApiKey).toBe("kp");
+  });
+
+  it("does not rewrite disk for models-catalog-only drift", () => {
+    const raw = {
+      ...DEFAULT_AI_SETTINGS,
+      models: [{ id: "openai/custom", label: "Custom" }],
+    };
+    const merged = normalizeAiSettings(raw);
+    expect(aiSettingsNeedPersistRewrite(raw, merged)).toBe(false);
+    expect(aiSettingsNeedPersistRewrite(null, merged)).toBe(true);
   });
 
   it("ignores non-string key fields", () => {

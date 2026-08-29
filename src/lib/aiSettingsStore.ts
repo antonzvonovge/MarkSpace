@@ -198,28 +198,20 @@ export function normalizeAiSettings(
   };
 }
 
-export async function loadAiSettings(): Promise<AiSettings> {
-  const store = await Store.load(STORE_FILE);
-  const raw = await store.get<Partial<AiSettings>>(AI_KEY);
-  const merged = normalizeAiSettings(raw);
-  const changed =
-    !raw ||
-    raw.baseUrl !== merged.baseUrl ||
-    raw.modelId !== merged.modelId ||
-    raw.openaiApiKey !== merged.openaiApiKey ||
-    raw.anthropicApiKey !== merged.anthropicApiKey ||
-    raw.googleApiKey !== merged.googleApiKey ||
-    JSON.stringify(raw.models ?? null) !== JSON.stringify(merged.models);
-  if (changed) {
-    await store.set(AI_KEY, merged);
-    await store.save();
-  }
-  return merged;
+/** Serialize settings.json AI reads/writes so a migrating load cannot clobber a concurrent save. */
+let aiStoreChain: Promise<unknown> = Promise.resolve();
+
+function withAiStoreLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = aiStoreChain.then(fn, fn);
+  aiStoreChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
-export async function saveAiSettings(settings: AiSettings): Promise<void> {
-  const store = await Store.load(STORE_FILE);
-  const normalized: AiSettings = {
+function buildPersistedAiSettings(settings: AiSettings): AiSettings {
+  return {
     ...normalizeAiSettings(settings),
     // Preserve keys/mode from the in-memory object after normalize defaults.
     apiKey: settings.apiKey ?? "",
@@ -230,6 +222,10 @@ export async function saveAiSettings(settings: AiSettings): Promise<void> {
     omdbApiKey: settings.omdbApiKey ?? "",
     kinopoiskApiKey: settings.kinopoiskApiKey ?? "",
     firecrawlApiKey: settings.firecrawlApiKey ?? "",
+    deepgramApiKey: settings.deepgramApiKey ?? "",
+    elevenLabsApiKey: settings.elevenLabsApiKey ?? "",
+    azureSpeechKey: settings.azureSpeechKey ?? "",
+    azureSpeechRegion: settings.azureSpeechRegion ?? "",
     defaultMode:
       settings.defaultMode === "agent" || settings.defaultMode === "ask"
         ? settings.defaultMode
@@ -241,6 +237,42 @@ export async function saveAiSettings(settings: AiSettings): Promise<void> {
       settings.models?.length ? settings.models : OPENROUTER_MODELS,
     ),
   };
-  await store.set(AI_KEY, normalized);
-  await store.save();
+}
+
+/** True when on-disk shape must be rewritten (not merely catalog/models refresh). */
+export function aiSettingsNeedPersistRewrite(
+  raw: Partial<AiSettings> | null | undefined,
+  merged: AiSettings,
+): boolean {
+  if (!raw) return true;
+  return (
+    raw.baseUrl !== merged.baseUrl ||
+    raw.modelId !== merged.modelId ||
+    raw.openaiApiKey !== merged.openaiApiKey ||
+    raw.anthropicApiKey !== merged.anthropicApiKey ||
+    raw.googleApiKey !== merged.googleApiKey
+  );
+}
+
+export async function loadAiSettings(): Promise<AiSettings> {
+  return withAiStoreLock(async () => {
+    const store = await Store.load(STORE_FILE);
+    const raw = await store.get<Partial<AiSettings>>(AI_KEY);
+    const merged = normalizeAiSettings(raw);
+    // Do not rewrite on models-catalog drift — that raced with key saves and could wipe secrets.
+    if (aiSettingsNeedPersistRewrite(raw, merged)) {
+      await store.set(AI_KEY, merged);
+      await store.save();
+    }
+    return merged;
+  });
+}
+
+export async function saveAiSettings(settings: AiSettings): Promise<void> {
+  return withAiStoreLock(async () => {
+    const store = await Store.load(STORE_FILE);
+    const normalized = buildPersistedAiSettings(settings);
+    await store.set(AI_KEY, normalized);
+    await store.save();
+  });
 }
