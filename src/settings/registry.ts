@@ -14,6 +14,7 @@ export type SettingCategory =
   | "mcp"
   | "memory"
   | "diary"
+  | "mediaLibrary"
   | "indexing"
   | "sync"
   | "about";
@@ -65,6 +66,7 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "mcp", label: "MCP", scope: "app" },
   { id: "memory", label: "Memory", scope: "vault" },
   { id: "diary", label: "Diary", scope: "vault" },
+  { id: "mediaLibrary", label: "Media library", scope: "app" },
   { id: "indexing", label: "Indexing", scope: "app" },
   { id: "sync", label: "Sync", scope: "vault", separatorBefore: true },
   { id: "about", label: "About", scope: "app", separatorBefore: true },

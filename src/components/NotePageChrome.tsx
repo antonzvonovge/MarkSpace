@@ -1,4 +1,5 @@
 import { PageDayMarker } from "./PageDayMarker";
+import { PageMovieProps } from "./PageMovieProps";
 import { PageTags } from "./PageTags";
 
 type Props = {
@@ -10,8 +11,11 @@ type Props = {
 export function NotePageChrome({ path, content, onChange }: Props) {
   return (
     <div className="note-page-chrome">
-      <PageDayMarker path={path} content={content} onChange={onChange} />
-      <PageTags content={content} onChange={onChange} />
+      <PageMovieProps path={path} content={content} onChange={onChange} />
+      <div className="note-page-chrome-row">
+        <PageDayMarker path={path} content={content} onChange={onChange} />
+        <PageTags content={content} onChange={onChange} />
+      </div>
     </div>
   );
 }

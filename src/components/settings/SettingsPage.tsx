@@ -15,6 +15,7 @@ import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DiarySettingsPanel } from "./DiarySettingsPanel";
 import { IndexingSettingsPanel } from "./IndexingSettingsPanel";
 import { KeysSettingsPanel } from "./KeysSettingsPanel";
+import { MediaLibrarySettingsPanel } from "./MediaLibrarySettingsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 import { SettingRow } from "./SettingRow";
@@ -31,6 +32,7 @@ const PANEL_CATEGORIES = new Set([
   "mcp",
   "memory",
   "diary",
+  "mediaLibrary",
   "indexing",
   "about",
 ]);
@@ -120,6 +122,21 @@ function queryMatchesDiary(query: string): boolean {
   );
 }
 
+function queryMatchesMediaLibrary(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    "media library".includes(q) ||
+    q.includes("media") ||
+    q.includes("library") ||
+    q.includes("kinopoisk") ||
+    q.includes("omdb") ||
+    q.includes("film") ||
+    q.includes("movie") ||
+    q.includes("poster")
+  );
+}
+
 function queryMatchesIndexing(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
@@ -198,6 +215,8 @@ export function SettingsPage({ onClose }: Props) {
   const showMcpInSearch = searching && queryMatchesMcp(query);
   const showMemoryInSearch = searching && queryMatchesMemory(query);
   const showDiaryInSearch = searching && queryMatchesDiary(query);
+  const showMediaLibraryInSearch =
+    searching && queryMatchesMediaLibrary(query);
   const showIndexingInSearch = searching && queryMatchesIndexing(query);
   const showAboutInSearch = searching && queryMatchesAbout(query);
   const showAccentInSearch = searching && queryMatchesAccent(query);
@@ -228,6 +247,8 @@ export function SettingsPage({ onClose }: Props) {
     (!searching && category === "memory") || showMemoryInSearch;
   const showDiaryPanel =
     (!searching && category === "diary") || showDiaryInSearch;
+  const showMediaLibraryPanel =
+    (!searching && category === "mediaLibrary") || showMediaLibraryInSearch;
   const showIndexingPanel =
     (!searching && category === "indexing") || showIndexingInSearch;
   const showAboutPanel =
@@ -361,6 +382,15 @@ export function SettingsPage({ onClose }: Props) {
             <section className="settings-section">
               {searching && <h2 className="settings-section-title">Diary</h2>}
               <DiarySettingsPanel />
+            </section>
+          )}
+
+          {showMediaLibraryPanel && (
+            <section className="settings-section">
+              {searching && (
+                <h2 className="settings-section-title">Media library</h2>
+              )}
+              <MediaLibrarySettingsPanel />
             </section>
           )}
 

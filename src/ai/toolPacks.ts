@@ -7,6 +7,7 @@ export type SpecialistKind =
   | "dict"
   | "habits"
   | "courses"
+  | "media"
   | "terminal";
 
 export const SPECIALIST_KIND_ORDER: readonly SpecialistKind[] = [
@@ -17,6 +18,7 @@ export const SPECIALIST_KIND_ORDER: readonly SpecialistKind[] = [
   "dict",
   "habits",
   "courses",
+  "media",
   "terminal",
 ];
 
@@ -246,6 +248,36 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "update_course_track",
       "remove_course_track",
       "set_course_day",
+    ],
+  },
+  media: {
+    kind: "media",
+    label: "Media",
+    writes: true,
+    system: [
+      "You are a MarkSpace Media library specialist for film/series/animation cards.",
+      "Lookup titles with search_movies (Kinopoisk for Russian/Cyrillic, OMDb otherwise), then get_movie_details before create_film_note.",
+      "Each title is one `.md` note; file name = localized title. Front-matter: kind, genres, year, rating, director, status, original_title, imdb_id, kinopoisk_id. Genres are not page tags.",
+      "Pass poster_url from details so create_film_note downloads the poster into .assets/. Prefer create_film_note over hand-built markdown.",
+      "When editing existing cards, keep front-matter keys and body sections (## Why I liked it, ## Notes). End with summary and changedPaths.",
+    ].join(" "),
+    toolNames: [
+      "list_folder",
+      "search_notes",
+      "semantic_search",
+      "read_note",
+      "get_active_note",
+      "open_note",
+      "read_format_guide",
+      "search_movies",
+      "get_movie_details",
+      "create_film_note",
+      "edit_note",
+      "write_note",
+      "write_asset",
+      "list_tags",
+      "get_file_tags",
+      "set_file_tags",
     ],
   },
   terminal: {

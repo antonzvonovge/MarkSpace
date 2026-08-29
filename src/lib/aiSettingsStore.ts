@@ -179,6 +179,8 @@ export function normalizeAiSettings(
     anthropicApiKey: stringField(raw, "anthropicApiKey"),
     googleApiKey: stringField(raw, "googleApiKey"),
     tavilyApiKey: stringField(raw, "tavilyApiKey"),
+    omdbApiKey: stringField(raw, "omdbApiKey"),
+    kinopoiskApiKey: stringField(raw, "kinopoiskApiKey"),
     firecrawlApiKey: stringField(raw, "firecrawlApiKey"),
     deepgramApiKey: stringField(raw, "deepgramApiKey"),
     elevenLabsApiKey: stringField(raw, "elevenLabsApiKey"),
@@ -225,6 +227,8 @@ export async function saveAiSettings(settings: AiSettings): Promise<void> {
     anthropicApiKey: settings.anthropicApiKey ?? "",
     googleApiKey: settings.googleApiKey ?? "",
     tavilyApiKey: settings.tavilyApiKey ?? "",
+    omdbApiKey: settings.omdbApiKey ?? "",
+    kinopoiskApiKey: settings.kinopoiskApiKey ?? "",
     firecrawlApiKey: settings.firecrawlApiKey ?? "",
     defaultMode:
       settings.defaultMode === "agent" || settings.defaultMode === "ask"

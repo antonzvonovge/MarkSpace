@@ -14,6 +14,7 @@ In MarkSpace, a **project** is a first-level folder directly under the vault roo
 - Tree UI uses a package icon (`FcPackage`) for projects; nested dirs keep folder icons.
 - Language-learning projects with a set **Learning language** show that country's flag icon (SVG; Windows has no flag emoji glyphs) instead of the package icon (tree + chat project picker).
 - Diary projects use a planner icon (`FcPlanner`) instead of the package icon (tree + chat project picker).
+- Media library projects (`projectType: "movies"`) use a clapperboard icon (`FcClapperboard`) instead of the package icon (tree + chat project picker). Context menu **New film…**; Settings → Media library for Kinopoisk / OMDb API keys. Agent: `run_specialist` kind=`media` (`search_movies` / `get_movie_details` / `create_film_note`).
 - Diary projects: context menu **New daily note** (instead of New note) opens or creates today's note at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (helpers in `src/lib/diaryNotes.ts`). Toolbar create (+) is disabled when the selected folder is under a diary project. Agent tool: `open_or_create_daily_note` (date `YYYY-MM-DD`); system prompt documents the same layout.
 - Prefer the word "project" in product copy and agent language when referring to those top-level folders.
 
@@ -23,7 +24,7 @@ Any vault folder except the root can have properties. Tree context menu: **Proje
 
 - Stored in `.markspace/projects/<sha256(relative path)>.json` (`path`, `about`, `projectType`, `learningLanguage`, `color`). Nested paths are allowed.
 - **`about`** — UI label **About and AI instructions**. Description and/or instructions the AI must follow when working with notes in that folder. Injected into chat, specialists, Quick Translate, and other file-scoped LLM calls (union of the active note, chat project picker, and composer path chips; one `about` per path; deeper folder wins on conflict).
-- **`projectType`** / **`learningLanguage`** / **`color`** — only for first-level projects (`isVaultProjectFolder`). Nested folders store empty values. `projectType`: `""` (None) | `knowledgeBase` | `languageLearning` | `diary`. Color: Material 500 from `src/lib/projectColors.ts`.
+- **`projectType`** / **`learningLanguage`** / **`color`** — only for first-level projects (`isVaultProjectFolder`). Nested folders store empty values. `projectType`: `""` (None) | `knowledgeBase` | `languageLearning` | `diary` | `movies` (UI label **Media library**). Color: Material 500 from `src/lib/projectColors.ts`.
 - APIs: `get_project_properties` / `set_project_properties` / `list_project_properties` (Rust `projects.rs`); TS wrappers in `vaultApi.ts`.
 - Remapped on rename/move/delete of the folder **and descendants**, like favorites.
 

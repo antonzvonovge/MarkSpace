@@ -197,9 +197,30 @@ function SpecialistGlyph({ kind }: { kind: SpecialistKind }) {
       return <HabitTrackerIcon />;
     case "courses":
       return <CourseTrackerIcon />;
+    case "media":
+      return <MediaGlyph />;
     case "terminal":
       return <TerminalGlyph />;
   }
+}
+
+function MediaGlyph() {
+  return (
+    <Glyph>
+      <path
+        d="M3 4.5h10v7H3v-7Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5 4.5v7M11 4.5v7M3 7h10M3 9h10"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinecap="round"
+      />
+    </Glyph>
+  );
 }
 
 function ChoiceCard({

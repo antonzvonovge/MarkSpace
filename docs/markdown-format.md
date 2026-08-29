@@ -19,6 +19,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Diary daily notes may set YAML `marker:` to a catalog id from Settings → Diary (defaults include `holiday`, `important`, `sad`, …) so the sidebar calendar shows that day's emoji; omit the key (or leave it empty) to clear.
 - Language-learning projects may keep a **Lexicon** tree at `{project}/Lexicon/…` (at most two folders under `Lexicon/`, then a lemma `.md`). Quick Translate writes a full dictionary article in the background (status bar); keep YAML `lemma` / `lang` / `aliases` and the `## Notes` heading. Do not delete `## Notes` or the user’s text below it. After several **new** lemmas, the app may review and move files inside `Lexicon/`.
+- Media library projects: one `.md` per title. Front-matter `kind` (`film`|`series`|`animation`), `genres` (list), `year`, `rating` (1–10), `director`, `status` (`want`|`watched`|`favorite`), optional `original_title`, `imdb_id`, `kinopoisk_id`. Genres ≠ page `tags:`. Poster: `![|240](.assets/…)` after a real asset write — never invent paths. Body: `## Why I liked it` then `## Notes`.
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
 - Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
 <!-- core-rules:end -->
@@ -47,9 +48,46 @@ marker: holiday
 - Each item must be a scalar. Mapping items (`  - name: work`) are a mistake: they are tolerated on read (the `name` / `tag` value is used) but rewritten as plain strings on the next tag edit.
 - Tag names: no leading `#`, trimmed, case preserved, deduplicated case-insensitively. Nesting is just a `/` inside the name (`area/topic`).
 - Diary **daily notes** may include `marker:` — a single catalog id, not a free emoji. The catalog lives in this vault at `.markspace/diary.json` and is edited in Settings → Diary. Built-in defaults: `important` (⭐), `holiday` (🎉), `birthday` (🎂), `travel` (✈️), `work` (💼), `happy` (😊), `sad` (😢), `grief` (🖤), `love` (❤️), `deadline` (⚠️), `health` (🏥), `rest` (😴). Ids that are not in the catalog are ignored in the calendar (treated as unset) but kept in YAML until changed. Right-click a day in the sidebar calendar, or use the marker control next to page tags, to set or clear it. Clearing removes the key.
-- Other keys (e.g. `aliases`) are preserved when tags change; when the last key is removed the whole block is dropped.
+- Other keys (e.g. `aliases`, Media library `kind` / `genres` / `year`) are preserved when tags change; when the last key is removed the whole block is dropped.
 - Front-matter tags are edited from the tag overlay; the live editor loads only the markdown after the closing `---` and reattaches front-matter on save.
 - You may also use **inline tags** in the body (below); they are separate from front-matter and are not copied into `tags:` automatically.
+
+## Media library catalog
+
+Top-level **projects** with project type **Media library** are a personal film/series catalog. Context menu **New film…** looks up **Kinopoisk** when the profile native language is Russian (or the query is Cyrillic), otherwise **OMDb** for Latin titles. API keys live in Settings → Media library. In Agent mode, `run_specialist` kind=`media` uses the same lookup (`search_movies` / `get_movie_details` / `create_film_note`). Each title is one `.md` note; the file name is the localized title.
+
+```md
+---
+kind: film
+genres:
+  - фантастика
+  - боевик
+year: 2010
+rating: 9
+director: Кристофер Нолан
+status: favorite
+original_title: Inception
+imdb_id: tt1375666
+kinopoisk_id: 447301
+tags:
+  - rewatch
+---
+
+![|240](.assets/poster.jpg)
+
+## Why I liked it
+
+## Notes
+```
+
+- `kind`: `film` | `series` | `animation` (UI: Film / Series / Animation).
+- `genres`: YAML string list — catalog genres. **Not** the same as page `tags:`.
+- `status`: `want` | `watched` | `favorite` (user only).
+- `rating`: integer 1–10 (user only).
+- `original_title`: title in the original language (from Kinopoisk); note file name stays localized.
+- `imdb_id` / `kinopoisk_id`: optional ids from Lookup.
+- Poster: download into the note’s sibling `.assets/`. Leading image `![|240](.assets/poster…)`. Never invent asset paths.
+- Live chrome above the editor shows kind, genres, status, year, rating, director; click to edit.
 
 ## Language-learning lexicon
 

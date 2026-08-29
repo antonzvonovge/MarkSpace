@@ -33,10 +33,24 @@ import {
 import { formatFolderContextBlock, type FolderAbout } from "../lib/folderContext";
 import {
   formatDailyNoteHeading,
+  moviesProjectRootForPath,
   parseIsoDateOnly,
   resolveDiaryProjectRoot,
+  resolveMoviesProjectRoot,
   startOfLocalDay,
 } from "../lib/diaryNotes";
+import {
+  isMovieKindId,
+  isMovieStatusId,
+  type MovieKindId,
+  type MovieStatusId,
+} from "../lib/movieNotes";
+import {
+  getMovieCatalogDetails,
+  searchMovieCatalog,
+  type CatalogSearchHit,
+} from "../lib/movieCatalog";
+import { emptyMovieAttrs } from "../lib/noteFrontmatter";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 import {
@@ -1832,6 +1846,210 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
         }
       },
     }),
+    search_movies: tool({
+      description:
+        "Search Kinopoisk / OMDb for film, series, or animation titles (Media library). Kinopoisk is used when the profile native language is Russian/Ukrainian or the query has Cyrillic; otherwise OMDb. Requires API keys in Settings → Media library. Returns ranked hits — pick one and call get_movie_details.",
+      inputSchema: z.object({
+        query: z.string().min(1).describe("Title in any language"),
+        kind: z
+          .enum(["film", "series", "animation"])
+          .optional()
+          .describe("Filter kind (default film)"),
+      }),
+      execute: async ({ query, kind: kindInput }) => {
+        const kind: MovieKindId = isMovieKindId(kindInput) ? kindInput : "film";
+        const ai = useAiSettingsStore.getState().settings;
+        const native = usePrefsStore.getState().prefs.nativeLanguage;
+        try {
+          const { hits, provider } = await searchMovieCatalog({
+            query,
+            kind,
+            nativeLanguage: native,
+            kinopoiskApiKey: ai.kinopoiskApiKey,
+            omdbApiKey: ai.omdbApiKey,
+          });
+          await yieldToUi();
+          return {
+            ok: true as const,
+            provider,
+            count: hits.length,
+            hits: hits.slice(0, 12).map((h) => ({
+              provider: h.provider,
+              id: h.id,
+              title: h.title,
+              original_title: h.originalTitle || undefined,
+              year: h.year,
+              type: h.type,
+              poster_url: h.posterUrl,
+              imdb_id: h.imdbId || undefined,
+            })),
+          };
+        } catch (e) {
+          return {
+            ok: false as const,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+      },
+    }),
+    get_movie_details: tool({
+      description:
+        "Fetch full catalog details for a search_movies hit (title, original title, year, director, genres, poster URL, ids). Pass provider + id from the hit.",
+      inputSchema: z.object({
+        provider: z.enum(["kinopoisk", "omdb"]),
+        id: z
+          .string()
+          .min(1)
+          .describe("Kinopoisk numeric id as string, or OMDb/IMDb id (tt…)"),
+        title: z.string().optional().describe("Hit title (optional context)"),
+        original_title: z.string().optional(),
+        year: z.number().nullable().optional(),
+        type: z.string().optional(),
+        poster_url: z.string().nullable().optional(),
+        imdb_id: z.string().optional(),
+      }),
+      execute: async (input) => {
+        const ai = useAiSettingsStore.getState().settings;
+        const hit: CatalogSearchHit = {
+          provider: input.provider,
+          id: input.id.trim(),
+          title: (input.title ?? "").trim(),
+          originalTitle: (input.original_title ?? "").trim(),
+          year: input.year ?? null,
+          type: (input.type ?? "").trim(),
+          posterUrl: input.poster_url ?? null,
+          imdbId: (input.imdb_id ?? "").trim(),
+        };
+        try {
+          const d = await getMovieCatalogDetails({
+            hit,
+            kinopoiskApiKey: ai.kinopoiskApiKey,
+            omdbApiKey: ai.omdbApiKey,
+          });
+          await yieldToUi();
+          return {
+            ok: true as const,
+            provider: d.provider,
+            title: d.title,
+            original_title: d.originalTitle || undefined,
+            year: d.year,
+            director: d.director || undefined,
+            genres: d.genres,
+            poster_url: d.posterUrl,
+            imdb_id: d.imdbId || undefined,
+            kinopoisk_id: d.kinopoiskId,
+          };
+        } catch (e) {
+          return {
+            ok: false as const,
+            error: e instanceof Error ? e.message : String(e),
+          };
+        }
+      },
+    }),
+    create_film_note: tool({
+      description:
+        "Create a Media library film/series/animation card note (YAML front-matter + poster + body template). Only works under a Media library project. Prefer after search_movies + get_movie_details; pass poster_url to download the poster.",
+      inputSchema: z.object({
+        title: z
+          .string()
+          .min(1)
+          .describe("Localized title — used as the note file name"),
+        folder: z
+          .string()
+          .optional()
+          .describe(
+            "Vault-relative folder under a Media library project. Omit to use the active media project / selection.",
+          ),
+        kind: z.enum(["film", "series", "animation"]).optional(),
+        status: z.enum(["want", "watched", "favorite"]).optional(),
+        genres: z.array(z.string()).optional(),
+        year: z.number().nullable().optional(),
+        rating: z
+          .number()
+          .min(1)
+          .max(10)
+          .nullable()
+          .optional()
+          .describe("User score 1–10, not catalog rating"),
+        director: z.string().optional(),
+        original_title: z.string().optional(),
+        imdb_id: z.string().optional(),
+        kinopoisk_id: z.number().nullable().optional(),
+        poster_url: z
+          .string()
+          .optional()
+          .describe("Remote poster URL to download into .assets/"),
+      }),
+      execute: async (input) => {
+        const store = useVaultStore.getState();
+        const projectPropertiesByPath = store.projectPropertiesByPath;
+        const folderInput = normalizeToolPath(input.folder ?? "");
+        let folder = folderInput;
+        if (folder) {
+          if (!moviesProjectRootForPath(folder, projectPropertiesByPath)) {
+            return {
+              ok: false as const,
+              error: `Not under a Media library project: ${folder}`,
+            };
+          }
+        } else {
+          const root = resolveMoviesProjectRoot({
+            selectedFolderPath: store.selectedFolderPath,
+            activePath: store.activePath,
+            chatProjectPath: projectPath,
+            projectPropertiesByPath,
+          });
+          if (!root) {
+            return {
+              ok: false as const,
+              error:
+                "No Media library project resolved. Pass folder= under a Media library project, or select one in chat / the file tree.",
+            };
+          }
+          const selected = store.selectedFolderPath.replace(/\/+$/, "");
+          folder =
+            selected &&
+            moviesProjectRootForPath(selected, projectPropertiesByPath) === root
+              ? selected
+              : root;
+        }
+
+        const kind: MovieKindId | "" = isMovieKindId(input.kind)
+          ? input.kind
+          : "";
+        const status: MovieStatusId | "" = isMovieStatusId(input.status)
+          ? input.status
+          : "want";
+        const attrs = {
+          ...emptyMovieAttrs(),
+          kind,
+          status,
+          genres: (input.genres ?? []).map((g) => g.trim()).filter(Boolean),
+          year: input.year ?? null,
+          rating: input.rating ?? null,
+          director: (input.director ?? "").trim(),
+          originalTitle: (input.original_title ?? "").trim(),
+          imdbId: (input.imdb_id ?? "").trim(),
+          kinopoiskId: input.kinopoisk_id ?? null,
+        };
+
+        const created = await store.createFilmNote(folder, {
+          title: input.title.trim(),
+          attrs,
+          posterUrl: (input.poster_url ?? "").trim(),
+        });
+        await yieldToUi();
+        if (!created) {
+          return {
+            ok: false as const,
+            error:
+              useVaultStore.getState().error ?? "Could not create film note",
+          };
+        }
+        return { ok: true as const, path: created, folder };
+      },
+    }),
   };
 
   const names = opts?.toolNames?.length
@@ -2128,6 +2346,16 @@ export function buildSystemPrompt(opts: {
         opts.mode === "agent"
           ? "Daily notes live at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (e.g. Journal/2026/08/02.Aug.2026.md). Delegate to edit_notes specialist with open_or_create_daily_note — do not hand-build paths."
           : "Daily notes live at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (e.g. Journal/2026/08/02.Aug.2026.md).",
+      );
+    }
+    if (opts.projectType === "movies") {
+      lines.push(
+        "This is a Media library catalog project. Each title is one `.md` note (file name = localized title). Structured fields live in YAML front-matter: `kind` (`film` | `series` | `animation`), `genres` (string list — not page tags), `year`, `rating` (1–10, user’s score), `director`, `status` (`want` | `watched` | `favorite`), optional `original_title` (original-language name), `imdb_id`, `kinopoisk_id`. Page `tags:` are personal labels only — do not put genres there. Poster is a normal image at the top of the body: `![|240](.assets/poster.jpg)` after a real asset write — never invent `.assets/` paths. Body template sections: `## Why I liked it` then `## Notes`.",
+      );
+      lines.push(
+        opts.mode === "agent"
+          ? "For lookup and new cards, delegate to run_specialist kind=media (search_movies → get_movie_details → create_film_note). Prefer that over inventing front-matter by hand or the New film dialog when the user asks in chat."
+          : "Lookup and card creation use Kinopoisk / OMDb via the app New film dialog (Settings → Media library for API keys).",
       );
     }
     lines.push(

@@ -46,6 +46,55 @@ export function languageLearningProjectRootForPath(
     : null;
 }
 
+/** Media library project root containing `path`, or null. */
+export function moviesProjectRootForPath(
+  path: string,
+  projectPropertiesByPath: Record<string, ProjectProperties>,
+): string | null {
+  const root = vaultProjectRootOf(path);
+  if (!root) return null;
+  return projectPropertiesByPath[root]?.projectType === "movies" ? root : null;
+}
+
+export function isUnderMoviesProject(
+  path: string,
+  projectPropertiesByPath: Record<string, ProjectProperties>,
+): boolean {
+  return moviesProjectRootForPath(path, projectPropertiesByPath) !== null;
+}
+
+/** All Media library project roots, sorted by path. */
+export function listMoviesProjectRoots(
+  projectPropertiesByPath: Record<string, ProjectProperties>,
+): string[] {
+  return Object.values(projectPropertiesByPath)
+    .filter((p) => p.projectType === "movies" && p.path)
+    .map((p) => p.path)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Pick a Media library project: selected folder → active note → chat project → sole media project.
+ */
+export function resolveMoviesProjectRoot(opts: {
+  selectedFolderPath: string;
+  activePath: string | null | undefined;
+  chatProjectPath: string | null | undefined;
+  projectPropertiesByPath: Record<string, ProjectProperties>;
+}): string | null {
+  const { projectPropertiesByPath } = opts;
+  for (const path of [
+    opts.selectedFolderPath,
+    opts.activePath ?? "",
+    opts.chatProjectPath ?? "",
+  ]) {
+    const root = moviesProjectRootForPath(path, projectPropertiesByPath);
+    if (root) return root;
+  }
+  const libraries = listMoviesProjectRoots(projectPropertiesByPath);
+  return libraries.length === 1 ? libraries[0]! : null;
+}
+
 export function isUnderDiaryProject(
   path: string,
   projectPropertiesByPath: Record<string, ProjectProperties>,

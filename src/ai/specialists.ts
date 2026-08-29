@@ -620,8 +620,8 @@ export async function runSpecialist(params: {
 
 function runSpecialistDescription(terminalOn: boolean): string {
   const kinds = terminalOn
-    ? "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, or a terminal command sequence"
-    : "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, or .mdcourse courses";
+    ? "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, Media library film cards, or a terminal command sequence"
+    : "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, or Media library film cards";
   return [
     `Delegate a focused subtask to a specialist worker with a limited tool set. Use for ${kinds}.`,
     "Independent tasks: emit multiple run_specialist calls in ONE response.",
@@ -669,9 +669,19 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
         "dict",
         "habits",
         "courses",
+        "media",
         "terminal",
       ])
-    : z.enum(["research", "edit_notes", "diagram", "links", "dict", "habits", "courses"]);
+    : z.enum([
+        "research",
+        "edit_notes",
+        "diagram",
+        "links",
+        "dict",
+        "habits",
+        "courses",
+        "media",
+      ]);
 
   return tool({
     description: runSpecialistDescription(terminalOn),

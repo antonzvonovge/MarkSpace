@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
-import { FcPackage, FcPlanner } from "react-icons/fc";
+import { FcClapperboard, FcPackage, FcPlanner } from "react-icons/fc";
 import { LearningLanguageFlag } from "../LearningLanguageFlag";
 import { chatComposerAtTop } from "../../lib/chatMenuPlacement";
 import { learningLanguageFlagSvg } from "../../lib/languageFlags";
@@ -49,6 +49,9 @@ function ProjectIcon({
   }
   if (props?.projectType === "diary") {
     return <FcPlanner size={size} />;
+  }
+  if (props?.projectType === "movies") {
+    return <FcClapperboard size={size} />;
   }
   return <FcPackage size={size} />;
 }

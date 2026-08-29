@@ -624,7 +624,8 @@ export type ProjectTypeId =
   | ""
   | "knowledgeBase"
   | "languageLearning"
-  | "diary";
+  | "diary"
+  | "movies";
 
 export const PROJECT_TYPE_OPTIONS: {
   value: ProjectTypeId;
@@ -634,6 +635,7 @@ export const PROJECT_TYPE_OPTIONS: {
   { value: "knowledgeBase", label: "Knowledge base" },
   { value: "languageLearning", label: "Foreign language learning" },
   { value: "diary", label: "Diary" },
+  { value: "movies", label: "Media library" },
 ];
 
 export function projectTypeLabel(type: ProjectTypeId | string): string {
@@ -645,7 +647,8 @@ export function isProjectTypeId(value: unknown): value is ProjectTypeId {
     value === "" ||
     value === "knowledgeBase" ||
     value === "languageLearning" ||
-    value === "diary"
+    value === "diary" ||
+    value === "movies"
   );
 }
 
@@ -653,7 +656,7 @@ export type ProjectProperties = {
   path: string;
   /** Description and AI instructions for this folder. */
   about: string;
-  /** `""` | `knowledgeBase` | `languageLearning` | `diary`. */
+  /** `""` | `knowledgeBase` | `languageLearning` | `diary` | `movies`. */
   projectType: ProjectTypeId;
   /** ISO 639-1 code when type is language learning; otherwise empty. */
   learningLanguage: string;

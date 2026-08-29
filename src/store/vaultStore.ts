@@ -97,16 +97,23 @@ import {
   dailyNotePath,
   dayKey,
   diaryProjectRootForPath,
+  moviesProjectRootForPath,
   parseDailyNoteDate,
   parseIsoDateOnly,
   preferredDiaryProjectRoot,
 } from "../lib/diaryNotes";
 import { normalizeDayMarkerId } from "../lib/dayMarkers";
 import {
+  buildFilmNoteMarkdown,
+  sanitizeFilmNoteName,
+} from "../lib/movieNotes";
+import {
   getNoteDayMarker,
   setNoteDayMarker,
   setNoteTags,
+  type MovieAttrs,
 } from "../lib/noteFrontmatter";
+import { downloadPosterToAssets } from "../lib/omdb";
 
 async function nativeLanguageFromPrefs(): Promise<string> {
   const { usePrefsStore } = await import("./prefsStore");
@@ -343,6 +350,15 @@ type VaultStore = {
   addToFavorites: (path: string) => Promise<void>;
   removeFromFavorites: (path: string) => Promise<void>;
   createNoteInSelection: (name: string) => Promise<void>;
+  /** Create a Media library project film card note under `folder` (or selected folder). */
+  createFilmNote: (
+    folder: string,
+    input: {
+      title: string;
+      attrs: MovieAttrs;
+      posterUrl: string;
+    },
+  ) => Promise<string | null>;
   createDrawioInSelection: (name: string) => Promise<void>;
   createMdlnksInSelection: (name: string) => Promise<void>;
   createMddictInSelection: (name: string) => Promise<void>;
@@ -2363,6 +2379,52 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       await get().openNote(created, { preview: false });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  createFilmNote: async (folder, input) => {
+    const { selectedFolderPath, projectPropertiesByPath } = get();
+    const parent = (folder || selectedFolderPath || "").replace(/\/+$/, "");
+    const inMovies =
+      projectPropertiesByPath[parent]?.projectType === "movies" ||
+      moviesProjectRootForPath(parent, projectPropertiesByPath) != null;
+    if (!inMovies) {
+      set({ error: "Film notes are only available in Media library projects." });
+      return null;
+    }
+    const stem = sanitizeFilmNoteName(input.title);
+    try {
+      set({ suppressWatchUntil: Date.now() + 1500 });
+      const rel = joinPath(parent, stem);
+      const created = await createNote(rel);
+      const poster = input.posterUrl.trim();
+      let posterAssetUrl: string | null = null;
+      if (poster) {
+        try {
+          posterAssetUrl = await downloadPosterToAssets(created, poster);
+        } catch (posterErr) {
+          console.error(posterErr);
+        }
+      }
+      const markdown = buildFilmNoteMarkdown({
+        kind: input.attrs.kind,
+        genres: input.attrs.genres,
+        year: input.attrs.year,
+        rating: input.attrs.rating,
+        director: input.attrs.director,
+        status: input.attrs.status,
+        originalTitle: input.attrs.originalTitle,
+        imdbId: input.attrs.imdbId,
+        kinopoiskId: input.attrs.kinopoiskId,
+        posterAssetUrl,
+      });
+      await writeNote(created, markdown);
+      await get().refreshTree();
+      await get().openNote(created, { preview: false });
+      return created;
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
     }
   },
 

@@ -63,6 +63,10 @@ export type AiSettings = {
    * otherwise free DuckDuckGo + Jina. Tools may override via provider.
    */
   tavilyApiKey: string;
+  /** Optional OMDb API key for Media library lookup (English / Latin titles). */
+  omdbApiKey: string;
+  /** Optional Kinopoisk Unofficial API key — Russian titles + original name. */
+  kinopoiskApiKey: string;
   /**
    * Optional Firecrawl API key for scrape_url and for clip_article when
    * provider=firecrawl is requested. Not used by fetch_url or default clip auto-pick.
@@ -115,6 +119,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   anthropicApiKey: "",
   googleApiKey: "",
   tavilyApiKey: "",
+  omdbApiKey: "",
+  kinopoiskApiKey: "",
   firecrawlApiKey: "",
   deepgramApiKey: "",
   elevenLabsApiKey: "",

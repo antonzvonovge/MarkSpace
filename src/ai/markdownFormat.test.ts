@@ -62,6 +62,17 @@ describe("markdownFormat", () => {
     expect(rules).toMatch(/holiday/);
   });
 
+  it("documents Media library catalog cards in core rules and guide", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/Media library projects/i);
+    expect(rules).toMatch(/kind/);
+    expect(rules).toMatch(/genres/);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/##\s+Media library catalog/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toContain("original_title");
+    expect(MARKDOWN_FORMAT_GUIDE).toContain("kinopoisk_id");
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/kind=`media`/);
+  });
+
   it("documents blockquote marker spacing in core and guide", () => {
     const rules = markdownCoreRules().join("\n");
     expect(rules).toMatch(/Blockquotes/i);

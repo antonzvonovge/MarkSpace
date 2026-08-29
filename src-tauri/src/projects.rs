@@ -17,6 +17,7 @@ use tauri::State;
 const PROJECT_TYPE_KNOWLEDGE_BASE: &str = "knowledgeBase";
 const PROJECT_TYPE_LANGUAGE_LEARNING: &str = "languageLearning";
 const PROJECT_TYPE_DIARY: &str = "diary";
+const PROJECT_TYPE_MOVIES: &str = "movies";
 
 /// Material Design 500 swatches (lowercase `#rrggbb`). Empty = unset.
 const PROJECT_COLORS: &[&str] = &[
@@ -46,7 +47,7 @@ pub struct ProjectProperties {
     /// Description and AI instructions for this folder.
     #[serde(default)]
     pub about: String,
-    /// `""` | `knowledgeBase` | `languageLearning` | `diary`.
+    /// `""` | `knowledgeBase` | `languageLearning` | `diary` | `movies`.
     #[serde(default)]
     pub project_type: String,
     /// ISO 639-1 code when `project_type` is `languageLearning`; otherwise empty.
@@ -62,6 +63,7 @@ fn normalize_project_type(raw: &str) -> String {
         PROJECT_TYPE_KNOWLEDGE_BASE => PROJECT_TYPE_KNOWLEDGE_BASE.to_string(),
         PROJECT_TYPE_LANGUAGE_LEARNING => PROJECT_TYPE_LANGUAGE_LEARNING.to_string(),
         PROJECT_TYPE_DIARY => PROJECT_TYPE_DIARY.to_string(),
+        PROJECT_TYPE_MOVIES => PROJECT_TYPE_MOVIES.to_string(),
         _ => String::new(),
     }
 }

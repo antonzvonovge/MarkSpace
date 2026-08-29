@@ -7,6 +7,7 @@ import {
   dayKey,
   diaryProjectRootForPath,
   languageLearningProjectRootForPath,
+  moviesProjectRootForPath,
   formatDailyNoteHeading,
   formatDailyNoteStem,
   isoDateOnly,
@@ -39,6 +40,13 @@ const diaryProps: Record<string, ProjectProperties> = {
     about: "",
     projectType: "languageLearning",
     learningLanguage: "en",
+    color: "",
+  },
+  Films: {
+    path: "Films",
+    about: "",
+    projectType: "movies",
+    learningLanguage: "",
     color: "",
   },
 };
@@ -77,6 +85,14 @@ describe("languageLearningProjectRootForPath", () => {
     ).toBe("English");
     expect(languageLearningProjectRootForPath("Work", diaryProps)).toBeNull();
     expect(languageLearningProjectRootForPath("", diaryProps)).toBeNull();
+  });
+});
+
+describe("moviesProjectRootForPath", () => {
+  it("detects Media library projects", () => {
+    expect(moviesProjectRootForPath("Films", diaryProps)).toBe("Films");
+    expect(moviesProjectRootForPath("Films/Sci-Fi", diaryProps)).toBe("Films");
+    expect(moviesProjectRootForPath("Work", diaryProps)).toBeNull();
   });
 });
 

@@ -42,6 +42,7 @@ import {
 import {
   diaryProjectRootForPath,
   languageLearningProjectRootForPath,
+  moviesProjectRootForPath,
   vaultProjectRootOf,
 } from "../lib/diaryNotes";
 import { isVaultLexiconFolder, isVaultLexiconMdNote } from "../lib/lexiconNotes";
@@ -67,6 +68,7 @@ import {
   HabitTrackerCreateDialog,
   ProjectPropertiesDialog,
 } from "./AppDialog";
+import { NewFilmDialog } from "./MovieDialogs";
 import { CommentsInboxSection } from "./CommentsInboxSection";
 import { IncomingSection } from "./IncomingSection";
 import { buildUnresolvedCommentCounts } from "../lib/commentCounts";
@@ -82,6 +84,7 @@ import {
   FcOpenedFolder,
   FcPackage,
   FcPlanner,
+  FcClapperboard,
   FcReading,
   FcReadingEbook,
   FcWorkflow,
@@ -208,6 +211,9 @@ function FolderTreeIcon({
     }
     if (projectType === "diary") {
       return <FcPlanner size={size} />;
+    }
+    if (projectType === "movies") {
+      return <FcClapperboard size={size} />;
     }
     return <FcPackage size={size} />;
   }
@@ -615,6 +621,7 @@ function TreeContextMenu({
   onClose,
   onNewNote,
   onNewDailyNote,
+  onNewFilm,
   onNewDiagram,
   onNewLinks,
   onNewDictionary,
@@ -638,12 +645,14 @@ function TreeContextMenu({
   translateLabel,
   translateReplaceLabel,
   diaryProjectRoot,
+  moviesProjectRoot,
   languageLearningProject,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
   onNewNote: () => void;
   onNewDailyNote: () => void;
+  onNewFilm: () => void;
   onNewDiagram: () => void;
   onNewLinks: () => void;
   onNewDictionary: () => void;
@@ -668,6 +677,7 @@ function TreeContextMenu({
   translateReplaceLabel: string;
   /** Non-null when the menu target is inside a diary project. */
   diaryProjectRoot: string | null;
+  moviesProjectRoot: string | null;
   languageLearningProject: boolean;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -675,6 +685,7 @@ function TreeContextMenu({
   const [newItemOpen, setNewItemOpen] = useState(false);
   const isSkills = isSkillsFolder(menu.path, menu.isDir);
   const isDiary = diaryProjectRoot !== null;
+  const isMovies = moviesProjectRoot !== null;
   const unsupportedFile = isUnsupportedTreeFile(menu.isDir, menu.path);
   const isIncomingRoot = isIncomingFolder(menu.path, menu.isDir);
   const showEditActions =
@@ -894,6 +905,19 @@ function TreeContextMenu({
                     >
                       <PlusIcon />
                       <span>New daily note</span>
+                    </button>
+                  ) : isMovies ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tree-context-item"
+                      onClick={() => {
+                        onClose();
+                        onNewFilm();
+                      }}
+                    >
+                      <FcClapperboard size={16} />
+                      <span>New film…</span>
                     </button>
                   ) : (
                     <button
@@ -1551,6 +1575,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
     useState<ProjectProperties | null>(null);
   const [projectPropsLoading, setProjectPropsLoading] = useState(false);
   const [projectPropsSaving, setProjectPropsSaving] = useState(false);
+  const [newFilmFolder, setNewFilmFolder] = useState<string | null>(null);
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(
     () => loadFavoritesSectionCollapsed(),
   );
@@ -2254,6 +2279,10 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             contextMenu.path,
             projectPropertiesByPath,
           )}
+          moviesProjectRoot={moviesProjectRootForPath(
+            contextMenu.path,
+            projectPropertiesByPath,
+          )}
           languageLearningProject={
             contextMenu.isDir &&
             !contextMenu.createOnly &&
@@ -2285,6 +2314,13 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             void useVaultStore
               .getState()
               .openOrCreateDailyNote(contextMenu.path);
+          }}
+          onNewFilm={() => {
+            const folder = contextMenu.isDir
+              ? contextMenu.path
+              : parentPath(contextMenu.path);
+            selectFolder(folder);
+            setNewFilmFolder(folder);
           }}
           onNewDiagram={() => {
             selectFolder(
@@ -2458,6 +2494,16 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           setPendingOsImport(null);
           if (!pending) return;
           runOsImport(pending.parent, pending.paths, pending.files, true);
+        }}
+      />
+
+      <NewFilmDialog
+        open={newFilmFolder !== null}
+        onCancel={() => setNewFilmFolder(null)}
+        onConfirm={(value) => {
+          const folder = newFilmFolder ?? "";
+          setNewFilmFolder(null);
+          void useVaultStore.getState().createFilmNote(folder, value);
         }}
       />
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FcFolder, FcOpenedFolder, FcPackage, FcPlanner } from "react-icons/fc";
+import { FcClapperboard, FcFolder, FcOpenedFolder, FcPackage, FcPlanner } from "react-icons/fc";
 import { MdChevronRight } from "react-icons/md";
 import { DialogShell } from "./AppDialog";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
@@ -40,6 +40,7 @@ function FolderIcon({ node, open }: { node: TreeNode; open: boolean }) {
       }
     }
     if (props?.projectType === "diary") return <FcPlanner size={16} />;
+    if (props?.projectType === "movies") return <FcClapperboard size={16} />;
     return <FcPackage size={16} />;
   }
   return open ? <FcOpenedFolder size={16} /> : <FcFolder size={16} />;

@@ -1,5 +1,12 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { normalizeDayMarkerId } from "./dayMarkers";
+import {
+  isMovieKindId,
+  isMovieStatusId,
+  normalizeImdbId,
+  type MovieKindId,
+  type MovieStatusId,
+} from "./movieNotes";
 
 export type FrontmatterData = Record<string, unknown>;
 
@@ -135,6 +142,144 @@ export function setNoteDayMarker(markdown: string, markerId: string): string {
   } else {
     data.marker = next;
   }
+
+  if (Object.keys(data).length === 0) {
+    return split.body;
+  }
+  return mergeFrontmatter(data, split.body);
+}
+
+export type MovieAttrs = {
+  kind: MovieKindId | "";
+  genres: string[];
+  year: number | null;
+  rating: number | null;
+  director: string;
+  status: MovieStatusId | "";
+  originalTitle: string;
+  imdbId: string;
+  kinopoiskId: number | null;
+};
+
+function normalizeGenreList(value: unknown): string[] {
+  return normalizeTags(value);
+}
+
+function parsePositiveInt(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value.trim());
+    if (Number.isFinite(n) && n > 0) return Math.round(n);
+  }
+  return null;
+}
+
+export function emptyMovieAttrs(): MovieAttrs {
+  return {
+    kind: "",
+    genres: [],
+    year: null,
+    rating: null,
+    director: "",
+    status: "",
+    originalTitle: "",
+    imdbId: "",
+    kinopoiskId: null,
+  };
+}
+
+export function getMovieAttrs(markdown: string): MovieAttrs {
+  const { data } = splitFrontmatter(markdown);
+  if (!data) return emptyMovieAttrs();
+  const kindRaw = data.kind;
+  const statusRaw = data.status;
+  return {
+    kind: isMovieKindId(kindRaw) ? kindRaw : "",
+    genres: normalizeGenreList(data.genres),
+    year: parsePositiveInt(data.year),
+    rating: (() => {
+      const n = parsePositiveInt(data.rating);
+      if (n == null) return null;
+      return Math.min(10, Math.max(1, n));
+    })(),
+    director: typeof data.director === "string" ? data.director.trim() : "",
+    status: isMovieStatusId(statusRaw) ? statusRaw : "",
+    originalTitle:
+      typeof data.original_title === "string" ? data.original_title.trim() : "",
+    imdbId: normalizeImdbId(data.imdb_id),
+    kinopoiskId: parsePositiveInt(data.kinopoisk_id),
+  };
+}
+
+/**
+ * Patch movie card keys in frontmatter. Preserves tags/created/updated/other keys.
+ * Unparseable YAML fences are left unchanged.
+ */
+export function setMovieAttrs(
+  markdown: string,
+  attrs: Partial<MovieAttrs>,
+): string {
+  const split = splitFrontmatter(markdown);
+  if (split.hasFence && split.data === null) {
+    return markdown;
+  }
+
+  const data: FrontmatterData = { ...(split.data ?? {}) };
+  const current = getMovieAttrs(markdown);
+  const next: MovieAttrs = {
+    kind: attrs.kind !== undefined ? attrs.kind : current.kind,
+    genres: attrs.genres !== undefined ? attrs.genres : current.genres,
+    year: attrs.year !== undefined ? attrs.year : current.year,
+    rating: attrs.rating !== undefined ? attrs.rating : current.rating,
+    director: attrs.director !== undefined ? attrs.director : current.director,
+    status: attrs.status !== undefined ? attrs.status : current.status,
+    originalTitle:
+      attrs.originalTitle !== undefined
+        ? attrs.originalTitle
+        : current.originalTitle,
+    imdbId: attrs.imdbId !== undefined ? attrs.imdbId : current.imdbId,
+    kinopoiskId:
+      attrs.kinopoiskId !== undefined ? attrs.kinopoiskId : current.kinopoiskId,
+  };
+
+  if (next.kind && isMovieKindId(next.kind)) data.kind = next.kind;
+  else delete data.kind;
+
+  const genres = normalizeGenreList(next.genres);
+  if (genres.length > 0) data.genres = genres;
+  else delete data.genres;
+
+  if (next.year != null && next.year > 0) data.year = next.year;
+  else delete data.year;
+
+  if (next.rating != null && next.rating >= 1 && next.rating <= 10) {
+    data.rating = next.rating;
+  } else delete data.rating;
+
+  const director = next.director.trim();
+  if (director) data.director = director;
+  else delete data.director;
+
+  if (next.status && isMovieStatusId(next.status)) data.status = next.status;
+  else delete data.status;
+
+  const originalTitle = next.originalTitle.trim();
+  if (originalTitle) data.original_title = originalTitle;
+  else delete data.original_title;
+
+  const imdbId = normalizeImdbId(next.imdbId);
+  if (imdbId) data.imdb_id = imdbId;
+  else delete data.imdb_id;
+
+  if (next.kinopoiskId != null && next.kinopoiskId > 0) {
+    data.kinopoisk_id = next.kinopoiskId;
+  } else delete data.kinopoisk_id;
+
+  // Drop legacy TMDB keys if present.
+  delete data.tmdb_id;
+  delete data.tmdb_media;
 
   if (Object.keys(data).length === 0) {
     return split.body;
