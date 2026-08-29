@@ -1227,11 +1227,9 @@ function FavoritesTreeRows({
               onClick={(e) => {
                 if (renaming) return;
                 if (isDir) {
-                  if (e.ctrlKey || e.metaKey) {
-                    onOpenFolder(path, { preview: false });
-                  } else {
-                    onOpenFolder(path, { replaceActive: true });
-                  }
+                  onOpenFolder(path, {
+                    preview: !(e.ctrlKey || e.metaKey),
+                  });
                   return;
                 }
                 if (isUnsupportedTreeFile(false, path)) {
@@ -2726,13 +2724,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
                       selectFolder(path);
                       return;
                     }
-                    if (e.ctrlKey || e.metaKey) {
-                      void openOrCreateFolderNote(path, { preview: false });
-                    } else {
-                      void openOrCreateFolderNote(path, {
-                        replaceActive: true,
-                      });
-                    }
+                    void openOrCreateFolderNote(path, {
+                      preview: !(e.ctrlKey || e.metaKey),
+                    });
                     return;
                   }
                   if (unsupported) {

@@ -820,7 +820,7 @@ export const NoteEditor = memo(function NoteEditor({
         const go = (path: string) =>
           openPinned
             ? openNote(path, { preview: false })
-            : openNote(path);
+            : openNote(path, { replaceActive: true });
 
         if (isWikiHref(href)) {
           const wikiTarget = wikiTargetFromHref(href);

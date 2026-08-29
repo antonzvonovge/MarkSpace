@@ -194,7 +194,8 @@ type OpenNoteOptions = {
   preview?: boolean;
   /**
    * Replace the active file tab in-place (same tab slot), keeping its
-   * preview/pinned flags. Used by path breadcrumbs / folder navigation.
+   * preview/pinned flags. Used by in-document wiki links and path
+   * breadcrumbs — not by the file tree sidebar.
    * Ignored when the target path is already open (activates that tab).
    */
   replaceActive?: boolean;
