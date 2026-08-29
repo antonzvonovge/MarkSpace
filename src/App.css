@@ -1007,13 +1007,17 @@ select {
   min-width: 16px;
   height: 14px;
   padding: 0 4px;
-  border-radius: 999px;
-  background: rgba(var(--accent-rgb), 0.16);
-  color: var(--accent-strong, var(--accent));
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--sidebar-muted);
   font-size: 0.65rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: 0;
+}
+
+:root[data-theme="dark"] .tree-comment-count {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .comments-inbox-section {
@@ -1037,13 +1041,17 @@ select {
   min-width: 16px;
   height: 14px;
   padding: 0 4px;
-  border-radius: 999px;
-  background: rgba(var(--accent-rgb), 0.16);
-  color: var(--accent-strong, var(--accent));
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--sidebar-muted);
   font-size: 0.65rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
+}
+
+:root[data-theme="dark"] .comments-inbox-header-count {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .comments-inbox-empty {
