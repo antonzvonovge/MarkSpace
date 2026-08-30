@@ -6,12 +6,14 @@ import {
   MeasuringStrategy,
   PointerSensor,
   closestCenter,
+  defaultDropAnimation,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type DropAnimation,
   type Modifier,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
@@ -20,6 +22,7 @@ import {
   arrayMove,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { TaskIndexEntry } from "../../../lib/taskNotes";
 import type { TreeNode } from "../../../lib/vaultApi";
 import { taskEntriesToTreeItems } from "./buildTreeItems";
@@ -44,9 +47,35 @@ const measuring = {
   },
 };
 
+/** Drop-line mode (dnd-kit DropIndicator / AllFeatures). */
+const INDICATOR = true;
+
 const INDENTATION_WIDTH = 28;
 /** Matches `--tasks-checkbox-inset` — overlay card starts at the checkbox column. */
 const CHECKBOX_INSET = 54;
+
+const dropAnimationConfig: DropAnimation = {
+  keyframes({ transform }) {
+    return [
+      { opacity: 1, transform: CSS.Transform.toString(transform.initial) },
+      {
+        opacity: 0,
+        transform: CSS.Transform.toString({
+          ...transform.final,
+          x: transform.final.x + 5,
+          y: transform.final.y + 5,
+        }),
+      },
+    ];
+  },
+  easing: "ease-out",
+  sideEffects({ active }) {
+    active.node.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: defaultDropAnimation.duration,
+      easing: defaultDropAnimation.easing,
+    });
+  },
+};
 
 /** Shift the drag card so its left edge lines up with the row checkbox. */
 const alignOverlayToCheckbox: Modifier = ({ transform }) => ({
@@ -110,10 +139,13 @@ export function TasksSortableTree({
         )
       : null;
 
+  // Stock PointerSensor has no activationConstraint. When not sortable, keep a
+  // dead sensor so DndContext still mounts without accidental drags.
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: sortable ? { distance: 6 } : { distance: 99999 },
-    }),
+    useSensor(
+      PointerSensor,
+      sortable ? undefined : { activationConstraint: { distance: 99999 } },
+    ),
   );
 
   const sortedIds = useMemo(
@@ -147,7 +179,7 @@ export function TasksSortableTree({
     setOverId(over?.id ?? null);
   };
 
-  const onDragEnd = ({ active, over }: DragEndEvent) => {
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
     const proj = projected;
     const fullFlat = flattenTree(items);
     resetState();
@@ -214,7 +246,7 @@ export function TasksSortableTree({
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragOver={handleDragOver}
-      onDragEnd={onDragEnd}
+      onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
       <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
@@ -226,14 +258,10 @@ export function TasksSortableTree({
           }
         >
           {flattenedItems.map((item) => {
-            // Official dnd-kit indicator: the ghost slot is the drop line, indented
-            // to the projected depth — so the stick sits on/above the placeholder.
-            const isGhost = activeId === item.id;
             const rowDepth =
-              isGhost && projected ? projected.depth : item.depth;
-            const showIndicator = Boolean(
-              projected && isGhost && overId != null && activeId !== overId,
-            );
+              item.id === activeId && projected
+                ? projected.depth
+                : item.depth;
             return (
               <SortableTaskTreeRow
                 key={String(item.id)}
@@ -241,7 +269,8 @@ export function TasksSortableTree({
                 item={item}
                 depth={rowDepth}
                 indentationWidth={INDENTATION_WIDTH}
-                indicator={showIndicator}
+                indicator={INDICATOR}
+                sortable={sortable}
                 handlers={handlers}
                 selected={item.kind === "task" && selectedPath === item.path}
               />
@@ -251,8 +280,8 @@ export function TasksSortableTree({
       </SortableContext>
       {createPortal(
         <DragOverlay
-          dropAnimation={null}
-          modifiers={[alignOverlayToCheckbox]}
+          dropAnimation={dropAnimationConfig}
+          modifiers={INDICATOR ? [alignOverlayToCheckbox] : undefined}
         >
           {activeId && activeItem ? (
             <TaskTreeDragOverlay

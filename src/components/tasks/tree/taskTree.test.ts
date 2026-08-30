@@ -132,7 +132,7 @@ describe("getProjection", () => {
     expect(proj.parentId).toBe(flat.find((i) => i.title === "A")!.id);
   });
 
-  it("nests into the last list item when dragged right", () => {
+  it("nests into the last list item when dragged one indent right", () => {
     const tree = taskEntriesToTreeItems(
       [
         entry({
@@ -156,9 +156,34 @@ describe("getProjection", () => {
     const flat = flattenTree(tree);
     const a = flat.find((i) => i.title === "A")!;
     const c = flat.find((i) => i.title === "C")!;
-    const proj = getProjection(flat, a.id, c.id, 20, 28);
+    // Stock: round(offset / indent); half indent rounds up to nest.
+    const proj = getProjection(flat, a.id, c.id, 14, 28);
     expect(proj.depth).toBe(1);
     expect(proj.parentId).toBe(c.id);
+  });
+
+  it("does not nest at end of list with a small right offset", () => {
+    const tree = taskEntriesToTreeItems(
+      [
+        entry({
+          path: "Tasks/Inbox/a.md",
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          title: "A",
+        }),
+        entry({
+          path: "Tasks/Inbox/b.md",
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          title: "B",
+        }),
+      ],
+      new Set(),
+    );
+    const flat = flattenTree(tree);
+    const a = flat.find((i) => i.title === "A")!;
+    const b = flat.find((i) => i.title === "B")!;
+    const proj = getProjection(flat, a.id, b.id, 10, 28);
+    expect(proj.depth).toBe(0);
+    expect(proj.parentId).toBeNull();
   });
 });
 

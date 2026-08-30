@@ -14799,30 +14799,39 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 /*
- * Drop indicator = the ghost placeholder itself (dnd-kit Sortable Tree style).
- * Stick sits on the placeholder, indented to projected depth — not below it.
+ * Drop indicator = the ghost placeholder itself (dnd-kit TreeItem.module.css
+ * `.Wrapper.ghost.indicator`). Slot collapses to 8px; stick+ring at checkbox
+ * column (product layout inset — projection still drives paddingLeft).
  */
 .tasks-tree-item.is-ghost.is-drop-indicator {
   position: relative;
-  z-index: 5;
+  z-index: 1;
   opacity: 1;
   margin-bottom: -1px;
   list-style: none;
-  pointer-events: none;
 }
 
-.tasks-tree-item.is-ghost.is-drop-indicator::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: calc(
-    var(--tasks-drop-line-pad, var(--tasks-tree-pad, 0px)) +
-      var(--tasks-checkbox-inset, 54px) + 5px
-  );
-  right: 0;
+.tasks-tree-item.is-ghost.is-drop-indicator .tasks-row {
+  position: relative;
   height: 8px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  box-shadow: none;
+  background-color: transparent;
+}
+
+.tasks-tree-item.is-ghost.is-drop-indicator .tasks-row::before {
+  position: absolute;
+  left: calc(var(--tasks-checkbox-inset, 54px) + 5px);
+  right: 0;
+  top: 0;
+  height: 8px;
+  display: block;
+  content: "";
   pointer-events: none;
-  z-index: 6;
+  z-index: 2;
   background:
     radial-gradient(
       circle closest-side,
@@ -14837,42 +14846,36 @@ button.status-bar-jobs-menu-item:hover {
       calc(100% - 7px) 2px no-repeat;
 }
 
-.tasks-tree-item.is-ghost.is-drop-indicator .tasks-row {
-  height: 8px;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-
 .tasks-tree-item.is-ghost.is-drop-indicator .tasks-row > * {
+  /* Hidden via height/opacity to retain focus, like dnd-kit TreeItem. */
   opacity: 0;
   height: 0;
   overflow: hidden;
-  visibility: hidden;
 }
 
+.tasks-tree-item.is-ghost.is-drop-indicator::before,
 .tasks-tree-item.is-ghost.is-drop-indicator::after {
   display: none;
 }
 
-/* Source slot without a live projection target: keep height, hide contents. */
-.tasks-tree-item.is-ghost {
-  opacity: 1;
+/* Non-indicator ghost (Collapsible story style): faded source row. */
+.tasks-tree-item.is-ghost:not(.is-drop-indicator) {
+  opacity: 0.5;
 }
 
 .tasks-tree-item.is-ghost:not(.is-drop-indicator) .tasks-row {
-  background: transparent;
+  box-shadow: none;
+  background-color: transparent;
 }
 
-.tasks-tree-item.is-ghost:not(.is-drop-indicator) .tasks-row > * {
-  visibility: hidden;
+.tasks-tree-item.is-disable-interaction {
+  pointer-events: none;
 }
 
-.tasks-tree-item.is-ghost:not(.is-drop-indicator)::after {
-  border-bottom-color: transparent;
+.tasks-tree-item.is-disable-selection .tasks-row-title,
+.tasks-tree-item.is-disable-selection .tasks-tree-clone-count {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* dnd-kit drag card: left edge = checkbox column; fixed width. */
@@ -14937,7 +14940,7 @@ button.status-bar-jobs-menu-item:hover {
 :root[data-theme="dark"] .tasks-row.is-drop-before::before,
 :root[data-theme="dark"] .tasks-row.is-drop-after::after,
 :root[data-theme="dark"] .tasks-list-item.is-drop-before::before,
-:root[data-theme="dark"] .tasks-tree-item.is-ghost.is-drop-indicator::before {
+:root[data-theme="dark"] .tasks-tree-item.is-ghost.is-drop-indicator .tasks-row::before {
   --tasks-drop-ring-fill: var(--editor-surface, #1e1e1e);
 }
 

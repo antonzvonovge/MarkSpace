@@ -14,8 +14,7 @@ export const iOS =
 export const MAX_TASK_TREE_DEPTH = 1;
 
 function getDragDepth(offset: number, indentationWidth: number) {
-  // Slight nest bias so nesting under the row above (incl. last item) is easier.
-  return Math.round((offset + indentationWidth * 0.15) / indentationWidth);
+  return Math.round(offset / indentationWidth);
 }
 
 export function getProjection(
@@ -40,33 +39,15 @@ export function getProjection(
   const previousItem = newItems[overItemIndex - 1];
   const nextItem = newItems[overItemIndex + 1];
   const dragDepth = getDragDepth(dragOffset, indentationWidth);
-  const rawDepth = activeItem.depth + dragDepth;
+  const projectedDepth = activeItem.depth + dragDepth;
   const maxDepth = getMaxDepth({ previousItem });
   const minDepth = getMinDepth({ nextItem });
+  let depth = projectedDepth;
 
-  let depth: number;
-  // Explicit outdent past root: always allow promote to depth 0 (ignore minDepth
-  // lock from a following nested sibling — buildTree still keeps their parents).
-  if (rawDepth <= 0) {
-    depth = 0;
-  } else if (rawDepth >= maxDepth) {
+  if (projectedDepth >= maxDepth) {
     depth = maxDepth;
-  } else if (rawDepth < minDepth) {
-    depth = Math.min(minDepth, maxDepth);
-  } else {
-    depth = rawDepth;
-  }
-
-  // Dropping at the end of the list: if the user has dragged right enough to nest,
-  // snap onto the previous row as parent (covers nesting into the last item).
-  if (
-    !nextItem &&
-    previousItem &&
-    previousItem.depth < MAX_TASK_TREE_DEPTH &&
-    dragOffset > indentationWidth * 0.35 &&
-    depth < previousItem.depth + 1
-  ) {
-    depth = Math.min(previousItem.depth + 1, MAX_TASK_TREE_DEPTH);
+  } else if (projectedDepth < minDepth) {
+    depth = minDepth;
   }
 
   return { depth, maxDepth, minDepth, parentId: getParentId() };

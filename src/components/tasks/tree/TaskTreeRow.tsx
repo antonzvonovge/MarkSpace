@@ -16,6 +16,7 @@ import {
   TasksIconSubtasks,
 } from "../tasksIcons";
 import type { FlattenedTaskItem, TaskTreeItem } from "./types";
+import { iOS } from "./utilities";
 
 function priorityClass(priority: TaskPriority | null | undefined): string {
   if (priority == null) return "";
@@ -269,7 +270,8 @@ export function SortableTaskTreeRow({
   item,
   depth,
   indentationWidth,
-  indicator,
+  indicator = false,
+  sortable = true,
   handlers,
   selected,
 }: {
@@ -277,8 +279,10 @@ export function SortableTaskTreeRow({
   item: FlattenedTaskItem;
   depth: number;
   indentationWidth: number;
-  /** When set, this row is the drop placeholder (thin line at projected depth). */
+  /** Drop-line mode (dnd-kit `indicator` prop) — applied on the ghost while dragging. */
   indicator?: boolean;
+  /** When false, grip has no drag listeners (Today / Upcoming). */
+  sortable?: boolean;
   handlers: TaskTreeRowHandlers;
   selected?: boolean;
 }) {
@@ -291,12 +295,16 @@ export function SortableTaskTreeRow({
     setDroppableNodeRef,
     transform,
     transition,
-  } = useSortable({ id, animateLayoutChanges });
+  } = useSortable({ id, animateLayoutChanges, disabled: !sortable });
 
   const style: CSSProperties = {
     transform: CSS.Translate.toString(transform),
     transition,
   };
+
+  const handleProps = sortable
+    ? { ...attributes, ...listeners }
+    : undefined;
 
   return (
     <li
@@ -305,8 +313,10 @@ export function SortableTaskTreeRow({
         "tasks-list-item",
         "tasks-tree-item",
         isDragging ? "is-ghost" : "",
-        indicator ? "is-drop-indicator" : "",
+        isDragging && indicator ? "is-drop-indicator" : "",
         isSorting ? "is-sorting" : "",
+        isSorting ? "is-disable-interaction" : "",
+        iOS ? "is-disable-selection" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -327,7 +337,7 @@ export function SortableTaskTreeRow({
           handlers={handlers}
           selected={selected}
           ghost={isDragging}
-          handleProps={{ ...attributes, ...listeners }}
+          handleProps={handleProps}
         />
       </div>
     </li>
