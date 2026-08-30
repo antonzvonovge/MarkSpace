@@ -484,7 +484,9 @@ export async function runSpecialist(params: {
       system,
       messages: [{ role: "user", content: userParts }],
       tools,
-      stopWhen: stepCountIs(SPECIALIST_WORKER_MAX_STEPS),
+      stopWhen: stepCountIs(
+        preset.maxSteps ?? SPECIALIST_WORKER_MAX_STEPS,
+      ),
       abortSignal: params.abortSignal,
       prepareStep: ({ messages }) => {
         if (contextWindow <= 0) return {};
@@ -502,9 +504,20 @@ export async function runSpecialist(params: {
     });
 
     let finalText = "";
+    let streamError: Error | null = null;
     for await (const part of result.fullStream) {
       if (params.abortSignal?.aborted) throw abortError();
       switch (part.type) {
+        case "error": {
+          const err = part.error;
+          streamError =
+            err instanceof Error
+              ? err
+              : new Error(
+                  typeof err === "string" ? err : String(err ?? "Stream error"),
+                );
+          break;
+        }
         case "tool-call": {
           const step: SpecialistStep = {
             toolName: part.toolName,
@@ -563,6 +576,8 @@ export async function runSpecialist(params: {
       }
     }
 
+    if (streamError) throw streamError;
+
     const text = (await result.text).trim() || finalText.trim();
     const summary = summarizeFromText(text);
     const changedPaths = extractChangedPaths(steps);
@@ -620,13 +635,14 @@ export async function runSpecialist(params: {
 
 function runSpecialistDescription(terminalOn: boolean): string {
   const kinds = terminalOn
-    ? "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, Media library film cards, or a terminal command sequence"
-    : "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, or Media library film cards";
+    ? "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, Media library film cards, Tasks/ task notes (create/import/update/complete — never raw markdown under Tasks/), or a terminal command sequence"
+    : "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, Media library film cards, or Tasks/ task notes (create/import/update/complete — never raw markdown under Tasks/)";
   return [
     `Delegate a focused subtask to a specialist worker with a limited tool set. Use for ${kinds}.`,
-    "Independent tasks: emit multiple run_specialist calls in ONE response.",
-    "Dependent tasks: one specialist, or the same response with id + depends_on (the later worker waits and receives the earlier summary).",
+    "Independent workstreams: emit multiple run_specialist calls in ONE response.",
+    "Dependent workstreams: one specialist, or the same response with id + depends_on (the later worker waits and receives the earlier summary).",
     "Never split create and edits of one .drawio across diagram specialists — one kind=diagram does create_diagram (with mermaid or xml) and any later mutate_diagram.",
+    "Vault Tasks/ (Inbox lists, due, priority, labels, subtasks, comments, Todoist→vault import): always kind=tasks with a self-contained brief — do not probe format with list_folder/read_note first.",
     "Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known.",
   ].join(" ");
 }
@@ -670,6 +686,7 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
         "habits",
         "courses",
         "media",
+        "tasks",
         "terminal",
       ])
     : z.enum([
@@ -681,6 +698,7 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
         "habits",
         "courses",
         "media",
+        "tasks",
       ]);
 
   return tool({

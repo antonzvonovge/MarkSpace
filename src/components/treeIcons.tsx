@@ -332,3 +332,77 @@ export function TasksSectionIcon() {
     </svg>
   );
 }
+
+/** Todoist-style Inbox tray for Tasks sidebar. */
+export function TasksInboxIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 8.25 4.15 4.7A1.4 1.4 0 0 1 5.4 4h5.2a1.4 1.4 0 0 1 1.25.7L13.5 8.25v3.5A1.25 1.25 0 0 1 12.25 13h-8.5A1.25 1.25 0 0 1 2.5 11.75v-3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.5 8.25h2.35l.85 1.6h4.6l.85-1.6H13.5"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Todoist-style Today — calendar with check. */
+export function TasksTodayIcon() {
+  return <TodayCheckIcon />;
+}
+
+/** All tasks — stacked checklist. */
+export function TasksAllIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.5 4.5h9M3.5 8h9M3.5 11.5h6.5"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+      />
+      <path
+        d="M11.1 10.35 12.1 11.35 14 9.2"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Filters — funnel. */
+export function TasksFiltersIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.75 3.5h10.5L9.4 8.15v3.6L6.6 13.25V8.15L2.75 3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Task list / project — Todoist-style hash mark. */
+export function TasksListIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M6.1 3.5 5.2 12.5M10.8 3.5 9.9 12.5M3.5 6.15h9M3.25 9.85h9"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}

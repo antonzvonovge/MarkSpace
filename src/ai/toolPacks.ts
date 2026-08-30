@@ -8,6 +8,7 @@ export type SpecialistKind =
   | "habits"
   | "courses"
   | "media"
+  | "tasks"
   | "terminal";
 
 export const SPECIALIST_KIND_ORDER: readonly SpecialistKind[] = [
@@ -19,6 +20,7 @@ export const SPECIALIST_KIND_ORDER: readonly SpecialistKind[] = [
   "habits",
   "courses",
   "media",
+  "tasks",
   "terminal",
 ];
 
@@ -32,6 +34,8 @@ export type SpecialistPreset = {
   toolNames: readonly string[];
   /** Write specialist — participates in path-overlap mutex. */
   writes: boolean;
+  /** Override default worker step budget (e.g. bulk task create). */
+  maxSteps?: number;
 };
 
 /** Parent Agent orchestrator surface without terminal. */
@@ -109,6 +113,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     system: [
       "You are a MarkSpace note editor. Create/edit markdown notes, folders, and assets.",
       "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, .mddict, .mdhabit, or .mdcourse — those need other specialists.",
+      "Never create or edit files under Tasks/ — delegate run_specialist kind=tasks (task notes use dedicated helpers).",
       "To rename a file or folder in place use rename_path (new basename); to change folders use move_path.",
       "move_path migrates referenced sibling .assets and rewrites links — after a successful move do NOT invent ../.assets/ or manually rewrite note-relative .assets/ paths (including Media library posters).",
       "To tag a note from its content, prefer auto_tag_note (reuses the vault tag catalog) over inventing tags in edit_note.",
@@ -283,6 +288,37 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "list_tags",
       "get_file_tags",
       "set_file_tags",
+    ],
+  },
+  tasks: {
+    kind: "tasks",
+    label: "Tasks",
+    writes: true,
+    maxSteps: 48,
+    system: [
+      "You are a MarkSpace Tasks specialist for vault-root Tasks/ notes (Todoist-style cards).",
+      "Use only tasks tools — never write_note/edit_note/create_note under Tasks/.",
+      "For multiple creates (imports), call create_tasks once with ref/parent_ref for hierarchy — do not loop create_task.",
+      "Call read_task_format when unsure. Completing a parent also completes and archives all child task files.",
+      "labels are task-scoped (not vault page tags). Nesting is parent UUID, max two levels.",
+      "End with a summary and list changedPaths.",
+    ].join(" "),
+    toolNames: [
+      "list_folder",
+      "open_note",
+      "read_task_format",
+      "list_task_lists",
+      "list_task_labels",
+      "list_tasks",
+      "get_task",
+      "create_task",
+      "create_tasks",
+      "update_task",
+      "complete_task",
+      "move_task_to_list",
+      "set_task_parent",
+      "add_task_comment",
+      "create_task_list",
     ],
   },
   terminal: {

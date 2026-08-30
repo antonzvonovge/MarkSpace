@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { placeAnchoredMenu } from "../lib/menuPlacement";
+import { pastelChipStyle } from "../lib/pastelChipColors";
 import { sanitizeTagName } from "../lib/tagName";
 import { useVaultStore } from "../store/vaultStore";
 
@@ -9,7 +10,7 @@ export type TagChipsInputProps = {
   onChange: (tags: string[]) => void;
   /**
    * When set, used as the suggestion catalog instead of vault note/PDF tags
-   * (e.g. dictionary tag bank for `.mddict`).
+   * (e.g. dictionary tag bank for `.mddict`, or task labels).
    */
   catalog?: string[];
   /** Extra tag names merged with the base catalog (e.g. tags from the open .mdlnks file). */
@@ -19,6 +20,11 @@ export type TagChipsInputProps = {
   className?: string;
   /** Extra class on each chip (e.g. filter accent). */
   chipClassName?: string;
+  /**
+   * Per-name light matte Material pastel chips (stable hash).
+   * Default keeps the shared blue `--tag-*` palette.
+   */
+  pastelChips?: boolean;
   /** Allow creating a brand-new tag from the draft (default true). */
   allowCreate?: boolean;
   /** Max suggestions shown (default 12). */
@@ -69,6 +75,7 @@ export function TagChipsInput({
   ariaLabel = "Tags",
   className,
   chipClassName,
+  pastelChips = false,
   allowCreate = true,
   maxSuggestions = 12,
   disabled = false,
@@ -331,6 +338,7 @@ export function TagChipsInput({
             key={tag.toLowerCase()}
             className={["page-tag-chip", chipClassName].filter(Boolean).join(" ")}
             role="listitem"
+            style={pastelChips ? pastelChipStyle(tag) : undefined}
           >
             <span className="page-tag-chip-label">{tag}</span>
             <button

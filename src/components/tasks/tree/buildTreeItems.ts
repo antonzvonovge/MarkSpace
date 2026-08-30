@@ -31,6 +31,7 @@ export function taskEntriesToTreeItems(
       status: e.status,
       priority: e.priority,
       due: e.due,
+      labels: e.labels,
       commentCount: e.commentCount,
       subtaskDone: e.subtaskDone,
       subtaskTotal: e.subtaskTotal,

@@ -73,6 +73,19 @@ describe("toolPacks", () => {
     expect(SPECIALIST_PRESETS.media.system).toMatch(/\.\.\/\.assets/);
   });
 
+  it("tasks pack uses dedicated task tools and forbids raw Tasks/ edits in edit_notes", () => {
+    const names = SPECIALIST_PRESETS.tasks.toolNames;
+    expect(names).toContain("list_tasks");
+    expect(names).toContain("create_task");
+    expect(names).toContain("create_tasks");
+    expect(names).toContain("complete_task");
+    expect(names).toContain("read_task_format");
+    expect(names).not.toContain("write_note");
+    expect(SPECIALIST_PRESETS.tasks.system).toMatch(/Tasks\//);
+    expect(SPECIALIST_PRESETS.tasks.system).toMatch(/create_tasks/);
+    expect(SPECIALIST_PRESETS.edit_notes.system).toMatch(/kind=tasks/);
+  });
+
   it("pickTools keeps only requested keys", () => {
     const picked = pickTools(
       { a: 1, b: 2, c: 3 },

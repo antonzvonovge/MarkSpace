@@ -130,11 +130,25 @@ describe("vault agent tools", () => {
     expect(terminal).toHaveProperty("list_folder");
     expect(terminal).not.toHaveProperty("edit_note");
     expect(terminal).not.toHaveProperty("run_specialist");
+
+    const tasks = buildVaultTools("agent", {
+      toolNames: [...SPECIALIST_PRESETS.tasks.toolNames],
+    });
+    expect(tasks).toHaveProperty("list_tasks");
+    expect(tasks).toHaveProperty("create_task");
+    expect(tasks).toHaveProperty("create_tasks");
+    expect(tasks).toHaveProperty("complete_task");
+    expect(tasks).toHaveProperty("read_task_format");
+    expect(tasks).not.toHaveProperty("write_note");
+    expect(tasks).not.toHaveProperty("run_specialist");
   });
 
-  it("Ask exposes list_media_catalog", () => {
+  it("Ask exposes list_media_catalog and list_tasks", () => {
     const askTools = buildVaultTools("ask");
     expect(askTools).toHaveProperty("list_media_catalog");
+    expect(askTools).toHaveProperty("list_tasks");
+    expect(askTools).toHaveProperty("read_task_format");
+    expect(askTools).not.toHaveProperty("create_task");
   });
 
   it("movies project prompt steers media reorganize via catalog + move", () => {
@@ -183,6 +197,9 @@ describe("vault agent tools", () => {
     expect(agentPrompt).not.toContain("terminal plan confirmation");
     expect(agentPrompt).toContain("run_specialist");
     expect(agentPrompt).toContain("edit_notes");
+    expect(agentPrompt).toContain("tasks (Tasks/ notes)");
+    expect(agentPrompt).toMatch(/CRITICAL — Tasks\//);
+    expect(agentPrompt).toMatch(/kind=tasks/);
     expect(agentPrompt).toContain("parallel specialists");
     expect(agentPrompt).toContain("depends_on");
     expect(agentPrompt).toContain("single kind=diagram specialist");

@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectTaskLists,
+  collectTaskNotePaths,
   filterTaskIndex,
   getTaskAttrs,
+  isTaskInCompleted,
   parseTaskNote,
   serializeTaskNote,
   setTaskAttrs,
+  taskCompletedFolder,
   taskIndexEntryFromNote,
+  taskListFromPath,
   type TaskIndexEntry,
   type TaskNote,
 } from "./taskNotes";
+import type { TreeNode } from "./vaultApi";
 
 const SAMPLE = `---
 status: open
@@ -240,16 +246,6 @@ describe("filterTaskIndex", () => {
     ]);
   });
 
-  it("filters upcoming after today", () => {
-    const out = filterTaskIndex(
-      rows,
-      "upcoming",
-      { query: "", list: "", priority: "", label: "", status: "open" },
-      today,
-    );
-    expect(out.map((e) => e.path)).toEqual(["Tasks/Work/c.md"]);
-  });
-
   it("applies label and list filters", () => {
     const out = filterTaskIndex(
       rows,
@@ -264,6 +260,41 @@ describe("filterTaskIndex", () => {
       today,
     );
     expect(out.map((e) => e.path)).toEqual(["Tasks/Work/b.md"]);
+  });
+
+  it("ignores sticky list filter on Today", () => {
+    const out = filterTaskIndex(
+      rows,
+      "today",
+      {
+        query: "",
+        list: "Work",
+        priority: "",
+        label: "",
+        status: "open",
+      },
+      today,
+    );
+    expect(out.map((e) => e.path)).toEqual([
+      "Tasks/Work/b.md",
+      "Tasks/Inbox/a.md",
+    ]);
+  });
+
+  it("ignores sticky priority filter on Inbox", () => {
+    const out = filterTaskIndex(
+      rows,
+      "inbox",
+      {
+        query: "",
+        list: "",
+        priority: 3,
+        label: "",
+        status: "open",
+      },
+      today,
+    );
+    expect(out.map((e) => e.path)).toEqual(["Tasks/Inbox/a.md"]);
   });
 });
 
@@ -291,5 +322,95 @@ describe("serializeTaskNote minimal", () => {
     expect(md).not.toContain("## Subtasks");
     expect(md).not.toContain("## Comments");
     expect(md).toContain("# Quick");
+  });
+});
+
+describe("completed archive paths", () => {
+  it("resolves list and completed folder helpers", () => {
+    expect(taskListFromPath("Tasks/Work/send-report.md")).toBe("Work");
+    expect(taskListFromPath("Tasks/Inbox/completed/old.md")).toBe("Inbox");
+    expect(taskListFromPath("Tasks/completed/orphan.md")).toBe("");
+    expect(taskCompletedFolder("Work")).toBe("Tasks/Work/completed");
+    expect(isTaskInCompleted("Tasks/Work/completed/old.md")).toBe(true);
+    expect(isTaskInCompleted("Tasks/Work/send-report.md")).toBe(false);
+    expect(isTaskInCompleted("Tasks/completed/x.md")).toBe(false);
+  });
+
+  it("skips completed folders when collecting active task paths and lists", () => {
+    const tree: TreeNode = {
+      name: "",
+      path: "",
+      isDir: true,
+      children: [
+        {
+          name: "Tasks",
+          path: "Tasks",
+          isDir: true,
+          children: [
+            {
+              name: "Inbox",
+              path: "Tasks/Inbox",
+              isDir: true,
+              children: [
+                {
+                  name: "open.md",
+                  path: "Tasks/Inbox/open.md",
+                  isDir: false,
+                  children: [],
+                },
+                {
+                  name: "completed",
+                  path: "Tasks/Inbox/completed",
+                  isDir: true,
+                  children: [
+                    {
+                      name: "done.md",
+                      path: "Tasks/Inbox/completed/done.md",
+                      isDir: false,
+                      children: [],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              name: "completed",
+              path: "Tasks/completed",
+              isDir: true,
+              children: [],
+            },
+            {
+              name: "Work",
+              path: "Tasks/Work",
+              isDir: true,
+              children: [],
+            },
+          ],
+        },
+      ],
+    };
+    expect(collectTaskNotePaths(tree)).toEqual(["Tasks/Inbox/open.md"]);
+    expect(collectTaskLists(tree)).toEqual(["Inbox", "Work"]);
+  });
+
+  it("serializes an appended comment block", () => {
+    const note = parseTaskNote(
+      "Tasks/Inbox/hello.md",
+      `---
+id: 11111111-1111-4111-8111-111111111111
+status: open
+---
+
+# Hello
+`,
+    );
+    const withComment = {
+      ...note,
+      comments: [{ at: "2026-08-30 12:00", body: "Hi" }],
+    };
+    const out = serializeTaskNote(withComment);
+    expect(out).toContain("## Comments");
+    expect(out).toContain("### 2026-08-30 12:00");
+    expect(out).toContain("Hi");
   });
 });

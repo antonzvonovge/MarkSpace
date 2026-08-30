@@ -5,16 +5,18 @@ Task notes live under the reserved vault-root folder **`Tasks/`** (not a project
 Agents and UIs must prefer dedicated task helpers over inventing a second format.
 
 <!-- core-rules:start -->
+- Agents: use `run_specialist` kind=`tasks` (dedicated task tools). Do not raw-create or edit notes under `Tasks/` via `edit_notes` / `write_note`.
 - One task = one `.md` under `Tasks/<list>/` (not a special extension). Exclude `.folder.md`.
 - `Tasks/` is a reserved root folder (like Incoming): omitted from the workspace tree / wiki-link picker, not a vault project, excluded from the graph.
-- Lists are folders directly under `Tasks/` (e.g. `Inbox/`, `Work/`). Task files in a list are a **flat** folder listing — hierarchy is not expressed with nested folders.
-- YAML frontmatter keys: `id` (stable UUID), `status` (`open` | `done`), optional `due` (`YYYY-MM-DD`), `priority` (1–4, 1 = highest), `labels` (string list), `created` (`YYYY-MM-DD` or ISO), optional `parent` (**UUID of the parent task**, not a path or title). Preserve unknown keys.
+- Lists are folders directly under `Tasks/` (e.g. `Inbox/`, `Work/`). Active task files in a list are a **flat** folder listing — hierarchy is not expressed with nested folders. Create lists from the Tasks sidebar **+** control.
+- Completing a task sets `status: done` and **moves** the file to `Tasks/<list>/completed/` (per-list archive). Completing a **parent** also completes and archives all child task files (`parent` = parent’s `id`). The active task index skips `**/completed/**`. Do not name a list `completed`. Uncomplete / reopen is not in the product UI yet.
+- YAML frontmatter keys: `id` (stable UUID), `status` (`open` | `done`), optional `due` (`YYYY-MM-DD`), `priority` (1–4, 1 = highest), `labels` (string list — **task-scoped tags**, separate from note `tags:` / vault tags), `created` (`YYYY-MM-DD` or ISO), optional `parent` (**UUID of the parent task**, not a path or title). Preserve unknown keys.
 - Nesting is **two levels only**: a root task (`parent` empty) and child tasks whose `parent` is the parent’s `id`. No grandchildren — nesting a parent re-parents its children onto the new parent (or clears them to roots when promoting).
 - Body starts with `# Title`. Optional legacy `## Subtasks` checklist (GFM `- [ ]` / `- [x]`) for freeform lines inside the note; structured hierarchy uses separate child `.md` files + `parent` id. Optional `## Comments` with append-only `### YYYY-MM-DD HH:mm` blocks (local time).
 - Images in comments use note-relative `.assets/…` (sibling folder), e.g. `![](.assets/shot.png)`.
-- Index and filters scan only `Tasks/**/*.md`. Do not treat checklists outside `Tasks/` as tasks.
+- Active index and filters scan `Tasks/**/*.md` **excluding** `Tasks/<list>/completed/**`. Do not treat checklists outside `Tasks/` as tasks.
 - List order follows vault `order.json` (tree order under each list folder). Sibling order (among roots or among children of one parent) follows that order. Dragging a task onto another sets `parent` to the parent’s `id` (file is kept). Outdent clears `parent`.
-- Today / Upcoming views may sort by priority and due; Inbox and per-list views keep manual order.
+- Today view may sort by priority and due; Inbox and per-list views keep manual order.
 <!-- core-rules:end -->
 
 ## Layout
@@ -24,8 +26,11 @@ Tasks/
   Inbox/
     buy-milk.md           # id: …
     call-shop.md          # parent: <buy-milk id>
+    completed/            # archive (skipped by active index)
+      old-task.md
   Work/
     send-report.md
+    completed/
     .assets/
       shot.png
 ```
@@ -78,8 +83,8 @@ created: 2026-08-27
 | `id` | yes | Stable UUID for this task; assigned on create / migration |
 | `status` | yes | `open` or `done` (default `open` when missing) |
 | `due` | no | Local calendar day `YYYY-MM-DD` |
-| `priority` | no | Integer 1–4; omit or empty = none |
-| `labels` | no | YAML list or comma string; normalized like note tags |
+| `priority` | no | Integer 1–4 (Do / Schedule / Delegate / Postponed); omit = none |
+| `labels` | no | Task-scoped tags (YAML list); catalog is separate from vault note `tags:` |
 | `created` | no | Prefer `YYYY-MM-DD`; ISO timestamps accepted when reading |
 | `parent` | no | Parent task’s `id` (UUID); omit for roots. Legacy path values are migrated to ids |
 

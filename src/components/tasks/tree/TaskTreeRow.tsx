@@ -6,14 +6,18 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { TaskPriority } from "../../../lib/taskNotes";
+import {
+  TasksComposer,
+  type TasksComposerDraft,
+} from "../TasksComposer";
 import { TasksDateField } from "../TasksDateField";
+import { TaskMetaLine } from "../TaskMetaLine";
 import {
   TasksIconChevron,
   TasksIconComment,
   TasksIconEdit,
   TasksIconGrip,
   TasksIconMore,
-  TasksIconSubtasks,
 } from "../tasksIcons";
 import type { FlattenedTaskItem, TaskTreeItem } from "./types";
 import { iOS } from "./utilities";
@@ -36,10 +40,11 @@ function CircleCheck({
     <button
       type="button"
       className={`tasks-circle${priorityClass(priority)}${checked ? " is-checked" : ""}`}
-      title={checked ? "Mark open" : "Mark done"}
-      aria-label={checked ? "Mark open" : "Mark done"}
+      title={checked ? "Completed" : "Mark done"}
+      aria-label={checked ? "Completed" : "Mark done"}
       onClick={(e) => {
         e.stopPropagation();
+        if (checked) return;
         onClick();
       }}
     >
@@ -86,22 +91,25 @@ function IconBtn({
 
 export type TaskTreeRowHandlers = {
   onSelect: (path: string) => void;
+  /** Open task detail focused on the comment composer. */
+  onOpenComments?: (path: string) => void;
   onToggleStatus: (item: FlattenedTaskItem) => void;
   onToggleCollapse?: (path: string) => void;
   onEditTitle?: (item: TaskTreeItem) => void;
   onDueChange?: (path: string, due: string | null) => void;
+  /** Paths mid complete animation (show check before row disappears). */
+  completingPaths?: ReadonlySet<string>;
   editingId?: UniqueIdentifier | null;
-  editTitle?: string;
-  onEditTitleChange?: (v: string) => void;
-  onCommitEdit?: (item: TaskTreeItem, title: string) => void;
+  editDraft?: TasksComposerDraft | null;
+  editLists?: string[];
+  editLabelCatalog?: string[];
+  editTitleRef?: RefObject<HTMLInputElement | null>;
+  onEditDraftChange?: (patch: Partial<TasksComposerDraft>) => void;
+  onCommitEdit?: () => void;
   onCancelEdit?: () => void;
-  editInputRef?: RefObject<HTMLInputElement | null>;
 };
 
-const animateLayoutChanges: AnimateLayoutChanges = ({
-  isSorting,
-  wasDragging,
-}) => (isSorting || wasDragging ? false : true);
+const animateLayoutChanges: AnimateLayoutChanges = () => false;
 
 function TaskRowInner({
   item,
@@ -126,6 +134,24 @@ function TaskRowInner({
   const collapsed = !!item.collapsed;
   const editing =
     String(handlers.editingId) === String(item.id) && !clone && !ghost;
+  const completing = handlers.completingPaths?.has(item.path) ?? false;
+  const checked = isTask && (item.status === "done" || completing);
+
+  if (editing && handlers.editDraft) {
+    return (
+      <TasksComposer
+        variant="row"
+        draft={handlers.editDraft}
+        lists={handlers.editLists ?? []}
+        labelCatalog={handlers.editLabelCatalog ?? []}
+        titleRef={handlers.editTitleRef}
+        submitLabel="Save task"
+        onChange={(patch) => handlers.onEditDraftChange?.(patch)}
+        onSubmit={() => handlers.onCommitEdit?.()}
+        onCancel={() => handlers.onCancelEdit?.()}
+      />
+    );
+  }
 
   return (
     <div
@@ -139,7 +165,7 @@ function TaskRowInner({
         .join(" ")}
       style={{ ["--tasks-drop-line-inset" as string]: "54px" }}
       onClick={() => {
-        if (editing || clone || ghost) return;
+        if (clone || ghost) return;
         handlers.onSelect(item.path);
       }}
     >
@@ -170,63 +196,24 @@ function TaskRowInner({
         </span>
       ) : null}
       <CircleCheck
-        checked={item.status === "done"}
+        checked={checked}
         priority={isTask ? item.priority : null}
         onClick={() => handlers.onToggleStatus(item)}
       />
       <div className="tasks-row-body">
-        {editing ? (
-          <input
-            ref={handlers.editInputRef}
-            className="tasks-row-inline-edit"
-            value={handlers.editTitle ?? item.title}
-            onChange={(ev) => handlers.onEditTitleChange?.(ev.target.value)}
-            onClick={(ev) => ev.stopPropagation()}
-            onKeyDown={(ev) => {
-              if (ev.key === "Enter") {
-                ev.preventDefault();
-                handlers.onCommitEdit?.(
-                  item,
-                  handlers.editTitle ?? item.title,
-                );
-              }
-              if (ev.key === "Escape") handlers.onCancelEdit?.();
-            }}
-            onBlur={() =>
-              handlers.onCommitEdit?.(item, handlers.editTitle ?? item.title)
-            }
-            aria-label="Edit task title"
+        <span
+          className={checked ? "tasks-row-title is-done" : "tasks-row-title"}
+        >
+          {item.title}
+        </span>
+        {isTask ? (
+          <TaskMetaLine
+            due={item.due}
+            labels={item.labels}
+            subtaskDone={item.subtaskDone}
+            subtaskTotal={item.subtaskTotal}
+            commentCount={item.commentCount}
           />
-        ) : (
-          <span
-            className={
-              item.status === "done"
-                ? "tasks-row-title is-done"
-                : "tasks-row-title"
-            }
-          >
-            {item.title}
-          </span>
-        )}
-        {!editing &&
-        isTask &&
-        ((item.subtaskTotal ?? 0) > 0 ||
-          item.due ||
-          (item.commentCount ?? 0) > 0) ? (
-          <span className="tasks-row-meta">
-            {(item.subtaskTotal ?? 0) > 0 ? (
-              <span className="tasks-row-progress">
-                <TasksIconSubtasks />
-                {item.subtaskDone}/{item.subtaskTotal}
-              </span>
-            ) : null}
-            {item.due ? (
-              <span className="tasks-row-due">{item.due}</span>
-            ) : null}
-            {(item.commentCount ?? 0) > 0 ? (
-              <span className="tasks-row-comments">{item.commentCount}</span>
-            ) : null}
-          </span>
         ) : null}
       </div>
       {!clone ? (
@@ -248,7 +235,12 @@ function TaskRowInner({
               onChange={(due) => handlers.onDueChange?.(item.path, due)}
             />
           </span>
-          <IconBtn label="Comments" onClick={() => handlers.onSelect(item.path)}>
+          <IconBtn
+            label="Comments"
+            onClick={() =>
+              (handlers.onOpenComments ?? handlers.onSelect)(item.path)
+            }
+          >
             <TasksIconComment size={24} />
           </IconBtn>
           <IconBtn label="More" onClick={() => handlers.onSelect(item.path)}>
@@ -281,7 +273,7 @@ export function SortableTaskTreeRow({
   indentationWidth: number;
   /** Drop-line mode (dnd-kit `indicator` prop) — applied on the ghost while dragging. */
   indicator?: boolean;
-  /** When false, grip has no drag listeners (Today / Upcoming). */
+  /** When false, grip has no drag listeners (Today). */
   sortable?: boolean;
   handlers: TaskTreeRowHandlers;
   selected?: boolean;
@@ -294,12 +286,16 @@ export function SortableTaskTreeRow({
     setDraggableNodeRef,
     setDroppableNodeRef,
     transform,
-    transition,
-  } = useSortable({ id, animateLayoutChanges, disabled: !sortable });
+  } = useSortable({
+    id,
+    animateLayoutChanges,
+    disabled:
+      !sortable || String(handlers.editingId) === String(id),
+  });
 
   const style: CSSProperties = {
     transform: CSS.Translate.toString(transform),
-    transition,
+    // No CSS transition: drop must land in place without sliding via old slot.
   };
 
   const handleProps = sortable

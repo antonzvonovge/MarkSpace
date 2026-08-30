@@ -19,9 +19,12 @@ function parseYmd(value: string | null | undefined): Date | undefined {
   return new Date(y!, m! - 1, d!);
 }
 
-function formatDisplay(ymd: string | null | undefined): string {
+function formatDisplay(
+  ymd: string | null | undefined,
+  emptyLabel: string,
+): string {
   const d = parseYmd(ymd);
-  if (!d) return "Due";
+  if (!d) return emptyLabel;
   return d.toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
@@ -40,6 +43,8 @@ type Props = {
   onChange: (ymd: string | null) => void;
   /** Compact chip / field / icon-only (task row hover). */
   variant?: "chip" | "field" | "icon";
+  /** Label shown when no date is set (default "Due"). */
+  emptyLabel?: string;
   "aria-label"?: string;
 };
 
@@ -47,6 +52,7 @@ export function TasksDateField({
   value,
   onChange,
   variant = "field",
+  emptyLabel = "Due",
   "aria-label": ariaLabel = "Due date",
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -62,7 +68,7 @@ export function TasksDateField({
     const r = el.getBoundingClientRect();
     const placed = placeAnchoredMenu(r, {
       gap: 6,
-      width: 308,
+      width: 400,
       maxHeight: 420,
       minHeight: 280,
       prefer: "below",
@@ -147,6 +153,16 @@ export function TasksDateField({
               zIndex: 10050,
             }}
           >
+            <DayPicker
+              className="tasks-daypicker"
+              mode="single"
+              animate
+              month={month}
+              onMonthChange={setMonth}
+              selected={selected}
+              onSelect={pick}
+              showOutsideDays
+            />
             <div className="tasks-date-presets">
               {presets.map((p) => (
                 <button
@@ -170,16 +186,6 @@ export function TasksDateField({
                 </button>
               ))}
             </div>
-            <DayPicker
-              className="tasks-daypicker"
-              mode="single"
-              animate
-              month={month}
-              onMonthChange={setMonth}
-              selected={selected}
-              onSelect={pick}
-              showOutsideDays
-            />
           </div>,
           document.body,
         )
@@ -206,7 +212,7 @@ export function TasksDateField({
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="dialog"
-        title={formatDisplay(value)}
+        title={formatDisplay(value, emptyLabel)}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
@@ -216,32 +222,34 @@ export function TasksDateField({
           <TasksIconSchedule size={24} />
         ) : (
           <>
-            <svg
-              className="tasks-date-trigger-icon"
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-            >
-              <rect
-                x="2.5"
-                y="3.25"
-                width="11"
-                height="10.25"
-                rx="1.4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.3"
-              />
-              <path
-                d="M5.25 2.5v1.8M10.75 2.5v1.8M2.75 6.4h10.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span>{formatDisplay(value)}</span>
+            {value || emptyLabel !== "+" ? (
+              <svg
+                className="tasks-date-trigger-icon"
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+              >
+                <rect
+                  x="2.5"
+                  y="3.25"
+                  width="11"
+                  height="10.25"
+                  rx="1.4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                />
+                <path
+                  d="M5.25 2.5v1.8M10.75 2.5v1.8M2.75 6.4h10.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+            ) : null}
+            <span>{formatDisplay(value, emptyLabel)}</span>
           </>
         )}
       </button>

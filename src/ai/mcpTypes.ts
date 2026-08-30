@@ -50,6 +50,7 @@ export const MCP_SPECIALIST_OPTIONS: { value: SpecialistKind; label: string }[] 
     { value: "habits", label: "Habits" },
     { value: "courses", label: "Courses" },
     { value: "media", label: "Media" },
+    { value: "tasks", label: "Tasks" },
     { value: "terminal", label: "Terminal" },
   ];
 

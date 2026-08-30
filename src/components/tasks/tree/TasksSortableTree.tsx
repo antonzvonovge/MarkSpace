@@ -6,14 +6,12 @@ import {
   MeasuringStrategy,
   PointerSensor,
   closestCenter,
-  defaultDropAnimation,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
-  type DropAnimation,
   type Modifier,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
@@ -22,7 +20,6 @@ import {
   arrayMove,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import type { TaskIndexEntry } from "../../../lib/taskNotes";
 import type { TreeNode } from "../../../lib/vaultApi";
 import { taskEntriesToTreeItems } from "./buildTreeItems";
@@ -39,6 +36,7 @@ import {
   getChildCount,
   getProjection,
   removeChildrenOf,
+  setProperty,
 } from "./utilities";
 
 const measuring = {
@@ -53,29 +51,6 @@ const INDICATOR = true;
 const INDENTATION_WIDTH = 28;
 /** Matches `--tasks-checkbox-inset` — overlay card starts at the checkbox column. */
 const CHECKBOX_INSET = 54;
-
-const dropAnimationConfig: DropAnimation = {
-  keyframes({ transform }) {
-    return [
-      { opacity: 1, transform: CSS.Transform.toString(transform.initial) },
-      {
-        opacity: 0,
-        transform: CSS.Transform.toString({
-          ...transform.final,
-          x: transform.final.x + 5,
-          y: transform.final.y + 5,
-        }),
-      },
-    ];
-  },
-  easing: "ease-out",
-  sideEffects({ active }) {
-    active.node.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: defaultDropAnimation.duration,
-      easing: defaultDropAnimation.easing,
-    });
-  },
-};
 
 /** Shift the drag card so its left edge lines up with the row checkbox. */
 const alignOverlayToCheckbox: Modifier = ({ transform }) => ({
@@ -100,7 +75,8 @@ export function TasksSortableTree({
   vaultTree: TreeNode | null | undefined;
   handlers: TaskTreeRowHandlers;
   onExpandPath?: (path: string) => void;
-  onPersisted?: () => void;
+  /** Called after vault write; may return a Promise — kept under persisting lock until done. */
+  onPersisted?: () => void | Promise<void>;
 }): ReactNode {
   const [items, setItems] = useState<TaskTreeItems>(() =>
     taskEntriesToTreeItems(entries, expanded),
@@ -182,17 +158,25 @@ export function TasksSortableTree({
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     const proj = projected;
     const fullFlat = flattenTree(items);
-    resetState();
-    if (!sortable || !proj || !over) {
+    // Indicator ghost is 8px — pointer can leave droppables on release.
+    // Fall back to last onDragOver id (stock uses event.over only).
+    const resolvedOverId = over?.id ?? overId;
+    if (!sortable || !proj || resolvedOverId == null) {
+      resetState();
       setItems(taskEntriesToTreeItems(entries, expanded));
       return;
     }
 
     const activeIndex = fullFlat.findIndex((i) => i.id === active.id);
-    const overIndex = fullFlat.findIndex((i) => i.id === over.id);
-    if (activeIndex < 0 || overIndex < 0) return;
+    const overIndex = fullFlat.findIndex((i) => i.id === resolvedOverId);
+    if (activeIndex < 0 || overIndex < 0) {
+      resetState();
+      setItems(taskEntriesToTreeItems(entries, expanded));
+      return;
+    }
 
-    // Optimistic tree rebuild — paint before any vault I/O.
+    // Optimistic tree first, then clear drag state — one paint at the destination
+    // (no dropAnimation fly-back to the old slot).
     const cloned = structuredClone(fullFlat);
     const moved = cloned[activeIndex]!;
     cloned[activeIndex] = {
@@ -200,10 +184,9 @@ export function TasksSortableTree({
       depth: proj.depth,
       parentId: proj.parentId,
     };
-    const newTree = buildTree(arrayMove(cloned, activeIndex, overIndex));
-    setItems(newTree);
-
+    let newTree = buildTree(arrayMove(cloned, activeIndex, overIndex));
     if (proj.parentId != null) {
+      newTree = setProperty(newTree, proj.parentId, "collapsed", () => false);
       const parentMeta = parseTaskTreeId(proj.parentId);
       if (parentMeta?.kind === "task") onExpandPath?.(parentMeta.path);
       else {
@@ -211,24 +194,27 @@ export function TasksSortableTree({
         if (owner?.path) onExpandPath?.(owner.path);
       }
     }
-
     persisting.current = true;
+    setItems(newTree);
+    resetState();
+
     void (async () => {
       try {
         const result = await persistTaskTreeDrag({
           activeId: active.id,
-          overId: over.id,
+          overId: resolvedOverId,
           projected: proj,
           fullFlat,
           tree: vaultTree,
           index: entries,
         });
         if (result?.expandPath) onExpandPath?.(result.expandPath);
+        await onPersisted?.();
       } catch (err) {
         console.error("Task tree drag failed", err);
+        setItems(taskEntriesToTreeItems(entries, expanded));
       } finally {
         persisting.current = false;
-        onPersisted?.();
       }
     })();
   };
@@ -280,7 +266,7 @@ export function TasksSortableTree({
       </SortableContext>
       {createPortal(
         <DragOverlay
-          dropAnimation={dropAnimationConfig}
+          dropAnimation={null}
           modifiers={INDICATOR ? [alignOverlayToCheckbox] : undefined}
         >
           {activeId && activeItem ? (

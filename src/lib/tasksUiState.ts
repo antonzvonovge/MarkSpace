@@ -6,8 +6,9 @@ import { emptyTasksFilters } from "./taskNotes";
 const COLLAPSED_KEY = "markspace-tasks-section-collapsed-v1";
 const VIEW_KEY = "markspace-tasks-view-v1";
 const FILTERS_KEY = "markspace-tasks-filters-v1";
+const EXPANDED_KEY = "markspace-tasks-expanded-v1";
 
-const VIEWS: TasksViewId[] = ["inbox", "today", "upcoming", "all", "filters"];
+const VIEWS: TasksViewId[] = ["inbox", "today", "all", "filters"];
 
 export function loadTasksSectionCollapsed(): boolean {
   try {
@@ -32,7 +33,8 @@ export function loadTasksView(): TasksViewId {
   } catch {
     // ignore
   }
-  return "today";
+  // Inbox shows undated tasks; Today only shows items with due=today.
+  return "inbox";
 }
 
 export function saveTasksView(view: TasksViewId): void {
@@ -75,6 +77,29 @@ export function loadTasksFilters(): TasksFilters {
 export function saveTasksFilters(filters: TasksFilters): void {
   try {
     localStorage.setItem(FILTERS_KEY, JSON.stringify(filters));
+  } catch {
+    // ignore
+  }
+}
+
+/** Paths of task notes that are expanded (children visible). */
+export function loadTasksExpandedPaths(): string[] {
+  try {
+    const raw = localStorage.getItem(EXPANDED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (p): p is string => typeof p === "string" && p.length > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveTasksExpandedPaths(paths: readonly string[]): void {
+  try {
+    localStorage.setItem(EXPANDED_KEY, JSON.stringify([...paths]));
   } catch {
     // ignore
   }

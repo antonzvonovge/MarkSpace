@@ -17,6 +17,7 @@ export type TaskTreeItem = {
   status: TaskStatus;
   priority?: TaskPriority | null;
   due?: string | null;
+  labels?: string[];
   commentCount?: number;
   subtaskDone?: number;
   subtaskTotal?: number;

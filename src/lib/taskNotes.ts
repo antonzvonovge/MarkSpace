@@ -23,6 +23,8 @@ import {
 
 export const TASKS_ROOT = TASKS_FOLDER;
 export const TASKS_INBOX = `${TASKS_FOLDER}/Inbox`;
+/** Per-list archive folder name: `Tasks/<list>/completed/`. */
+export const TASKS_COMPLETED_DIR = "completed";
 
 export type TaskStatus = "open" | "done";
 export type TaskPriority = 1 | 2 | 3 | 4;
@@ -92,7 +94,7 @@ export type TaskIndexEntry = {
   description: string;
 };
 
-export type TasksViewId = "inbox" | "today" | "upcoming" | "all" | "filters";
+export type TasksViewId = "inbox" | "today" | "all" | "filters";
 
 export type TasksFilters = {
   query: string;
@@ -149,14 +151,32 @@ export function isTaskNotePath(path: string): boolean {
   return true;
 }
 
-/** List folder name under Tasks (first segment after Tasks/), or `Inbox` default context. */
+/** List folder name under Tasks (first segment after Tasks/), or empty. */
 export function taskListFromPath(path: string): string {
   const p = path.replace(/^\/+|\/+$/g, "");
   if (!p.startsWith(`${TASKS_ROOT}/`)) return "";
   const rest = p.slice(TASKS_ROOT.length + 1);
   const parts = rest.split("/").filter(Boolean);
   if (parts.length <= 1) return "";
-  return parts[0]!;
+  const list = parts[0]!;
+  // Reserved: Tasks/completed/… is not a list.
+  if (list === TASKS_COMPLETED_DIR) return "";
+  return list;
+}
+
+/** True when the note lives under `Tasks/<list>/completed/`. */
+export function isTaskInCompleted(path: string): boolean {
+  const p = path.replace(/^\/+|\/+$/g, "");
+  if (!p.startsWith(`${TASKS_ROOT}/`)) return false;
+  const parts = p.slice(TASKS_ROOT.length + 1).split("/").filter(Boolean);
+  // Tasks/<list>/completed/<file.md>
+  return parts.length >= 3 && parts[1] === TASKS_COMPLETED_DIR;
+}
+
+/** Archive folder for a list: `Tasks/<list>/completed`. */
+export function taskCompletedFolder(list: string): string {
+  const l = (list || "Inbox").replace(/^\/+|\/+$/g, "") || "Inbox";
+  return joinPath(joinPath(TASKS_ROOT, l), TASKS_COMPLETED_DIR);
 }
 
 export function localDateYmd(d: Date = new Date()): string {
@@ -164,6 +184,25 @@ export function localDateYmd(d: Date = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** Short due label for task rows: Today / Tomorrow / localized date. */
+export function formatTaskDueLabel(
+  ymd: string | null | undefined,
+  today: string = localDateYmd(),
+): string | null {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  if (ymd === today) return "Today";
+  const [ty, tm, td] = today.split("-").map(Number);
+  const tomorrow = new Date(ty!, tm! - 1, td!);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (ymd === localDateYmd(tomorrow)) return "Tomorrow";
+  const [y, m, d] = ymd.split("-").map(Number);
+  const date = new Date(y!, m! - 1, d!);
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export function localDateTimeHm(d: Date = new Date()): string {
@@ -539,10 +578,14 @@ export function collectTaskNotePaths(
   const walk = (node: TreeNode) => {
     for (const child of node.children ?? []) {
       if (child.isDir) {
+        // Skip per-list archives — active index stays O(open tasks).
+        if (child.name === TASKS_COMPLETED_DIR) continue;
         walk(child);
         continue;
       }
-      if (isTaskNotePath(child.path)) out.push(child.path);
+      if (isTaskNotePath(child.path) && !isTaskInCompleted(child.path)) {
+        out.push(child.path);
+      }
     }
   };
   walk(root);
@@ -595,7 +638,7 @@ export function collectTaskLists(tree: TreeNode | null | undefined): string[] {
   const root = findNode(tree, TASKS_ROOT);
   if (!root?.isDir) return [];
   return (root.children ?? [])
-    .filter((c) => c.isDir)
+    .filter((c) => c.isDir && c.name !== TASKS_COMPLETED_DIR)
     .map((c) => c.name)
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
@@ -639,9 +682,6 @@ export function filterTaskIndex(
     } else if (view === "today") {
       if (e.status === "done") return false;
       if (e.due !== today) return false;
-    } else if (view === "upcoming") {
-      if (e.status === "done") return false;
-      if (!e.due || e.due <= today) return false;
     }
 
     if (view === "filters" || view === "all") {
@@ -658,21 +698,33 @@ export function filterTaskIndex(
       return false;
     }
 
-    if (list && e.list !== list) return false;
-    if (filters.priority !== "" && e.priority !== filters.priority) return false;
-    if (label && !e.labels.some((g) => g.toLowerCase() === label)) return false;
-    if (q) {
-      const hay = [e.title, e.list, ...e.labels, e.due ?? ""]
-        .join("\n")
-        .toLowerCase();
-      if (!hay.includes(q)) return false;
+    // Named-list filter only for All / Filters. Smart views ignore a sticky
+    // `filters.list` left over from opening a project list in the sidebar.
+    if ((view === "all" || view === "filters") && list && e.list !== list) {
+      return false;
+    }
+    // Priority / label / query only on Filters — otherwise a sticky Filters
+    // selection empties Inbox / Today / lists.
+    if (view === "filters") {
+      if (filters.priority !== "" && e.priority !== filters.priority) {
+        return false;
+      }
+      if (label && !e.labels.some((g) => g.toLowerCase() === label)) {
+        return false;
+      }
+      if (q) {
+        const hay = [e.title, e.list, ...e.labels, e.due ?? ""]
+          .join("\n")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
     }
     return true;
   });
 
-  // Today / Upcoming: smart sort. Inbox / lists / All / Filters: keep vault
+  // Today: smart sort. Inbox / lists / All / Filters: keep vault
   // tree order so drag-reorder (order.json) is visible.
-  if (view === "today" || view === "upcoming") {
+  if (view === "today") {
     list_ = [...list_].sort(compareTasks);
   }
   return list_;
@@ -688,6 +740,28 @@ export async function ensureTasksLayout(): Promise<void> {
 }
 
 /**
+ * Create a new list folder under Tasks/ (e.g. `Work`).
+ * Returns the list name used on disk.
+ */
+export async function createTaskList(name: string): Promise<string> {
+  const cleaned = name
+    .trim()
+    .replace(/[/\\]/g, "-")
+    .replace(/\s+/g, " ");
+  if (!cleaned) throw new Error("List name is required");
+  if (/^inbox$/i.test(cleaned)) {
+    throw new Error("Inbox is a reserved list");
+  }
+  if (cleaned.toLowerCase() === TASKS_COMPLETED_DIR) {
+    throw new Error("completed is a reserved folder name");
+  }
+  await ensureTasksLayout();
+  const folder = joinPath(TASKS_ROOT, cleaned);
+  await ensureFolder(folder);
+  return cleaned;
+}
+
+/**
  * Create a new task note under `listFolder` (relative under Tasks, e.g. `Inbox` or `Work`).
  * Returns the vault-relative path. `parent` is the parent task UUID (not a path).
  */
@@ -700,6 +774,9 @@ export async function createTaskNote(opts: {
   /** Parent task UUID. */
   parent?: string | null;
   id?: string;
+  description?: string;
+  /** Comment bodies (timestamps default to now). */
+  comments?: Array<string | { at?: string; body: string }>;
 }): Promise<string> {
   await ensureTasksLayout();
   const list = (opts.list ?? "Inbox").replace(/^\/+|\/+$/g, "") || "Inbox";
@@ -725,6 +802,18 @@ export async function createTaskNote(opts: {
   const id = opts.id && isTaskUuid(opts.id) ? opts.id : newTaskId();
   const parent =
     opts.parent && isTaskUuid(opts.parent) ? opts.parent : null;
+  const nowHm = localDateTimeHm();
+  const comments = (opts.comments ?? [])
+    .map((c) => {
+      if (typeof c === "string") {
+        const body = c.trim();
+        return body ? { at: nowHm, body } : null;
+      }
+      const body = (c.body ?? "").trim();
+      if (!body) return null;
+      return { at: (c.at ?? "").trim() || nowHm, body };
+    })
+    .filter((c): c is { at: string; body: string } => c != null);
   const note: TaskNote = {
     path,
     title: opts.title.trim() || "Untitled",
@@ -737,9 +826,9 @@ export async function createTaskNote(opts: {
       id,
       parent,
     },
-    description: "",
+    description: (opts.description ?? "").trim(),
     subtasks: [],
-    comments: [],
+    comments,
   };
   await writeNote(path, serializeTaskNote(note));
   return path;
@@ -754,7 +843,27 @@ export async function saveTaskNote(note: TaskNote): Promise<void> {
   await writeNote(note.path, serializeTaskNote(note));
 }
 
-/** Toggle done/open and persist. */
+/**
+ * Move a task note into another list folder under Tasks/ (e.g. Inbox → Work).
+ * Returns the new path (unchanged when already in that list's active folder).
+ * Tasks in `completed/` move to the target list root (not into its archive).
+ */
+export async function moveTaskToList(
+  path: string,
+  list: string,
+): Promise<string> {
+  const targetList =
+    (list ?? "Inbox").replace(/^\/+|\/+$/g, "") || "Inbox";
+  const current = taskListFromPath(path) || "Inbox";
+  const inCompleted = isTaskInCompleted(path);
+  if (current === targetList && !inCompleted) return path;
+  const folder = joinPath(TASKS_ROOT, targetList);
+  await ensureFolder(folder);
+  // Large index = append (see vault::move_entry).
+  return moveEntry(path, folder, 1_000_000);
+}
+
+/** Toggle done/open and persist (file stays in place). Prefer `completeTask` to archive. */
 export async function setTaskStatus(
   path: string,
   status: TaskStatus,
@@ -763,6 +872,76 @@ export async function setTaskStatus(
   const next = setTaskAttrs(md, { status });
   await writeNote(path, next);
   return parseTaskNote(path, next);
+}
+
+/**
+ * Mark one task done and move it into `Tasks/<list>/completed/`.
+ * Idempotent if already archived. Does not reopen / uncomplete.
+ */
+async function completeTaskFile(path: string): Promise<string> {
+  const p = path.replace(/^\/+|\/+$/g, "");
+  const md = await readNote(p);
+  const withDone = setTaskAttrs(md, { status: "done" });
+  await writeNote(p, withDone);
+  if (isTaskInCompleted(p)) return p;
+  const list = taskListFromPath(p) || "Inbox";
+  const folder = taskCompletedFolder(list);
+  await ensureFolder(folder);
+  return moveEntry(p, folder, 1_000_000);
+}
+
+/**
+ * Mark a task done and archive it under `Tasks/<list>/completed/`.
+ * When the task has file children (`parent` = its id), those are completed first.
+ * Returns all final paths (children then parent).
+ */
+export async function completeTask(
+  path: string,
+  opts?: {
+    tree?: TreeNode | null;
+    index?: readonly TaskIndexEntry[];
+  },
+): Promise<string[]> {
+  const p = path.replace(/^\/+|\/+$/g, "");
+  const note = await loadTaskNote(p);
+  const changed: string[] = [];
+
+  let index = opts?.index ? [...opts.index] : null;
+  if (!index && opts?.tree != null) {
+    index = await loadTaskIndex(opts.tree);
+  }
+
+  if (note.attrs.id && index) {
+    const kids = index.filter(
+      (e) =>
+        e.parent === note.attrs.id &&
+        e.path !== p &&
+        !isTaskInCompleted(e.path),
+    );
+    for (const kid of kids) {
+      changed.push(await completeTaskFile(kid.path));
+    }
+  }
+
+  changed.push(await completeTaskFile(p));
+  return changed;
+}
+
+/** Append a comment block under `## Comments`. */
+export async function addTaskComment(
+  path: string,
+  body: string,
+  at: string = localDateTimeHm(),
+): Promise<TaskNote> {
+  const text = body.trim();
+  if (!text) throw new Error("Comment body is empty");
+  const note = await loadTaskNote(path);
+  const next: TaskNote = {
+    ...note,
+    comments: [...note.comments, { at, body: text }],
+  };
+  await saveTaskNote(next);
+  return next;
 }
 
 export function parentFolderOfTask(path: string): string {
@@ -1001,7 +1180,7 @@ export async function promoteSubtaskToTask(
     list,
   });
   if (item.checked) {
-    await setTaskStatus(created, "done");
+    await completeTask(created);
   }
   const nextSubs = note.subtasks.filter((_, i) => i !== subIndex);
   await saveTaskNote({ ...note, subtasks: nextSubs });
