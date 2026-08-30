@@ -89,6 +89,10 @@ MARKSPACE_GITHUB_CLIENT_ID=Iv1.xxxxxxxx npm run tauri build
 
 Without this, users authenticate with a Personal Access Token.
 
+## MarkSpace Tasks (Android)
+
+Native Kotlin / Jetpack Compose companion branded **MarkSpace Tasks** — vault `Tasks/` notes and GitHub sync. See [`android-tasks/README.md`](android-tasks/README.md).
+
 ## Linking
 
 

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher / system label -->
+    <string name="app_name">MarkSpace Tasks</string>
+    <!-- Short label for constrained launchers -->
+    <string name="app_name_short">Tasks</string>
+    <string name="brand_tagline">Tasks for your MarkSpace vault</string>
+    <string name="onboarding_title">MarkSpace Tasks</string>
+    <string name="onboarding_subtitle">Connect the same GitHub vault as MarkSpace desktop (Settings → Sync).</string>
+    <string name="sync_title">MarkSpace Tasks Sync</string>
+</resources>

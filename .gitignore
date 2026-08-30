@@ -33,3 +33,8 @@ src-tauri/binaries/markspace-embeddings-*
 # ContextGem Chrome extension build output
 extensions/context-gem/dist/
 extensions/context-gem/node_modules/
+
+# Android companion
+android-tasks/local.properties
+android-tasks/**/build/
+android-tasks/.gradle/
