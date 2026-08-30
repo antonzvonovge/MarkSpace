@@ -29,4 +29,4 @@ Decide open direction **when building the control**, using viewport space — ne
 1. Portal + fixed position (or absolute only when the parent never clips and sits at a viewport edge).
 2. `placeAnchoredMenu` / `placeChatComposerMenu` for side + `maxHeight`.
 3. Neutral menu CSS — no accent fill or accent selected text.
-4. Leading icons: Flat Color (`react-icons/fc`) via `menuIcons.tsx` / `treeIcons.tsx` — see `menu-icons.mdc`.
+4. Icons: see `menu-icons.mdc` / skill `vscode-context-menu` (tree context = text-first; create/dropdowns may use Flat Color).

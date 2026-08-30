@@ -29,6 +29,7 @@ import {
   MediaCatalogView,
   mediaCatalogFolderForPath,
 } from "./components/MediaCatalogView";
+import { TasksView } from "./components/TasksView";
 import { TagGraphView } from "./components/graph/TagGraphView";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { PlainSourceEditor } from "./editor/PlainSourceEditor";
@@ -77,7 +78,7 @@ import { usePrefsStore } from "./store/prefsStore";
 import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
 import { useChatStore } from "./store/chatStore";
-import { isFileTab, isGraphTab, isSettingsTab, useVaultStore } from "./store/vaultStore";
+import { isFileTab, isGraphTab, isSettingsTab, isTasksTab, useVaultStore } from "./store/vaultStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import { useWarmLiveMarkdownPaths } from "./hooks/useWarmLiveMarkdownPaths";
 import { getEmbeddingsIndexStatus } from "./lib/vaultApi";
@@ -97,7 +98,7 @@ const DocumentTab = memo(function DocumentTab({
   onCloseSettings,
 }: {
   path: string;
-  kind: "settings" | "graph" | "file";
+  kind: "settings" | "graph" | "tasks" | "file";
   isActive: boolean;
   /** LRU keep-alive for Live markdown (BlockNote). */
   keepLiveMounted: boolean;
@@ -149,6 +150,20 @@ const DocumentTab = memo(function DocumentTab({
         {/* Keep mounted: WebGL survives visibility:hidden,
             but is lost under display:none. */}
         <TagGraphView />
+      </div>
+    );
+  }
+
+  if (kind === "tasks") {
+    return (
+      <div
+        className={
+          isActive ? "document-instance is-active" : "document-instance"
+        }
+        aria-hidden={!isActive}
+        inert={!isActive}
+      >
+        <TasksView />
       </div>
     );
   }
@@ -412,7 +427,9 @@ const MainPane = memo(function MainPane({
                       ? ("settings" as const)
                       : isGraphTab(tab)
                         ? ("graph" as const)
-                        : ("file" as const);
+                        : isTasksTab(tab)
+                          ? ("tasks" as const)
+                          : ("file" as const);
                     return (
                       <DocumentTab
                         key={tab.path}

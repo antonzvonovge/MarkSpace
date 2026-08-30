@@ -1,0 +1,10 @@
+---
+description: Task notes format under Tasks/ (desktop Tasks panel)
+globs: docs/task-notes-format.md, src/lib/taskNotes.ts, src/lib/taskNotes.test.ts, src/components/TasksView.tsx, src/components/TasksSection.tsx
+---
+
+# Task notes format
+
+Spec: [`docs/task-notes-format.md`](docs/task-notes-format.md). Core rules live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
+
+If you change on-disk syntax, parse/serialize, or the Tasks panel behavior for task notes, **update `docs/task-notes-format.md` in the same change** (including the core-rules block when agent-critical).

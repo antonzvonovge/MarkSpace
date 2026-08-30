@@ -31,6 +31,7 @@ import {
   isSkillsFolder,
   isIncomingFolder,
   isIncomingPath,
+  isTasksFolder,
   INCOMING_FOLDER,
   isVaultDocumentPath,
   isVaultProjectFolder,
@@ -71,6 +72,7 @@ import {
 } from "./AppDialog";
 import { NewFilmDialog } from "./MovieDialogs";
 import { CommentsInboxSection } from "./CommentsInboxSection";
+import { TasksSection } from "./TasksSection";
 import { IncomingSection } from "./IncomingSection";
 import { buildUnresolvedCommentCounts } from "../lib/commentCounts";
 import {
@@ -86,7 +88,6 @@ import {
   FcPackage,
   FcPlanner,
   FcClapperboard,
-  FcPlus,
   FcReading,
   FcReadingEbook,
   FcWorkflow,
@@ -112,33 +113,13 @@ import {
   pathsFromClipboardData,
 } from "../lib/osClipboardFiles";
 import {
-  CollectionPlusIcon,
   DiagramIcon,
-  DictionaryIcon,
   FavoritesSectionIcon,
-  HabitTrackerIcon,
   CourseTrackerIcon,
-  LinksIcon,
   IncomingSectionIcon,
   PdfIcon,
   VaultSectionIcon,
 } from "./treeIcons";
-import {
-  MenuCopyAbsolutePathIcon,
-  MenuCopyPathIcon,
-  MenuDownloadIcon,
-  MenuFavoriteIcon,
-  MenuIeltsListeningIcon,
-  MenuIeltsReadingIcon,
-  MenuIeltsSpeakingIcon,
-  MenuIeltsWritingIcon,
-  MenuOpenChatIcon,
-  MenuPropertiesIcon,
-  MenuRenameIcon,
-  MenuRevealIcon,
-  MenuTranslateIcon,
-  MenuTrashIcon,
-} from "./menuIcons";
 import type { TreeCreateKind } from "./TreeToolbar";
 import {
   SectionCollapseButton,
@@ -397,6 +378,7 @@ function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
     if (node.isDir) {
       for (const child of children) {
         if (isIncomingFolder(child.path, child.isDir)) continue;
+        if (isTasksFolder(child.path, child.isDir)) continue;
         walk(child, id);
       }
     }
@@ -601,10 +583,7 @@ function TreeContextMenu({
           onToggleFavorite();
         }}
       >
-        <MenuFavoriteIcon filled={menu.isFavorite} />
-        <span>
-          {menu.isFavorite ? "Remove from favorites" : "Add to favorites"}
-        </span>
+        {menu.isFavorite ? "Remove from favorites" : "Add to favorites"}
       </button>,
     );
   }
@@ -622,8 +601,7 @@ function TreeContextMenu({
           onRename();
         }}
       >
-        <MenuRenameIcon />
-        <span>Rename</span>
+        Rename
       </button>,
     );
   }
@@ -640,12 +618,7 @@ function TreeContextMenu({
           onProjectProperties();
         }}
       >
-        <MenuPropertiesIcon />
-        <span>
-          {showProjectProperties
-            ? "Project properties…"
-            : "Folder properties…"}
-        </span>
+        {showProjectProperties ? "Project properties…" : "Folder properties…"}
       </button>,
     );
   }
@@ -667,36 +640,19 @@ function TreeContextMenu({
             setIeltsOpen((v) => !v);
           }}
         >
-          <FcReading size={16} />
-          <span>IELTS Trainer</span>
+          IELTS Trainer
           <MdChevronRight size={16} className="tree-context-chevron" />
         </button>
         {ieltsOpen ? (
           <div className="tree-context-submenu" role="menu">
             {(
               [
-                {
-                  id: "reading" as const,
-                  label: "Reading",
-                  Icon: MenuIeltsReadingIcon,
-                },
-                {
-                  id: "writing" as const,
-                  label: "Writing",
-                  Icon: MenuIeltsWritingIcon,
-                },
-                {
-                  id: "listening" as const,
-                  label: "Listening",
-                  Icon: MenuIeltsListeningIcon,
-                },
-                {
-                  id: "speaking" as const,
-                  label: "Speaking",
-                  Icon: MenuIeltsSpeakingIcon,
-                },
+                { id: "reading" as const, label: "Reading" },
+                { id: "writing" as const, label: "Writing" },
+                { id: "listening" as const, label: "Listening" },
+                { id: "speaking" as const, label: "Speaking" },
               ] as const
-            ).map(({ id, label, Icon }) => (
+            ).map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
@@ -707,8 +663,7 @@ function TreeContextMenu({
                   onIeltsTrainer(id);
                 }}
               >
-                <Icon />
-                <span>{label}</span>
+                {label}
               </button>
             ))}
           </div>
@@ -734,8 +689,7 @@ function TreeContextMenu({
               setNewItemOpen((v) => !v);
             }}
           >
-            <FcPlus size={16} />
-            <span>New item</span>
+            New item
             <MdChevronRight size={16} className="tree-context-chevron" />
           </button>
           {newItemOpen ? (
@@ -750,8 +704,7 @@ function TreeContextMenu({
                     onNewSkill();
                   }}
                 >
-                  <FcWorkflow size={16} />
-                  <span>New skill…</span>
+                  New skill…
                 </button>
               ) : null}
               {showStandardCreate ? (
@@ -766,8 +719,7 @@ function TreeContextMenu({
                         onNewDailyNote();
                       }}
                     >
-                      <FcPlanner size={16} />
-                      <span>New daily note</span>
+                      New daily note
                     </button>
                   ) : isMovies ? (
                     <button
@@ -779,8 +731,7 @@ function TreeContextMenu({
                         onNewFilm();
                       }}
                     >
-                      <FcClapperboard size={16} />
-                      <span>New film…</span>
+                      New film…
                     </button>
                   ) : (
                     <button
@@ -792,8 +743,7 @@ function TreeContextMenu({
                         onNewNote();
                       }}
                     >
-                      <FcDocument size={16} />
-                      <span>New note</span>
+                      New note
                     </button>
                   )}
                   <button
@@ -805,8 +755,7 @@ function TreeContextMenu({
                       onNewDiagram();
                     }}
                   >
-                    <DiagramIcon size={16} />
-                    <span>New diagram</span>
+                    New diagram
                   </button>
                   <button
                     type="button"
@@ -817,8 +766,7 @@ function TreeContextMenu({
                       onNewLinks();
                     }}
                   >
-                    <LinksIcon size={16} />
-                    <span>New links</span>
+                    New links
                   </button>
                   <button
                     type="button"
@@ -829,8 +777,7 @@ function TreeContextMenu({
                       onNewDictionary();
                     }}
                   >
-                    <DictionaryIcon size={16} />
-                    <span>New dictionary</span>
+                    New dictionary
                   </button>
                   <button
                     type="button"
@@ -841,8 +788,7 @@ function TreeContextMenu({
                       onNewHabitTracker();
                     }}
                   >
-                    <HabitTrackerIcon size={16} />
-                    <span>New habit tracker</span>
+                    New habit tracker
                   </button>
                   <button
                     type="button"
@@ -853,8 +799,7 @@ function TreeContextMenu({
                       onNewCourse();
                     }}
                   >
-                    <CourseTrackerIcon size={16} />
-                    <span>New course</span>
+                    New course
                   </button>
                 </>
               ) : null}
@@ -871,8 +816,7 @@ function TreeContextMenu({
               onNewFolder();
             }}
           >
-            <CollectionPlusIcon size={16} />
-            <span>New folder</span>
+            New folder
           </button>
         ) : null}
         {showTurnIntoFolder ? (
@@ -885,8 +829,7 @@ function TreeContextMenu({
               onTurnIntoFolder();
             }}
           >
-            <CollectionPlusIcon size={16} />
-            <span>Turn into folder</span>
+            Turn into folder
           </button>
         ) : null}
       </div>,
@@ -905,8 +848,7 @@ function TreeContextMenu({
             onReveal();
           }}
         >
-          <MenuRevealIcon />
-          <span>Reveal in file manager</span>
+          Reveal in file manager
         </button>
         {showCopyPath ? (
           <>
@@ -919,8 +861,7 @@ function TreeContextMenu({
                 onCopyPath();
               }}
             >
-              <MenuCopyPathIcon />
-              <span>Copy path</span>
+              Copy path
             </button>
             <button
               type="button"
@@ -931,8 +872,7 @@ function TreeContextMenu({
                 onCopyAbsolutePath();
               }}
             >
-              <MenuCopyAbsolutePathIcon />
-              <span>Copy absolute path</span>
+              Copy absolute path
             </button>
           </>
         ) : null}
@@ -953,8 +893,7 @@ function TreeContextMenu({
               onOpenChat();
             }}
           >
-            <MenuOpenChatIcon />
-            <span>Open chat</span>
+            Open chat
           </button>
         ) : null}
         {showDownloadArticle ? (
@@ -967,8 +906,7 @@ function TreeContextMenu({
               onDownloadArticle();
             }}
           >
-            <MenuDownloadIcon />
-            <span>Download article…</span>
+            Download article…
           </button>
         ) : null}
         {showTranslate ? (
@@ -982,8 +920,7 @@ function TreeContextMenu({
                 onTranslate();
               }}
             >
-              <MenuTranslateIcon />
-              <span>{translateLabel}</span>
+              {translateLabel}
             </button>
             <button
               type="button"
@@ -994,8 +931,7 @@ function TreeContextMenu({
                 onTranslateReplace();
               }}
             >
-              <MenuTranslateIcon />
-              <span>{translateReplaceLabel}</span>
+              {translateReplaceLabel}
             </button>
           </>
         ) : null}
@@ -1015,8 +951,7 @@ function TreeContextMenu({
           onDelete();
         }}
       >
-        <MenuTrashIcon />
-        <span>Delete</span>
+        Delete
       </button>,
     );
   }
@@ -1024,7 +959,7 @@ function TreeContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="tree-context-menu"
+      className="tree-context-menu is-plaintext"
       role="menu"
       style={{ left, top }}
     >
@@ -1752,7 +1687,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         } else if (activePath) {
           target = activePath;
         }
-        if (!target || isSkillsFolder(target) || isIncomingFolder(target)) return;
+        if (!target || isSkillsFolder(target) || isIncomingFolder(target) || isTasksFolder(target)) return;
         e.preventDefault();
         setContextMenu(null);
         setRenamingPath(target);
@@ -1770,7 +1705,8 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       }
 
       const workspaceChildren = (vaultTree?.children ?? []).filter(
-        (n) => !isIncomingFolder(n.path, n.isDir),
+        (n) =>
+          !isIncomingFolder(n.path, n.isDir) && !isTasksFolder(n.path, n.isDir),
       );
       const incomingNode = vaultTree?.children?.find((n) =>
         isIncomingFolder(n.path, n.isDir),
@@ -2582,6 +2518,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           </div>
         ) : null}
         <CommentsInboxSection />
+        <TasksSection />
         <div className="workspace-section">
           {backendOptions ? (
           <DndProvider backend={HTML5Backend} options={backendOptions}>

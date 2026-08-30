@@ -15,6 +15,7 @@ import {
   documentKind,
   isFolderNotePath,
   isIncomingFolder,
+  isTasksFolder,
   isVaultDocumentPath,
   isVaultProjectFolder,
   parentPath,
@@ -89,6 +90,7 @@ function FileIcon({ path }: { path: string }) {
 
 function isLinkableChild(node: TreeNode): boolean {
   if (isIncomingFolder(node.path, node.isDir)) return false;
+  if (isTasksFolder(node.path, node.isDir)) return false;
   if (node.isDir) return true;
   if (isFolderNotePath(node.path)) return false;
   return isVaultDocumentPath(node.path);
@@ -218,7 +220,8 @@ export function WikiLinkPickerDialog({
 
   const roots = useMemo(() => {
     return (tree?.children ?? []).filter(
-      (c) => c.isDir && !isIncomingFolder(c.path, true),
+      (c) =>
+        c.isDir && !isIncomingFolder(c.path, true) && !isTasksFolder(c.path, true),
     );
   }, [tree]);
 
@@ -256,7 +259,12 @@ export function WikiLinkPickerDialog({
       setExpanded(new Set(folderPickerExpandedPaths(expandTarget)));
     } else {
       const top = (tree?.children ?? [])
-        .filter((c) => c.isDir && !isIncomingFolder(c.path, true))
+        .filter(
+          (c) =>
+            c.isDir &&
+            !isIncomingFolder(c.path, true) &&
+            !isTasksFolder(c.path, true),
+        )
         .slice(0, 3)
         .map((r) => r.path);
       setExpanded(new Set(top));

@@ -308,3 +308,27 @@ export function CommentsSectionIcon() {
     </svg>
   );
 }
+
+/** Sidebar Tasks section — quiet outline checklist. */
+export function TasksSectionIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="2.5"
+        width="11"
+        height="11"
+        rx="1.4"
+        stroke="currentColor"
+        strokeWidth="1.35"
+      />
+      <path
+        d="M5.1 8.05 6.85 9.7 10.9 5.9"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

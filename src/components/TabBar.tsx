@@ -5,6 +5,7 @@ import {
   tabLabel,
   isGraphTab,
   isSettingsTab,
+  isTasksTab,
   isVirtualTab,
   type EditorTab,
 } from "../store/vaultStore";
@@ -28,6 +29,7 @@ import {
   GraphIcon,
   PdfIcon,
   PinIcon,
+  TasksSectionIcon,
 } from "./treeIcons";
 
 function SettingsTabIcon({ size = 14 }: { size?: number }) {
@@ -66,6 +68,13 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
     return (
       <span className="editor-tab-icon" aria-hidden>
         <SettingsTabIcon />
+      </span>
+    );
+  }
+  if (isTasksTab(tab)) {
+    return (
+      <span className="editor-tab-icon" aria-hidden>
+        <TasksSectionIcon />
       </span>
     );
   }
@@ -139,7 +148,9 @@ function TabItem({
     ? "Tag graph"
     : isSettingsTab(tab)
       ? "Settings"
-      : tab.path;
+      : isTasksTab(tab)
+        ? "Tasks"
+        : tab.path;
   const label = tabLabel(tab.path, tab.kind);
 
   return (

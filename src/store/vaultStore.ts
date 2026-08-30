@@ -28,6 +28,7 @@ import {
   isVaultDocumentPath,
   isSkillsFolder,
   isIncomingFolder,
+  isTasksFolder,
   INCOMING_FOLDER,
   isValidSkillId,
   joinPath,
@@ -164,7 +165,7 @@ function scheduleTagCatalogRefresh(refresh: () => Promise<void>) {
   }, TAG_CATALOG_REFRESH_MS);
 }
 
-export type TabKind = "file" | "graph" | "settings";
+export type TabKind = "file" | "graph" | "settings" | "tasks";
 
 export type ViewMode = "live" | "source";
 
@@ -173,6 +174,9 @@ export const GRAPH_TAB_PATH = "markspace:graph";
 
 /** Singleton virtual path for the settings tab. */
 export const SETTINGS_TAB_PATH = "markspace:settings";
+
+/** Singleton virtual path for the Tasks panel. */
+export const TASKS_TAB_PATH = "markspace:tasks";
 
 /** Legacy virtual Incoming tab; migrated to today's Incoming note. */
 export const INCOMING_TAB_PATH = "markspace:incoming";
@@ -323,6 +327,11 @@ type VaultStore = {
   }) => Promise<void>;
   /** Open (or focus) the singleton settings tab. */
   openSettingsTab: (options?: {
+    syncTreeSelection?: boolean;
+    skipNavHistory?: boolean;
+  }) => Promise<void>;
+  /** Open (or focus) the singleton Tasks panel. */
+  openTasksTab: (options?: {
     syncTreeSelection?: boolean;
     skipNavHistory?: boolean;
   }) => Promise<void>;
@@ -478,9 +487,13 @@ export function isSettingsTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
   return tab.kind === "settings" || tab.path === SETTINGS_TAB_PATH;
 }
 
-/** Tabs backed by app UI instead of a vault file (graph, settings). */
+export function isTasksTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
+  return tab.kind === "tasks" || tab.path === TASKS_TAB_PATH;
+}
+
+/** Tabs backed by app UI instead of a vault file (graph, settings, tasks). */
 export function isVirtualTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
-  return isGraphTab(tab) || isSettingsTab(tab);
+  return isGraphTab(tab) || isSettingsTab(tab) || isTasksTab(tab);
 }
 
 export function isFileTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
@@ -603,6 +616,7 @@ function flushActiveEditorBuffer(get: () => VaultStore): void {
 function tabLabel(path: string, kind?: TabKind): string {
   if (kind === "graph" || path === GRAPH_TAB_PATH) return "Graph";
   if (kind === "settings" || path === SETTINGS_TAB_PATH) return "Settings";
+  if (kind === "tasks" || path === TASKS_TAB_PATH) return "Tasks";
   if (isFolderNotePath(path)) {
     const folder = parentPath(path);
     return folder.split("/").pop() || folder || "Folder";
@@ -815,7 +829,8 @@ function recordRecentFile(
   if (
     !path ||
     path === GRAPH_TAB_PATH ||
-    path === SETTINGS_TAB_PATH
+    path === SETTINGS_TAB_PATH ||
+    path === TASKS_TAB_PATH
   ) {
     return;
   }
@@ -1565,7 +1580,9 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
               ? "graph"
               : isSettingsTab({ kind: t.kind ?? "file", path: t.path })
                 ? "settings"
-                : "file",
+                : isTasksTab({ kind: t.kind ?? "file", path: t.path })
+                  ? "tasks"
+                  : "file",
             pinned: Boolean(t.pinned),
             viewMode: t.viewMode === "source" ? ("source" as const) : undefined,
           })),
@@ -1716,6 +1733,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     if (path === SETTINGS_TAB_PATH) {
       await get().openSettingsTab({
+        syncTreeSelection: options?.syncTreeSelection,
+        skipNavHistory: options?.skipNavHistory,
+      });
+      return;
+    }
+    if (path === TASKS_TAB_PATH) {
+      await get().openTasksTab({
         syncTreeSelection: options?.syncTreeSelection,
         skipNavHistory: options?.skipNavHistory,
       });
@@ -1970,6 +1994,17 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       get,
       SETTINGS_TAB_PATH,
       "settings",
+      options?.syncTreeSelection !== false,
+      options?.skipNavHistory === true,
+    );
+  },
+
+  openTasksTab: async (options) => {
+    await openSingletonTab(
+      set,
+      get,
+      TASKS_TAB_PATH,
+      "tasks",
       options?.syncTreeSelection !== false,
       options?.skipNavHistory === true,
     );
@@ -2773,6 +2808,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot move the Incoming folder" });
       return null;
     }
+    if (isTasksFolder(from)) {
+      set({ error: "Cannot move the Tasks folder" });
+      return null;
+    }
     if (isSkillsFolder(from) && toParent !== "") {
       set({ error: "Cannot move the Skills folder into another folder" });
       return null;
@@ -2840,7 +2879,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   nestTreeEntryUnderNote: async (from, notePath, toIndex = 0) => {
-    if (isIncomingFolder(from) || isSkillsFolder(from)) {
+    if (isIncomingFolder(from) || isSkillsFolder(from) || isTasksFolder(from)) {
       set({ error: "Cannot move the reserved folder" });
       return null;
     }
@@ -2996,6 +3035,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot rename the Skills folder" });
       return null;
     }
+    if (isTasksFolder(from)) {
+      set({ error: "Cannot rename the Tasks folder" });
+      return null;
+    }
     const trimmed = nextName.trim().replace(/[\\/]/g, "");
     if (!trimmed || !from) return null;
 
@@ -3006,6 +3049,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     if (isIncomingFolder(to)) {
       set({ error: "Cannot rename to the reserved Incoming folder" });
+      return null;
+    }
+    if (isTasksFolder(to)) {
+      set({ error: "Cannot rename to the reserved Tasks folder" });
       return null;
     }
     const fromKind = documentKind(from);
@@ -3118,6 +3165,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     if (isSkillsFolder(path)) {
       set({ error: "Cannot delete the Skills folder" });
+      return false;
+    }
+    if (isTasksFolder(path)) {
+      set({ error: "Cannot delete the Tasks folder" });
       return false;
     }
     const { vaultPath, expandedPaths, selectedFolderPath, tabs, activePath, dirty, saveActive } =
