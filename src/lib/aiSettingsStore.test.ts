@@ -45,10 +45,11 @@ describe("normalizeAiSettings", () => {
   });
 
   it("does not rewrite disk for models-catalog-only drift", () => {
+    // Incomplete catalog row as persisted on disk (missing vendor/kind/tier).
     const raw = {
       ...DEFAULT_AI_SETTINGS,
       models: [{ id: "openai/custom", label: "Custom" }],
-    };
+    } as Partial<typeof DEFAULT_AI_SETTINGS>;
     const merged = normalizeAiSettings(raw);
     expect(aiSettingsNeedPersistRewrite(raw, merged)).toBe(false);
     expect(aiSettingsNeedPersistRewrite(null, merged)).toBe(true);
