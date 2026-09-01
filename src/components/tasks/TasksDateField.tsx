@@ -38,6 +38,164 @@ function addDays(base: Date, days: number): Date {
   return d;
 }
 
+function placeFromPoint(x: number, y: number): Pos {
+  const placed = placeAnchoredMenu(
+    {
+      x,
+      y,
+      width: 0,
+      height: 0,
+      top: y,
+      left: x,
+      right: x,
+      bottom: y,
+      toJSON() {
+        return this;
+      },
+    },
+    {
+      gap: 6,
+      width: 400,
+      maxHeight: 420,
+      minHeight: 280,
+      prefer: "below",
+      align: "start",
+    },
+  );
+  return {
+    left: placed.left,
+    top: placed.top,
+    bottom: placed.bottom,
+    maxHeight: placed.maxHeight,
+  };
+}
+
+/** Single anchored due-date popup (one instance for the whole task list). */
+export function TasksDuePickerPopup({
+  anchor,
+  value,
+  onChange,
+  onClose,
+  "aria-label": ariaLabel = "Due date",
+}: {
+  anchor: { x: number; y: number };
+  value: string | null;
+  onChange: (ymd: string | null) => void;
+  onClose: () => void;
+  "aria-label"?: string;
+}) {
+  const [pos, setPos] = useState<Pos>(() =>
+    placeFromPoint(anchor.x, anchor.y),
+  );
+  const [month, setMonth] = useState<Date>(() => parseYmd(value) ?? new Date());
+  const panelRef = useRef<HTMLDivElement>(null);
+  const selected = parseYmd(value);
+
+  useLayoutEffect(() => {
+    setPos(placeFromPoint(anchor.x, anchor.y));
+  }, [anchor.x, anchor.y]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t)) return;
+      onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    const onReposition = () => setPos(placeFromPoint(anchor.x, anchor.y));
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [anchor.x, anchor.y, onClose]);
+
+  useEffect(() => {
+    const d = parseYmd(value);
+    if (d) setMonth(d);
+  }, [value]);
+
+  const pick = (d: Date | undefined) => {
+    if (!d) {
+      onChange(null);
+      onClose();
+      return;
+    }
+    onChange(localDateYmd(d));
+    onClose();
+  };
+
+  const today = new Date();
+  const presets: { label: string; date: Date | null }[] = [
+    { label: "Today", date: today },
+    { label: "Tomorrow", date: addDays(today, 1) },
+    { label: "Next week", date: addDays(today, 7) },
+    { label: "Clear", date: null },
+  ];
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      className="tasks-date-panel"
+      role="dialog"
+      aria-label={ariaLabel}
+      style={{
+        position: "fixed",
+        left: pos.left,
+        top: pos.top ?? undefined,
+        bottom: pos.bottom ?? undefined,
+        maxHeight: pos.maxHeight,
+        zIndex: 10050,
+      }}
+    >
+      <DayPicker
+        className="tasks-daypicker"
+        mode="single"
+        animate
+        month={month}
+        onMonthChange={setMonth}
+        selected={selected}
+        onSelect={pick}
+        showOutsideDays
+      />
+      <div className="tasks-date-presets">
+        {presets.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            className={
+              p.date && value === localDateYmd(p.date)
+                ? "tasks-date-preset is-active"
+                : "tasks-date-preset"
+            }
+            onClick={() => {
+              if (p.date == null) {
+                onChange(null);
+                onClose();
+                return;
+              }
+              pick(p.date);
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 type Props = {
   value: string | null;
   onChange: (ymd: string | null) => void;

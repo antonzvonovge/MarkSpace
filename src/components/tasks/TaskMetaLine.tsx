@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   formatTaskDueLabel,
   localDateYmd,
@@ -18,18 +19,21 @@ type Props = {
   commentCount?: number;
   /** Hide subtask progress (e.g. already under a parent in detail). */
   hideSubtasks?: boolean;
+  /** Caller-supplied today (YYYY-MM-DD) — avoids per-row date work. */
+  todayYmd?: string;
 };
 
 /** Compact meta under a task title: progress / due / labels / comments (when present). */
-export function TaskMetaLine({
+export const TaskMetaLine = memo(function TaskMetaLine({
   due,
   labels,
   subtaskDone = 0,
   subtaskTotal = 0,
   commentCount = 0,
   hideSubtasks = false,
+  todayYmd,
 }: Props) {
-  const dueLabel = formatTaskDueLabel(due, localDateYmd());
+  const dueLabel = formatTaskDueLabel(due, todayYmd ?? localDateYmd());
   const labelList = (labels ?? []).map((l) => l.trim()).filter(Boolean);
   const showProgress = !hideSubtasks && subtaskTotal > 0;
   const showComments = commentCount > 0;
@@ -72,4 +76,4 @@ export function TaskMetaLine({
       ) : null}
     </span>
   );
-}
+});

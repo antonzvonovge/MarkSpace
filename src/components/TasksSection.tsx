@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  memo,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -257,16 +258,16 @@ function TaskGroupContextMenu({
   );
 }
 
-function ListRow({
+const ListRow = memo(function ListRow({
   entry,
   selected,
-  onOpen,
+  onOpenList,
   onContextMenu,
 }: {
   entry: SidebarListEntry;
   selected: boolean;
-  onOpen: () => void;
-  onContextMenu: (x: number, y: number) => void;
+  onOpenList: (listName: string) => void;
+  onContextMenu: (listName: string, x: number, y: number) => void;
 }) {
   return (
     <li>
@@ -275,11 +276,11 @@ function ListRow({
         className={
           selected ? "tasks-section-row is-selected" : "tasks-section-row"
         }
-        onClick={onOpen}
+        onClick={() => onOpenList(entry.name)}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          onContextMenu(e.clientX, e.clientY);
+          onContextMenu(entry.name, e.clientX, e.clientY);
         }}
       >
         <ListIcon color={entry.color} />
@@ -287,9 +288,40 @@ function ListRow({
       </button>
     </li>
   );
-}
+});
 
-export function TasksSection() {
+const SmartViewRow = memo(function SmartViewRow({
+  id,
+  label,
+  icon,
+  selected,
+  onOpen,
+}: {
+  id: TasksViewId;
+  label: string;
+  icon: ReactNode;
+  selected: boolean;
+  onOpen: (view: TasksViewId) => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        className={
+          selected ? "tasks-section-row is-selected" : "tasks-section-row"
+        }
+        onClick={() => onOpen(id)}
+      >
+        <span className="tasks-section-row-icon" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="tasks-section-row-label">{label}</span>
+      </button>
+    </li>
+  );
+});
+
+export const TasksSection = memo(function TasksSection() {
   const tree = useVaultStore((s) => s.tree);
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const renameTreeEntry = useVaultStore((s) => s.renameTreeEntry);
@@ -297,7 +329,7 @@ export function TasksSection() {
   const openTasksTab = useVaultStore((s) => s.openTasksTab);
   const activePath = useVaultStore((s) => s.activePath);
   const view = useTasksPanelStore((s) => s.view);
-  const filters = useTasksPanelStore((s) => s.filters);
+  const filterList = useTasksPanelStore((s) => s.filters.list);
   const setView = useTasksPanelStore((s) => s.setView);
   const patchFilters = useTasksPanelStore((s) => s.patchFilters);
   const groups = useTaskListMetaStore((s) => s.groups);
@@ -395,12 +427,12 @@ export function TasksSection() {
       if (!nextPath) return null;
       await refreshTree();
       await refreshMeta();
-      if (filters.list === fromName) {
+      if (filterList === fromName) {
         patchFilters({ list: toName });
       }
       return toName;
     },
-    [filters.list, patchFilters, refreshMeta, refreshTree, renameTreeEntry],
+    [filterList, patchFilters, refreshMeta, refreshTree, renameTreeEntry],
   );
 
   const toggleGroupCollapsed = useCallback((groupId: string) => {
@@ -413,21 +445,12 @@ export function TasksSection() {
     });
   }, []);
 
-  const renderListRow = (entry: SidebarListEntry) => {
-    const selected =
-      tasksTabActive && filters.list === entry.name && view === "all";
-    return (
-      <ListRow
-        key={`list:${entry.name}`}
-        entry={entry}
-        selected={selected}
-        onOpen={() => openList(entry.name)}
-        onContextMenu={(x, y) =>
-          setListMenu({ x, y, listName: entry.name })
-        }
-      />
-    );
-  };
+  const handleListContextMenu = useCallback(
+    (listName: string, x: number, y: number) => {
+      setListMenu({ x, y, listName });
+    },
+    [],
+  );
 
   return (
     <div className="tasks-section">
@@ -467,28 +490,16 @@ export function TasksSection() {
       </div>
       {!collapsed ? (
         <ul className="tasks-section-list" role="list">
-          {SMART_VIEWS.map((v) => {
-            const selected =
-              tasksTabActive && view === v.id && !filters.list;
-            return (
-              <li key={v.id}>
-                <button
-                  type="button"
-                  className={
-                    selected
-                      ? "tasks-section-row is-selected"
-                      : "tasks-section-row"
-                  }
-                  onClick={() => openSmartView(v.id)}
-                >
-                  <span className="tasks-section-row-icon" aria-hidden="true">
-                    {v.icon}
-                  </span>
-                  <span className="tasks-section-row-label">{v.label}</span>
-                </button>
-              </li>
-            );
-          })}
+          {SMART_VIEWS.map((v) => (
+            <SmartViewRow
+              key={v.id}
+              id={v.id}
+              label={v.label}
+              icon={v.icon}
+              selected={tasksTabActive && view === v.id && !filterList}
+              onOpen={openSmartView}
+            />
+          ))}
           {listNames.length > 0 ? (
             <li className="tasks-section-sep" aria-hidden="true" />
           ) : null}
@@ -532,13 +543,37 @@ export function TasksSection() {
                         No lists
                       </li>
                     ) : null}
-                    {lists.map((entry) => renderListRow(entry))}
+                    {lists.map((entry) => (
+                      <ListRow
+                        key={`list:${entry.name}`}
+                        entry={entry}
+                        selected={
+                          tasksTabActive &&
+                          filterList === entry.name &&
+                          view === "all"
+                        }
+                        onOpenList={openList}
+                        onContextMenu={handleListContextMenu}
+                      />
+                    ))}
                   </ul>
                 ) : null}
               </li>
             );
           })}
-          {sidebar.ungrouped.map((entry) => renderListRow(entry))}
+          {sidebar.ungrouped.map((entry) => (
+            <ListRow
+              key={`list:${entry.name}`}
+              entry={entry}
+              selected={
+                tasksTabActive &&
+                filterList === entry.name &&
+                view === "all"
+              }
+              onOpenList={openList}
+              onContextMenu={handleListContextMenu}
+            />
+          ))}
         </ul>
       ) : null}
 
@@ -572,7 +607,7 @@ export function TasksSection() {
           setRenameList(null);
           if (!from) return;
           void renameListFolder(from, value.trim()).then((next) => {
-            if (next && filters.list === from) openList(next);
+            if (next && filterList === from) openList(next);
           });
         }}
       />
@@ -632,7 +667,7 @@ export function TasksSection() {
             );
             await refreshMeta();
             setSettingsList(null);
-            if (filters.list === settingsList || filters.list === finalName) {
+            if (filterList === settingsList || filterList === finalName) {
               openList(finalName);
             }
           } catch (e) {
@@ -658,7 +693,7 @@ export function TasksSection() {
               const path = joinPath(TASKS_FOLDER, name);
               const ok = await removePath(path);
               if (!ok) return;
-              if (filters.list === name) {
+              if (filterList === name) {
                 patchFilters({ list: "" });
                 setView("inbox");
               }
@@ -712,4 +747,4 @@ export function TasksSection() {
       ) : null}
     </div>
   );
-}
+});

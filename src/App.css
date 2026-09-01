@@ -48,7 +48,7 @@
   --chat-user-bubble-shadow:
     0 1px 2px rgba(28, 36, 40, 0.07),
     0 1px 3px rgba(28, 36, 40, 0.04);
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
   --font-live: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", system-ui, sans-serif;
   --font-source: "JetBrains Mono", ui-monospace, monospace;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -59,17 +59,20 @@
   --tree-row-height: 28px;
   --tree-row-gap: 6px;
   --tree-label-pad-y: 4px;
-  --tree-label-size: 13px;
+  --tree-label-size: 14px;
   --tree-icon-size: 20px;
   --tree-chevron-size: 16px;
   --tree-toolbar-btn: 28px;
   --tree-toolbar-icon: 16px;
+  --editor-tab-label-size: 14px;
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-ui);
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+  /* Subpixel/auto — antialiased thins Inter on Linux/WebKitGTK (Tauri). */
+  text-rendering: auto;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
 }
 
 :root[data-theme="dark"] {
@@ -118,7 +121,7 @@
   --tree-row-height: 22px;
   --tree-row-gap: 4px;
   --tree-label-pad-y: 0;
-  --tree-label-size: 12px;
+  --tree-label-size: 13px;
   --tree-icon-size: 16px;
   --tree-chevron-size: 14px;
   --tree-toolbar-btn: 22px;
@@ -972,10 +975,9 @@ select {
   transition: opacity 0.16s ease;
 }
 
-.favorites-section:hover .section-header-actions,
-.comments-inbox-section:hover .section-header-actions,
-.tasks-section:hover .section-header-actions,
-.workspace-section:hover .section-header-actions,
+.favorites-header:hover .section-header-actions,
+.comments-inbox-header:hover .section-header-actions,
+.tasks-section-header:hover .section-header-actions,
 .section-header-actions:focus-within,
 .section-header-actions:has(.tree-create-menu) {
   opacity: 1;
@@ -1152,6 +1154,7 @@ select {
   text-align: left;
   cursor: pointer;
   border-radius: 0;
+  transition: none;
 }
 
 .tasks-section-row-icon {
@@ -1184,7 +1187,7 @@ select {
   background: var(--sidebar-hover);
 }
 
-.tasks-section-row:hover .tasks-section-row-icon {
+.tasks-section-row:hover .tasks-section-row-icon:not(.has-list-color) {
   color: var(--sidebar-text);
 }
 
@@ -1231,6 +1234,7 @@ select {
   cursor: pointer;
   border-radius: 0;
   user-select: none;
+  transition: none;
 }
 
 .tasks-section-group-header:hover {
@@ -1627,7 +1631,7 @@ select {
   --tree-row-height: 28px;
   --tree-row-gap: 6px;
   --tree-label-pad-y: 4px;
-  --tree-label-size: 13px;
+  --tree-label-size: 14px;
   --tree-icon-size: 20px;
   --tree-chevron-size: 16px;
 }
@@ -3387,7 +3391,7 @@ button.status-bar-jobs-menu-item:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--editor-tab-label-size);
   font-weight: 400;
   font-style: normal;
   line-height: 1;
@@ -3502,7 +3506,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .empty-state h1 {
   margin: 0 0 10px;
-  font-family: var(--font-live);
+  font-family: var(--font-ui);
   font-weight: 620;
   font-size: 2.4rem;
   letter-spacing: -0.03em;
@@ -8107,6 +8111,7 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-panel {
+  --chat-font-size: calc(0.875rem + 1px);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -8476,7 +8481,7 @@ button.status-bar-jobs-menu-item:hover {
   align-items: center;
   justify-content: center;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--chat-font-size);
 }
 
 .chat-msg-user {
@@ -8512,7 +8517,7 @@ button.status-bar-jobs-menu-item:hover {
   background: var(--chat-user-bubble-bg);
   box-shadow: var(--chat-user-bubble-shadow);
   color: var(--text);
-  font-size: 0.875rem;
+  font-size: var(--chat-font-size);
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
@@ -8556,7 +8561,7 @@ button.status-bar-jobs-menu-item:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 0.875rem;
+  font-size: var(--chat-font-size);
   line-height: 1.5;
   color: var(--text);
 }
@@ -8600,7 +8605,7 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-md {
-  font-size: 0.875rem;
+  font-size: var(--chat-font-size);
   line-height: 1.5;
   color: var(--text);
   word-break: break-word;
@@ -10141,7 +10146,7 @@ button.status-bar-jobs-menu-item:hover {
   gap: 10px;
   padding: 24px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--chat-font-size);
   text-align: center;
 }
 
@@ -10407,7 +10412,7 @@ button.status-bar-jobs-menu-item:hover {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--chat-font-size);
   line-height: 1.4;
   height: 28px;
   min-height: 28px;
@@ -14683,15 +14688,24 @@ button.status-bar-jobs-menu-item:hover {
 
 /* —— Tasks panel (Todoist-like) —— */
 .tasks-view {
+  --tasks-ink: #25221e;
+  --tasks-ink-done: rgba(37, 34, 30, 0.49);
+  --tasks-ink-muted: rgba(37, 34, 30, 0.66);
+  --tasks-line-height: 1.32;
   height: 100%;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: #fff;
   box-sizing: border-box;
 }
 
 :root[data-theme="dark"] .tasks-view {
   background: var(--editor-surface, #1e1e1e);
+  --tasks-ink: var(--text);
+  --tasks-ink-done: rgba(231, 238, 242, 0.45);
+  --tasks-ink-muted: var(--muted);
 }
 
 .tasks-list-column {
@@ -14701,6 +14715,10 @@ button.status-bar-jobs-menu-item:hover {
   padding: 20px 24px 24px;
   background: #fff;
   box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 :root[data-theme="dark"] .tasks-list-column {
@@ -14715,7 +14733,7 @@ button.status-bar-jobs-menu-item:hover {
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: -0.02em;
-  color: #202020;
+  color: var(--tasks-ink);
 }
 
 :root[data-theme="dark"] .tasks-view-title {
@@ -14737,13 +14755,16 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding-bottom: 24px;
 }
 
 .tasks-empty {
   margin: 24px 0;
   padding-left: var(--tasks-checkbox-inset, 54px);
-  color: #888;
+  color: var(--tasks-ink-muted);
   font-size: 14px;
 }
 
@@ -14789,9 +14810,9 @@ button.status-bar-jobs-menu-item:hover {
   display: flex;
   align-items: center;
   gap: 0;
-  min-height: 36px;
+  min-height: 32px;
   /* Fixed checkbox column: grip(24) + gap(6) + chevron(18) + gap(6). */
-  padding: 8px 0 8px var(--tasks-checkbox-inset, 54px);
+  padding: 6px 0 6px var(--tasks-checkbox-inset, 54px);
   margin: 0;
   cursor: pointer;
   position: relative;
@@ -14799,10 +14820,14 @@ button.status-bar-jobs-menu-item:hover {
   box-sizing: border-box;
 }
 
-.tasks-row:hover,
+.tasks-list-item:hover .tasks-row,
 .tasks-row.is-selected {
-  background: transparent;
-  box-shadow: none;
+  background: rgba(37, 34, 30, 0.04);
+}
+
+:root[data-theme="dark"] .tasks-list-item:hover .tasks-row,
+:root[data-theme="dark"] .tasks-row.is-selected {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .tasks-row.is-sub {
@@ -14830,6 +14855,7 @@ button.status-bar-jobs-menu-item:hover {
   user-select: none;
   -webkit-user-drag: element;
   z-index: 1;
+  transition: none;
 }
 
 .tasks-row.has-expand .tasks-row-drag {
@@ -14842,7 +14868,8 @@ button.status-bar-jobs-menu-item:hover {
 
 .tasks-row:hover .tasks-row-drag,
 .tasks-row.is-selected .tasks-row-drag,
-.tasks-row.is-dragging .tasks-row-drag {
+.tasks-row.is-dragging .tasks-row-drag,
+.tasks-list-item:hover .tasks-row-drag {
   opacity: 1;
 }
 
@@ -14868,11 +14895,11 @@ button.status-bar-jobs-menu-item:hover {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 36px;
-  padding: 8px 16px 8px 12px;
+  min-height: 32px;
+  padding: 6px 16px 6px 12px;
   margin: 0;
   background: #fff;
-  color: #202020;
+  color: var(--tasks-ink);
   border-radius: 8px;
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.06),
@@ -14895,9 +14922,10 @@ button.status-bar-jobs-menu-item:hover {
 .tasks-row-drag-ghost-title {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
-  line-height: 1.35;
-  font-weight: 400;
+  font-size: 15px;
+  line-height: var(--tasks-line-height);
+  font-weight: 450;
+  letter-spacing: -0.011em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -14905,7 +14933,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .tasks-row-drag-ghost-title.is-done {
   text-decoration: line-through;
-  color: #9a9a9a;
+  color: var(--tasks-ink-done);
 }
 
 /* Drop line + hollow ring aligned to checkbox column. */
@@ -14914,7 +14942,7 @@ button.status-bar-jobs-menu-item:hover {
   content: "";
   position: absolute;
   left: calc(
-    var(--tasks-indent, 0px) + var(--tasks-drop-line-inset, 54px) + 5px
+    var(--tasks-indent, 0px) + var(--tasks-drop-line-inset, 54px) + 5.5px
   );
   right: 0;
   height: 8px;
@@ -14942,10 +14970,10 @@ button.status-bar-jobs-menu-item:hover {
   content: "";
   position: absolute;
   top: -4px;
-  /* Ring centered on the 18px checkbox ( (18-8)/2 = 5 ). */
+  /* Ring centered on the 19px checkbox ( (19-8)/2 = 5.5 ). */
   left: calc(
     var(--tasks-drop-line-pad, var(--tasks-tree-pad, 0px)) +
-      var(--tasks-checkbox-inset, 54px) + 5px
+      var(--tasks-checkbox-inset, 54px) + 5.5px
   );
   right: 0;
   height: 8px;
@@ -14991,7 +15019,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .tasks-tree-item.is-ghost.is-drop-indicator .tasks-row::before {
   position: absolute;
-  left: calc(var(--tasks-checkbox-inset, 54px) + 5px);
+  left: calc(var(--tasks-checkbox-inset, 54px) + 5.5px);
   right: 0;
   top: 0;
   height: 8px;
@@ -15053,7 +15081,7 @@ button.status-bar-jobs-menu-item:hover {
   padding: 8px 14px;
   margin: 0;
   background: #fff;
-  color: #202020;
+  color: var(--tasks-ink);
   border-radius: 8px;
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.06),
@@ -15160,21 +15188,21 @@ button.status-bar-jobs-menu-item:hover {
   padding: 0;
   border: none;
   background: transparent;
-  color: #9a9a9a;
+  color: var(--tasks-ink-muted);
   cursor: pointer;
   border-radius: 3px;
 }
 
 .tasks-expand-btn:hover {
-  color: #505050;
+  color: var(--tasks-ink);
 }
 
 .tasks-circle {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   flex-shrink: 0;
   border-radius: 50%;
-  border: 1.5px solid #b8b8b8;
+  border: 1.5px solid rgba(37, 34, 30, 0.28);
   background: transparent;
   color: #fff;
   display: inline-flex;
@@ -15187,7 +15215,7 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-circle:hover {
-  border-color: #808080;
+  border-color: rgba(37, 34, 30, 0.45);
 }
 
 .tasks-circle.is-p1 {
@@ -15208,8 +15236,8 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-circle.is-checked {
-  background: #b8b8b8;
-  border-color: #b8b8b8;
+  background: rgba(37, 34, 30, 0.28);
+  border-color: rgba(37, 34, 30, 0.28);
   color: #fff;
 }
 .tasks-circle.is-checked.is-p1 {
@@ -15240,10 +15268,11 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-row-title {
-  font-size: 14px;
-  line-height: 1.35;
-  color: #202020;
-  font-weight: 400;
+  font-size: 15px;
+  line-height: var(--tasks-line-height);
+  color: var(--tasks-ink);
+  font-weight: 450;
+  letter-spacing: -0.011em;
   word-break: break-word;
 }
 
@@ -15253,7 +15282,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .tasks-row-title.is-done {
   text-decoration: line-through;
-  color: #9a9a9a;
+  color: var(--tasks-ink-done);
 }
 
 .tasks-row-inline-edit {
@@ -15262,9 +15291,11 @@ button.status-bar-jobs-menu-item:hover {
   outline: none;
   background: transparent;
   font: inherit;
-  font-size: 14px;
-  line-height: 1.35;
-  color: #202020;
+  font-size: 15px;
+  line-height: var(--tasks-line-height);
+  font-weight: 450;
+  letter-spacing: -0.011em;
+  color: var(--tasks-ink);
   padding: 0;
   margin: 0;
 }
@@ -15280,7 +15311,7 @@ button.status-bar-jobs-menu-item:hover {
   align-items: center;
   margin-top: 3px;
   font-size: 12px;
-  color: #8a8a8a;
+  color: var(--tasks-ink-muted);
   line-height: 1.25;
 }
 
@@ -15334,11 +15365,13 @@ button.status-bar-jobs-menu-item:hover {
   align-items: center;
   justify-content: flex-end;
   gap: 0;
+  min-height: 32px;
   opacity: 0;
   pointer-events: none;
+  transition: none;
 }
 
-.tasks-row:hover .tasks-row-actions,
+.tasks-list-item:hover .tasks-row-actions,
 .tasks-row.is-selected .tasks-row-actions {
   opacity: 1;
   pointer-events: auto;
@@ -15403,6 +15436,10 @@ button.status-bar-jobs-menu-item:hover {
   color: var(--accent);
 }
 
+.tasks-row-schedule-icon.has-value {
+  color: var(--accent);
+}
+
 :root[data-theme="dark"] .tasks-date-trigger.is-icon:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
@@ -15420,7 +15457,7 @@ button.status-bar-jobs-menu-item:hover {
   width: calc(100% - var(--tasks-checkbox-inset, 54px));
   box-sizing: border-box;
   background: transparent;
-  color: #808080;
+  color: var(--tasks-ink-muted);
   font: inherit;
   font-size: 14px;
   font-weight: 400;
@@ -15430,7 +15467,7 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 :root[data-theme="dark"] .tasks-add-trigger {
-  color: #9a9a9a;
+  color: var(--tasks-ink-muted);
 }
 
 .tasks-add-icon {
@@ -15506,15 +15543,17 @@ button.status-bar-jobs-menu-item:hover {
   outline: none;
   background: transparent;
   font: inherit;
-  font-size: 0.9375rem;
-  line-height: 1.4;
-  color: var(--text);
+  font-size: 15px;
+  line-height: var(--tasks-line-height);
+  font-weight: 450;
+  letter-spacing: -0.011em;
+  color: var(--tasks-ink);
   padding: 2px 0;
   width: 100%;
 }
 
 .tasks-composer-title::placeholder {
-  color: var(--muted);
+  color: var(--tasks-ink-muted);
 }
 
 .tasks-composer-bar {
@@ -15915,7 +15954,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .tasks-detail-fields {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 23px minmax(0, 1fr);
   column-gap: 12px;
   row-gap: 10px;
   align-items: center;
@@ -15924,8 +15963,8 @@ button.status-bar-jobs-menu-item:hover {
 .tasks-detail-fields > .tasks-circle {
   grid-column: 1;
   grid-row: 1;
-  width: 22px;
-  height: 22px;
+  width: 23px;
+  height: 23px;
   margin-top: 0;
   align-self: center;
 }
@@ -16019,8 +16058,8 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-detail-child-row .tasks-circle {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   flex-shrink: 0;
   margin: 2px 0 0;
   align-self: flex-start;

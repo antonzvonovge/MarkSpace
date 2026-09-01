@@ -1,0 +1,74 @@
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import type { TaskIndexEntry } from "../../../lib/taskNotes";
+import { taskEntriesToTreeItems } from "./buildTreeItems";
+import { StaticTaskTreeRow } from "./TaskTreeRow";
+import {
+  TaskTreeActionsProvider,
+  type TaskTreeActions,
+  type TaskTreeEditState,
+} from "./TaskTreeActionsContext";
+import type { TaskTreeItems } from "./types";
+import { flattenTree, removeChildrenOf } from "./utilities";
+
+const INDENTATION_WIDTH = 28;
+
+export const TasksPlainTree = memo(function TasksPlainTree({
+  entries,
+  expanded,
+  selectedPath,
+  actions,
+  edit,
+  completingPaths,
+  todayYmd,
+}: {
+  entries: readonly TaskIndexEntry[];
+  expanded: ReadonlySet<string>;
+  selectedPath: string | null;
+  actions: TaskTreeActions;
+  edit: TaskTreeEditState | null;
+  completingPaths: ReadonlySet<string>;
+  todayYmd: string;
+}): ReactNode {
+  const [items, setItems] = useState<TaskTreeItems>(() =>
+    taskEntriesToTreeItems(entries, expanded),
+  );
+
+  useEffect(() => {
+    setItems(taskEntriesToTreeItems(entries, expanded));
+  }, [entries, expanded]);
+
+  const flattenedItems = useMemo(() => {
+    const flattenedTree = flattenTree(items);
+    const collapsedItems = flattenedTree.reduce<typeof flattenedTree[0]["id"][]>(
+      (acc, { children, collapsed, id }) =>
+        collapsed && children.length ? [...acc, id] : acc,
+      [],
+    );
+    return removeChildrenOf(flattenedTree, collapsedItems);
+  }, [items]);
+
+  return (
+    <TaskTreeActionsProvider actions={actions}>
+      <ul className="tasks-list tasks-tree-list">
+        {flattenedItems.map((item) => {
+          const itemId = String(item.id);
+          const isEditing = edit != null && String(edit.editingId) === itemId;
+          const selected = item.kind === "task" && selectedPath === item.path;
+          return (
+            <StaticTaskTreeRow
+              key={itemId}
+              item={item}
+              depth={item.depth}
+              indentationWidth={INDENTATION_WIDTH}
+              selected={selected}
+              isCompleting={completingPaths.has(item.path)}
+              isEditing={isEditing}
+              edit={isEditing && edit ? edit : null}
+              todayYmd={todayYmd}
+            />
+          );
+        })}
+      </ul>
+    </TaskTreeActionsProvider>
+  );
+});

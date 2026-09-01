@@ -1,6 +1,8 @@
 import {
   createContext,
   useContext,
+  useMemo,
+  useRef,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -14,14 +16,15 @@ export type TaskTreeActions = {
   onToggleCollapse: (path: string) => void;
   onEditTitle: (item: TaskTreeItem) => void;
   onDueChange: (path: string, due: string | null) => void;
+  onPickDue: (path: string, clientX: number, clientY: number) => void;
   onEditDraftChange: (patch: Partial<TasksComposerDraft>) => void;
   onCommitEdit: () => void;
   onCancelEdit: () => void;
 };
 
 export type TaskTreeEditState = {
-  editingId: string | null;
-  editDraft: TasksComposerDraft | null;
+  editingId: string;
+  editDraft: TasksComposerDraft;
   editLists: string[];
   editListColors: Record<string, string>;
   editLabelCatalog: string[];
@@ -29,21 +32,34 @@ export type TaskTreeEditState = {
 };
 
 const ActionsContext = createContext<TaskTreeActions | null>(null);
-const EditContext = createContext<TaskTreeEditState | null>(null);
 
+/** Stable context value — row memo is not busted when the parent rebuilds actions. */
 export function TaskTreeActionsProvider({
   actions,
-  edit,
   children,
 }: {
   actions: TaskTreeActions;
-  edit: TaskTreeEditState;
   children: ReactNode;
 }) {
+  const ref = useRef(actions);
+  ref.current = actions;
+  const stable = useMemo<TaskTreeActions>(
+    () => ({
+      onSelect: (path) => ref.current.onSelect(path),
+      onOpenComments: (path) => ref.current.onOpenComments(path),
+      onToggleStatus: (item) => ref.current.onToggleStatus(item),
+      onToggleCollapse: (path) => ref.current.onToggleCollapse(path),
+      onEditTitle: (item) => ref.current.onEditTitle(item),
+      onDueChange: (path, due) => ref.current.onDueChange(path, due),
+      onPickDue: (path, x, y) => ref.current.onPickDue(path, x, y),
+      onEditDraftChange: (patch) => ref.current.onEditDraftChange(patch),
+      onCommitEdit: () => ref.current.onCommitEdit(),
+      onCancelEdit: () => ref.current.onCancelEdit(),
+    }),
+    [],
+  );
   return (
-    <ActionsContext.Provider value={actions}>
-      <EditContext.Provider value={edit}>{children}</EditContext.Provider>
-    </ActionsContext.Provider>
+    <ActionsContext.Provider value={stable}>{children}</ActionsContext.Provider>
   );
 }
 
@@ -51,14 +67,6 @@ export function useTaskTreeActions(): TaskTreeActions {
   const ctx = useContext(ActionsContext);
   if (!ctx) {
     throw new Error("useTaskTreeActions outside TaskTreeActionsProvider");
-  }
-  return ctx;
-}
-
-export function useTaskTreeEdit(): TaskTreeEditState {
-  const ctx = useContext(EditContext);
-  if (!ctx) {
-    throw new Error("useTaskTreeEdit outside TaskTreeActionsProvider");
   }
   return ctx;
 }

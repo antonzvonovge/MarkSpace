@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -28,6 +28,7 @@ import {
   SortableTaskTreeRow,
   TaskTreeDragOverlay,
 } from "./TaskTreeRow";
+import { TasksPlainTree } from "./TasksPlainTree";
 import {
   TaskTreeActionsProvider,
   type TaskTreeActions,
@@ -62,30 +63,52 @@ const alignOverlayToCheckbox: Modifier = ({ transform }) => ({
   x: transform.x + CHECKBOX_INSET,
 });
 
-export function TasksSortableTree({
-  entries,
-  expanded,
-  selectedPath,
-  sortable,
-  vaultTree,
-  actions,
-  edit,
-  completingPaths,
-  onExpandPath,
-  onPersisted,
-}: {
+type TasksTreeProps = {
   entries: readonly TaskIndexEntry[];
   expanded: ReadonlySet<string>;
   selectedPath: string | null;
   sortable: boolean;
   vaultTree: TreeNode | null | undefined;
   actions: TaskTreeActions;
-  edit: TaskTreeEditState;
+  edit: TaskTreeEditState | null;
   completingPaths: ReadonlySet<string>;
+  todayYmd: string;
   onExpandPath?: (path: string) => void;
   /** Called after vault write; may return a Promise — kept under persisting lock until done. */
   onPersisted?: () => void | Promise<void>;
-}): ReactNode {
+};
+
+export const TasksSortableTree = memo(function TasksSortableTree(
+  props: TasksTreeProps,
+): ReactNode {
+  if (!props.sortable) {
+    return (
+      <TasksPlainTree
+        entries={props.entries}
+        expanded={props.expanded}
+        selectedPath={props.selectedPath}
+        actions={props.actions}
+        edit={props.edit}
+        completingPaths={props.completingPaths}
+        todayYmd={props.todayYmd}
+      />
+    );
+  }
+  return <SortableTaskTreeInner {...props} />;
+});
+
+const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
+  entries,
+  expanded,
+  selectedPath,
+  vaultTree,
+  actions,
+  edit,
+  completingPaths,
+  todayYmd,
+  onExpandPath,
+  onPersisted,
+}: TasksTreeProps): ReactNode {
   const [items, setItems] = useState<TaskTreeItems>(() =>
     taskEntriesToTreeItems(entries, expanded),
   );
@@ -123,14 +146,8 @@ export function TasksSortableTree({
         )
       : null;
 
-  // Stock PointerSensor has no activationConstraint. When not sortable, keep a
-  // dead sensor so DndContext still mounts without accidental drags.
-  const sensors = useSensors(
-    useSensor(
-      PointerSensor,
-      sortable ? undefined : { activationConstraint: { distance: 99999 } },
-    ),
-  );
+  // Stock PointerSensor — 8px before drag activates collision detection.
+  const sensors = useSensors(useSensor(PointerSensor));
 
   const sortedIds = useMemo(
     () => flattenedItems.map(({ id }) => id),
@@ -149,7 +166,6 @@ export function TasksSortableTree({
   };
 
   const handleDragStart = ({ active }: DragStartEvent) => {
-    if (!sortable) return;
     setActiveId(active.id);
     setOverId(active.id);
     document.body.style.setProperty("cursor", "grabbing");
@@ -169,7 +185,7 @@ export function TasksSortableTree({
     // Indicator ghost is 8px — pointer can leave droppables on release.
     // Fall back to last onDragOver id (stock uses event.over only).
     const resolvedOverId = over?.id ?? overId;
-    if (!sortable || !proj || resolvedOverId == null) {
+    if (!proj || resolvedOverId == null) {
       resetState();
       setItems(taskEntriesToTreeItems(entries, expanded));
       return;
@@ -233,7 +249,7 @@ export function TasksSortableTree({
   };
 
   return (
-    <TaskTreeActionsProvider actions={actions} edit={edit}>
+    <TaskTreeActionsProvider actions={actions}>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -258,6 +274,8 @@ export function TasksSortableTree({
                   ? projected.depth
                   : item.depth;
               const itemId = String(item.id);
+              const isEditing =
+                edit != null && String(edit.editingId) === itemId;
               return (
                 <SortableTaskTreeRow
                   key={itemId}
@@ -266,12 +284,12 @@ export function TasksSortableTree({
                   depth={rowDepth}
                   indentationWidth={INDENTATION_WIDTH}
                   indicator={INDICATOR}
-                  sortable={sortable}
+                  sortable
                   selected={item.kind === "task" && selectedPath === item.path}
                   isCompleting={completingPaths.has(item.path)}
-                  isEditing={
-                    edit.editingId != null && edit.editingId === itemId
-                  }
+                  isEditing={isEditing}
+                  edit={isEditing && edit ? edit : null}
+                  todayYmd={todayYmd}
                 />
               );
             })}
@@ -286,6 +304,7 @@ export function TasksSortableTree({
               <TaskTreeDragOverlay
                 item={activeItem}
                 childCount={getChildCount(items, activeId) + 1}
+                todayYmd={todayYmd}
               />
             ) : null}
           </DragOverlay>,
@@ -294,4 +313,4 @@ export function TasksSortableTree({
       </DndContext>
     </TaskTreeActionsProvider>
   );
-}
+});

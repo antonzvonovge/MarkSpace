@@ -7,7 +7,7 @@
   --muted: #5f6368;
   --line: #dadce0;
   --danger: #d93025;
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, system-ui,
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, system-ui,
     sans-serif;
 }
 

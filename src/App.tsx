@@ -86,24 +86,84 @@ import { pingUserActivity } from "./lib/userActivity";
 import "./App.css";
 
 /**
+ * Virtual tab hosts — no vault editor `content` subscription so typing in a
+ * note does not reconcile Tasks / Settings / Graph on every keystroke.
+ */
+const TasksDocumentTab = memo(function TasksDocumentTab({
+  isActive,
+}: {
+  isActive: boolean;
+}) {
+  return (
+    <div
+      className={
+        isActive ? "document-instance is-active" : "document-instance"
+      }
+      aria-hidden={!isActive}
+      inert={!isActive}
+    >
+      <TasksView />
+    </div>
+  );
+});
+
+const SettingsDocumentTab = memo(function SettingsDocumentTab({
+  isActive,
+  onClose,
+}: {
+  isActive: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className={
+        isActive ? "document-instance is-active" : "document-instance"
+      }
+      aria-hidden={!isActive}
+      inert={!isActive}
+    >
+      <SettingsPage onClose={onClose} />
+    </div>
+  );
+});
+
+const GraphDocumentTab = memo(function GraphDocumentTab({
+  isActive,
+}: {
+  isActive: boolean;
+}) {
+  return (
+    <div
+      className={
+        isActive
+          ? "document-instance document-instance-graph is-active"
+          : "document-instance document-instance-graph"
+      }
+      aria-hidden={!isActive}
+      inert={!isActive}
+    >
+      {/* Keep mounted: WebGL survives visibility:hidden,
+          but is lost under display:none. */}
+      <TagGraphView />
+    </div>
+  );
+});
+
+/**
  * Per-tab host: subscribes to its own content so typing the active note does
  * not reconcile keep-alive editors. Parent may re-render on tabs[]; memo bails.
  */
 const DocumentTab = memo(function DocumentTab({
   path,
-  kind,
   isActive,
   keepLiveMounted,
   onEditorChange,
-  onCloseSettings,
 }: {
   path: string;
-  kind: "settings" | "graph" | "tasks" | "file";
   isActive: boolean;
   /** LRU keep-alive for Live markdown (BlockNote). */
   keepLiveMounted: boolean;
   onEditorChange: (path: string, nextContent: string) => void;
-  onCloseSettings: () => void;
 }) {
   const content = useVaultStore((s) =>
     s.activePath === path
@@ -121,52 +181,6 @@ const DocumentTab = memo(function DocumentTab({
     path,
     projectPropertiesByPath,
   );
-
-  if (kind === "settings") {
-    return (
-      <div
-        className={
-          isActive ? "document-instance is-active" : "document-instance"
-        }
-        aria-hidden={!isActive}
-        inert={!isActive}
-      >
-        <SettingsPage onClose={onCloseSettings} />
-      </div>
-    );
-  }
-
-  if (kind === "graph") {
-    return (
-      <div
-        className={
-          isActive
-            ? "document-instance document-instance-graph is-active"
-            : "document-instance document-instance-graph"
-        }
-        aria-hidden={!isActive}
-        inert={!isActive}
-      >
-        {/* Keep mounted: WebGL survives visibility:hidden,
-            but is lost under display:none. */}
-        <TagGraphView />
-      </div>
-    );
-  }
-
-  if (kind === "tasks") {
-    return (
-      <div
-        className={
-          isActive ? "document-instance is-active" : "document-instance"
-        }
-        aria-hidden={!isActive}
-        inert={!isActive}
-      >
-        <TasksView />
-      </div>
-    );
-  }
 
   const docKind = documentKind(path);
   const liveSlotActive = !isActive || viewMode === "live";
@@ -423,25 +437,41 @@ const MainPane = memo(function MainPane({
                 })()}
                 <div className="document-body">
                   {tabs.map((tab) => {
-                    const tabKind = isSettingsTab(tab)
-                      ? ("settings" as const)
-                      : isGraphTab(tab)
-                        ? ("graph" as const)
-                        : isTasksTab(tab)
-                          ? ("tasks" as const)
-                          : ("file" as const);
+                    const isActive = tab.path === activePath;
+                    if (isSettingsTab(tab)) {
+                      return (
+                        <SettingsDocumentTab
+                          key={tab.path}
+                          isActive={isActive}
+                          onClose={closeSettings}
+                        />
+                      );
+                    }
+                    if (isGraphTab(tab)) {
+                      return (
+                        <GraphDocumentTab
+                          key={tab.path}
+                          isActive={isActive}
+                        />
+                      );
+                    }
+                    if (isTasksTab(tab)) {
+                      return (
+                        <TasksDocumentTab
+                          key={tab.path}
+                          isActive={isActive}
+                        />
+                      );
+                    }
                     return (
                       <DocumentTab
                         key={tab.path}
                         path={tab.path}
-                        kind={tabKind}
-                        isActive={tab.path === activePath}
+                        isActive={isActive}
                         keepLiveMounted={
-                          tab.path === activePath ||
-                          warmLivePaths.has(tab.path)
+                          isActive || warmLivePaths.has(tab.path)
                         }
                         onEditorChange={onEditorChange}
-                        onCloseSettings={closeSettings}
                       />
                     );
                   })}
