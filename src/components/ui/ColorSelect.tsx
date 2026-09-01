@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { placeAnchoredMenu } from "../../lib/menuPlacement";
+import {
+  PROJECT_COLOR_SWATCHES,
+  type ProjectColorSwatch,
+} from "../../lib/projectColors";
 
-export type SelectOption<T extends string = string> = {
-  value: T;
+export type ColorSelectOption = {
+  value: string;
   label: string;
-  /** Optional Material swatch for list/project pickers. */
-  color?: string;
 };
 
 type MenuPos = {
@@ -21,58 +23,70 @@ const MENU_GAP = 6;
 const MENU_MAX_HEIGHT = 280;
 const MENU_MIN_HEIGHT = 120;
 
-function OptionColorDot({ color }: { color?: string }) {
-  if (!color) return null;
+function swatchForHex(hex: string): ProjectColorSwatch | null {
+  if (!hex) return null;
+  return (
+    PROJECT_COLOR_SWATCHES.find(
+      (s) => s.hex.toLowerCase() === hex.toLowerCase(),
+    ) ?? null
+  );
+}
+
+function ColorDot({ hex, className }: { hex: string; className?: string }) {
+  if (!hex) {
+    return (
+      <span
+        className={["color-select-dot is-none", className].filter(Boolean).join(" ")}
+        aria-hidden="true"
+      />
+    );
+  }
   return (
     <span
-      className="ms-select-option-dot"
-      style={{ background: color }}
+      className={["color-select-dot", className].filter(Boolean).join(" ")}
+      style={{ background: hex }}
       aria-hidden="true"
     />
   );
 }
 
-type Props<T extends string> = {
-  value: T;
-  options: SelectOption<T>[];
-  onChange: (value: T) => void;
+type Props = {
+  value: string;
+  onChange: (hex: string) => void;
   disabled?: boolean;
-  tabIndex?: number;
-  /** "setting" — compact control in SettingRow; "field" — full-width form field. */
   variant?: "setting" | "field";
-  /**
-   * Preferred menu direction. `auto` (default) picks up/down from viewport space.
-   * Avoid hard-coding above/below unless there is a hard layout constraint.
-   */
-  menuPlacement?: "auto" | "below" | "above";
-  className?: string;
   "aria-label"?: string;
-  placeholder?: string;
+  className?: string;
 };
 
-export function Select<T extends string>({
+/** Compact Material color picker — trigger shows current swatch + label; menu lists presets. */
+export function ColorSelect({
   value,
-  options,
   onChange,
   disabled,
-  tabIndex,
-  variant = "setting",
-  menuPlacement = "auto",
+  variant = "field",
+  "aria-label": ariaLabel = "Color",
   className,
-  "aria-label": ariaLabel,
-  placeholder,
-}: Props<T>) {
+}: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<MenuPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const selected = useMemo(
-    () => options.find((o) => o.value === value) ?? null,
-    [options, value],
+  const options = useMemo<ColorSelectOption[]>(
+    () => [
+      { value: "", label: "None" },
+      ...PROJECT_COLOR_SWATCHES.map((s) => ({
+        value: s.hex,
+        label: s.label,
+      })),
+    ],
+    [],
   );
-  const label = selected?.label ?? placeholder ?? value;
+
+  const selected = swatchForHex(value);
+  const label = selected?.label ?? (value ? "Custom" : "None");
 
   const updatePos = () => {
     const el = triggerRef.current;
@@ -85,12 +99,6 @@ export function Select<T extends string>({
       maxHeight: MENU_MAX_HEIGHT,
       minHeight: MENU_MIN_HEIGHT,
       prefer: "below",
-      force:
-        menuPlacement === "above"
-          ? "above"
-          : menuPlacement === "below"
-            ? "below"
-            : undefined,
     });
     setPos({
       left: placed.left,
@@ -107,7 +115,7 @@ export function Select<T extends string>({
       return;
     }
     updatePos();
-  }, [open, variant, menuPlacement]);
+  }, [open, variant]);
 
   useEffect(() => {
     if (!open) return;
@@ -145,7 +153,7 @@ export function Select<T extends string>({
       ? createPortal(
           <div
             ref={menuRef}
-            className="ms-select-menu"
+            className="ms-select-menu color-select-menu"
             role="listbox"
             aria-label={ariaLabel}
             style={{
@@ -160,21 +168,21 @@ export function Select<T extends string>({
           >
             {options.map((opt) => (
               <button
-                key={opt.value}
+                key={opt.value || "__none__"}
                 type="button"
                 role="option"
                 aria-selected={opt.value === value}
                 className={
                   opt.value === value
-                    ? "ms-select-option is-active"
-                    : "ms-select-option"
+                    ? "ms-select-option color-select-option is-active"
+                    : "ms-select-option color-select-option"
                 }
                 onClick={() => {
                   onChange(opt.value);
                   setOpen(false);
                 }}
               >
-                <OptionColorDot color={opt.color} />
+                <ColorDot hex={opt.value} className="color-select-option-dot" />
                 <span className="ms-select-option-label">{opt.label}</span>
               </button>
             ))}
@@ -185,6 +193,7 @@ export function Select<T extends string>({
 
   const rootClass = [
     "ms-select",
+    "color-select",
     variant === "field" ? "is-field" : "is-setting",
     className,
   ]
@@ -196,15 +205,15 @@ export function Select<T extends string>({
       <button
         ref={triggerRef}
         type="button"
-        className="ms-select-trigger"
+        className="ms-select-trigger color-select-trigger"
         disabled={disabled}
-        tabIndex={tabIndex}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
         title={label}
         onClick={() => setOpen((v) => !v)}
       >
+        <ColorDot hex={value} className="color-select-trigger-dot" />
         <span className="ms-select-trigger-label">{label}</span>
         <span className="ms-select-trigger-caret" aria-hidden="true">
           ▾

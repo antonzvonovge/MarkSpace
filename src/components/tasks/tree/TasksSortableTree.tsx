@@ -27,8 +27,12 @@ import { persistTaskTreeDrag } from "./persistTaskTreeDrag";
 import {
   SortableTaskTreeRow,
   TaskTreeDragOverlay,
-  type TaskTreeRowHandlers,
 } from "./TaskTreeRow";
+import {
+  TaskTreeActionsProvider,
+  type TaskTreeActions,
+  type TaskTreeEditState,
+} from "./TaskTreeActionsContext";
 import { parseTaskTreeId, type TaskTreeItems } from "./types";
 import {
   buildTree,
@@ -41,7 +45,7 @@ import {
 
 const measuring = {
   droppable: {
-    strategy: MeasuringStrategy.Always,
+    strategy: MeasuringStrategy.BeforeDragging,
   },
 };
 
@@ -64,7 +68,9 @@ export function TasksSortableTree({
   selectedPath,
   sortable,
   vaultTree,
-  handlers,
+  actions,
+  edit,
+  completingPaths,
   onExpandPath,
   onPersisted,
 }: {
@@ -73,7 +79,9 @@ export function TasksSortableTree({
   selectedPath: string | null;
   sortable: boolean;
   vaultTree: TreeNode | null | undefined;
-  handlers: TaskTreeRowHandlers;
+  actions: TaskTreeActions;
+  edit: TaskTreeEditState;
+  completingPaths: ReadonlySet<string>;
   onExpandPath?: (path: string) => void;
   /** Called after vault write; may return a Promise — kept under persisting lock until done. */
   onPersisted?: () => void | Promise<void>;
@@ -225,60 +233,65 @@ export function TasksSortableTree({
   };
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      measuring={measuring}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
-        <ul
-          className={
-            activeId
-              ? "tasks-list tasks-tree-list is-dragging"
-              : "tasks-list tasks-tree-list"
-          }
-        >
-          {flattenedItems.map((item) => {
-            const rowDepth =
-              item.id === activeId && projected
-                ? projected.depth
-                : item.depth;
-            return (
-              <SortableTaskTreeRow
-                key={String(item.id)}
-                id={item.id}
-                item={item}
-                depth={rowDepth}
-                indentationWidth={INDENTATION_WIDTH}
-                indicator={INDICATOR}
-                sortable={sortable}
-                handlers={handlers}
-                selected={item.kind === "task" && selectedPath === item.path}
+    <TaskTreeActionsProvider actions={actions} edit={edit}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        measuring={measuring}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
+          <ul
+            className={
+              activeId
+                ? "tasks-list tasks-tree-list is-dragging"
+                : "tasks-list tasks-tree-list"
+            }
+          >
+            {flattenedItems.map((item) => {
+              const rowDepth =
+                item.id === activeId && projected
+                  ? projected.depth
+                  : item.depth;
+              const itemId = String(item.id);
+              return (
+                <SortableTaskTreeRow
+                  key={itemId}
+                  id={item.id}
+                  item={item}
+                  depth={rowDepth}
+                  indentationWidth={INDENTATION_WIDTH}
+                  indicator={INDICATOR}
+                  sortable={sortable}
+                  selected={item.kind === "task" && selectedPath === item.path}
+                  isCompleting={completingPaths.has(item.path)}
+                  isEditing={
+                    edit.editingId != null && edit.editingId === itemId
+                  }
+                />
+              );
+            })}
+          </ul>
+        </SortableContext>
+        {createPortal(
+          <DragOverlay
+            dropAnimation={null}
+            modifiers={INDICATOR ? [alignOverlayToCheckbox] : undefined}
+          >
+            {activeId && activeItem ? (
+              <TaskTreeDragOverlay
+                item={activeItem}
+                childCount={getChildCount(items, activeId) + 1}
               />
-            );
-          })}
-        </ul>
-      </SortableContext>
-      {createPortal(
-        <DragOverlay
-          dropAnimation={null}
-          modifiers={INDICATOR ? [alignOverlayToCheckbox] : undefined}
-        >
-          {activeId && activeItem ? (
-            <TaskTreeDragOverlay
-              item={activeItem}
-              childCount={getChildCount(items, activeId) + 1}
-              handlers={handlers}
-            />
-          ) : null}
-        </DragOverlay>,
-        document.body,
-      )}
-    </DndContext>
+            ) : null}
+          </DragOverlay>,
+          document.body,
+        )}
+      </DndContext>
+    </TaskTreeActionsProvider>
   );
 }

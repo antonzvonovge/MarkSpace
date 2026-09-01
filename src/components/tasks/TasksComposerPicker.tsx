@@ -5,6 +5,7 @@ import { placeAnchoredMenu } from "../../lib/menuPlacement";
 export type TasksComposerPickerOption = {
   value: string;
   label: string;
+  color?: string;
 };
 
 type MenuPos = {
@@ -206,6 +207,13 @@ export function TasksComposerPicker({
                     onMouseEnter={() => setHighlight(index)}
                     onClick={() => pick(opt.value)}
                   >
+                    {opt.color ? (
+                      <span
+                        className="tasks-composer-picker-dot"
+                        style={{ background: opt.color }}
+                        aria-hidden="true"
+                      />
+                    ) : null}
                     <span className="chat-model-option-name">{opt.label}</span>
                   </button>
                 ))

@@ -1195,6 +1195,143 @@ select {
 .tasks-section-row.is-selected .tasks-section-row-icon {
   color: var(--accent);
 }
+
+.tasks-section-row-icon.has-list-color {
+  color: var(--task-list-color, var(--sidebar-muted, var(--muted)));
+}
+
+.tasks-section-row.is-selected .tasks-section-row-icon.has-list-color {
+  color: var(--task-list-color, var(--accent));
+}
+
+.tasks-section-group {
+  list-style: none;
+}
+
+.tasks-section-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 22px;
+  margin: 0;
+  padding: 1px var(--tree-pad-x) 1px
+    calc(
+      var(--tree-pad-x) + var(--tree-indent) + var(--tree-chevron-size) +
+        var(--tree-row-gap)
+    );
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--sidebar-muted, var(--muted)) 88%, transparent);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0;
+  user-select: none;
+}
+
+.tasks-section-group-header:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-muted, var(--muted));
+}
+
+.tasks-section-group-chevron-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  line-height: 0;
+  opacity: 0.72;
+}
+
+.tasks-section-group-header:hover .tasks-section-group-chevron-slot {
+  opacity: 1;
+}
+
+.tasks-section-group-header .tasks-section-chevron {
+  width: var(--tree-chevron-size);
+  height: var(--tree-chevron-size);
+}
+
+.tasks-section-group-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.tasks-section-group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tasks-section-group-empty {
+  margin: 0;
+  padding: 1px var(--tree-pad-x) 3px
+    calc(
+      var(--tree-pad-x) + var(--tree-indent) + var(--tree-chevron-size) +
+        var(--tree-row-gap) + 2px
+    );
+  color: color-mix(in srgb, var(--sidebar-muted, var(--muted)) 75%, transparent);
+  font-size: 0.6875rem;
+  font-style: italic;
+  list-style: none;
+  user-select: none;
+}
+
+.color-select-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.color-select-dot.is-none {
+  background: transparent;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+}
+
+.color-select-trigger {
+  gap: 8px;
+}
+
+.color-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ms-select-option-dot,
+.tasks-composer-picker-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.tasks-detail-list-icon.has-list-color {
+  color: inherit;
+}
+
+.ms-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .comments-inbox-header-count {
   display: inline-flex;
   align-items: center;

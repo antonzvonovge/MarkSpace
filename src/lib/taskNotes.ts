@@ -476,6 +476,60 @@ export function parseTaskNote(path: string, markdown: string): TaskNote {
   };
 }
 
+function extractTitleFromBody(body: string): string {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  for (const line of lines) {
+    if (line.trim() === "") continue;
+    const tm = line.match(TITLE_HEADING);
+    if (tm) return tm[1]!.trim();
+    break;
+  }
+  return "";
+}
+
+function countCommentsInBody(body: string): number {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  let inComments = false;
+  let count = 0;
+  for (const line of lines) {
+    if (COMMENTS_HEADING.test(line)) {
+      inComments = true;
+      continue;
+    }
+    if (inComments && COMMENT_AT.test(line)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/** Lightweight parse for list index — frontmatter, title, comment count only. */
+export function parseTaskIndexLight(
+  path: string,
+  markdown: string,
+): TaskIndexEntry {
+  const attrs = getTaskAttrs(markdown);
+  const { body } = splitFrontmatter(markdown);
+  const parsedTitle = extractTitleFromBody(body);
+  return {
+    path,
+    id: attrs.id,
+    title: displayTitle(path, parsedTitle),
+    status: attrs.status,
+    due: attrs.due,
+    priority: attrs.priority,
+    labels: attrs.labels,
+    created: attrs.created,
+    parent: attrs.parent,
+    list: taskListFromPath(path),
+    subtaskTotal: 0,
+    subtaskDone: 0,
+    commentCount: countCommentsInBody(body),
+    subtasks: [],
+    description: "",
+  };
+}
+
 /** Serialize structured task fields to markdown (stable section order). */
 export function serializeTaskNote(note: Omit<TaskNote, "path"> & { path?: string }): string {
   const data: FrontmatterData = {};
@@ -609,10 +663,9 @@ function findNode(
 
 const READ_CONCURRENCY = 8;
 
-export async function loadTaskIndex(
-  tree: TreeNode | null | undefined,
+async function readTaskIndexEntries(
+  paths: readonly string[],
 ): Promise<TaskIndexEntry[]> {
-  const paths = collectTaskNotePaths(tree);
   const entries: TaskIndexEntry[] = [];
   for (let i = 0; i < paths.length; i += READ_CONCURRENCY) {
     const chunk = paths.slice(i, i + READ_CONCURRENCY);
@@ -620,7 +673,7 @@ export async function loadTaskIndex(
       chunk.map(async (path) => {
         try {
           const md = await readNote(path);
-          return taskIndexEntryFromNote(parseTaskNote(path, md));
+          return parseTaskIndexLight(path, md);
         } catch {
           return null;
         }
@@ -630,7 +683,61 @@ export async function loadTaskIndex(
       if (e) entries.push(e);
     }
   }
-  return enrichTaskIndexChildren(entries);
+  return entries;
+}
+
+/** Reload specific paths and merge into an existing index (preserves order). */
+export async function refreshTaskIndexEntries(
+  entries: readonly TaskIndexEntry[],
+  paths: readonly string[],
+): Promise<TaskIndexEntry[]> {
+  if (paths.length === 0) return [...entries];
+  const loaded = await readTaskIndexEntries(paths);
+  const byPath = new Map(entries.map((e) => [e.path, e]));
+  for (const e of loaded) byPath.set(e.path, e);
+  const order = entries.map((e) => e.path);
+  for (const p of paths) {
+    if (!order.includes(p) && byPath.has(p)) order.push(p);
+  }
+  const merged = order
+    .map((p) => byPath.get(p))
+    .filter((e): e is TaskIndexEntry => e != null);
+  return enrichTaskIndexChildren(merged);
+}
+
+export async function loadTaskIndex(
+  tree: TreeNode | null | undefined,
+  prev?: readonly TaskIndexEntry[],
+): Promise<TaskIndexEntry[]> {
+  const paths = collectTaskNotePaths(tree);
+  if (paths.length === 0) return [];
+
+  if (prev && prev.length > 0) {
+    const prevByPath = new Map(prev.map((e) => [e.path, e]));
+    const samePaths =
+      paths.length === prev.length && paths.every((p) => prevByPath.has(p));
+    if (samePaths) {
+      const reordered = paths.map((p) => prevByPath.get(p)!);
+      return enrichTaskIndexChildren(reordered);
+    }
+
+    const pathSet = new Set(paths);
+    const newPaths = paths.filter((p) => !prevByPath.has(p));
+    const kept = prev.filter((e) => pathSet.has(e.path));
+    if (newPaths.length > 0 && kept.length + newPaths.length === paths.length) {
+      const loaded = await readTaskIndexEntries(newPaths);
+      const byPath = new Map([
+        ...kept.map((e) => [e.path, e] as const),
+        ...loaded.map((e) => [e.path, e] as const),
+      ]);
+      const merged = paths
+        .map((p) => byPath.get(p))
+        .filter((e): e is TaskIndexEntry => e != null);
+      return enrichTaskIndexChildren(merged);
+    }
+  }
+
+  return enrichTaskIndexChildren(await readTaskIndexEntries(paths));
 }
 
 /** List folder names directly under Tasks/ (for filter dropdown). */

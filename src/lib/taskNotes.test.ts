@@ -6,6 +6,7 @@ import {
   getTaskAttrs,
   isTaskInCompleted,
   parseTaskNote,
+  parseTaskIndexLight,
   serializeTaskNote,
   setTaskAttrs,
   taskCompletedFolder,
@@ -79,6 +80,15 @@ describe("taskNotes parse/serialize", () => {
     expect(again.attrs).toEqual(note.attrs);
     expect(again.subtasks).toEqual(note.subtasks);
     expect(again.comments).toEqual(note.comments);
+  });
+
+  it("parseTaskIndexLight reads title and comment count without full body parse", () => {
+    const entry = parseTaskIndexLight("Tasks/Work/send-report.md", SAMPLE);
+    expect(entry.title).toBe("Send report");
+    expect(entry.commentCount).toBe(2);
+    expect(entry.description).toBe("");
+    expect(entry.subtasks).toEqual([]);
+    expect(entry.labels).toEqual(["work", "report"]);
   });
 
   it("uses file stem when title heading is missing", () => {

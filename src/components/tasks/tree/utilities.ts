@@ -91,13 +91,15 @@ function flatten(
   parentId: UniqueIdentifier | null = null,
   depth = 0,
 ): FlattenedTaskItem[] {
-  return items.reduce<FlattenedTaskItem[]>((acc, item, index) => {
-    return [
-      ...acc,
-      { ...item, parentId, depth, index },
-      ...flatten(item.children, item.id, depth + 1),
-    ];
-  }, []);
+  const acc: FlattenedTaskItem[] = [];
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]!;
+    acc.push({ ...item, parentId, depth, index });
+    if (item.children.length > 0) {
+      acc.push(...flatten(item.children, item.id, depth + 1));
+    }
+  }
+  return acc;
 }
 
 export function flattenTree(items: TaskTreeItems): FlattenedTaskItem[] {

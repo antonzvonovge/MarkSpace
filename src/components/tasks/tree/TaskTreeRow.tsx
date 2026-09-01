@@ -1,4 +1,9 @@
-import { type CSSProperties, type ReactNode, type RefObject } from "react";
+import {
+  memo,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import type { UniqueIdentifier } from "@dnd-kit/core";
 import {
   type AnimateLayoutChanges,
@@ -19,6 +24,10 @@ import {
   TasksIconGrip,
   TasksIconMore,
 } from "../tasksIcons";
+import {
+  useTaskTreeActions,
+  useTaskTreeEdit,
+} from "./TaskTreeActionsContext";
 import type { FlattenedTaskItem, TaskTreeItem } from "./types";
 import { iOS } from "./utilities";
 
@@ -89,19 +98,19 @@ function IconBtn({
   );
 }
 
+/** @deprecated Prefer TaskTreeActionsProvider — kept for drag overlay. */
 export type TaskTreeRowHandlers = {
   onSelect: (path: string) => void;
-  /** Open task detail focused on the comment composer. */
   onOpenComments?: (path: string) => void;
   onToggleStatus: (item: FlattenedTaskItem) => void;
   onToggleCollapse?: (path: string) => void;
   onEditTitle?: (item: TaskTreeItem) => void;
   onDueChange?: (path: string, due: string | null) => void;
-  /** Paths mid complete animation (show check before row disappears). */
   completingPaths?: ReadonlySet<string>;
   editingId?: UniqueIdentifier | null;
   editDraft?: TasksComposerDraft | null;
   editLists?: string[];
+  editListColors?: Record<string, string>;
   editLabelCatalog?: string[];
   editTitleRef?: RefObject<HTMLInputElement | null>;
   onEditDraftChange?: (patch: Partial<TasksComposerDraft>) => void;
@@ -113,42 +122,45 @@ const animateLayoutChanges: AnimateLayoutChanges = () => false;
 
 function TaskRowInner({
   item,
-  handlers,
   selected,
   clone,
   ghost,
   handleProps,
   childCount,
+  isCompleting,
+  isEditing,
 }: {
   item: FlattenedTaskItem;
-  handlers: TaskTreeRowHandlers;
   selected?: boolean;
   clone?: boolean;
   ghost?: boolean;
   handleProps?: Record<string, unknown>;
   childCount?: number;
+  isCompleting: boolean;
+  isEditing: boolean;
 }) {
+  const actions = useTaskTreeActions();
+  const edit = useTaskTreeEdit();
+
   const isTask = item.kind === "task";
   const hasSubs = item.children.length > 0;
   const showExpand = hasSubs;
   const collapsed = !!item.collapsed;
-  const editing =
-    String(handlers.editingId) === String(item.id) && !clone && !ghost;
-  const completing = handlers.completingPaths?.has(item.path) ?? false;
-  const checked = isTask && (item.status === "done" || completing);
+  const checked = isTask && (item.status === "done" || isCompleting);
 
-  if (editing && handlers.editDraft) {
+  if (isEditing && edit.editDraft) {
     return (
       <TasksComposer
         variant="row"
-        draft={handlers.editDraft}
-        lists={handlers.editLists ?? []}
-        labelCatalog={handlers.editLabelCatalog ?? []}
-        titleRef={handlers.editTitleRef}
+        draft={edit.editDraft}
+        lists={edit.editLists}
+        listColors={edit.editListColors}
+        labelCatalog={edit.editLabelCatalog}
+        titleRef={edit.editTitleRef}
         submitLabel="Save task"
-        onChange={(patch) => handlers.onEditDraftChange?.(patch)}
-        onSubmit={() => handlers.onCommitEdit?.()}
-        onCancel={() => handlers.onCancelEdit?.()}
+        onChange={(patch) => actions.onEditDraftChange(patch)}
+        onSubmit={() => actions.onCommitEdit()}
+        onCancel={() => actions.onCancelEdit()}
       />
     );
   }
@@ -166,7 +178,7 @@ function TaskRowInner({
       style={{ ["--tasks-drop-line-inset" as string]: "54px" }}
       onClick={() => {
         if (clone || ghost) return;
-        handlers.onSelect(item.path);
+        actions.onSelect(item.path);
       }}
     >
       <span
@@ -179,7 +191,7 @@ function TaskRowInner({
       </span>
       {showExpand ? (
         <span className="tasks-row-expand">
-          {handlers.onToggleCollapse && !clone ? (
+          {!clone ? (
             <button
               type="button"
               className="tasks-expand-btn"
@@ -187,7 +199,7 @@ function TaskRowInner({
               aria-expanded={!collapsed}
               onClick={(ev) => {
                 ev.stopPropagation();
-                handlers.onToggleCollapse?.(item.path);
+                actions.onToggleCollapse(item.path);
               }}
             >
               <TasksIconChevron open={!collapsed} />
@@ -198,7 +210,7 @@ function TaskRowInner({
       <CircleCheck
         checked={checked}
         priority={isTask ? item.priority : null}
-        onClick={() => handlers.onToggleStatus(item)}
+        onClick={() => actions.onToggleStatus(item)}
       />
       <div className="tasks-row-body">
         <span
@@ -218,10 +230,7 @@ function TaskRowInner({
       </div>
       {!clone ? (
         <div className="tasks-row-actions">
-          <IconBtn
-            label="Edit"
-            onClick={() => handlers.onEditTitle?.(item)}
-          >
+          <IconBtn label="Edit" onClick={() => actions.onEditTitle(item)}>
             <TasksIconEdit size={24} />
           </IconBtn>
           <span
@@ -232,18 +241,18 @@ function TaskRowInner({
             <TasksDateField
               variant="icon"
               value={item.due ?? null}
-              onChange={(due) => handlers.onDueChange?.(item.path, due)}
+              onChange={(due) => actions.onDueChange(item.path, due)}
             />
           </span>
           <IconBtn
             label="Comments"
             onClick={() =>
-              (handlers.onOpenComments ?? handlers.onSelect)(item.path)
+              (actions.onOpenComments ?? actions.onSelect)(item.path)
             }
           >
             <TasksIconComment size={24} />
           </IconBtn>
-          <IconBtn label="More" onClick={() => handlers.onSelect(item.path)}>
+          <IconBtn label="More" onClick={() => actions.onSelect(item.path)}>
             <TasksIconMore size={24} />
           </IconBtn>
         </div>
@@ -257,27 +266,29 @@ function TaskRowInner({
   );
 }
 
-export function SortableTaskTreeRow({
+type SortableRowProps = {
+  id: UniqueIdentifier;
+  item: FlattenedTaskItem;
+  depth: number;
+  indentationWidth: number;
+  indicator?: boolean;
+  sortable?: boolean;
+  selected?: boolean;
+  isCompleting: boolean;
+  isEditing: boolean;
+};
+
+function SortableTaskTreeRowInner({
   id,
   item,
   depth,
   indentationWidth,
   indicator = false,
   sortable = true,
-  handlers,
   selected,
-}: {
-  id: UniqueIdentifier;
-  item: FlattenedTaskItem;
-  depth: number;
-  indentationWidth: number;
-  /** Drop-line mode (dnd-kit `indicator` prop) — applied on the ghost while dragging. */
-  indicator?: boolean;
-  /** When false, grip has no drag listeners (Today). */
-  sortable?: boolean;
-  handlers: TaskTreeRowHandlers;
-  selected?: boolean;
-}) {
+  isCompleting,
+  isEditing,
+}: SortableRowProps) {
   const {
     attributes,
     isDragging,
@@ -289,13 +300,11 @@ export function SortableTaskTreeRow({
   } = useSortable({
     id,
     animateLayoutChanges,
-    disabled:
-      !sortable || String(handlers.editingId) === String(id),
+    disabled: !sortable || isEditing,
   });
 
   const style: CSSProperties = {
     transform: CSS.Translate.toString(transform),
-    // No CSS transition: drop must land in place without sliding via old slot.
   };
 
   const handleProps = sortable
@@ -330,33 +339,52 @@ export function SortableTaskTreeRow({
       <div ref={setDraggableNodeRef}>
         <TaskRowInner
           item={item}
-          handlers={handlers}
           selected={selected}
           ghost={isDragging}
           handleProps={handleProps}
+          isCompleting={isCompleting}
+          isEditing={isEditing}
         />
       </div>
     </li>
   );
 }
 
+function rowPropsEqual(
+  prev: SortableRowProps,
+  next: SortableRowProps,
+): boolean {
+  return (
+    prev.id === next.id &&
+    prev.item === next.item &&
+    prev.depth === next.depth &&
+    prev.indentationWidth === next.indentationWidth &&
+    prev.indicator === next.indicator &&
+    prev.sortable === next.sortable &&
+    prev.selected === next.selected &&
+    prev.isCompleting === next.isCompleting &&
+    prev.isEditing === next.isEditing
+  );
+}
+
+export const SortableTaskTreeRow = memo(SortableTaskTreeRowInner, rowPropsEqual);
+
 /** Drag overlay clone (card under cursor). */
 export function TaskTreeDragOverlay({
   item,
   childCount,
-  handlers,
 }: {
   item: FlattenedTaskItem;
   childCount?: number;
-  handlers: TaskTreeRowHandlers;
 }) {
   return (
     <div className="tasks-tree-overlay">
       <TaskRowInner
         item={item}
-        handlers={handlers}
         clone
         childCount={childCount}
+        isCompleting={false}
+        isEditing={false}
       />
     </div>
   );

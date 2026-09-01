@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -22,6 +23,7 @@ import {
   localDateYmd,
   moveTaskToList,
   newTaskId,
+  refreshTaskIndexEntries,
   saveTaskNote,
   taskListFromPath,
   type TaskIndexEntry,
@@ -29,6 +31,8 @@ import {
   type TaskPriority,
 } from "../lib/taskNotes";
 import { absolutePath, joinPath, parentPath, writeAsset } from "../lib/vaultApi";
+import { taskListColor } from "../lib/taskListMeta";
+import { useTaskListMetaStore } from "../store/taskListMetaStore";
 import { useTasksPanelStore } from "../store/tasksPanelStore";
 import { useVaultStore } from "../store/vaultStore";
 import { Select } from "./ui/Select";
@@ -52,6 +56,10 @@ import {
 import { TASK_PRIORITY_OPTIONS } from "../lib/taskPriorities";
 import { TasksInboxIcon, TasksListIcon } from "./treeIcons";
 import { TasksSortableTree } from "./tasks/tree/TasksSortableTree";
+import type {
+  TaskTreeActions,
+  TaskTreeEditState,
+} from "./tasks/tree/TaskTreeActionsContext";
 import type { FlattenedTaskItem } from "./tasks/tree/types";
 function priorityClass(priority: TaskPriority | null | undefined): string {
   if (priority == null) return "";
@@ -402,6 +410,7 @@ function TaskDetailPanel({
   path,
   entries,
   lists,
+  listColors,
   labelCatalog,
   startWithComment = false,
   onStartWithCommentConsumed,
@@ -414,6 +423,7 @@ function TaskDetailPanel({
   path: string;
   entries: readonly TaskIndexEntry[];
   lists: string[];
+  listColors: Record<string, string>;
   labelCatalog: string[];
   /** Open the add-comment composer on mount / when requested. */
   startWithComment?: boolean;
@@ -527,6 +537,7 @@ function TaskDetailPanel({
   );
 
   const listName = taskListFromPath(path) || "Inbox";
+  const listColor = listColors[listName] ?? "";
   const isNested = Boolean(note?.attrs.parent);
   const children = useMemo(() => {
     if (!note?.attrs.id) return [];
@@ -724,8 +735,24 @@ function TaskDetailPanel({
       >
         <header className="tasks-detail-dialog-head">
           <span className="tasks-detail-list-chip">
-            <span className="tasks-detail-list-icon" aria-hidden="true">
-              {listName === "Inbox" ? <TasksInboxIcon /> : <TasksListIcon />}
+            <span
+              className={
+                listColor
+                  ? "tasks-detail-list-icon has-list-color"
+                  : "tasks-detail-list-icon"
+              }
+              aria-hidden="true"
+              style={
+                listColor
+                  ? ({ color: listColor } as CSSProperties)
+                  : undefined
+              }
+            >
+              {listName === "Inbox" ? (
+                <TasksInboxIcon />
+              ) : (
+                <TasksListIcon color={listColor || undefined} />
+              )}
             </span>
             {listName}
           </span>
@@ -846,6 +873,7 @@ function TaskDetailPanel({
                               variant="row"
                               draft={childDraft}
                               lists={lists}
+                              listColors={listColors}
                               labelCatalog={labelCatalog}
                               titleRef={childTitleRef}
                               submitLabel="Save"
@@ -977,6 +1005,7 @@ function TaskDetailPanel({
                       variant="row"
                       draft={childDraft}
                       lists={lists}
+                      listColors={listColors}
                       labelCatalog={labelCatalog}
                       titleRef={childTitleRef}
                       submitLabel="Add subtask"
@@ -1115,10 +1144,20 @@ function TaskDetailPanel({
                       { value: "Inbox", label: "Inbox" },
                       ...lists
                         .filter((l) => l !== "Inbox")
-                        .map((l) => ({ value: l, label: l })),
+                        .map((l) => ({
+                          value: l,
+                          label: l,
+                          color: listColors[l] || undefined,
+                        })),
                       ...(listName !== "Inbox" &&
                       !lists.includes(listName)
-                        ? [{ value: listName, label: listName }]
+                        ? [
+                            {
+                              value: listName,
+                              label: listName,
+                              color: listColors[listName] || undefined,
+                            },
+                          ]
                         : []),
                     ]}
                     onChange={(nextList) => {
@@ -1219,6 +1258,9 @@ export function TasksView() {
   const toggleExpandedPath = useTasksPanelStore((s) => s.toggleExpandedPath);
   const expandPath = useTasksPanelStore((s) => s.expandPath);
 
+  const metaByName = useTaskListMetaStore((s) => s.metaByName);
+  const refreshMeta = useTaskListMetaStore((s) => s.refresh);
+
   const [entries, setEntries] = useState<TaskIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const expanded = useMemo(() => new Set(expandedPaths), [expandedPaths]);
@@ -1239,8 +1281,12 @@ export function TasksView() {
   );
   const [hiddenPaths, setHiddenPaths] = useState(() => new Set<string>());
   const editTitleRef = useRef<HTMLInputElement>(null);
+  const entriesRef = useRef<TaskIndexEntry[]>([]);
+  const identitiesEnsuredRef = useRef(false);
   const today = localDateYmd();
   const titleRef = useRef<HTMLInputElement>(null);
+
+  entriesRef.current = entries;
 
   const clearStartWithComment = useCallback(() => {
     setStartWithComment(false);
@@ -1254,10 +1300,16 @@ export function TasksView() {
     [setSelectedPath],
   );
 
-  const reloadIndex = useCallback(async () => {
+  const reloadIndex = useCallback(async (opts?: { full?: boolean }) => {
     try {
-      await ensureTaskIdentities(useVaultStore.getState().tree);
-      const list = await loadTaskIndex(useVaultStore.getState().tree);
+      if (!identitiesEnsuredRef.current) {
+        await ensureTaskIdentities(useVaultStore.getState().tree);
+        identitiesEnsuredRef.current = true;
+      }
+      const list = await loadTaskIndex(
+        useVaultStore.getState().tree,
+        opts?.full ? undefined : entriesRef.current,
+      );
       setEntries(list);
     } finally {
       setLoading(false);
@@ -1294,6 +1346,10 @@ export function TasksView() {
   }, [tree, reloadIndex]);
 
   useEffect(() => {
+    void refreshMeta();
+  }, [refreshMeta, tree]);
+
+  useEffect(() => {
     const live = new Set(entries.map((e) => e.path));
     setHiddenPaths((prev) => {
       if (prev.size === 0) return prev;
@@ -1321,34 +1377,51 @@ export function TasksView() {
     if (editingId) editTitleRef.current?.focus();
   }, [editingId]);
 
-  const patchQuickDraft = (patch: Partial<TasksComposerDraft>) => {
+  const patchQuickDraft = useCallback((patch: Partial<TasksComposerDraft>) => {
     setQuickDraft((prev) => ({ ...prev, ...patch }));
-  };
+  }, []);
 
-  const patchEditDraft = (patch: Partial<TasksComposerDraft>) => {
+  const patchEditDraft = useCallback((patch: Partial<TasksComposerDraft>) => {
     setEditDraft((prev) => (prev ? { ...prev, ...patch } : prev));
-  };
+  }, []);
 
-  const cancelEdit = () => {
+  const cancelEdit = useCallback(() => {
     setEditingId(null);
     setEditingPath(null);
     setEditDraft(null);
-  };
+  }, []);
 
-  const startEdit = (item: { id: string | number; path: string; title: string; due?: string | null; priority?: TaskPriority | null }) => {
-    const entry = entries.find((e) => e.path === item.path);
-    setAdding(false);
-    setEditingId(String(item.id));
-    setEditingPath(item.path);
-    setEditDraft({
-      title: item.title,
-      due: item.due ?? entry?.due ?? "",
-      priority: item.priority ?? entry?.priority ?? "",
-      labels: [...(entry?.labels ?? [])],
-      list: entry?.list || taskListFromPath(item.path) || "Inbox",
-    });
-  };
+  const startEdit = useCallback(
+    (item: {
+      id: string | number;
+      path: string;
+      title: string;
+      due?: string | null;
+      priority?: TaskPriority | null;
+    }) => {
+      const entry = entriesRef.current.find((e) => e.path === item.path);
+      setAdding(false);
+      setEditingId(String(item.id));
+      setEditingPath(item.path);
+      setEditDraft({
+        title: item.title,
+        due: item.due ?? entry?.due ?? "",
+        priority: item.priority ?? entry?.priority ?? "",
+        labels: [...(entry?.labels ?? [])],
+        list: entry?.list || taskListFromPath(item.path) || "Inbox",
+      });
+    },
+    [],
+  );
   const lists = useMemo(() => collectTaskLists(tree), [tree]);
+  const listColors = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const name of lists) {
+      const color = taskListColor(metaByName, name);
+      if (color) out[name] = color;
+    }
+    return out;
+  }, [lists, metaByName]);
   const labels = useMemo(() => collectTaskLabels(entries), [entries]);
   const visible = useMemo(
     () =>
@@ -1400,7 +1473,7 @@ export function TasksView() {
 
   const selectedIndex = visible.findIndex((e) => e.path === selectedPath);
 
-  const commitEdit = async () => {
+  const commitEdit = useCallback(async () => {
     if (!editingPath || !editDraft) {
       cancelEdit();
       return;
@@ -1433,12 +1506,24 @@ export function TasksView() {
       if (selectedPath === pathBefore && nextPath !== pathBefore) {
         setSelectedPath(nextPath);
       }
-      await refreshTree();
-      await reloadIndex();
+      if (nextPath !== pathBefore) {
+        await refreshTree();
+        await reloadIndex();
+      } else {
+        setEntries(await refreshTaskIndexEntries(entriesRef.current, [nextPath]));
+      }
     } catch {
       // Keep composer open so the user can retry or cancel.
     }
-  };
+  }, [
+    cancelEdit,
+    editDraft,
+    editingPath,
+    reloadIndex,
+    refreshTree,
+    selectedPath,
+    setSelectedPath,
+  ]);
 
   const submitQuickAdd = async () => {
     const title = quickDraft.title.trim();
@@ -1498,68 +1583,136 @@ export function TasksView() {
     }
   };
 
-  const toggleExpand = (path: string) => {
-    toggleExpandedPath(path);
-  };
+  const toggleExpand = useCallback(
+    (path: string) => {
+      toggleExpandedPath(path);
+    },
+    [toggleExpandedPath],
+  );
 
-  const saveDue = async (path: string, due: string | null) => {
+  const saveDue = useCallback(async (path: string, due: string | null) => {
     const note = await loadTaskNote(path);
     await saveTaskNote({
       ...note,
       attrs: { ...note.attrs, due },
     });
-    await refreshTree();
-  };
+    setEntries((prev) =>
+      prev.map((e) => (e.path === path ? { ...e, due } : e)),
+    );
+  }, []);
 
   const treeSortable = view !== "today";
 
-  const onToggleStatus = async (item: FlattenedTaskItem) => {
-    if (item.status === "done") return;
-    if (completingPaths.has(item.path) || hiddenPaths.has(item.path)) return;
-    const childPaths =
-      item.id
-        ? entries
-            .filter(
-              (e) =>
-                e.parent === item.id &&
-                e.path !== item.path &&
-                e.status !== "done",
-            )
-            .map((e) => e.path)
-        : [];
-    const branch = [item.path, ...childPaths];
-    setCompletingPaths((prev) => {
-      const next = new Set(prev);
-      for (const p of branch) next.add(p);
-      return next;
-    });
-    await new Promise((r) => setTimeout(r, 200));
-    setHiddenPaths((prev) => {
-      const next = new Set(prev);
-      for (const p of branch) next.add(p);
-      return next;
-    });
-    try {
-      await completeTask(item.path, { tree, index: entries });
-      if (selectedPath && branch.includes(selectedPath)) {
-        setSelectedPath(null);
-        setStartWithComment(false);
-      }
-      await refreshTree();
-    } catch (e) {
-      console.error(e);
-      setHiddenPaths((prev) => {
-        const next = new Set(prev);
-        for (const p of branch) next.delete(p);
-        return next;
-      });
+  const onToggleStatus = useCallback(
+    async (item: FlattenedTaskItem) => {
+      if (item.status === "done") return;
+      if (completingPaths.has(item.path) || hiddenPaths.has(item.path)) return;
+      const childPaths =
+        item.id
+          ? entriesRef.current
+              .filter(
+                (e) =>
+                  e.parent === item.id &&
+                  e.path !== item.path &&
+                  e.status !== "done",
+              )
+              .map((e) => e.path)
+          : [];
+      const branch = [item.path, ...childPaths];
       setCompletingPaths((prev) => {
         const next = new Set(prev);
-        for (const p of branch) next.delete(p);
+        for (const p of branch) next.add(p);
         return next;
       });
-    }
-  };
+      await new Promise((r) => setTimeout(r, 200));
+      setHiddenPaths((prev) => {
+        const next = new Set(prev);
+        for (const p of branch) next.add(p);
+        return next;
+      });
+      try {
+        await completeTask(item.path, {
+          tree,
+          index: entriesRef.current,
+        });
+        if (selectedPath && branch.includes(selectedPath)) {
+          setSelectedPath(null);
+          setStartWithComment(false);
+        }
+        await refreshTree();
+      } catch (e) {
+        console.error(e);
+        setHiddenPaths((prev) => {
+          const next = new Set(prev);
+          for (const p of branch) next.delete(p);
+          return next;
+        });
+        setCompletingPaths((prev) => {
+          const next = new Set(prev);
+          for (const p of branch) next.delete(p);
+          return next;
+        });
+      }
+    },
+    [
+      completingPaths,
+      hiddenPaths,
+      refreshTree,
+      selectedPath,
+      setSelectedPath,
+      tree,
+    ],
+  );
+
+  const treeActions = useMemo<TaskTreeActions>(
+    () => ({
+      onSelect: openTask,
+      onOpenComments: (path) => openTask(path, { focusComment: true }),
+      onToggleStatus: (item) => {
+        void onToggleStatus(item);
+      },
+      onToggleCollapse: toggleExpand,
+      onEditTitle: (item) => {
+        startEdit({
+          id: String(item.id),
+          path: item.path,
+          title: item.title,
+          due: item.due,
+          priority: item.priority,
+        });
+      },
+      onDueChange: (path, due) => {
+        void saveDue(path, due);
+      },
+      onEditDraftChange: patchEditDraft,
+      onCommitEdit: () => {
+        void commitEdit();
+      },
+      onCancelEdit: cancelEdit,
+    }),
+    [
+      cancelEdit,
+      commitEdit,
+      onToggleStatus,
+      openTask,
+      patchEditDraft,
+      saveDue,
+      startEdit,
+      toggleExpand,
+    ],
+  );
+
+  const treeEdit = useMemo<TaskTreeEditState>(
+    () => ({
+      editingId,
+      editDraft,
+      editLists: lists,
+      editListColors: listColors,
+      editLabelCatalog: labels,
+      editTitleRef,
+    }),
+    [editDraft, editingId, labels, listColors, lists],
+  );
 
   return (
     <div className="tasks-view">
@@ -1576,7 +1729,11 @@ export function TasksView() {
                   { value: "Inbox", label: "Inbox" },
                   ...lists
                     .filter((l) => l !== "Inbox")
-                    .map((l) => ({ value: l, label: l })),
+                    .map((l) => ({
+                      value: l,
+                      label: l,
+                      color: listColors[l] || undefined,
+                    })),
                 ]}
                 onChange={(v) => patchFilters({ list: v })}
               />
@@ -1641,44 +1798,15 @@ export function TasksView() {
               selectedPath={selectedPath}
               sortable={treeSortable}
               vaultTree={tree}
+              actions={treeActions}
+              edit={treeEdit}
+              completingPaths={completingPaths}
               onExpandPath={(path) => expandPath(path)}
               onPersisted={async () => {
                 // Frontmatter-only nest does not change tree shape, so refreshTree
                 // alone may skip set({ tree }) and never re-run reloadIndex.
                 await refreshTree();
                 await reloadIndex();
-              }}
-              handlers={{
-                onSelect: (path) => openTask(path),
-                onOpenComments: (path) =>
-                  openTask(path, { focusComment: true }),
-                onToggleStatus: (item) => {
-                  void onToggleStatus(item);
-                },
-                completingPaths,
-                onToggleCollapse: toggleExpand,
-                onEditTitle: (item) => {
-                  startEdit({
-                    id: String(item.id),
-                    path: item.path,
-                    title: item.title,
-                    due: item.due,
-                    priority: item.priority,
-                  });
-                },
-                onDueChange: (path, due) => {
-                  void saveDue(path, due);
-                },
-                editingId,
-                editDraft,
-                editLists: lists,
-                editLabelCatalog: labels,
-                editTitleRef,
-                onEditDraftChange: patchEditDraft,
-                onCommitEdit: () => {
-                  void commitEdit();
-                },
-                onCancelEdit: cancelEdit,
               }}
             />
           )}
@@ -1687,6 +1815,7 @@ export function TasksView() {
             <TasksComposer
               draft={quickDraft}
               lists={lists}
+              listColors={listColors}
               labelCatalog={labels}
               titleRef={titleRef}
               submitLabel="Add task"
@@ -1734,6 +1863,7 @@ export function TasksView() {
           path={selectedPath}
           entries={entries}
           lists={lists}
+          listColors={listColors}
           labelCatalog={labels}
           startWithComment={startWithComment}
           onStartWithCommentConsumed={clearStartWithComment}

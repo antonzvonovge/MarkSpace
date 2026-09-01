@@ -394,9 +394,16 @@ export function TasksFiltersIcon() {
 }
 
 /** Task list / project — Todoist-style hash mark. */
-export function TasksListIcon() {
+export function TasksListIcon({ color }: { color?: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={color ? { color } : undefined}
+    >
       <path
         d="M6.1 3.5 5.2 12.5M10.8 3.5 9.9 12.5M3.5 6.15h9M3.25 9.85h9"
         stroke="currentColor"

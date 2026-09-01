@@ -4,6 +4,7 @@ import type { TasksFilters, TasksViewId } from "./taskNotes";
 import { emptyTasksFilters } from "./taskNotes";
 
 const COLLAPSED_KEY = "markspace-tasks-section-collapsed-v1";
+const GROUPS_COLLAPSED_KEY = "markspace-tasks-groups-collapsed-v1";
 const VIEW_KEY = "markspace-tasks-view-v1";
 const FILTERS_KEY = "markspace-tasks-filters-v1";
 const EXPANDED_KEY = "markspace-tasks-expanded-v1";
@@ -21,6 +22,27 @@ export function loadTasksSectionCollapsed(): boolean {
 export function saveTasksSectionCollapsed(collapsed: boolean): void {
   try {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
+
+/** Collapsed task list group ids in the sidebar. */
+export function loadTasksGroupsCollapsed(): string[] {
+  try {
+    const raw = localStorage.getItem(GROUPS_COLLAPSED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function saveTasksGroupsCollapsed(ids: readonly string[]): void {
+  try {
+    localStorage.setItem(GROUPS_COLLAPSED_KEY, JSON.stringify([...ids]));
   } catch {
     // ignore
   }

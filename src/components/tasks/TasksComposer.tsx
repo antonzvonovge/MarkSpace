@@ -17,6 +17,8 @@ export type TasksComposerDraft = {
 type Props = {
   draft: TasksComposerDraft;
   lists: string[];
+  /** List name → Material swatch hex. */
+  listColors?: Record<string, string>;
   /** Catalog of known task labels (not vault note tags). */
   labelCatalog: string[];
   titleRef?: RefObject<HTMLInputElement | null>;
@@ -31,6 +33,7 @@ type Props = {
 export function TasksComposer({
   draft,
   lists,
+  listColors,
   labelCatalog,
   titleRef,
   variant = "footer",
@@ -44,14 +47,22 @@ export function TasksComposer({
     { value: "Inbox", label: "Inbox" },
     ...lists
       .filter((l) => l !== "Inbox")
-      .map((l) => ({ value: l, label: l })),
+      .map((l) => ({
+        value: l,
+        label: l,
+        color: listColors?.[l] || undefined,
+      })),
   ];
   // Ensure the active/context list appears even if the tree briefly omits it.
   if (
     currentList !== "Inbox" &&
     !listOptions.some((o) => o.value === currentList)
   ) {
-    listOptions.push({ value: currentList, label: currentList });
+    listOptions.push({
+      value: currentList,
+      label: currentList,
+      color: listColors?.[currentList] || undefined,
+    });
   }
 
   return (

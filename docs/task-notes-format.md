@@ -9,6 +9,7 @@ Agents and UIs must prefer dedicated task helpers over inventing a second format
 - One task = one `.md` under `Tasks/<list>/` (not a special extension). Exclude `.folder.md`.
 - `Tasks/` is a reserved root folder (like Incoming): omitted from the workspace tree / wiki-link picker, not a vault project, excluded from the graph.
 - Lists are folders directly under `Tasks/` (e.g. `Inbox/`, `Work/`). Active task files in a list are a **flat** folder listing — hierarchy is not expressed with nested folders. Create lists from the Tasks sidebar **+** control.
+- Optional list metadata lives in `.markspace/task-lists/` (vault-synced): per-list `{ groupId, color, order }` and `groups.json` for sidebar groups. Color is a Material 500 swatch on the list icon only.
 - Completing a task sets `status: done` and **moves** the file to `Tasks/<list>/completed/` (per-list archive). Completing a **parent** also completes and archives all child task files (`parent` = parent’s `id`). The active task index skips `**/completed/**`. Do not name a list `completed`. Uncomplete / reopen is not in the product UI yet.
 - YAML frontmatter keys: `id` (stable UUID), `status` (`open` | `done`), optional `due` (`YYYY-MM-DD`), `priority` (1–4, 1 = highest), `labels` (string list — **task-scoped tags**, separate from note `tags:` / vault tags), `created` (`YYYY-MM-DD` or ISO), optional `parent` (**UUID of the parent task**, not a path or title). Preserve unknown keys.
 - Nesting is **two levels only**: a root task (`parent` empty) and child tasks whose `parent` is the parent’s `id`. No grandchildren — nesting a parent re-parents its children onto the new parent (or clears them to roots when promoting).
@@ -75,6 +76,17 @@ created: 2026-08-27
 
 # Draft numbers
 ```
+
+## List metadata
+
+Stored under `.markspace/task-lists/` (not in the task note frontmatter):
+
+| File | Contents |
+|------|----------|
+| `groups.json` | `{ groups: [{ id, name, order }] }` — sidebar group headers |
+| `<sha256(Tasks/<list>)>.json` | `{ path, groupId, color, order }` — optional; omitted when all fields are default |
+
+`color` is a Material Design 500 hex (`#rrggbb`) or empty. Rename/move/delete of `Tasks/<list>/` remaps or removes the metadata file automatically.
 
 ## Frontmatter
 

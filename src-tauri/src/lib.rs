@@ -14,6 +14,7 @@ mod mcp;
 mod order_merge;
 mod pdf_text;
 mod projects;
+mod task_lists;
 mod terminal;
 mod vault;
 mod vault_ai;
@@ -215,6 +216,12 @@ pub fn run() {
             projects::get_project_properties,
             projects::set_project_properties,
             projects::list_project_properties,
+            task_lists::list_task_list_groups,
+            task_lists::upsert_task_list_group,
+            task_lists::delete_task_list_group,
+            task_lists::get_task_list_meta,
+            task_lists::list_task_list_meta,
+            task_lists::set_task_list_meta,
             gems::list_gems,
             gems::get_gem,
             gems::upsert_gem,

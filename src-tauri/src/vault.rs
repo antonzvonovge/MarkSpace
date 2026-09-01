@@ -1858,6 +1858,7 @@ pub fn delete_folder_if_empty(
             write_order(&root, &order)?;
             let _ = crate::favorites::remap_favorites(&root, &rel, None);
             let _ = crate::projects::remap_project_properties(&root, &rel, None);
+            let _ = crate::task_lists::remap_task_list_meta(&root, &rel, None);
             let _ = crate::agent_memory::remap_agent_memory(&root, &rel, None);
             let _ = crate::filemeta::remap_filemeta(&root, &rel, None);
             let _ = crate::comments::remap_comments(&root, &rel, None);
@@ -1939,6 +1940,7 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     write_order(&root, &order)?;
     let _ = crate::favorites::remap_favorites(&root, &from_rel, Some(&to_rel));
     let _ = crate::projects::remap_project_properties(&root, &from_rel, Some(&to_rel));
+    let _ = crate::task_lists::remap_task_list_meta(&root, &from_rel, Some(&to_rel));
     let _ = crate::agent_memory::remap_agent_memory(&root, &from_rel, Some(&to_rel));
     let _ = crate::filemeta::remap_filemeta(&root, &from_rel, Some(&to_rel));
     let _ = crate::comments::remap_comments(&root, &from_rel, Some(&to_rel));
@@ -2032,6 +2034,7 @@ pub fn move_entry(
     if !same_parent {
         let _ = crate::favorites::remap_favorites(&root, &from, Some(&new_rel));
         let _ = crate::projects::remap_project_properties(&root, &from, Some(&new_rel));
+        let _ = crate::task_lists::remap_task_list_meta(&root, &from, Some(&new_rel));
         let _ = crate::agent_memory::remap_agent_memory(&root, &from, Some(&new_rel));
         let _ = crate::filemeta::remap_filemeta(&root, &from, Some(&new_rel));
         let _ = crate::comments::remap_comments(&root, &from, Some(&new_rel));
@@ -2241,6 +2244,7 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     write_order(&root, &order)?;
     let _ = crate::favorites::remap_favorites(&root, &rel, None);
     let _ = crate::projects::remap_project_properties(&root, &rel, None);
+    let _ = crate::task_lists::remap_task_list_meta(&root, &rel, None);
     let _ = crate::agent_memory::remap_agent_memory(&root, &rel, None);
     let _ = crate::filemeta::remap_filemeta(&root, &rel, None);
     let _ = crate::comments::remap_comments(&root, &rel, None);
