@@ -717,7 +717,12 @@ export async function loadTaskIndex(
     const samePaths =
       paths.length === prev.length && paths.every((p) => prevByPath.has(p));
     if (samePaths) {
-      const reordered = paths.map((p) => prevByPath.get(p)!);
+      // Same files, but tree order and/or frontmatter (e.g. parent) may have changed.
+      const fresh = await readTaskIndexEntries(paths);
+      const byPath = new Map(fresh.map((e) => [e.path, e]));
+      const reordered = paths
+        .map((p) => byPath.get(p))
+        .filter((e): e is TaskIndexEntry => e != null);
       return enrichTaskIndexChildren(reordered);
     }
 

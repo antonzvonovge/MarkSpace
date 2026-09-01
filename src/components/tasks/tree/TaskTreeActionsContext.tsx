@@ -29,7 +29,7 @@ export type TaskTreeEditState = {
   editLists: string[];
   editListColors: Record<string, string>;
   editLabelCatalog: string[];
-  editTitleRef: RefObject<HTMLInputElement | null>;
+  editTitleRef: RefObject<HTMLTextAreaElement | null>;
 };
 
 const ActionsContext = createContext<TaskTreeActions | null>(null);

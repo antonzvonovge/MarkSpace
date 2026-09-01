@@ -83,7 +83,7 @@ export const TasksListColumn = memo(function TasksListColumn({
   completingPaths: ReadonlySet<string>;
   todayYmd: string;
   quickDraft: TasksComposerDraft;
-  titleRef: RefObject<HTMLInputElement | null>;
+  titleRef: RefObject<HTMLTextAreaElement | null>;
   onExpandPath: (path: string) => void;
   onPersisted: () => void | Promise<void>;
   onPatchQuickDraft: (patch: Partial<TasksComposerDraft>) => void;
@@ -92,12 +92,15 @@ export const TasksListColumn = memo(function TasksListColumn({
   onStartAdding: () => void;
   addComposerParentPath?: string | null;
   addDraft?: TasksComposerDraft;
-  addTitleRef?: RefObject<HTMLInputElement | null>;
+  addTitleRef?: RefObject<HTMLTextAreaElement | null>;
   onPatchAddDraft?: (patch: Partial<TasksComposerDraft>) => void;
   onSubmitAddSubtask?: (parentPath: string) => void;
   onCancelAddSubtask?: () => void;
   onStartAddSubtask?: (parentPath: string) => void;
 }): ReactNode {
+  const showListChip =
+    view === "today" || (view === "filters" && !filters.list.trim());
+
   return (
     <div className="tasks-list-column">
       <header className="tasks-view-header">
@@ -183,6 +186,8 @@ export const TasksListColumn = memo(function TasksListColumn({
             edit={treeEdit}
             completingPaths={completingPaths}
             todayYmd={todayYmd}
+            showListChip={showListChip}
+            listColors={listColors}
             onExpandPath={onExpandPath}
             onPersisted={onPersisted}
             addComposerParentPath={addComposerParentPath}

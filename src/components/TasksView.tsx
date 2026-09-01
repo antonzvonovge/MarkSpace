@@ -565,7 +565,7 @@ function TaskDetailPanel({
     labels: [],
     list: "Inbox",
   });
-  const childTitleRef = useRef<HTMLInputElement>(null);
+  const childTitleRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const refreshTree = useVaultStore((s) => s.refreshTree);
@@ -1416,7 +1416,7 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     x: number;
     y: number;
   } | null>(null);
-  const editTitleRef = useRef<HTMLInputElement>(null);
+  const editTitleRef = useRef<HTMLTextAreaElement>(null);
   const entriesRef = useRef<TaskIndexEntry[]>([]);
   const identitiesEnsuredRef = useRef(false);
   const completingPathsRef = useRef(completingPaths);
@@ -1424,7 +1424,7 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
   const selectedPathRef = useRef(selectedPath);
   const treeRef = useRef(tree);
   const today = localDateYmd();
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const addComposerParentPath =
     addComposerAt && addComposerAt !== "root" ? addComposerAt : null;
   const adding = addComposerAt === "root";

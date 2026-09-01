@@ -35,6 +35,7 @@ export function taskEntriesToTreeItems(
       commentCount: e.commentCount,
       subtaskDone: e.subtaskDone,
       subtaskTotal: e.subtaskTotal,
+      list: e.list,
       children: childItems,
       collapsed: childItems.length > 0 ? !expanded.has(e.path) : false,
     };

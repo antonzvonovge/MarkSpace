@@ -277,6 +277,9 @@ const ListRow = memo(function ListRow({
           selected ? "tasks-section-row is-selected" : "tasks-section-row"
         }
         onClick={() => onOpenList(entry.name)}
+        onMouseDown={(e) => {
+          if (e.button === 2) e.preventDefault();
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -321,6 +324,24 @@ const SmartViewRow = memo(function SmartViewRow({
   );
 });
 
+function effectiveTasksSidebarHighlight(
+  highlight:
+    | { kind: "view"; view: TasksViewId }
+    | { kind: "list"; list: string }
+    | null,
+  tasksTabActive: boolean,
+  view: TasksViewId,
+  filterList: string,
+):
+  | { kind: "view"; view: TasksViewId }
+  | { kind: "list"; list: string }
+  | null {
+  if (highlight) return highlight;
+  if (!tasksTabActive) return null;
+  if (filterList && view === "all") return { kind: "list", list: filterList };
+  return { kind: "view", view };
+}
+
 export const TasksSection = memo(function TasksSection() {
   const tree = useVaultStore((s) => s.tree);
   const refreshTree = useVaultStore((s) => s.refreshTree);
@@ -330,6 +351,8 @@ export const TasksSection = memo(function TasksSection() {
   const activePath = useVaultStore((s) => s.activePath);
   const view = useTasksPanelStore((s) => s.view);
   const filterList = useTasksPanelStore((s) => s.filters.list);
+  const sidebarHighlight = useTasksPanelStore((s) => s.sidebarHighlight);
+  const setSidebarHighlight = useTasksPanelStore((s) => s.setSidebarHighlight);
   const setView = useTasksPanelStore((s) => s.setView);
   const patchFilters = useTasksPanelStore((s) => s.patchFilters);
   const groups = useTaskListMetaStore((s) => s.groups);
@@ -353,6 +376,17 @@ export const TasksSection = memo(function TasksSection() {
 
   const tasksTabActive = activePath === TASKS_TAB_PATH;
 
+  const effectiveHighlight = useMemo(
+    () =>
+      effectiveTasksSidebarHighlight(
+        sidebarHighlight,
+        tasksTabActive,
+        view,
+        filterList,
+      ),
+    [sidebarHighlight, tasksTabActive, view, filterList],
+  );
+
   const listNames = useMemo(
     () => collectTaskLists(tree).filter((l) => l !== "Inbox"),
     [tree],
@@ -369,6 +403,7 @@ export const TasksSection = memo(function TasksSection() {
 
   const openSmartView = useCallback(
     (next: TasksViewId) => {
+      setSidebarHighlight({ kind: "view", view: next });
       patchFilters({
         list: "",
         priority: "",
@@ -379,11 +414,12 @@ export const TasksSection = memo(function TasksSection() {
       setView(next);
       void openTasksTab({ syncTreeSelection: false });
     },
-    [openTasksTab, patchFilters, setView],
+    [openTasksTab, patchFilters, setSidebarHighlight, setView],
   );
 
   const openList = useCallback(
     (list: string) => {
+      setSidebarHighlight({ kind: "list", list });
       patchFilters({
         list,
         priority: "",
@@ -394,7 +430,7 @@ export const TasksSection = memo(function TasksSection() {
       setView("all");
       void openTasksTab({ syncTreeSelection: false });
     },
-    [openTasksTab, patchFilters, setView],
+    [openTasksTab, patchFilters, setSidebarHighlight, setView],
   );
 
   const onCreateList = useCallback(
@@ -447,9 +483,10 @@ export const TasksSection = memo(function TasksSection() {
 
   const handleListContextMenu = useCallback(
     (listName: string, x: number, y: number) => {
+      setSidebarHighlight({ kind: "list", list: listName });
       setListMenu({ x, y, listName });
     },
-    [],
+    [setSidebarHighlight],
   );
 
   return (
@@ -496,7 +533,10 @@ export const TasksSection = memo(function TasksSection() {
               id={v.id}
               label={v.label}
               icon={v.icon}
-              selected={tasksTabActive && view === v.id && !filterList}
+              selected={
+                effectiveHighlight?.kind === "view" &&
+                effectiveHighlight.view === v.id
+              }
               onOpen={openSmartView}
             />
           ))}
@@ -548,9 +588,8 @@ export const TasksSection = memo(function TasksSection() {
                         key={`list:${entry.name}`}
                         entry={entry}
                         selected={
-                          tasksTabActive &&
-                          filterList === entry.name &&
-                          view === "all"
+                          effectiveHighlight?.kind === "list" &&
+                          effectiveHighlight.list === entry.name
                         }
                         onOpenList={openList}
                         onContextMenu={handleListContextMenu}
@@ -566,9 +605,8 @@ export const TasksSection = memo(function TasksSection() {
               key={`list:${entry.name}`}
               entry={entry}
               selected={
-                tasksTabActive &&
-                filterList === entry.name &&
-                view === "all"
+                effectiveHighlight?.kind === "list" &&
+                effectiveHighlight.list === entry.name
               }
               onOpenList={openList}
               onContextMenu={handleListContextMenu}

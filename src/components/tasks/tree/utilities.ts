@@ -41,7 +41,7 @@ export function getProjection(
   const dragDepth = getDragDepth(dragOffset, indentationWidth);
   const projectedDepth = activeItem.depth + dragDepth;
   const maxDepth = getMaxDepth({ previousItem });
-  const minDepth = getMinDepth({ nextItem });
+  const minDepth = getMinDepth({ previousItem, nextItem });
   let depth = projectedDepth;
 
   if (projectedDepth >= maxDepth) {
@@ -79,7 +79,17 @@ function getMaxDepth({
   return Math.min(previousItem.depth + 1, MAX_TASK_TREE_DEPTH);
 }
 
-function getMinDepth({ nextItem }: { nextItem: FlattenedTaskItem | undefined }) {
+function getMinDepth({
+  previousItem,
+  nextItem,
+}: {
+  previousItem: FlattenedTaskItem | undefined;
+  nextItem: FlattenedTaskItem | undefined;
+}) {
+  // Next row is nested under the previous row (first child) — allow sibling depth.
+  if (nextItem && previousItem && nextItem.depth > previousItem.depth) {
+    return previousItem.depth;
+  }
   if (nextItem) {
     return nextItem.depth;
   }

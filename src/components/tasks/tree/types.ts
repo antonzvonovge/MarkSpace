@@ -21,6 +21,8 @@ export type TaskTreeItem = {
   commentCount?: number;
   subtaskDone?: number;
   subtaskTotal?: number;
+  /** Task list folder under Tasks/, e.g. `Inbox` or `Work`. */
+  list?: string;
 };
 
 export type TaskTreeItems = TaskTreeItem[];

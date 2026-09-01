@@ -112,6 +112,40 @@ describe("buildTaskTreeDisplayRows", () => {
 });
 
 describe("getProjection", () => {
+  it("allows in-place outdent when the next row is a sibling subtask", () => {
+    const idA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const idB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const idC = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const tree = taskEntriesToTreeItems(
+      [
+        entry({
+          path: "Tasks/Inbox/a.md",
+          id: idA,
+          title: "A",
+          subtaskTotal: 2,
+        }),
+        entry({
+          path: "Tasks/Inbox/b.md",
+          id: idB,
+          title: "B",
+          parent: idA,
+        }),
+        entry({
+          path: "Tasks/Inbox/c.md",
+          id: idC,
+          title: "C",
+          parent: idA,
+        }),
+      ],
+      new Set(["Tasks/Inbox/a.md"]),
+    );
+    const flat = flattenTree(tree);
+    const b = flat.find((i) => i.title === "B")!;
+    const proj = getProjection(flat, b.id, b.id, -28, 28);
+    expect(proj.depth).toBe(0);
+    expect(proj.parentId).toBeNull();
+  });
+
   it("allows outdent to root", () => {
     const idA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const idB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";

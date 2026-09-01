@@ -125,7 +125,10 @@ type TaskRowDisplayProps = {
   childCount?: number;
   isCompleting: boolean;
   todayYmd: string;
+  showListChip?: boolean;
+  listColors?: Record<string, string>;
   showDragHandle?: boolean;
+  dragHandleRef?: (element: HTMLElement | null) => void;
 };
 
 const TaskRowDisplay = memo(function TaskRowDisplay({
@@ -134,9 +137,12 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
   clone,
   ghost,
   handleProps,
+  dragHandleRef,
   childCount,
   isCompleting,
   todayYmd,
+  showListChip = false,
+  listColors = {},
   showDragHandle = true,
 }: TaskRowDisplayProps) {
   const actions = useTaskTreeActions();
@@ -147,6 +153,8 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
   const collapsed = !!item.collapsed;
   const checked = isTask && (item.status === "done" || isCompleting);
   const showChrome = !clone && !ghost && (hovered || selected);
+  const listName = item.list?.trim() || "Inbox";
+  const listColor = listColors[listName] ?? "";
 
   return (
     <div
@@ -168,8 +176,9 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
         actions.onSelect(item.path);
       }}
     >
-      {showDragHandle && showChrome ? (
+      {showDragHandle && handleProps && (showChrome || ghost) ? (
         <span
+          ref={dragHandleRef}
           className="tasks-row-drag"
           aria-label="Drag to reorder or nest"
           title="Drag to reorder or nest"
@@ -215,6 +224,9 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
             subtaskTotal={item.subtaskTotal}
             commentCount={item.commentCount}
             todayYmd={todayYmd}
+            list={listName}
+            listColor={listColor}
+            showList={showListChip}
           />
         ) : null}
       </div>
@@ -278,11 +290,14 @@ function TaskRowInner({
   clone,
   ghost,
   handleProps,
+  dragHandleRef,
   childCount,
   isCompleting,
   isEditing,
   edit,
   todayYmd,
+  showListChip,
+  listColors,
   showDragHandle,
 }: TaskRowDisplayProps & {
   isEditing: boolean;
@@ -298,9 +313,12 @@ function TaskRowInner({
       clone={clone}
       ghost={ghost}
       handleProps={handleProps}
+      dragHandleRef={dragHandleRef}
       childCount={childCount}
       isCompleting={isCompleting}
       todayYmd={todayYmd}
+      showListChip={showListChip}
+      listColors={listColors}
       showDragHandle={showDragHandle}
     />
   );
@@ -318,6 +336,8 @@ type SortableRowProps = {
   isEditing: boolean;
   edit?: TaskTreeEditState | null;
   todayYmd: string;
+  showListChip?: boolean;
+  listColors?: Record<string, string>;
 };
 
 function SortableTaskTreeRowInner({
@@ -332,12 +352,15 @@ function SortableTaskTreeRowInner({
   isEditing,
   edit,
   todayYmd,
+  showListChip,
+  listColors,
 }: SortableRowProps) {
   const {
     attributes,
     isDragging,
     isSorting,
     listeners,
+    setActivatorNodeRef,
     setDraggableNodeRef,
     setDroppableNodeRef,
     transform,
@@ -386,10 +409,13 @@ function SortableTaskTreeRowInner({
           selected={selected}
           ghost={isDragging}
           handleProps={handleProps}
+          dragHandleRef={setActivatorNodeRef}
           isCompleting={isCompleting}
           isEditing={isEditing}
           edit={edit}
           todayYmd={todayYmd}
+          showListChip={showListChip}
+          listColors={listColors}
           showDragHandle={sortable}
         />
       </div>
@@ -415,7 +441,9 @@ function rowPropsEqual(
     prev.isCompleting === next.isCompleting &&
     prev.isEditing === next.isEditing &&
     prev.edit === next.edit &&
-    prev.todayYmd === next.todayYmd
+    prev.todayYmd === next.todayYmd &&
+    prev.showListChip === next.showListChip &&
+    prev.listColors === next.listColors
   );
 }
 
@@ -432,6 +460,8 @@ function StaticTaskTreeRowInner({
   isEditing,
   edit,
   todayYmd,
+  showListChip,
+  listColors,
 }: StaticRowProps) {
   return (
     <li
@@ -453,6 +483,8 @@ function StaticTaskTreeRowInner({
         isEditing={isEditing}
         edit={edit}
         todayYmd={todayYmd}
+        showListChip={showListChip}
+        listColors={listColors}
         showDragHandle={false}
       />
       {item.addSubtaskAfter ? (
@@ -471,7 +503,9 @@ function staticRowPropsEqual(prev: StaticRowProps, next: StaticRowProps): boolea
     prev.isCompleting === next.isCompleting &&
     prev.isEditing === next.isEditing &&
     prev.edit === next.edit &&
-    prev.todayYmd === next.todayYmd
+    prev.todayYmd === next.todayYmd &&
+    prev.showListChip === next.showListChip &&
+    prev.listColors === next.listColors
   );
 }
 

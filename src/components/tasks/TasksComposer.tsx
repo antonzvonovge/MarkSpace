@@ -1,5 +1,6 @@
 import { useEffect, useRef, type FocusEvent, type RefObject } from "react";
 import type { TaskPriority } from "../../lib/taskNotes";
+import { syncAutosizeTextarea } from "../../lib/autosizeTextarea";
 import { TagChipsInput } from "../TagChipsInput";
 import { TasksComposerPicker } from "./TasksComposerPicker";
 import { TasksDateField } from "./TasksDateField";
@@ -28,7 +29,7 @@ type Props = {
   listColors?: Record<string, string>;
   /** Catalog of known task labels (not vault note tags). */
   labelCatalog: string[];
-  titleRef?: RefObject<HTMLInputElement | null>;
+  titleRef?: RefObject<HTMLTextAreaElement | null>;
   /** `row` replaces a task line; `footer` is the add-task composer. */
   variant?: "footer" | "row";
   submitLabel?: string;
@@ -53,6 +54,8 @@ export function TasksComposer({
   onBlurEmpty,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const internalTitleRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = titleRef ?? internalTitleRef;
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const ignoreBlurUntilRef = useRef(0);
@@ -60,6 +63,10 @@ export function TasksComposer({
   useEffect(() => {
     ignoreBlurUntilRef.current = performance.now() + 150;
   }, []);
+
+  useEffect(() => {
+    syncAutosizeTextarea(textareaRef.current);
+  }, [draft.title, textareaRef]);
 
   const handleBlurCapture = (e: FocusEvent<HTMLDivElement>) => {
     if (!onBlurEmpty) return;
@@ -110,17 +117,21 @@ export function TasksComposer({
       onClick={(e) => e.stopPropagation()}
       onBlurCapture={handleBlurCapture}
     >
-      <input
-        ref={titleRef}
+      <textarea
+        ref={textareaRef}
         className="tasks-composer-title"
         value={draft.title}
-        onChange={(e) => onChange({ title: e.target.value })}
+        rows={1}
+        onChange={(e) => {
+          onChange({ title: e.target.value });
+          syncAutosizeTextarea(e.currentTarget);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();
             onCancel();
           }
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             onSubmit();
           }

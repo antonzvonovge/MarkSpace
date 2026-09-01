@@ -33,6 +33,8 @@ export const TasksPlainTree = memo(function TasksPlainTree({
   edit,
   completingPaths,
   todayYmd,
+  showListChip = false,
+  listColors = {},
   addComposerParentPath = null,
   addDraft,
   addTitleRef,
@@ -51,9 +53,11 @@ export const TasksPlainTree = memo(function TasksPlainTree({
   edit: TaskTreeEditState | null;
   completingPaths: ReadonlySet<string>;
   todayYmd: string;
+  showListChip?: boolean;
+  listColors?: Record<string, string>;
   addComposerParentPath?: string | null;
   addDraft?: TasksComposerDraft;
-  addTitleRef?: RefObject<HTMLInputElement | null>;
+  addTitleRef?: RefObject<HTMLTextAreaElement | null>;
   addLists?: string[];
   addListColors?: Record<string, string>;
   addLabelCatalog?: string[];
@@ -141,6 +145,8 @@ export const TasksPlainTree = memo(function TasksPlainTree({
                 isEditing={isEditing}
                 edit={isEditing && edit ? edit : null}
                 todayYmd={todayYmd}
+                showListChip={showListChip}
+                listColors={listColors}
               />
             );
           })}

@@ -1,9 +1,10 @@
-import { memo } from "react";
+import { memo, type CSSProperties } from "react";
 import {
   formatTaskDueLabel,
   localDateYmd,
 } from "../../lib/taskNotes";
 import { pastelChipForName } from "../../lib/pastelChipColors";
+import { TasksInboxIcon, TasksListIcon } from "../treeIcons";
 import {
   TasksIconComment,
   TasksIconLabel,
@@ -21,6 +22,10 @@ type Props = {
   hideSubtasks?: boolean;
   /** Caller-supplied today (YYYY-MM-DD) — avoids per-row date work. */
   todayYmd?: string;
+  /** Task list / project folder name (shown when showList is true). */
+  list?: string;
+  listColor?: string;
+  showList?: boolean;
 };
 
 /** Compact meta under a task title: progress / due / labels / comments (when present). */
@@ -32,17 +37,50 @@ export const TaskMetaLine = memo(function TaskMetaLine({
   commentCount = 0,
   hideSubtasks = false,
   todayYmd,
+  list,
+  listColor,
+  showList = false,
 }: Props) {
   const dueLabel = formatTaskDueLabel(due, todayYmd ?? localDateYmd());
   const labelList = (labels ?? []).map((l) => l.trim()).filter(Boolean);
+  const listName = list?.trim() || "Inbox";
   const showProgress = !hideSubtasks && subtaskTotal > 0;
   const showComments = commentCount > 0;
-  if (!dueLabel && labelList.length === 0 && !showProgress && !showComments) {
+  const showListChip = showList && !!listName;
+  if (
+    !dueLabel &&
+    labelList.length === 0 &&
+    !showProgress &&
+    !showComments &&
+    !showListChip
+  ) {
     return null;
   }
 
   return (
     <span className="tasks-row-meta">
+      {showListChip ? (
+        <span className="tasks-row-list icon-text">
+          <span
+            className={
+              listColor
+                ? "icon-text-glyph tasks-row-list-icon has-list-color"
+                : "icon-text-glyph tasks-row-list-icon"
+            }
+            aria-hidden="true"
+            style={
+              listColor ? ({ color: listColor } as CSSProperties) : undefined
+            }
+          >
+            {listName === "Inbox" ? (
+              <TasksInboxIcon />
+            ) : (
+              <TasksListIcon color={listColor || undefined} />
+            )}
+          </span>
+          <span>{listName}</span>
+        </span>
+      ) : null}
       {showProgress ? (
         <span className="tasks-row-progress">
           <TasksIconSubtasks />

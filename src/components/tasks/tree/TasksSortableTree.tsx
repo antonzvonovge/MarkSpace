@@ -51,7 +51,7 @@ import {
 
 const measuring = {
   droppable: {
-    strategy: MeasuringStrategy.BeforeDragging,
+    strategy: MeasuringStrategy.Always,
   },
 };
 
@@ -78,12 +78,14 @@ type TasksTreeProps = {
   edit: TaskTreeEditState | null;
   completingPaths: ReadonlySet<string>;
   todayYmd: string;
+  showListChip?: boolean;
+  listColors?: Record<string, string>;
   onExpandPath?: (path: string) => void;
   /** Called after vault write; may return a Promise — kept under persisting lock until done. */
   onPersisted?: () => void | Promise<void>;
   addComposerParentPath?: string | null;
   addDraft?: TasksComposerDraft;
-  addTitleRef?: RefObject<HTMLInputElement | null>;
+  addTitleRef?: RefObject<HTMLTextAreaElement | null>;
   addLists?: string[];
   addListColors?: Record<string, string>;
   addLabelCatalog?: string[];
@@ -106,6 +108,8 @@ export const TasksSortableTree = memo(function TasksSortableTree(
         edit={props.edit}
         completingPaths={props.completingPaths}
         todayYmd={props.todayYmd}
+        showListChip={props.showListChip}
+        listColors={props.listColors}
         addComposerParentPath={props.addComposerParentPath}
         addDraft={props.addDraft}
         addTitleRef={props.addTitleRef}
@@ -131,6 +135,8 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
   edit,
   completingPaths,
   todayYmd,
+  showListChip = false,
+  listColors = {},
   onExpandPath,
   onPersisted,
   addComposerParentPath = null,
@@ -151,6 +157,29 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   const [offsetLeft, setOffsetLeft] = useState(0);
   const persisting = useRef(false);
+  const overIdRef = useRef<UniqueIdentifier | null>(null);
+  const offsetLeftRef = useRef(0);
+  const dragStartXRef = useRef(0);
+  const stopPointerTrackingRef = useRef<(() => void) | null>(null);
+
+  const stopPointerTracking = () => {
+    stopPointerTrackingRef.current?.();
+    stopPointerTrackingRef.current = null;
+  };
+
+  const startPointerTracking = (startX: number) => {
+    stopPointerTracking();
+    dragStartXRef.current = startX;
+    const onPointerMove = (event: PointerEvent) => {
+      const x = event.clientX - dragStartXRef.current;
+      setOffsetLeft(x);
+      offsetLeftRef.current = x;
+    };
+    document.addEventListener("pointermove", onPointerMove);
+    stopPointerTrackingRef.current = () => {
+      document.removeEventListener("pointermove", onPointerMove);
+    };
+  };
 
   useEffect(() => {
     if (activeId != null || persisting.current) return;
@@ -181,8 +210,12 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
         )
       : null;
 
-  // Stock PointerSensor — 8px before drag activates collision detection.
-  const sensors = useSensors(useSensor(PointerSensor));
+  // 8px before drag activates — explicit for WebView / Tauri.
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  );
 
   const sortedIds = useMemo(
     () => flattenedItems.map(({ id }) => id),
@@ -236,32 +269,67 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
     : null;
 
   const resetState = () => {
+    stopPointerTracking();
     setOverId(null);
+    overIdRef.current = null;
     setActiveId(null);
     setOffsetLeft(0);
+    offsetLeftRef.current = 0;
     document.body.style.setProperty("cursor", "");
   };
 
-  const handleDragStart = ({ active }: DragStartEvent) => {
+  const handleDragStart = ({ active, activatorEvent }: DragStartEvent) => {
+    const startX =
+      activatorEvent && "clientX" in activatorEvent
+        ? Number(activatorEvent.clientX)
+        : 0;
+    startPointerTracking(startX);
     setActiveId(active.id);
     setOverId(active.id);
+    overIdRef.current = active.id;
+    offsetLeftRef.current = 0;
+    setOffsetLeft(0);
     document.body.style.setProperty("cursor", "grabbing");
   };
 
   const handleDragMove = ({ delta }: DragMoveEvent) => {
     setOffsetLeft(delta.x);
+    offsetLeftRef.current = delta.x;
   };
 
   const handleDragOver = ({ over }: DragOverEvent) => {
-    setOverId(over?.id ?? null);
+    const nextOverId = over?.id ?? null;
+    setOverId(nextOverId);
+    if (nextOverId != null) {
+      overIdRef.current = nextOverId;
+    }
   };
 
-  const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    const proj = projected;
+  const handleDragEnd = ({ active, over, delta }: DragEndEvent) => {
     const fullFlat = flattenTree(items);
-    // Indicator ghost is 8px — pointer can leave droppables on release.
-    // Fall back to last onDragOver id (stock uses event.over only).
-    const resolvedOverId = over?.id ?? overId;
+    // Indicator ghost is 8px — pointer often leaves droppables on release.
+    const resolvedOverId = over?.id ?? overIdRef.current ?? overId;
+    // DragEnd delta.x is often 0; prefer last drag-move offset (ref > state > delta).
+    const effectiveOffset = offsetLeftRef.current || offsetLeft || delta.x;
+    let proj =
+      resolvedOverId != null
+        ? getProjection(
+            flattenedItems,
+            active.id,
+            resolvedOverId,
+            effectiveOffset,
+            INDENTATION_WIDTH,
+          )
+        : null;
+    // Last rendered projection (before drop) when WebKit zeroes offset on release.
+    if (
+      proj &&
+      effectiveOffset === 0 &&
+      projected &&
+      String(resolvedOverId) === String(overId)
+    ) {
+      proj = projected;
+    }
     if (!proj || resolvedOverId == null) {
       resetState();
       setItems(taskEntriesToTreeItems(entries, expanded));
@@ -368,6 +436,8 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
                   isEditing={isEditing}
                   edit={isEditing && edit ? edit : null}
                   todayYmd={todayYmd}
+                  showListChip={showListChip}
+                  listColors={listColors}
                 />
               );
             })}

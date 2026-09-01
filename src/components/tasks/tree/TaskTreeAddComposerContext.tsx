@@ -7,7 +7,7 @@ export type TaskTreeAddComposerState = {
   lists: string[];
   listColors: Record<string, string>;
   labelCatalog: string[];
-  titleRef: RefObject<HTMLInputElement | null>;
+  titleRef: RefObject<HTMLTextAreaElement | null>;
   indentationWidth: number;
   onPatchDraft: (patch: Partial<TasksComposerDraft>) => void;
   onSubmit: (parentPath: string) => void;
