@@ -30,6 +30,8 @@ export type PaletteCommand = {
   /** Extra text matched by substring search (not shown). */
   keywords?: string;
   shortcut?: PaletteShortcut;
+  /** When true, palette closes without restoring editor focus (overlay follows). */
+  opensOverlay?: boolean;
 };
 
 export function isApplePlatform(): boolean {
@@ -230,6 +232,10 @@ export function CommandPalette({
   onOpenFile,
   onRunCommand,
 }: Props) {
+  const commandById = useMemo(
+    () => new Map(commands.map((c) => [c.id, c])),
+    [commands],
+  );
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -363,15 +369,17 @@ export function CommandPalette({
         e.stopPropagation();
         if (choice.kind === "file") {
           onOpenFile(choice.path);
+          closePalette(false);
         } else {
           onRunCommand(choice.id);
+          const cmd = commandById.get(choice.id);
+          closePalette(cmd?.opensOverlay !== true);
         }
-        closePalette(false);
       }
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [open, onClose, onOpenFile, onRunCommand, selectable]);
+  }, [open, onClose, onOpenFile, onRunCommand, selectable, commandById]);
 
   useLayoutEffect(() => {
     if (!open) return;

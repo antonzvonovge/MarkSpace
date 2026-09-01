@@ -19,6 +19,8 @@ export type EditContextMenuState = {
   canPaste?: boolean;
   /** When true, show Comment (needs non-empty selection). */
   showComment?: boolean;
+  /** When true, show Send to Incoming (needs non-empty selection). */
+  showCapture?: boolean;
 };
 
 type Props = {
@@ -28,6 +30,7 @@ type Props = {
   onCopy: () => void;
   onPaste?: () => void;
   onComment?: () => void;
+  onCapture?: () => void;
 };
 
 export function EditContextMenu({
@@ -37,11 +40,13 @@ export function EditContextMenu({
   onCopy,
   onPaste,
   onComment,
+  onCapture,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const showCut = menu.showCut !== false && onCut != null;
   const showPaste = menu.showPaste !== false && onPaste != null;
   const showComment = menu.showComment === true && onComment != null;
+  const showCapture = menu.showCapture === true && onCapture != null;
   const canCut = menu.canCut !== false;
   const canCopy = menu.canCopy !== false;
   const canPaste = menu.canPaste !== false;
@@ -137,7 +142,41 @@ export function EditContextMenu({
           </button>
         </>
       ) : null}
+      {showCapture ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={() => {
+            onClose();
+            onCapture();
+          }}
+        >
+          <MenuInboxIcon />
+          <span>Send to Incoming</span>
+        </button>
+      ) : null}
     </div>,
     document.body,
+  );
+}
+
+function MenuInboxIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 4.25h11v7.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7.5Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.5 4.25 8 8.25l5.5-4"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

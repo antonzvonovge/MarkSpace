@@ -7,6 +7,8 @@ import {
   useMemo,
   useRef,
   useState,
+  startTransition,
+  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
@@ -72,8 +74,18 @@ import {
 } from "./AppDialog";
 import { NewFilmDialog } from "./MovieDialogs";
 import { CommentsInboxSection } from "./CommentsInboxSection";
-import { TasksSection } from "./TasksSection";
 import { IncomingSection } from "./IncomingSection";
+import { IncomingCaptureList } from "./IncomingCaptureList";
+import {
+  loadIncomingCaptureEntries,
+  type IncomingCaptureEntry,
+} from "../lib/incomingCaptureIndex";
+import {
+  getIncomingCaptureRevision,
+  loadIncomingListMode,
+  saveIncomingListMode,
+  subscribeIncomingCaptureRevision,
+} from "../lib/incomingUiState";
 import { buildUnresolvedCommentCounts } from "../lib/commentCounts";
 import {
   loadFavoritesSectionCollapsed,
@@ -234,6 +246,11 @@ export type FileTreeHandle = {
   openCreateMenu: (x: number, y: number) => void;
   startCreate: (kind: PromptKind) => void;
   revealActive: () => void;
+};
+
+type FileTreeProps = {
+  /** Rendered inside the scroll area (between comments and workspace). */
+  tasksSection?: ReactNode;
 };
 
 type DeleteTarget = {
@@ -1313,7 +1330,10 @@ function FavoritesTreeRows({
   );
 }
 
-export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref) {
+export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
+  { tasksSection = null },
+  ref,
+) {
   const tree = useVaultStore((s) => s.tree);
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
@@ -1382,6 +1402,12 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(
     () => loadFavoritesSectionCollapsed(),
   );
+  const [incomingListMode, setIncomingListMode] = useState(
+    () => loadIncomingListMode(),
+  );
+  const [incomingCaptureEntries, setIncomingCaptureEntries] = useState<
+    IncomingCaptureEntry[]
+  >([]);
   const nativeLanguage = usePrefsStore((s) => s.prefs.nativeLanguage);
 
   const openProjectProperties = useCallback(async (path: string) => {
@@ -1876,6 +1902,41 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
       }
     );
   }, [tree]);
+
+  const incomingMdPaths = useMemo(() => {
+    return (incomingNode.children ?? [])
+      .filter((n) => !n.isDir && n.path.toLowerCase().endsWith(".md"))
+      .map((n) => n.path);
+  }, [incomingNode.children]);
+
+  const incomingExpanded = expandedPaths.includes(INCOMING_FOLDER);
+  const captureRevision = useSyncExternalStore(
+    subscribeIncomingCaptureRevision,
+    getIncomingCaptureRevision,
+    getIncomingCaptureRevision,
+  );
+
+  useEffect(() => {
+    if (!incomingListMode || !incomingExpanded) {
+      setIncomingCaptureEntries([]);
+      return;
+    }
+    let cancelled = false;
+    void loadIncomingCaptureEntries(incomingMdPaths).then((entries) => {
+      if (cancelled) return;
+      startTransition(() => {
+        setIncomingCaptureEntries(entries);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [incomingListMode, incomingExpanded, incomingMdPaths, captureRevision]);
+
+  const onIncomingListModeChange = useCallback((next: boolean) => {
+    setIncomingListMode(next);
+    saveIncomingListMode(next);
+  }, []);
 
   const favoriteNodes = useMemo(() => {
     if (!tree) return [] as TreeNode[];
@@ -2396,13 +2457,16 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
         }}
       >
         <IncomingSection
-          expanded={expandedPaths.includes(INCOMING_FOLDER)}
+          expanded={incomingExpanded}
           selected={
             treeSelectionVisible &&
             selectedFolderExplicit &&
             selectedFolderPath === INCOMING_FOLDER
           }
           hasChildren={(incomingNode.children ?? []).length > 0}
+          captureCount={incomingMdPaths.length}
+          listMode={incomingListMode}
+          onListModeChange={onIncomingListModeChange}
           onToggle={() => toggleExpanded(INCOMING_FOLDER)}
           onOpenIncoming={() => {
             void openIncomingTab();
@@ -2418,6 +2482,9 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
             });
             selectInTree(INCOMING_FOLDER, true);
           }}
+          listContent={
+            <IncomingCaptureList entries={incomingCaptureEntries} />
+          }
         >
           <FavoritesTreeRows
             nodes={incomingNode.children ?? []}
@@ -2518,7 +2585,7 @@ export const FileTree = forwardRef<FileTreeHandle>(function FileTree(_props, ref
           </div>
         ) : null}
         <CommentsInboxSection />
-        <TasksSection />
+        {tasksSection}
         <div className="workspace-section">
           {backendOptions ? (
           <DndProvider backend={HTML5Backend} options={backendOptions}>

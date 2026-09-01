@@ -91,6 +91,7 @@ import { writeClipboardText } from "../lib/clipboardText";
 import { editorFontStack } from "../settings/applyPrefs";
 import type { ThemeId } from "../settings/types";
 import { usePrefsStore } from "../store/prefsStore";
+import { openCaptureDialog } from "../store/captureStore";
 import { useVaultStore } from "../store/vaultStore";
 import { createLayoutAgnosticKeymapExtension } from "./layoutAgnosticKeymap";
 import { createListOnlyNestingExtension } from "./listOnlyNesting";
@@ -906,6 +907,7 @@ export const NoteEditor = memo(function NoteEditor({
         canCopy: selected.length > 0,
         canPaste: true,
         showComment: !!sel && !sel.empty,
+        showCapture: !!sel && !sel.empty,
       });
     },
     [editor],
@@ -922,6 +924,14 @@ export const NoteEditor = memo(function NoteEditor({
       useVaultStore.getState().toggleComments();
     }
   }, [editor]);
+
+  const startCaptureFromSelection = useCallback(() => {
+    const text = editor.getSelectedText().trim();
+    openCaptureDialog({
+      quote: text || undefined,
+      sourcePath: path,
+    });
+  }, [editor, path]);
 
   const commentAnchors: CommentAnchor[] = useMemo(
     () =>
@@ -1336,6 +1346,7 @@ export const NoteEditor = memo(function NoteEditor({
               <NoteFormattingToolbarProvider
                 notePath={path}
                 onComment={startCommentFromSelection}
+                onCapture={startCaptureFromSelection}
                 onInsertNoteLink={openWikiLinkPicker}
               >
                 <BlockNoteView
@@ -1454,6 +1465,7 @@ export const NoteEditor = memo(function NoteEditor({
           onCopy={() => void copySelection()}
           onPaste={() => void pasteAtCursor()}
           onComment={startCommentFromSelection}
+          onCapture={startCaptureFromSelection}
         />
       ) : null}
     </div>

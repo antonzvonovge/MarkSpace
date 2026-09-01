@@ -13,13 +13,14 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { RiChat3Line, RiChatQuoteLine, RiLink } from "react-icons/ri";
+import { RiChat3Line, RiChatQuoteLine, RiInboxLine, RiLink } from "react-icons/ri";
 import { useChatStore } from "../store/chatStore";
 import { useChatUiStore } from "../store/chatUiStore";
 
 type NoteFormattingToolbarActions = {
   notePath: string;
   onComment: () => void;
+  onCapture: () => void;
   onInsertNoteLink: () => void;
 };
 
@@ -29,12 +30,13 @@ const NoteFormattingToolbarContext =
 export function NoteFormattingToolbarProvider({
   notePath,
   onComment,
+  onCapture,
   onInsertNoteLink,
   children,
 }: NoteFormattingToolbarActions & { children: ReactNode }) {
   const value = useMemo(
-    () => ({ notePath, onComment, onInsertNoteLink }),
-    [notePath, onComment, onInsertNoteLink],
+    () => ({ notePath, onComment, onCapture, onInsertNoteLink }),
+    [notePath, onComment, onCapture, onInsertNoteLink],
   );
   return (
     <NoteFormattingToolbarContext.Provider value={value}>
@@ -120,6 +122,27 @@ function CommentToolbarButton() {
   );
 }
 
+function CaptureToolbarButton() {
+  const Components = useComponentsContext()!;
+  const { store } = useExtension(FormattingToolbarExtension);
+  const { onCapture } = useNoteFormattingToolbarActions();
+
+  const onClick = useCallback(() => {
+    onCapture();
+    store.setState(false);
+  }, [onCapture, store]);
+
+  return (
+    <Components.FormattingToolbar.Button
+      className="bn-button"
+      label="Capture to Incoming"
+      mainTooltip="Capture to Incoming"
+      icon={<RiInboxLine size={18} />}
+      onClick={onClick}
+    />
+  );
+}
+
 /** Default BlockNote formatting toolbar plus note link / Add to chat / Comment. */
 export function NoteFormattingToolbar() {
   return (
@@ -128,6 +151,7 @@ export function NoteFormattingToolbar() {
       <NoteLinkToolbarButton key="noteLinkButton" />
       <AddToChatToolbarButton key="addToChatButton" />
       <CommentToolbarButton key="commentButton" />
+      <CaptureToolbarButton key="captureButton" />
     </FormattingToolbar>
   );
 }

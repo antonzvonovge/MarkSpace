@@ -17,6 +17,7 @@ import {
 import { ConfirmDialog } from "./components/AppDialog";
 import { IeltsGeneralReviewDialog } from "./components/IeltsGeneralReviewDialog";
 import { QuickTranslateDialog } from "./components/QuickTranslateDialog";
+import { CaptureNoteDialog } from "./components/CaptureNoteDialog";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { StatusBar } from "./components/StatusBar";
@@ -79,6 +80,7 @@ import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
 import { useChatStore } from "./store/chatStore";
 import { isFileTab, isGraphTab, isSettingsTab, isTasksTab, useVaultStore } from "./store/vaultStore";
+import { openCaptureDialog } from "./store/captureStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import { useWarmLiveMarkdownPaths } from "./hooks/useWarmLiveMarkdownPaths";
 import { getEmbeddingsIndexStatus } from "./lib/vaultApi";
@@ -102,7 +104,7 @@ const TasksDocumentTab = memo(function TasksDocumentTab({
       aria-hidden={!isActive}
       inert={!isActive}
     >
-      <TasksView />
+      {isActive ? <TasksView /> : null}
     </div>
   );
 });
@@ -488,6 +490,13 @@ const MainPane = memo(function MainPane({
 
 const PALETTE_COMMANDS = [
   {
+    id: "capture-to-incoming",
+    label: "Capture to Incoming",
+    keywords: "inbox capture fleeting note thought scratch quick",
+    shortcut: { mod: true, shift: true, key: "N" },
+    opensOverlay: true,
+  },
+  {
     id: "auto-tag-note",
     label: "Auto-tag note",
     keywords: "tags tagging hashtag classify catalog frontmatter",
@@ -541,6 +550,15 @@ function resolvePracticeProjectPath(
     .map(([path]) => path)
     .sort();
   return learning[0] ?? null;
+}
+
+function openCaptureFromEditorContext(): void {
+  const selected = getActiveMarkdownSelection().replace(/\s+/g, " ").trim();
+  const activePath = useVaultStore.getState().activePath;
+  openCaptureDialog({
+    quote: selected || undefined,
+    sourcePath: activePath ?? undefined,
+  });
 }
 
 /** Idle time before writing the active note to disk (and kicking off index work). */
@@ -898,6 +916,11 @@ function App() {
         setQuickTranslateQuery(selected);
         setQuickTranslateOpen(true);
       }
+      if (e.shiftKey && code === "KeyN") {
+        if (!vaultPath) return;
+        e.preventDefault();
+        openCaptureFromEditorContext();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -905,6 +928,10 @@ function App() {
 
   const runPaletteCommand = useCallback(
     (id: string) => {
+      if (id === "capture-to-incoming") {
+        openCaptureFromEditorContext();
+        return;
+      }
       if (id === "auto-tag-note") {
         startAutoTagActiveNote();
         return;
@@ -1290,6 +1317,7 @@ function App() {
         initialQuery={quickTranslateQuery}
         onClose={() => setQuickTranslateOpen(false)}
       />
+      <CaptureNoteDialog />
       <IeltsGeneralReviewDialog
         open={ieltsReviewOpen}
         initialText={ieltsReviewQuery}

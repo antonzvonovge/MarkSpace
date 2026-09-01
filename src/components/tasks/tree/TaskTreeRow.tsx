@@ -1,4 +1,4 @@
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { memo, useState, type CSSProperties, type ReactNode } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { UniqueIdentifier } from "@dnd-kit/core";
 import {
@@ -137,11 +137,13 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
   showDragHandle = true,
 }: TaskRowDisplayProps) {
   const actions = useTaskTreeActions();
+  const [hovered, setHovered] = useState(false);
   const isTask = item.kind === "task";
   const hasSubs = item.children.length > 0;
   const showExpand = hasSubs;
   const collapsed = !!item.collapsed;
   const checked = isTask && (item.status === "done" || isCompleting);
+  const showChrome = !clone && !ghost && (hovered || selected);
 
   return (
     <div
@@ -154,12 +156,16 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
         .filter(Boolean)
         .join(" ")}
       style={{ ["--tasks-drop-line-inset" as string]: "54px" }}
+      onMouseEnter={() => {
+        if (!clone && !ghost) setHovered(true);
+      }}
+      onMouseLeave={() => setHovered(false)}
       onClick={() => {
         if (clone || ghost) return;
         actions.onSelect(item.path);
       }}
     >
-      {showDragHandle ? (
+      {showDragHandle && showChrome ? (
         <span
           className="tasks-row-drag"
           aria-label="Drag to reorder or nest"
@@ -210,37 +216,41 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
         ) : null}
       </div>
       {!clone ? (
-        <div className="tasks-row-actions">
-          <IconBtn label="Edit" onClick={() => actions.onEditTitle(item)}>
-            <TasksIconEdit size={24} />
-          </IconBtn>
-          <IconBtn
-            label="Due date"
-            onClick={(e) => {
-              actions.onPickDue(item.path, e.clientX, e.clientY);
-            }}
-          >
-            <TasksIconSchedule
-              size={24}
-              className={
-                item.due
-                  ? "tasks-row-schedule-icon has-value"
-                  : "tasks-row-schedule-icon"
+        showChrome ? (
+          <div className="tasks-row-actions">
+            <IconBtn label="Edit" onClick={() => actions.onEditTitle(item)}>
+              <TasksIconEdit size={24} />
+            </IconBtn>
+            <IconBtn
+              label="Due date"
+              onClick={(e) => {
+                actions.onPickDue(item.path, e.clientX, e.clientY);
+              }}
+            >
+              <TasksIconSchedule
+                size={24}
+                className={
+                  item.due
+                    ? "tasks-row-schedule-icon has-value"
+                    : "tasks-row-schedule-icon"
+                }
+              />
+            </IconBtn>
+            <IconBtn
+              label="Comments"
+              onClick={() =>
+                (actions.onOpenComments ?? actions.onSelect)(item.path)
               }
-            />
-          </IconBtn>
-          <IconBtn
-            label="Comments"
-            onClick={() =>
-              (actions.onOpenComments ?? actions.onSelect)(item.path)
-            }
-          >
-            <TasksIconComment size={24} />
-          </IconBtn>
-          <IconBtn label="More" onClick={() => actions.onSelect(item.path)}>
-            <TasksIconMore size={24} />
-          </IconBtn>
-        </div>
+            >
+              <TasksIconComment size={24} />
+            </IconBtn>
+            <IconBtn label="More" onClick={() => actions.onSelect(item.path)}>
+              <TasksIconMore size={24} />
+            </IconBtn>
+          </div>
+        ) : (
+          <div className="tasks-row-actions-spacer" aria-hidden="true" />
+        )
       ) : (
         <div className="tasks-row-actions" aria-hidden="true" />
       )}
