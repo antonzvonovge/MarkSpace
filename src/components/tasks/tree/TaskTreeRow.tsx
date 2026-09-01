@@ -205,30 +205,32 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
           ) : null}
         </span>
       ) : null}
-      <CircleCheck
-        checked={checked}
-        priority={isTask ? item.priority : null}
-        onClick={() => actions.onToggleStatus(item)}
-      />
-      <div className="tasks-row-body">
-        <span
-          className={checked ? "tasks-row-title is-done" : "tasks-row-title"}
-        >
-          {item.title}
-        </span>
-        {isTask ? (
-          <TaskMetaLine
-            due={item.due}
-            labels={item.labels}
-            subtaskDone={item.subtaskDone}
-            subtaskTotal={item.subtaskTotal}
-            commentCount={item.commentCount}
-            todayYmd={todayYmd}
-            list={listName}
-            listColor={listColor}
-            showList={showListChip}
-          />
-        ) : null}
+      <div className="tasks-row-content">
+        <CircleCheck
+          checked={checked}
+          priority={isTask ? item.priority : null}
+          onClick={() => actions.onToggleStatus(item)}
+        />
+        <div className="tasks-row-body">
+          <span
+            className={checked ? "tasks-row-title is-done" : "tasks-row-title"}
+          >
+            {item.title}
+          </span>
+          {isTask ? (
+            <TaskMetaLine
+              due={item.due}
+              labels={item.labels}
+              subtaskDone={item.subtaskDone}
+              subtaskTotal={item.subtaskTotal}
+              commentCount={item.commentCount}
+              todayYmd={todayYmd}
+              list={listName}
+              listColor={listColor}
+              showList={showListChip}
+            />
+          ) : null}
+        </div>
       </div>
       {!clone ? (
         showChrome ? (

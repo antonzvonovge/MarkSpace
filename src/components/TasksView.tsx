@@ -1252,7 +1252,6 @@ function TaskDetailPanel({
 
             <aside className="tasks-detail-meta-col">
               <div className="tasks-meta-block">
-                <span className="tasks-meta-label">List</span>
                 <div className="tasks-meta-control">
                   <TasksComposerPicker
                     aria-label="List"
@@ -1300,9 +1299,9 @@ function TaskDetailPanel({
                     }}
                   />
                 </div>
+                <span className="tasks-meta-label">List</span>
               </div>
               <div className="tasks-meta-block">
-                <span className="tasks-meta-label">Due</span>
                 <div className="tasks-meta-control">
                   <TasksDateField
                     value={note.attrs.due}
@@ -1315,9 +1314,9 @@ function TaskDetailPanel({
                     }}
                   />
                 </div>
+                <span className="tasks-meta-label">Due</span>
               </div>
               <div className="tasks-meta-block">
-                <span className="tasks-meta-label">Priority</span>
                 <div className="tasks-meta-control">
                   <TasksPriorityPicker
                     value={note.attrs.priority ?? ""}
@@ -1333,9 +1332,9 @@ function TaskDetailPanel({
                     }}
                   />
                 </div>
+                <span className="tasks-meta-label">Priority</span>
               </div>
               <div className="tasks-meta-block">
-                <span className="tasks-meta-label">Labels</span>
                 <div className="tasks-meta-control">
                   <TagChipsInput
                     className="tasks-detail-labels"
@@ -1355,6 +1354,7 @@ function TaskDetailPanel({
                     }}
                   />
                 </div>
+                <span className="tasks-meta-label">Labels</span>
               </div>
             </aside>
           </div>

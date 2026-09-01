@@ -1651,6 +1651,33 @@ select {
   border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
 }
 
+.tasks-composer-list-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  line-height: 0;
+  color: var(--muted);
+}
+
+.tasks-composer-list-icon.has-list-color {
+  color: inherit;
+}
+
+.tasks-composer-list-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.tasks-detail-meta-col .tasks-composer-list-icon,
+.tasks-detail-meta-col .tasks-composer-list-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .tasks-detail-list-icon.has-list-color {
   color: inherit;
 }
@@ -15119,7 +15146,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .tasks-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0;
   min-height: 32px;
   /* Fixed checkbox column: grip(24) + gap(6) + chevron(18) + gap(6). */
@@ -15129,6 +15156,18 @@ button.status-bar-jobs-menu-item:hover {
   position: relative;
   background: transparent;
   box-sizing: border-box;
+}
+
+.tasks-row-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.tasks-row-content > .tasks-circle {
+  margin-top: calc((15px * var(--tasks-line-height) - 19px) / 2);
 }
 
 .tasks-row.is-selected {
@@ -15148,8 +15187,8 @@ button.status-bar-jobs-menu-item:hover {
   position: absolute;
   /* inset - gap(6) - grip(24) */
   left: calc(var(--tasks-checkbox-inset, 54px) - 6px - 24px);
-  top: 50%;
-  transform: translateY(-50%);
+  top: calc(6px + (15px * var(--tasks-line-height) - 24px) / 2);
+  transform: none;
   bottom: auto;
   width: 24px;
   height: 24px;
@@ -15467,8 +15506,8 @@ button.status-bar-jobs-menu-item:hover {
 .tasks-row-expand {
   position: absolute;
   left: 30px; /* 24 grip + 6 gap */
-  top: 50%;
-  transform: translateY(-50%);
+  top: calc(6px + (15px * var(--tasks-line-height) - 18px) / 2);
+  transform: none;
   bottom: auto;
   width: 18px;
   margin: 0;
@@ -15568,12 +15607,15 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-row-title {
+  display: block;
   font-size: 15px;
   line-height: var(--tasks-line-height);
   color: var(--tasks-ink);
   font-weight: 450;
   letter-spacing: -0.011em;
   word-break: break-word;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 :root[data-theme="dark"] .tasks-row-title {
@@ -15693,12 +15735,14 @@ button.status-bar-jobs-menu-item:hover {
   justify-content: flex-end;
   gap: 0;
   min-height: 32px;
+  align-self: center;
 }
 
 .tasks-row-actions-spacer {
   width: 128px;
   flex-shrink: 0;
   min-height: 32px;
+  align-self: center;
 }
 
 .tasks-row-schedule {
@@ -16286,10 +16330,10 @@ button.status-bar-jobs-menu-item:hover {
   position: relative;
   z-index: 1;
   width: min(100%, 880px);
+  min-height: min(440px, 72vh);
   max-height: min(86vh, 720px);
   display: flex;
   flex-direction: column;
-  min-height: 0;
   background: var(--editor-surface, #fff);
   border-radius: 12px;
   box-shadow: 0 18px 48px rgba(20, 30, 34, 0.28);
@@ -16352,7 +16396,7 @@ button.status-bar-jobs-menu-item:hover {
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 248px;
+  grid-template-columns: minmax(0, 1fr) 220px;
 }
 
 .tasks-detail-main {
@@ -16374,7 +16418,7 @@ button.status-bar-jobs-menu-item:hover {
   grid-template-columns: 23px minmax(0, 1fr);
   column-gap: 12px;
   row-gap: 10px;
-  align-items: center;
+  align-items: start;
 }
 
 .tasks-detail-fields > .tasks-circle {
@@ -16382,8 +16426,8 @@ button.status-bar-jobs-menu-item:hover {
   grid-row: 1;
   width: 23px;
   height: 23px;
-  margin-top: 0;
-  align-self: center;
+  margin-top: calc((1.28rem * 1.35 - 23px) / 2);
+  align-self: start;
 }
 
 .tasks-detail-title {
@@ -16408,7 +16452,7 @@ button.status-bar-jobs-menu-item:hover {
   word-break: break-word;
   field-sizing: content;
   min-height: calc(1.28rem * 1.35);
-  align-self: center;
+  align-self: start;
 }
 
 .tasks-detail-desc {
@@ -16474,7 +16518,7 @@ button.status-bar-jobs-menu-item:hover {
   width: 19px;
   height: 19px;
   flex-shrink: 0;
-  margin: 2px 0 0;
+  margin-top: calc((0.92rem * 1.35 - 19px) / 2);
   align-self: flex-start;
 }
 
@@ -16484,7 +16528,7 @@ button.status-bar-jobs-menu-item:hover {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-top: 1px;
+  padding-top: 0;
 }
 
 .tasks-detail-child-title {
@@ -16500,6 +16544,9 @@ button.status-bar-jobs-menu-item:hover {
   cursor: pointer;
   min-width: 0;
   width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .tasks-detail-child-row .tasks-row-actions {
@@ -16813,10 +16860,10 @@ button.status-bar-jobs-menu-item:hover {
       rgba(0, 0, 0, 0.025) 0%,
       rgba(0, 0, 0, 0.015) 100%
     );
-  padding: 18px 14px;
+  padding: 20px 16px 20px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   min-height: 0;
   overflow: auto;
 }
@@ -16831,22 +16878,16 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-meta-block {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  min-height: 38px;
-  box-sizing: border-box;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  background: var(--editor-surface, #fff);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset;
 }
 
 .tasks-meta-label {
   flex-shrink: 0;
+  justify-self: end;
+  text-align: right;
   font-size: 0.8125rem;
   font-weight: 400;
   letter-spacing: 0;
@@ -16854,12 +16895,6 @@ button.status-bar-jobs-menu-item:hover {
   color: var(--muted);
   line-height: 1.2;
   margin: 0;
-}
-
-:root[data-theme="dark"] .tasks-meta-block {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  box-shadow: none;
 }
 
 .tasks-meta-value {
@@ -16884,9 +16919,8 @@ button.status-bar-jobs-menu-item:hover {
 
 .tasks-meta-control {
   min-width: 0;
-  flex: 1;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: center;
 }
 
@@ -16894,7 +16928,7 @@ button.status-bar-jobs-menu-item:hover {
 .tasks-meta-control > .tasks-detail-labels {
   width: 100%;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   min-width: 0;
 }
 
@@ -16905,7 +16939,7 @@ button.status-bar-jobs-menu-item:hover {
   color: var(--text);
   width: auto;
   max-width: 100%;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-self: center;
   gap: 6px;
   min-height: 26px;
@@ -16924,7 +16958,6 @@ button.status-bar-jobs-menu-item:hover {
   border: none;
   background: transparent;
   padding: 0;
-  margin-left: auto;
   align-self: center;
   min-height: 26px;
   height: 26px;
@@ -16933,7 +16966,7 @@ button.status-bar-jobs-menu-item:hover {
   color: var(--text);
   font-size: 0.875rem;
   font-weight: 400;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .tasks-detail-meta-col .tasks-composer-ctrl.is-placeholder {
@@ -16952,7 +16985,7 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-detail-meta-col .tasks-composer-ctrl-label {
-  text-align: right;
+  text-align: left;
 }
 
 .tasks-detail-meta-col .tasks-priority-chip {
@@ -16962,7 +16995,6 @@ button.status-bar-jobs-menu-item:hover {
   font-size: 0.8125rem;
   font-weight: 400;
   align-self: center;
-  margin-left: auto;
   max-width: 100%;
   box-shadow: none;
 }
@@ -16982,7 +17014,7 @@ button.status-bar-jobs-menu-item:hover {
   min-height: 26px;
   box-shadow: none;
   border-radius: 0;
-  justify-content: flex-end;
+  justify-content: flex-start;
   width: 100%;
 }
 
@@ -16994,7 +17026,7 @@ button.status-bar-jobs-menu-item:hover {
 .tasks-detail-meta-col .tasks-detail-labels .tag-chips-input-field {
   font-size: 0.875rem;
   font-weight: 400;
-  text-align: right;
+  text-align: left;
 }
 
 .tasks-detail-meta-col .tasks-detail-labels .tag-chips-input-field-wrap {

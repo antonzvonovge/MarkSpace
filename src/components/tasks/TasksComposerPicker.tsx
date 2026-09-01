@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { placeAnchoredMenu } from "../../lib/menuPlacement";
+import { TasksInboxIcon, TasksListIcon } from "../treeIcons";
 
 export type TasksComposerPickerOption = {
   value: string;
@@ -28,6 +29,17 @@ type Props = {
   searchPlaceholder?: string;
 };
 
+function TaskListOptionIcon({
+  value,
+  color,
+}: {
+  value: string;
+  color?: string;
+}) {
+  if (value === "Inbox") return <TasksInboxIcon />;
+  return <TasksListIcon color={color} />;
+}
+
 /** Chat-composer-style muted trigger + portaled menu (Project / Agent / Model). */
 export function TasksComposerPicker({
   value,
@@ -49,6 +61,7 @@ export function TasksComposerPicker({
 
   const selected = options.find((o) => o.value === value);
   const label = display ?? selected?.label ?? value;
+  const listColor = selected?.color ?? "";
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -207,14 +220,22 @@ export function TasksComposerPicker({
                     onMouseEnter={() => setHighlight(index)}
                     onClick={() => pick(opt.value)}
                   >
-                    <span className="chat-model-option-main">
-                      {opt.color ? (
-                        <span
-                          className="tasks-composer-picker-dot"
-                          style={{ background: opt.color }}
-                          aria-hidden="true"
-                        />
-                      ) : null}
+                    <span className="chat-model-option-main icon-text">
+                      <span
+                        className={
+                          opt.color
+                            ? "icon-text-glyph tasks-composer-list-icon has-list-color"
+                            : "icon-text-glyph tasks-composer-list-icon"
+                        }
+                        style={
+                          opt.color
+                            ? ({ color: opt.color } as CSSProperties)
+                            : undefined
+                        }
+                        aria-hidden="true"
+                      >
+                        <TaskListOptionIcon value={opt.value} color={opt.color} />
+                      </span>
                       <span className="chat-model-option-name">{opt.label}</span>
                     </span>
                   </button>
@@ -233,13 +254,26 @@ export function TasksComposerPicker({
       <button
         ref={triggerRef}
         type="button"
-        className="tasks-composer-ctrl"
+        className="tasks-composer-ctrl icon-text"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
         title={ariaLabel}
         onClick={() => setOpen((v) => !v)}
       >
+        <span
+          className={
+            listColor
+              ? "icon-text-glyph tasks-composer-list-icon has-list-color"
+              : "icon-text-glyph tasks-composer-list-icon"
+          }
+          style={
+            listColor ? ({ color: listColor } as CSSProperties) : undefined
+          }
+          aria-hidden="true"
+        >
+          <TaskListOptionIcon value={value} color={listColor || undefined} />
+        </span>
         <span className="tasks-composer-ctrl-label">{label}</span>
       </button>
       {menu}
