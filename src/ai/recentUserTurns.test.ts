@@ -13,6 +13,10 @@ function assistant(id: string, text: string): UIMessage {
   return { id, role: "assistant", parts: [{ type: "text", text }] };
 }
 
+function assistantParts(id: string, parts: UIMessage["parts"]): UIMessage {
+  return { id, role: "assistant", parts };
+}
+
 describe("sliceToRecentUserTurns", () => {
   it("returns all messages when under the limit", () => {
     const messages = [user("u1", "a"), assistant("a1", "b"), user("u2", "c")];
@@ -46,14 +50,10 @@ describe("sliceToRecentUserTurns", () => {
       user("u1", "old"),
       assistant("a1", "old reply"),
       user("u2", "new"),
-      {
-        id: "a2",
-        role: "assistant",
-        parts: [
-          { type: "reasoning", text: "think", state: "done" },
-          { type: "text", text: "answer" },
-        ],
-      },
+      assistantParts("a2", [
+        { type: "reasoning", text: "think", state: "done" },
+        { type: "text", text: "answer" },
+      ]),
     ];
     expect(sliceToRecentUserTurns(messages, 1)).toEqual(messages.slice(2));
   });

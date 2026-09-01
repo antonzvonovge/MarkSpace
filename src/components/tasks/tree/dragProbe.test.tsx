@@ -5,17 +5,19 @@ import { createRoot } from "react-dom/client";
 import { fireEvent } from "@testing-library/react";
 import type { TaskIndexEntry } from "../../../lib/taskNotes";
 
-const persistSpy = vi.fn(async () => undefined);
+type PersistDragOpts = {
+  projected: { depth: number; parentId: string | null };
+};
+
+const persistSpy = vi.fn(async (_opts: PersistDragOpts) => undefined);
 vi.mock("./persistTaskTreeDrag", () => ({
-  persistTaskTreeDrag: (...args: unknown[]) => persistSpy(...(args as [])),
+  persistTaskTreeDrag: (opts: PersistDragOpts) => persistSpy(opts),
 }));
 
 const ROW_H = 44;
 
 beforeAll(() => {
-  // @ts-expect-error react act env flag
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  // @ts-expect-error test polyfill
+  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
   globalThis.ResizeObserver = class {
     observe() {}
     unobserve() {}
@@ -31,9 +33,7 @@ beforeAll(() => {
       }
     };
   }
-  // @ts-expect-error test polyfill
   Element.prototype.setPointerCapture = function () {};
-  // @ts-expect-error test polyfill
   Element.prototype.releasePointerCapture = function () {};
   Element.prototype.scrollIntoView = function () {};
 });
@@ -276,10 +276,9 @@ describe("drag probe", () => {
     await dragRow(container, 1, -30, 0);
 
     expect(persistSpy).toHaveBeenCalled();
-    const call = persistSpy.mock.calls[0]![0] as {
-      projected: { depth: number; parentId: string | null };
-    };
-    expect(call.projected.depth).toBe(0);
-    expect(call.projected.parentId).toBeNull();
+    const call = persistSpy.mock.calls[0]?.[0];
+    expect(call).toBeDefined();
+    expect(call!.projected.depth).toBe(0);
+    expect(call!.projected.parentId).toBeNull();
   });
 });
