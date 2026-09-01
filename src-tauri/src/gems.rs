@@ -20,6 +20,9 @@ pub struct Gem {
     /// When the model supports thinking, whether to enable it for this Gem.
     #[serde(default = "default_true")]
     pub enable_reasoning: bool,
+    /// Optional cap on user turns sent to the model (one user message + reply).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent_user_turns: Option<i32>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -39,6 +42,8 @@ pub struct UpsertGemInput {
     pub model_id: String,
     #[serde(default = "default_true")]
     pub enable_reasoning: bool,
+    #[serde(default)]
+    pub recent_user_turns: Option<i32>,
 }
 
 fn gems_dir(root: &Path) -> PathBuf {
@@ -71,6 +76,14 @@ fn get_root(state: &VaultState) -> Result<PathBuf, String> {
         .map_err(|_| "Vault state lock poisoned".to_string())?
         .clone()
         .ok_or_else(|| "No vault open".to_string())
+}
+
+fn validate_recent_user_turns(value: Option<i32>) -> Result<Option<i32>, String> {
+    match value {
+        None => Ok(None),
+        Some(n) if n <= 0 => Err("Recent user turns must be a positive number".into()),
+        Some(n) => Ok(Some(n)),
+    }
 }
 
 fn validate_fields(name: &str, instructions: &str, model_id: &str) -> Result<(String, String, String), String> {
@@ -135,12 +148,18 @@ fn read_gem_file(path: &Path) -> Option<Gem> {
         .get("enableReasoning")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+    let recent_user_turns = value
+        .get("recentUserTurns")
+        .and_then(|v| v.as_i64())
+        .and_then(|n| i32::try_from(n).ok())
+        .filter(|n| *n > 0);
     Some(Gem {
         id,
         name,
         instructions,
         model_id,
         enable_reasoning,
+        recent_user_turns,
         created_at,
         updated_at,
     })
@@ -156,6 +175,7 @@ fn write_gem_file(root: &Path, gem: &Gem) -> Result<(), String> {
         "instructions": gem.instructions,
         "modelId": gem.model_id,
         "enableReasoning": gem.enable_reasoning,
+        "recentUserTurns": gem.recent_user_turns,
         "createdAt": gem.created_at,
         "updatedAt": gem.updated_at,
     }))
@@ -227,6 +247,7 @@ pub fn upsert_gem(
     let root = get_root(&state)?;
     let (name, instructions, model_id) =
         validate_fields(&gem.name, &gem.instructions, &gem.model_id)?;
+    let recent_user_turns = validate_recent_user_turns(gem.recent_user_turns)?;
 
     let now = now_ms();
     let existing_id = gem
@@ -247,6 +268,7 @@ pub fn upsert_gem(
             instructions,
             model_id,
             enable_reasoning: gem.enable_reasoning,
+            recent_user_turns,
             created_at: prev.created_at,
             updated_at: now,
         };
@@ -260,6 +282,7 @@ pub fn upsert_gem(
             instructions,
             model_id,
             enable_reasoning: gem.enable_reasoning,
+            recent_user_turns,
             created_at: now,
             updated_at: now,
         };
@@ -319,6 +342,7 @@ mod tests {
             instructions: "Help with Spanish.".into(),
             model_id: "anthropic/claude-sonnet-5".into(),
             enable_reasoning: false,
+            recent_user_turns: Some(5),
             created_at: 1,
             updated_at: 1,
         };

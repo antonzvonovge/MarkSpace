@@ -24,6 +24,7 @@ import {
   estimateToolSchemaTokens,
 } from "./estimateTokens";
 import { applySlidingWindow } from "./slidingWindow";
+import { applyRecentUserTurnLimit } from "./recentUserTurns";
 import {
   resolveLanguageModel,
   type AiProviderCredentials,
@@ -91,6 +92,8 @@ export type RunChatParams = {
   projectLearningLanguage?: string | null;
   gemName?: string | null;
   gemInstructions?: string | null;
+  /** When set (active Gem), only the last N user turns are sent to the model. */
+  recentUserTurns?: number | null;
   /**
    * When set (e.g. from an active Gem), overrides catalog default for thinking.
    * Ignored when the current model does not support reasoning.
@@ -450,6 +453,14 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
   let recoveryRounds = 0;
   const inFlightToolCalls = createToolCallTracker();
 
+  const recentUserTurns =
+    params.recentUserTurns != null && params.recentUserTurns > 0
+      ? Math.floor(params.recentUserTurns)
+      : null;
+
+  const messagesForModel = (messages: UIMessage[]): UIMessage[] =>
+    applyRecentUserTurnLimit(messages, recentUserTurns);
+
   while (remainingSteps > 0) {
     if (params.abortSignal?.aborted) {
       aborted = true;
@@ -463,7 +474,9 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
             { id: assistantId, role: "assistant", parts: [...parts] },
           ]
         : inputMessages;
-    const rawModelMessages = await toModelMessages(conversation);
+    const rawModelMessages = await toModelMessages(
+      unwrapMessagesForModel(messagesForModel(conversation)),
+    );
     const modelMessages =
       contextWindow != null && contextWindow > 0
         ? applySlidingWindow({

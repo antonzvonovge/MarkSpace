@@ -12,6 +12,7 @@ import {
   type ChatAttachment,
 } from "../../ai/chatAttachments";
 import { estimateUsedContext, wouldExceedContext } from "../../ai/estimateTokens";
+import { applyRecentUserTurnLimit } from "../../ai/recentUserTurns";
 import { listChatTools } from "../../ai/toolCatalog";
 import { contextWindowForModel, type AiModelOption } from "../../ai/types";
 import {
@@ -191,6 +192,7 @@ export function ChatComposer() {
   const contextAnchorMessageCount = useChatStore(
     (s) => s.contextAnchorMessageCount,
   );
+  const gemRecentUserTurns = useChatStore((s) => s.gemRecentUserTurns);
   const settings = useAiSettingsStore((s) => s.settings);
   const activePath = useVaultStore((s) => s.activePath);
   const tabs = useVaultStore((s) => s.tabs);
@@ -226,7 +228,7 @@ export function ChatComposer() {
     wasStreamingRef.current = streaming;
     const next = estimateUsedContext({
       system: systemPromptPreview(),
-      messages,
+      messages: applyRecentUserTurnLimit(messages, gemRecentUserTurns),
       draft: streaming ? "" : expandSelectionMarkers(draft, draftSelections),
       draftAttachments: streaming ? [] : draftAttachments,
       mode,
@@ -255,6 +257,7 @@ export function ChatComposer() {
     streaming,
     contextAnchorTokens,
     contextAnchorMessageCount,
+    gemRecentUserTurns,
   ]);
 
   const limit = contextWindowForModel(settings, modelId || vaultChatModelId());
@@ -350,6 +353,7 @@ export function ChatComposer() {
     if (!el || !path) return;
     const tab = useVaultStore.getState().tabs.find((t) => t.path === path);
     if (!tab || !isFileTab(tab)) return;
+    void useChatStore.getState().adoptProjectFromVaultPathIfComposerEmpty(path);
     insertPathChip(el, path);
     closeSkillMenus();
     syncDraftFromDom();
@@ -648,6 +652,9 @@ export function ChatComposer() {
         clearVaultTreeDrag();
         if (vaultPath) {
           if (el) {
+            void useChatStore
+              .getState()
+              .adoptProjectFromVaultPathIfComposerEmpty(vaultPath);
             insertPathChip(el, vaultPath, e.clientX, e.clientY);
             syncDraftFromDom();
             focusInput();
@@ -678,9 +685,7 @@ export function ChatComposer() {
           e.stopPropagation();
           e.dataTransfer.dropEffect = "copy";
         }}
-      >
-        {dragOver === "files" ? "Drop files to attach" : "Drop to link path"}
-      </div>
+      />
 
       {draftAttachments.length > 0 && (
         <ul className="chat-attach-list" aria-label="Attachments">

@@ -29,11 +29,13 @@ import {
   hasCredentialsForModel,
   missingCredentialsMessage,
 } from "../ai/languageModel";
+import { applyRecentUserTurnLimit } from "../ai/recentUserTurns";
 import { settleIncompleteToolCalls } from "../ai/incompleteToolCalls";
 import { formatAiError, runChat } from "../ai/runChat";
 import { resolveModelId } from "../ai/resolveModelId";
 import { listSkills, loadSkills, type SkillMeta } from "../ai/skills";
 import { buildSystemPrompt } from "../ai/vaultTools";
+import { projectPathForVaultItem } from "../lib/chatProject";
 import { collectChatFolderAbouts, type FolderAbout } from "../lib/folderContext";
 import { modelSupportsReasoning } from "../ai/models";
 import {
@@ -191,6 +193,8 @@ type ChatStore = {
   gemName: string;
   /** Cached Gem instructions for system prompt. */
   gemInstructions: string;
+  /** When set on the active Gem, cap user turns sent to the model. */
+  gemRecentUserTurns: number | null;
   /** Cached Skills/ catalog for system prompt preview / context meter. */
   skillsCatalog: SkillMeta[];
   /**
@@ -235,6 +239,8 @@ type ChatStore = {
   setReasoningMode: (mode: ReasoningMode) => void;
   setTerminalAllowForChat: (allow: boolean) => void;
   setProjectPath: (projectPath: string | null) => Promise<void>;
+  /** When the composer is empty, set project from a vault file/folder path. */
+  adoptProjectFromVaultPathIfComposerEmpty: (vaultPath: string) => Promise<void>;
   /** Start a new chat thread with the given Gem (model + instructions). */
   newThreadWithGem: (gemId: string) => Promise<void>;
   /** Drop Gem from the active thread (e.g. after the Gem was deleted). */
@@ -311,6 +317,7 @@ function emptySession(vaultBound: string | null = null) {
     gemId: null as string | null,
     gemName: "",
     gemInstructions: "",
+    gemRecentUserTurns: null as number | null,
     skillsCatalog: [] as SkillMeta[],
     contextAnchorTokens: null as number | null,
     contextAnchorMessageCount: null as number | null,
@@ -490,6 +497,7 @@ type GemContext = {
   gemId: string | null;
   gemName: string;
   gemInstructions: string;
+  recentUserTurns: number | null;
   reasoningMode: ReasoningMode;
   /** Model from the gem when found; null if none / missing. */
   modelId: string | null;
@@ -505,6 +513,7 @@ const EMPTY_GEM_CONTEXT: GemContext = {
   gemId: null,
   gemName: "",
   gemInstructions: "",
+  recentUserTurns: null,
   reasoningMode: "auto",
   modelId: null,
 };
@@ -534,6 +543,10 @@ async function loadGemContext(gemId: string | null): Promise<GemContext> {
       gemId: gem.id,
       gemName: gem.name,
       gemInstructions: gem.instructions,
+      recentUserTurns:
+        typeof gem.recentUserTurns === "number" && gem.recentUserTurns > 0
+          ? gem.recentUserTurns
+          : null,
       reasoningMode: gem.enableReasoning !== false ? "auto" : "off",
       modelId: gem.modelId,
     };
@@ -549,7 +562,11 @@ type ChatStoreSet = (
     | ((state: ChatStore) => Partial<ChatStore>),
 ) => void;
 
-/** Create a new chat tab. Project is inherited; Gem only when `gemId` is passed. */
+function isComposerDraftEmpty(state: Pick<ChatStore, "draft" | "draftAttachments">): boolean {
+  return !state.draft.trim() && state.draftAttachments.length === 0;
+}
+
+/** Create a new chat tab. Project is null unless `opts.projectPath` is set. */
 async function createNewThread(
   get: ChatStoreGet,
   set: ChatStoreSet,
@@ -564,17 +581,8 @@ async function createNewThread(
   const defaultModelId = defaults.modelId;
   const now = Date.now();
   const id = crypto.randomUUID();
-  // Explicit project wins; else inherit from the chat the user was just in,
-  // else the latest thread that has a project.
   const inheritedProject =
-    opts && "projectPath" in opts
-      ? opts.projectPath?.trim() || null
-      : get().projectPath?.trim() ||
-        [...get().threads]
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-          .map((t) => t.projectPath?.trim() || null)
-          .find((p): p is string => !!p) ||
-        null;
+    opts && "projectPath" in opts ? opts.projectPath?.trim() || null : null;
   const project = await loadProjectContext(inheritedProject);
   const gem = await loadGemContext(gemId);
   const settings = useAiSettingsStore.getState().settings;
@@ -625,6 +633,7 @@ async function createNewThread(
     gemId: gem.gemId,
     gemName: gem.gemName,
     gemInstructions: gem.gemInstructions,
+    gemRecentUserTurns: gem.recentUserTurns,
     contextAnchorTokens: null,
     contextAnchorMessageCount: null,
     status: "ready",
@@ -692,6 +701,7 @@ async function loadThreadIntoState(
     gemId: gem.gemId,
     gemName: gem.gemName,
     gemInstructions: gem.gemInstructions,
+    gemRecentUserTurns: gem.recentUserTurns,
     contextAnchorTokens: anchorTokens,
     contextAnchorMessageCount:
       anchorTokens != null ? anchorCount : null,
@@ -885,7 +895,9 @@ async function runAssistantTurn(params: {
   const anchorTokens = get().contextAnchorTokens;
   const anchorCount = get().contextAnchorMessageCount;
 
-  let history = params.estimateHistory ?? params.messages;
+  const gemRecentUserTurns = get().gemRecentUserTurns;
+
+  let history = applyRecentUserTurnLimit(params.messages, gemRecentUserTurns);
   const estimateDraft = params.estimateDraft ?? "";
   const estimateAttachments = params.estimateAttachments ?? [];
   let usedBeforeSend = estimateUsedContext({
@@ -903,6 +915,14 @@ async function runAssistantTurn(params: {
   const controller = new AbortController();
 
   if (wouldExceedContext(usedBeforeSend, limit)) {
+    if (gemRecentUserTurns != null) {
+      set({
+        error:
+          "Context window is full even with the Gem turn limit. Lower Recent turns to send, shorten your message, or start a new chat.",
+        status: "error",
+      });
+      return;
+    }
     const { older } = splitForCompaction(history);
     if (older.length === 0) {
       set({
@@ -1064,6 +1084,7 @@ async function runAssistantTurn(params: {
       projectLearningLanguage: project.learningLanguage,
       gemName: get().gemName,
       gemInstructions: get().gemInstructions,
+      recentUserTurns: get().gemRecentUserTurns,
       enableReasoning,
       skills,
       forcedSkills,
@@ -1258,6 +1279,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   gemId: null,
   gemName: "",
   gemInstructions: "",
+  gemRecentUserTurns: null,
   skillsCatalog: [],
   contextAnchorTokens: null,
   contextAnchorMessageCount: null,
@@ -1361,6 +1383,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   addSelectionToDraft: (text, sourcePath) => {
     const clean = text.trim();
     if (!clean) return "";
+    if (sourcePath && isComposerDraftEmpty(get())) {
+      const project = projectPathForVaultItem(sourcePath);
+      if (project) void get().setProjectPath(project);
+    }
     const id = crypto.randomUUID().slice(0, 8);
     const draft = get().draft;
     const gap = draft.length > 0 && !/\s$/.test(draft) ? " " : "";
@@ -1379,6 +1405,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const cleanBody = body.trim();
     const path = sourcePath.trim();
     if ((!cleanQuote && !cleanBody) || !path) return "";
+    if (isComposerDraftEmpty(get())) {
+      const project = projectPathForVaultItem(path);
+      if (project) void get().setProjectPath(project);
+    }
     const id = crypto.randomUUID().slice(0, 8);
     const draft = get().draft;
     const gap = draft.length > 0 && !/\s$/.test(draft) ? " " : "";
@@ -1482,12 +1512,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     void get().persistActive();
   },
 
+  adoptProjectFromVaultPathIfComposerEmpty: async (vaultPath) => {
+    if (!isComposerDraftEmpty(get())) return;
+    const next = projectPathForVaultItem(vaultPath);
+    if (next) await get().setProjectPath(next);
+  },
+
   clearActiveGem: async () => {
     const activeThreadId = get().activeThreadId;
     set({
       gemId: null,
       gemName: "",
       gemInstructions: "",
+      gemRecentUserTurns: null,
       contextAnchorTokens: null,
       contextAnchorMessageCount: null,
       threads: activeThreadId
@@ -1511,6 +1548,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       gemId: gem.gemId,
       gemName: gem.gemName,
       gemInstructions: gem.gemInstructions,
+      gemRecentUserTurns: gem.recentUserTurns,
       contextAnchorTokens: null,
       contextAnchorMessageCount: null,
     });

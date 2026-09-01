@@ -32,6 +32,7 @@ export function GemEditorDialog({
 }: GemEditorDialogProps) {
   const nameId = useId();
   const instructionsId = useId();
+  const recentTurnsId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const settings = useAiSettingsStore((s) => s.settings);
   const models: AiModelOption[] = settings.models.length
@@ -42,6 +43,7 @@ export function GemEditorDialog({
   const [instructions, setInstructions] = useState("");
   const [modelId, setModelId] = useState(vaultChatModelId());
   const [enableReasoning, setEnableReasoning] = useState(true);
+  const [recentUserTurns, setRecentUserTurns] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -59,6 +61,11 @@ export function GemEditorDialog({
       gem
         ? gem.enableReasoning !== false
         : modelSupportsReasoning(nextModel, catalog),
+    );
+    setRecentUserTurns(
+      gem?.recentUserTurns != null && gem.recentUserTurns > 0
+        ? String(gem.recentUserTurns)
+        : "",
     );
     setSaving(false);
     setError(null);
@@ -97,6 +104,16 @@ export function GemEditorDialog({
 
   const submit = async () => {
     if (!canSave) return;
+    const parsedTurns = recentUserTurns.trim();
+    const recentUserTurnsValue =
+      parsedTurns === "" ? null : Number.parseInt(parsedTurns, 10);
+    if (
+      parsedTurns !== "" &&
+      (!Number.isFinite(recentUserTurnsValue) || recentUserTurnsValue! <= 0)
+    ) {
+      setError("Recent turns must be a positive number.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -106,6 +123,7 @@ export function GemEditorDialog({
         instructions: instructions.trim(),
         modelId: modelId.trim(),
         enableReasoning: reasoningSupported ? enableReasoning : false,
+        recentUserTurns: recentUserTurnsValue,
       });
       onSaved(saved);
     } catch (e) {
@@ -222,6 +240,27 @@ export function GemEditorDialog({
               onChange={(next) => setEnableReasoning(next !== "off")}
             />
           </div>
+
+          <label className="app-dialog-label" htmlFor={recentTurnsId}>
+            Recent turns to send
+          </label>
+          <input
+            id={recentTurnsId}
+            className="app-dialog-input"
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            value={recentUserTurns}
+            disabled={saving}
+            placeholder="All (default)"
+            onChange={(e) => setRecentUserTurns(e.target.value)}
+          />
+          <p className="app-dialog-hint">
+            Optional. One turn is your message plus the full reply (including
+            reasoning). Use this to keep a long Gem chat while sending only
+            recent context to the model.
+          </p>
 
           {error ? <p className="app-dialog-error">{error}</p> : null}
         </div>
