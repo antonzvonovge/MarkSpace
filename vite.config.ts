@@ -29,7 +29,27 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  // react-dnd keeps its manager in a module-level React context, so a second
+  // copy silently breaks `useDragDropManager` inside the sidebar tree.
+  resolve: {
+    dedupe: [
+      "react",
+      "react-dom",
+      "react-dnd",
+      "react-dnd-html5-backend",
+      "dnd-core",
+    ],
+  },
   optimizeDeps: {
+    // Prebundle the DnD stack together: when Vite discovers these late it
+    // re-optimizes mid-session and the reload can leave two react-dnd chunks
+    // live at once ("Expected drag drop context", blank window).
+    include: [
+      "react-dnd",
+      "react-dnd-html5-backend",
+      "dnd-core",
+      "@minoru/react-dnd-treeview",
+    ],
     // Huge WASM-inlined browser build — do not prebundle / transform.
     exclude: ["@terrastruct/d2"],
   },

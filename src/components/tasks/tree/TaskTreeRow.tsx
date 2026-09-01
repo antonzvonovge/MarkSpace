@@ -18,13 +18,16 @@ import {
   TasksIconGrip,
   TasksIconMore,
   TasksIconSchedule,
+  TasksIconSubtasks,
 } from "../tasksIcons";
 import {
   useTaskTreeActions,
   type TaskTreeEditState,
 } from "./TaskTreeActionsContext";
 import type { FlattenedTaskItem } from "./types";
-import { iOS } from "./utilities";
+import type { TaskTreeAddSubtaskSlot } from "./taskTreeDisplayRows";
+import { TaskTreeAddSlot } from "./TaskTreeAddRow";
+import { iOS, MAX_TASK_TREE_DEPTH } from "./utilities";
 
 function priorityClass(priority: TaskPriority | null | undefined): string {
   if (priority == null) return "";
@@ -221,6 +224,14 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
             <IconBtn label="Edit" onClick={() => actions.onEditTitle(item)}>
               <TasksIconEdit size={24} />
             </IconBtn>
+            {item.depth < MAX_TASK_TREE_DEPTH ? (
+              <IconBtn
+                label="Add subtask"
+                onClick={() => actions.onStartAddSubtask(item.path)}
+              >
+                <TasksIconSubtasks size={24} />
+              </IconBtn>
+            ) : null}
             <IconBtn
               label="Due date"
               onClick={(e) => {
@@ -297,7 +308,7 @@ function TaskRowInner({
 
 type SortableRowProps = {
   id: UniqueIdentifier;
-  item: FlattenedTaskItem;
+  item: FlattenedTaskItem & { addSubtaskAfter?: TaskTreeAddSubtaskSlot };
   depth: number;
   indentationWidth: number;
   indicator?: boolean;
@@ -382,6 +393,9 @@ function SortableTaskTreeRowInner({
           showDragHandle={sortable}
         />
       </div>
+      {item.addSubtaskAfter ? (
+        <TaskTreeAddSlot slot={item.addSubtaskAfter} hostDepth={depth} />
+      ) : null}
     </li>
   );
 }
@@ -441,6 +455,9 @@ function StaticTaskTreeRowInner({
         todayYmd={todayYmd}
         showDragHandle={false}
       />
+      {item.addSubtaskAfter ? (
+        <TaskTreeAddSlot slot={item.addSubtaskAfter} hostDepth={depth} />
+      ) : null}
     </li>
   );
 }

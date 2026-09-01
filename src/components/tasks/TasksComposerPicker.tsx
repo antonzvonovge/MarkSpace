@@ -207,14 +207,16 @@ export function TasksComposerPicker({
                     onMouseEnter={() => setHighlight(index)}
                     onClick={() => pick(opt.value)}
                   >
-                    {opt.color ? (
-                      <span
-                        className="tasks-composer-picker-dot"
-                        style={{ background: opt.color }}
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                    <span className="chat-model-option-name">{opt.label}</span>
+                    <span className="chat-model-option-main">
+                      {opt.color ? (
+                        <span
+                          className="tasks-composer-picker-dot"
+                          style={{ background: opt.color }}
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                      <span className="chat-model-option-name">{opt.label}</span>
+                    </span>
                   </button>
                 ))
               ) : (

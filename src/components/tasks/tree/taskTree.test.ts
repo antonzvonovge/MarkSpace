@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { taskEntriesToTreeItems } from "./buildTreeItems";
+import { buildTaskTreeDisplayRows } from "./taskTreeDisplayRows";
 import { parseTaskTreeId, taskTreeId } from "./types";
 import { buildTree, flattenTree, getProjection } from "./utilities";
 import type { TaskIndexEntry } from "../../../lib/taskNotes";
@@ -63,6 +64,50 @@ describe("parent-based tree", () => {
     expect(flat.map((i) => i.depth)).toEqual([0, 1, 0]);
     expect(flat[1]!.path).toBe("Tasks/Inbox/b.md");
     expect(flat[1]!.kind).toBe("task");
+  });
+});
+
+describe("buildTaskTreeDisplayRows", () => {
+  it("attaches add-subtask slot to the last child of an expanded parent", () => {
+    const idA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const idB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const entries = [
+      entry({
+        path: "Tasks/Inbox/a.md",
+        id: idA,
+        title: "A",
+        subtaskTotal: 1,
+        subtaskDone: 0,
+      }),
+      entry({
+        path: "Tasks/Inbox/b.md",
+        id: idB,
+        title: "B",
+        parent: idA,
+      }),
+    ];
+    const tree = taskEntriesToTreeItems(entries, new Set(["Tasks/Inbox/a.md"]));
+    const flat = flattenTree(tree);
+    const rows = buildTaskTreeDisplayRows(flat, null);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.addSubtaskAfter).toBeUndefined();
+    expect(rows[1]!.addSubtaskAfter).toEqual({
+      parentPath: "Tasks/Inbox/a.md",
+      slotDepth: 1,
+    });
+  });
+
+  it("attaches add slot to parent when composer is open without children", () => {
+    const entries = [
+      entry({ path: "Tasks/Inbox/a.md", title: "A" }),
+    ];
+    const flat = flattenTree(taskEntriesToTreeItems(entries, new Set()));
+    const rows = buildTaskTreeDisplayRows(flat, "Tasks/Inbox/a.md");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.addSubtaskAfter).toEqual({
+      parentPath: "Tasks/Inbox/a.md",
+      slotDepth: 1,
+    });
   });
 });
 

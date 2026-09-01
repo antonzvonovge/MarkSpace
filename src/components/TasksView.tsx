@@ -30,12 +30,17 @@ import {
   type TaskNote,
   type TaskPriority,
 } from "../lib/taskNotes";
+import {
+  collectImageFilesFromPaste,
+  readImagesFromSystemClipboard,
+} from "../editor/pasteImages";
 import { absolutePath, joinPath, parentPath, writeAsset } from "../lib/vaultApi";
 import { taskListColor } from "../lib/taskListMeta";
 import { useTaskListMetaStore } from "../store/taskListMetaStore";
 import { useTasksPanelStore } from "../store/tasksPanelStore";
 import { useVaultStore } from "../store/vaultStore";
 import { TagChipsInput } from "./TagChipsInput";
+import { ImageLightbox } from "./ImageLightbox";
 import {
   TasksComposer,
   type TasksComposerDraft,
@@ -134,9 +139,11 @@ function IconBtn({
 function CommentBody({
   body,
   notePath,
+  onOpenImage,
 }: {
   body: string;
   notePath: string;
+  onOpenImage: (src: string, alt: string) => void;
 }) {
   const parts = useMemo(() => {
     const re = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -162,7 +169,13 @@ function CommentBody({
             {p.value}
           </span>
         ) : (
-          <CommentImage key={i} notePath={notePath} rel={p.value} alt={p.alt ?? ""} />
+          <CommentImage
+            key={i}
+            notePath={notePath}
+            rel={p.value}
+            alt={p.alt ?? ""}
+            onOpen={onOpenImage}
+          />
         ),
       )}
     </div>
@@ -173,10 +186,12 @@ function CommentImage({
   notePath,
   rel,
   alt,
+  onOpen,
 }: {
   notePath: string;
   rel: string;
   alt: string;
+  onOpen?: (src: string, alt: string) => void;
 }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
@@ -195,7 +210,24 @@ function CommentImage({
     };
   }, [notePath, rel]);
   if (!src) return <span className="tasks-comment-img-missing">{alt || rel}</span>;
-  return <img className="tasks-comment-img" src={src} alt={alt} />;
+  if (!onOpen) {
+    return (
+      <img className="tasks-comment-img" src={src} alt={alt} draggable={false} />
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="tasks-comment-img-btn"
+      aria-label={alt ? `View image: ${alt}` : "View image"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(src, alt);
+      }}
+    >
+      <img className="tasks-comment-img" src={src} alt={alt} draggable={false} />
+    </button>
+  );
 }
 
 /** Grow a textarea to fit content; never show a scrollbar or resize grip. */
@@ -204,6 +236,29 @@ function syncAutosizeTextarea(el: HTMLTextAreaElement | null, minPx: number) {
   el.style.height = "0px";
   el.style.overflowY = "hidden";
   el.style.height = `${Math.max(el.scrollHeight, minPx)}px`;
+}
+
+function insertTextIntoTextarea(
+  el: HTMLTextAreaElement,
+  text: string,
+  onChange: (value: string) => void,
+) {
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? start;
+  const next = `${el.value.slice(0, start)}${text}${el.value.slice(end)}`;
+  onChange(next);
+  const pos = start + text.length;
+  requestAnimationFrame(() => {
+    el.selectionStart = pos;
+    el.selectionEnd = pos;
+    syncAutosizeTextarea(el, 24);
+  });
+}
+
+function clipboardLooksLikeImage(data: DataTransfer): boolean {
+  return Array.from(data.types).some(
+    (t) => t === "Files" || t.startsWith("image/"),
+  );
 }
 
 type CommentPendingImage = { url: string; name: string };
@@ -256,6 +311,7 @@ function TaskCommentComposer({
 }) {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const clipboardPasteInFlight = useRef(false);
 
   useEffect(() => {
     syncAutosizeTextarea(textRef.current, 24);
@@ -266,6 +322,34 @@ function TaskCommentComposer({
   }, [autoFocus]);
 
   const canSubmit = Boolean(draft.trim() || images.length > 0);
+
+  const ingestPastedImages = useCallback(
+    async (files: readonly File[]) => {
+      if (files.length === 0) return;
+      clipboardPasteInFlight.current = true;
+      try {
+        for (const file of files) await onAttachFile(file);
+      } finally {
+        window.setTimeout(() => {
+          clipboardPasteInFlight.current = false;
+        }, 400);
+      }
+    },
+    [onAttachFile],
+  );
+
+  const tryPasteClipboardImages = useCallback(async () => {
+    if (clipboardPasteInFlight.current) return;
+    clipboardPasteInFlight.current = true;
+    try {
+      const fromSystem = await readImagesFromSystemClipboard(2);
+      if (fromSystem.length > 0) await ingestPastedImages(fromSystem);
+    } finally {
+      window.setTimeout(() => {
+        clipboardPasteInFlight.current = false;
+      }, 400);
+    }
+  }, [ingestPastedImages]);
 
   return (
     <div className="tasks-comment-compose">
@@ -300,22 +384,43 @@ function TaskCommentComposer({
               requestAnimationFrame(() => syncAutosizeTextarea(el, 24));
             }}
             onPaste={(e) => {
-              const items = e.clipboardData?.items;
-              if (!items) return;
-              const pasted: File[] = [];
-              for (const item of items) {
-                if (item.type.startsWith("image/")) {
-                  const file = item.getAsFile();
-                  if (file) pasted.push(file);
-                }
+              const data = e.clipboardData;
+              if (!data) return;
+
+              const pasted = collectImageFilesFromPaste(data);
+              if (pasted.length > 0) {
+                e.preventDefault();
+                void ingestPastedImages(pasted);
+                return;
               }
-              if (pasted.length === 0) return;
+
+              if (!clipboardLooksLikeImage(data)) return;
+
               e.preventDefault();
+              const textSnapshot = data.getData("text/plain");
               void (async () => {
-                for (const file of pasted) await onAttachFile(file);
+                const fromSystem = await readImagesFromSystemClipboard(2);
+                if (fromSystem.length > 0) {
+                  await ingestPastedImages(fromSystem);
+                  return;
+                }
+                const el = textRef.current;
+                if (textSnapshot && el) {
+                  insertTextIntoTextarea(el, textSnapshot, onDraftChange);
+                }
               })();
             }}
             onKeyDown={(e) => {
+              if (
+                (e.ctrlKey || e.metaKey) &&
+                e.code === "KeyV" &&
+                !e.shiftKey &&
+                !e.altKey
+              ) {
+                window.setTimeout(() => {
+                  void tryPasteClipboardImages();
+                }, 0);
+              }
               if (e.key === "Escape") {
                 e.preventDefault();
                 e.stopPropagation();
@@ -444,6 +549,10 @@ function TaskDetailPanel({
   );
   const [addingComment, setAddingComment] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
+  const [viewedCommentImage, setViewedCommentImage] = useState<{
+    src: string;
+    alt: string;
+  } | null>(null);
   const [editingChildPath, setEditingChildPath] = useState<string | null>(null);
   const [completingMain, setCompletingMain] = useState(false);
   const [completingChildPaths, setCompletingChildPaths] = useState(
@@ -480,6 +589,7 @@ function TaskDetailPanel({
     setAddingComment(false);
     setAddingChild(false);
     setEditingChildPath(null);
+    setViewedCommentImage(null);
     setCompletingMain(false);
     setCompletingChildPaths(new Set());
   }, [reload]);
@@ -494,6 +604,11 @@ function TaskDetailPanel({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (viewedCommentImage) {
+        e.preventDefault();
+        setViewedCommentImage(null);
+        return;
+      }
       if (editingChildPath) {
         e.preventDefault();
         setEditingChildPath(null);
@@ -513,7 +628,7 @@ function TaskDetailPanel({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, editingCommentIndex, editingChildPath, addingComment]);
+  }, [onClose, editingCommentIndex, editingChildPath, addingComment, viewedCommentImage]);
 
   useEffect(() => {
     if (addingChild || editingChildPath) childTitleRef.current?.focus();
@@ -717,7 +832,8 @@ function TaskDetailPanel({
   );
 
   return createPortal(
-    <div className="tasks-detail-root" role="presentation">
+    <>
+      <div className="tasks-detail-root" role="presentation">
       <button
         type="button"
         className="tasks-detail-backdrop"
@@ -1078,7 +1194,13 @@ function TaskDetailPanel({
                                 <TasksIconTrash size={16} />
                               </button>
                             </div>
-                            <CommentBody body={c.body} notePath={note.path} />
+                            <CommentBody
+                              body={c.body}
+                              notePath={note.path}
+                              onOpenImage={(src, alt) =>
+                                setViewedCommentImage({ src, alt })
+                              }
+                            />
                             <div className="tasks-comment-at">{c.at}</div>
                           </>
                         )}
@@ -1238,12 +1360,20 @@ function TaskDetailPanel({
           </div>
         ) : null}
       </div>
-    </div>,
+    </div>
+      {viewedCommentImage ? (
+        <ImageLightbox
+          src={viewedCommentImage.src}
+          alt={viewedCommentImage.alt}
+          onClose={() => setViewedCommentImage(null)}
+        />
+      ) : null}
+    </>,
     document.body,
   );
 }
 
-export function TasksView() {
+export function TasksView({ isActive = true }: { isActive?: boolean }) {
   const tree = useVaultStore((s) => s.tree);
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const view = useTasksPanelStore((s) => s.view);
@@ -1262,7 +1392,9 @@ export function TasksView() {
   const [entries, setEntries] = useState<TaskIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const expanded = useMemo(() => new Set(expandedPaths), [expandedPaths]);
-  const [adding, setAdding] = useState(false);
+  const [addComposerAt, setAddComposerAt] = useState<null | "root" | string>(
+    null,
+  );
   const [quickDraft, setQuickDraft] = useState<TasksComposerDraft>({
     title: "",
     due: "",
@@ -1293,6 +1425,10 @@ export function TasksView() {
   const treeRef = useRef(tree);
   const today = localDateYmd();
   const titleRef = useRef<HTMLInputElement>(null);
+  const addComposerParentPath =
+    addComposerAt && addComposerAt !== "root" ? addComposerAt : null;
+  const adding = addComposerAt === "root";
+
   const quickDraftRef = useRef(quickDraft);
   quickDraftRef.current = quickDraft;
 
@@ -1384,8 +1520,15 @@ export function TasksView() {
   }, [entries]);
 
   useEffect(() => {
-    if (adding) titleRef.current?.focus();
-  }, [adding]);
+    if (isActive) return;
+    setDuePicker(null);
+    setAddComposerAt(null);
+  }, [isActive]);
+
+  useEffect(() => {
+    if (!isActive || !addComposerAt) return;
+    titleRef.current?.focus();
+  }, [addComposerAt, isActive]);
 
   useEffect(() => {
     if (editingId) editTitleRef.current?.focus();
@@ -1414,7 +1557,7 @@ export function TasksView() {
       priority?: TaskPriority | null;
     }) => {
       const entry = entriesRef.current.find((e) => e.path === item.path);
-      setAdding(false);
+      setAddComposerAt(null);
       setEditingId(String(item.id));
       setEditingPath(item.path);
       setEditDraft({
@@ -1479,11 +1622,11 @@ export function TasksView() {
 
   // Keep composer List in sync when the sidebar list/view changes.
   useEffect(() => {
-    if (!adding) return;
+    if (addComposerAt !== "root") return;
     setQuickDraft((prev) =>
       prev.list === contextList ? prev : { ...prev, list: contextList },
     );
-  }, [adding, contextList]);
+  }, [addComposerAt, contextList]);
 
   const selectedIndex = visible.findIndex((e) => e.path === selectedPath);
 
@@ -1543,7 +1686,7 @@ export function TasksView() {
     const quickDraft = quickDraftRef.current;
     const title = quickDraft.title.trim();
     if (!title) {
-      setAdding(false);
+      setAddComposerAt(null);
       return;
     }
     // Prefer explicit composer List; fall back to the open sidebar list.
@@ -1697,6 +1840,87 @@ export function TasksView() {
     [refreshTree, setSelectedPath],
   );
 
+  const closeAddComposer = useCallback(() => {
+    setAddComposerAt(null);
+    setQuickDraft((prev) => ({ ...prev, title: "" }));
+  }, []);
+
+  const startAddSubtask = useCallback(
+    (parentPath: string) => {
+      cancelEdit();
+      expandPath(parentPath);
+      const entry = entriesRef.current.find((e) => e.path === parentPath);
+      const list =
+        entry?.list || taskListFromPath(parentPath) || contextList;
+      setQuickDraft({
+        title: "",
+        due: "",
+        priority: "",
+        labels: [],
+        list,
+      });
+      setAddComposerAt(parentPath);
+    },
+    [cancelEdit, contextList, expandPath],
+  );
+
+  const submitSubtaskAdd = useCallback(
+    async (parentPath: string) => {
+      const draft = quickDraftRef.current;
+      const title = draft.title.trim();
+      if (!title) {
+        closeAddComposer();
+        return;
+      }
+      const list =
+        draft.list.trim() || taskListFromPath(parentPath) || contextList;
+      const due = draft.due || null;
+      const priority = draft.priority === "" ? null : draft.priority;
+      const labelList = draft.labels;
+      try {
+        const parentNote = await loadTaskNote(parentPath);
+        let parentId = parentNote.attrs.id;
+        if (!parentId) {
+          parentId = newTaskId();
+          await saveTaskNote({
+            ...parentNote,
+            attrs: { ...parentNote.attrs, id: parentId },
+          });
+        }
+        await createTaskNote({
+          title,
+          list,
+          due,
+          priority,
+          labels: labelList,
+          parent: parentId,
+        });
+        setQuickDraft((prev) => ({ ...prev, title: "", list }));
+        setAddComposerAt(parentPath);
+        await refreshTree();
+        await reloadIndex();
+        requestAnimationFrame(() => titleRef.current?.focus());
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    [closeAddComposer, contextList, refreshTree, reloadIndex],
+  );
+
+  const onStartAdding = useCallback(() => {
+    cancelEdit();
+    setQuickDraft({
+      title: "",
+      due: view === "today" ? today : "",
+      priority: "",
+      labels: [],
+      list: contextList,
+    });
+    setAddComposerAt("root");
+  }, [cancelEdit, contextList, today, view]);
+
+  const onCancelQuickAdd = closeAddComposer;
+
   const treeActions = useMemo<TaskTreeActions>(
     () => ({
       onSelect: openTask,
@@ -1723,6 +1947,7 @@ export function TasksView() {
         void commitEdit();
       },
       onCancelEdit: cancelEdit,
+      onStartAddSubtask: startAddSubtask,
     }),
     [
       cancelEdit,
@@ -1732,6 +1957,7 @@ export function TasksView() {
       patchEditDraft,
       pickDue,
       saveDue,
+      startAddSubtask,
       startEdit,
       toggleExpand,
     ],
@@ -1757,23 +1983,6 @@ export function TasksView() {
     await refreshTree();
     await reloadIndex();
   }, [refreshTree, reloadIndex]);
-
-  const onStartAdding = useCallback(() => {
-    cancelEdit();
-    setQuickDraft({
-      title: "",
-      due: view === "today" ? today : "",
-      priority: "",
-      labels: [],
-      list: contextList,
-    });
-    setAdding(true);
-  }, [cancelEdit, contextList, today, view]);
-
-  const onCancelQuickAdd = useCallback(() => {
-    setAdding(false);
-    setQuickDraft((prev) => ({ ...prev, title: "" }));
-  }, []);
 
   return (
     <div className="tasks-view">
@@ -1806,9 +2015,14 @@ export function TasksView() {
         onSubmitQuickAdd={handleSubmitQuickAdd}
         onCancelQuickAdd={onCancelQuickAdd}
         onStartAdding={onStartAdding}
+        addComposerParentPath={addComposerParentPath}
+        onPatchAddDraft={patchQuickDraft}
+        onSubmitAddSubtask={submitSubtaskAdd}
+        onCancelAddSubtask={closeAddComposer}
+        onStartAddSubtask={startAddSubtask}
       />
 
-      {duePicker ? (
+      {isActive && duePicker ? (
         <TasksDuePickerPopup
           anchor={{ x: duePicker.x, y: duePicker.y }}
           value={duePicker.due}
@@ -1820,7 +2034,7 @@ export function TasksView() {
         />
       ) : null}
 
-      {selectedPath ? (
+      {isActive && selectedPath ? (
         <TaskDetailPanel
           path={selectedPath}
           entries={entries}

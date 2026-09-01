@@ -54,6 +54,13 @@ export const TasksListColumn = memo(function TasksListColumn({
   onSubmitQuickAdd,
   onCancelQuickAdd,
   onStartAdding,
+  addComposerParentPath = null,
+  addDraft,
+  addTitleRef,
+  onPatchAddDraft,
+  onSubmitAddSubtask,
+  onCancelAddSubtask,
+  onStartAddSubtask,
 }: {
   viewTitle: string;
   view: TasksViewId;
@@ -83,6 +90,13 @@ export const TasksListColumn = memo(function TasksListColumn({
   onSubmitQuickAdd: () => void;
   onCancelQuickAdd: () => void;
   onStartAdding: () => void;
+  addComposerParentPath?: string | null;
+  addDraft?: TasksComposerDraft;
+  addTitleRef?: RefObject<HTMLInputElement | null>;
+  onPatchAddDraft?: (patch: Partial<TasksComposerDraft>) => void;
+  onSubmitAddSubtask?: (parentPath: string) => void;
+  onCancelAddSubtask?: () => void;
+  onStartAddSubtask?: (parentPath: string) => void;
 }): ReactNode {
   return (
     <div className="tasks-list-column">
@@ -171,6 +185,16 @@ export const TasksListColumn = memo(function TasksListColumn({
             todayYmd={todayYmd}
             onExpandPath={onExpandPath}
             onPersisted={onPersisted}
+            addComposerParentPath={addComposerParentPath}
+            addDraft={addDraft ?? quickDraft}
+            addTitleRef={addTitleRef ?? titleRef}
+            addLists={lists}
+            addListColors={listColors}
+            addLabelCatalog={labels}
+            onPatchAddDraft={onPatchAddDraft ?? onPatchQuickDraft}
+            onSubmitAddSubtask={onSubmitAddSubtask}
+            onCancelAddSubtask={onCancelAddSubtask}
+            onStartAddSubtask={onStartAddSubtask}
           />
         )}
 
@@ -185,6 +209,7 @@ export const TasksListColumn = memo(function TasksListColumn({
             onChange={onPatchQuickDraft}
             onSubmit={onSubmitQuickAdd}
             onCancel={onCancelQuickAdd}
+            onBlurEmpty={onCancelQuickAdd}
           />
         ) : (
           <button

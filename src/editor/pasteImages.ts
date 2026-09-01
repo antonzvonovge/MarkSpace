@@ -89,7 +89,8 @@ function collectImageFiles(data: DataTransfer): File[] {
   const seen = new Set<string>();
 
   const push = (file: File | null) => {
-    if (!file || !file.type.startsWith("image/")) return;
+    if (!file || file.size <= 0) return;
+    if (file.type && !file.type.startsWith("image/")) return;
     const key = `${file.name}:${file.size}:${file.lastModified}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -112,6 +113,16 @@ function collectImageFiles(data: DataTransfer): File[] {
     }
   }
 
+  return files;
+}
+
+/** Images from a paste event: files/items plus `<img src="data:…">` in HTML. */
+export function collectImageFilesFromPaste(data: DataTransfer): File[] {
+  let files = collectImageFiles(data);
+  if (files.length === 0) {
+    const html = data.getData("text/html");
+    if (html) files = collectImagesFromHtml(html);
+  }
   return files;
 }
 

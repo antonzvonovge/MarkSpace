@@ -104,7 +104,7 @@ const TasksDocumentTab = memo(function TasksDocumentTab({
       aria-hidden={!isActive}
       inert={!isActive}
     >
-      {isActive ? <TasksView /> : null}
+      {isActive ? <TasksView isActive={isActive} /> : null}
     </div>
   );
 });

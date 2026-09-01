@@ -1,9 +1,16 @@
-import type { RefObject } from "react";
+import { useEffect, useRef, type FocusEvent, type RefObject } from "react";
 import type { TaskPriority } from "../../lib/taskNotes";
 import { TagChipsInput } from "../TagChipsInput";
 import { TasksComposerPicker } from "./TasksComposerPicker";
 import { TasksDateField } from "./TasksDateField";
 import { TasksPriorityPicker } from "./TasksPriorityPicker";
+
+const COMPOSER_KEEP_FOCUS_SELECTOR =
+  ".tasks-composer-picker-menu, .tasks-date-panel, .tasks-priority-menu, .tag-chips-input-portal";
+
+export function isTasksComposerDraftEmpty(draft: TasksComposerDraft): boolean {
+  return !draft.title.trim();
+}
 
 export type TasksComposerDraft = {
   title: string;
@@ -28,6 +35,8 @@ type Props = {
   onChange: (patch: Partial<TasksComposerDraft>) => void;
   onSubmit: () => void;
   onCancel: () => void;
+  /** Hide the composer when focus leaves and the title is still empty. */
+  onBlurEmpty?: () => void;
 };
 
 export function TasksComposer({
@@ -41,7 +50,34 @@ export function TasksComposer({
   onChange,
   onSubmit,
   onCancel,
+  onBlurEmpty,
 }: Props) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const ignoreBlurUntilRef = useRef(0);
+
+  useEffect(() => {
+    ignoreBlurUntilRef.current = performance.now() + 150;
+  }, []);
+
+  const handleBlurCapture = (e: FocusEvent<HTMLDivElement>) => {
+    if (!onBlurEmpty) return;
+    const next = e.relatedTarget;
+    window.setTimeout(() => {
+      if (performance.now() < ignoreBlurUntilRef.current) return;
+      if (!rootRef.current?.isConnected) return;
+      const active = document.activeElement;
+      if (active && rootRef.current.contains(active)) return;
+      if (active?.closest(COMPOSER_KEEP_FOCUS_SELECTOR)) return;
+      if (next instanceof Node && rootRef.current.contains(next)) return;
+      if (next instanceof Element && next.closest(COMPOSER_KEEP_FOCUS_SELECTOR)) {
+        return;
+      }
+      if (isTasksComposerDraftEmpty(draftRef.current)) onBlurEmpty();
+    }, 0);
+  };
+
   const currentList = draft.list.trim() || "Inbox";
   const listOptions = [
     { value: "Inbox", label: "Inbox" },
@@ -67,10 +103,12 @@ export function TasksComposer({
 
   return (
     <div
+      ref={rootRef}
       className={
         variant === "row" ? "tasks-composer is-row" : "tasks-composer"
       }
       onClick={(e) => e.stopPropagation()}
+      onBlurCapture={handleBlurCapture}
     >
       <input
         ref={titleRef}
@@ -92,35 +130,43 @@ export function TasksComposer({
       />
       <div className="tasks-composer-bar">
         <div className="tasks-composer-chips">
-          <TasksComposerPicker
-            aria-label="List"
-            value={currentList}
-            display={currentList}
-            options={listOptions}
-            searchable
-            searchPlaceholder="Filter lists…"
-            onChange={(v) => onChange({ list: v })}
-          />
-          <TasksDateField
-            variant="chip"
-            value={draft.due || null}
-            onChange={(due) => onChange({ due: due ?? "" })}
-          />
-          <TasksPriorityPicker
-            value={draft.priority}
-            onChange={(priority) => onChange({ priority })}
-          />
-          <TagChipsInput
-            className="tasks-composer-labels"
-            tags={draft.labels}
-            onChange={(labels) => onChange({ labels })}
-            catalog={labelCatalog}
-            pastelChips
-            portalPopover
-            placeholder="Labels"
-            ariaLabel="Labels"
-            onEmptyEnter={onSubmit}
-          />
+          <span className="tasks-composer-chip-slot">
+            <TasksComposerPicker
+              aria-label="List"
+              value={currentList}
+              display={currentList}
+              options={listOptions}
+              searchable
+              searchPlaceholder="Filter lists…"
+              onChange={(v) => onChange({ list: v })}
+            />
+          </span>
+          <span className="tasks-composer-chip-slot">
+            <TasksDateField
+              variant="chip"
+              value={draft.due || null}
+              onChange={(due) => onChange({ due: due ?? "" })}
+            />
+          </span>
+          <span className="tasks-composer-chip-slot">
+            <TasksPriorityPicker
+              value={draft.priority}
+              onChange={(priority) => onChange({ priority })}
+            />
+          </span>
+          <span className="tasks-composer-chip-slot tasks-composer-chip-slot-grow">
+            <TagChipsInput
+              className="tasks-composer-labels"
+              tags={draft.labels}
+              onChange={(labels) => onChange({ labels })}
+              catalog={labelCatalog}
+              pastelChips
+              portalPopover
+              placeholder="Labels"
+              ariaLabel="Labels"
+              onEmptyEnter={onSubmit}
+            />
+          </span>
         </div>
         <div className="tasks-composer-actions">
           <button

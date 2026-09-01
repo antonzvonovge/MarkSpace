@@ -29,12 +29,17 @@ import {
   TaskTreeDragOverlay,
 } from "./TaskTreeRow";
 import { TasksPlainTree } from "./TasksPlainTree";
+import { TaskTreeAddComposerProvider } from "./TaskTreeAddComposerContext";
+import type { TaskTreeAddComposerState } from "./TaskTreeAddComposerContext";
+import { buildTaskTreeDisplayRows } from "./taskTreeDisplayRows";
 import {
   TaskTreeActionsProvider,
   type TaskTreeActions,
   type TaskTreeEditState,
 } from "./TaskTreeActionsContext";
 import { parseTaskTreeId, type TaskTreeItems } from "./types";
+import type { TasksComposerDraft } from "../TasksComposer";
+import type { RefObject } from "react";
 import {
   buildTree,
   flattenTree,
@@ -76,6 +81,16 @@ type TasksTreeProps = {
   onExpandPath?: (path: string) => void;
   /** Called after vault write; may return a Promise — kept under persisting lock until done. */
   onPersisted?: () => void | Promise<void>;
+  addComposerParentPath?: string | null;
+  addDraft?: TasksComposerDraft;
+  addTitleRef?: RefObject<HTMLInputElement | null>;
+  addLists?: string[];
+  addListColors?: Record<string, string>;
+  addLabelCatalog?: string[];
+  onPatchAddDraft?: (patch: Partial<TasksComposerDraft>) => void;
+  onSubmitAddSubtask?: (parentPath: string) => void;
+  onCancelAddSubtask?: () => void;
+  onStartAddSubtask?: (parentPath: string) => void;
 };
 
 export const TasksSortableTree = memo(function TasksSortableTree(
@@ -91,6 +106,16 @@ export const TasksSortableTree = memo(function TasksSortableTree(
         edit={props.edit}
         completingPaths={props.completingPaths}
         todayYmd={props.todayYmd}
+        addComposerParentPath={props.addComposerParentPath}
+        addDraft={props.addDraft}
+        addTitleRef={props.addTitleRef}
+        addLists={props.addLists}
+        addListColors={props.addListColors}
+        addLabelCatalog={props.addLabelCatalog}
+        onPatchAddDraft={props.onPatchAddDraft}
+        onSubmitAddSubtask={props.onSubmitAddSubtask}
+        onCancelAddSubtask={props.onCancelAddSubtask}
+        onStartAddSubtask={props.onStartAddSubtask}
       />
     );
   }
@@ -108,6 +133,16 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
   todayYmd,
   onExpandPath,
   onPersisted,
+  addComposerParentPath = null,
+  addDraft,
+  addTitleRef,
+  addLists = [],
+  addListColors = {},
+  addLabelCatalog = [],
+  onPatchAddDraft,
+  onSubmitAddSubtask,
+  onCancelAddSubtask,
+  onStartAddSubtask,
 }: TasksTreeProps): ReactNode {
   const [items, setItems] = useState<TaskTreeItems>(() =>
     taskEntriesToTreeItems(entries, expanded),
@@ -153,6 +188,48 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
     () => flattenedItems.map(({ id }) => id),
     [flattenedItems],
   );
+
+  const displayItems = useMemo(
+    () => buildTaskTreeDisplayRows(flattenedItems, addComposerParentPath),
+    [flattenedItems, addComposerParentPath],
+  );
+
+  const addComposerState = useMemo((): TaskTreeAddComposerState | null => {
+    if (
+      !addDraft ||
+      !addTitleRef ||
+      !onPatchAddDraft ||
+      !onSubmitAddSubtask ||
+      !onCancelAddSubtask ||
+      !onStartAddSubtask
+    ) {
+      return null;
+    }
+    return {
+      addComposerParentPath,
+      draft: addDraft,
+      lists: addLists,
+      listColors: addListColors,
+      labelCatalog: addLabelCatalog,
+      titleRef: addTitleRef,
+      indentationWidth: INDENTATION_WIDTH,
+      onPatchDraft: onPatchAddDraft,
+      onSubmit: onSubmitAddSubtask,
+      onCancel: onCancelAddSubtask,
+      onStartAddSubtask,
+    };
+  }, [
+    addComposerParentPath,
+    addDraft,
+    addTitleRef,
+    addLists,
+    addListColors,
+    addLabelCatalog,
+    onPatchAddDraft,
+    onSubmitAddSubtask,
+    onCancelAddSubtask,
+    onStartAddSubtask,
+  ]);
 
   const activeItem = activeId
     ? flattenedItems.find(({ id }) => id === activeId)
@@ -250,7 +327,8 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
 
   return (
     <TaskTreeActionsProvider actions={actions}>
-      <DndContext
+      <TaskTreeAddComposerProvider value={addComposerState}>
+        <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         measuring={measuring}
@@ -268,7 +346,7 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
                 : "tasks-list tasks-tree-list"
             }
           >
-            {flattenedItems.map((item) => {
+            {displayItems.map((item) => {
               const rowDepth =
                 item.id === activeId && projected
                   ? projected.depth
@@ -311,6 +389,7 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
           document.body,
         )}
       </DndContext>
+      </TaskTreeAddComposerProvider>
     </TaskTreeActionsProvider>
   );
 });

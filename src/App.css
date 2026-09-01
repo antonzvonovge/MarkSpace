@@ -15127,12 +15127,10 @@ button.status-bar-jobs-menu-item:hover {
   box-sizing: border-box;
 }
 
-.tasks-list-item:hover .tasks-row,
 .tasks-row.is-selected {
   background: rgba(37, 34, 30, 0.04);
 }
 
-:root[data-theme="dark"] .tasks-list-item:hover .tasks-row,
 :root[data-theme="dark"] .tasks-row.is-selected {
   background: rgba(255, 255, 255, 0.05);
 }
@@ -15833,6 +15831,12 @@ button.status-bar-jobs-menu-item:hover {
   width: calc(100% - var(--tasks-checkbox-inset, 54px));
 }
 
+.tasks-tree-add-row .tasks-composer.is-row,
+.tasks-tree-add-row .tasks-tree-add-trigger {
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
 .tasks-composer-title {
   border: none;
   outline: none;
@@ -15853,7 +15857,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .tasks-composer-bar {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 6px;
   flex-wrap: nowrap;
@@ -15868,13 +15872,36 @@ button.status-bar-jobs-menu-item:hover {
   min-width: 0;
   flex: 1;
   overflow: hidden;
+  height: 22px;
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
+/* Same-height slot for list / due / priority / labels — one alignment context. */
+.tasks-composer-chip-slot {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 22px;
+  min-height: 22px;
+  max-height: 22px;
+  min-width: 0;
+}
+
+.tasks-composer-chip-slot-grow {
+  flex: 1 1 auto;
+  flex-shrink: 1;
+  max-width: 200px;
 }
 
 /* Match chat Project / Agent / Model triggers — muted, no accent fill. */
 .tasks-composer-picker {
   position: relative;
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
   min-width: 0;
+  height: 22px;
 }
 
 .tasks-composer-ctrl {
@@ -15909,6 +15936,46 @@ button.status-bar-jobs-menu-item:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* One shared metrics bundle for every chip trigger in the composer bar. */
+.tasks-composer-chip-slot .tasks-composer-ctrl,
+.tasks-composer-chip-slot .tasks-date-trigger.is-chip,
+.tasks-composer-chip-slot .tasks-priority-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  min-height: 22px;
+  max-height: 22px;
+  padding: 0 4px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: 1;
+  border-radius: 6px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.tasks-composer-chip-slot .tasks-composer-ctrl-label,
+.tasks-composer-chip-slot .tasks-priority-chip-label {
+  display: block;
+  line-height: 22px;
+  height: 22px;
+}
+
+.tasks-composer-chip-slot .tasks-date-trigger-icon {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 .tasks-composer-ctrl.is-field {
@@ -15970,6 +16037,7 @@ button.status-bar-jobs-menu-item:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  line-height: 1;
 }
 
 .tasks-priority-option {
@@ -15998,13 +16066,17 @@ button.status-bar-jobs-menu-item:hover {
 
 /* Task labels: same TagChipsInput UX, compact in the composer bar. */
 .tasks-composer-labels {
-  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
   min-width: 72px;
-  max-width: 200px;
+  height: 22px;
 }
 
 .tasks-composer-labels .tag-chips-input-box {
   min-height: 22px;
+  height: 22px;
+  width: 100%;
   padding: 0 2px;
   border: 0;
   border-radius: 6px;
@@ -16012,6 +16084,7 @@ button.status-bar-jobs-menu-item:hover {
   gap: 4px;
   flex-wrap: nowrap;
   overflow: hidden;
+  align-items: center;
 }
 
 .tasks-composer-labels .tag-chips-input-box:focus-within {
@@ -16034,14 +16107,25 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-composer-labels .tag-chips-input-field-wrap {
+  display: flex;
+  align-items: center;
   flex: 1 1 48px;
   min-width: 48px;
+  height: 22px;
 }
 
 .tasks-composer-labels .tag-chips-input-field {
-  height: 20px;
-  font-size: 0.6875rem;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  background: transparent;
+  font: inherit;
+  font-size: inherit;
+  line-height: 22px;
   color: var(--muted);
+  outline: none;
 }
 
 .tasks-composer-labels .tag-chips-input-field::placeholder {
@@ -16348,10 +16432,6 @@ button.status-bar-jobs-menu-item:hover {
   padding: 4px 2px 4px 0;
 }
 
-.tasks-detail-child-row:hover {
-  background: var(--sidebar-hover);
-}
-
 .tasks-detail-child-row .tasks-circle {
   width: 19px;
   height: 19px;
@@ -16515,6 +16595,31 @@ button.status-bar-jobs-menu-item:hover {
   margin-top: 8px;
   border-radius: 8px;
   object-fit: contain;
+}
+
+.tasks-comment-img-btn {
+  display: block;
+  max-width: 100%;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+  text-align: left;
+}
+
+.tasks-comment-img-btn:hover .tasks-comment-img {
+  filter: brightness(0.97);
+}
+
+.tasks-comment-img-btn:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.45);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.tasks-comment-img-btn .tasks-comment-img {
+  margin-top: 0;
 }
 
 .tasks-comment-compose {
@@ -16690,7 +16795,7 @@ button.status-bar-jobs-menu-item:hover {
 .tasks-meta-block {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 8px 12px;
@@ -16709,7 +16814,7 @@ button.status-bar-jobs-menu-item:hover {
   letter-spacing: 0;
   text-transform: none;
   color: var(--muted);
-  line-height: 26px;
+  line-height: 1.2;
   margin: 0;
 }
 
@@ -16968,8 +17073,10 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .tasks-date-trigger.is-chip .tasks-date-trigger-icon {
+  display: block;
   width: 14px;
   height: 14px;
+  flex-shrink: 0;
 }
 
 .tasks-detail-meta-col .tasks-date-trigger-icon {
@@ -17115,4 +17222,68 @@ button.status-bar-jobs-menu-item:hover {
 .tasks-daypicker .rdp-button_previous:hover,
 .tasks-daypicker .rdp-button_next:hover {
   background: rgba(var(--accent-rgb), 0.1);
+}
+
+/* —— Crash screen (AppErrorBoundary) —— */
+.app-crash {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  overflow: auto;
+  padding: 32px;
+  box-sizing: border-box;
+  background: var(--editor-surface, #fff);
+  color: var(--text, #222);
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.app-crash-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.app-crash-message {
+  margin: 0;
+  color: var(--danger, #c0392b);
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.app-crash-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.app-crash-button {
+  border: 1px solid var(--line, #ddd);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.app-crash-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.app-crash-stack {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line, #ddd);
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.08);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: auto;
+  user-select: text;
 }

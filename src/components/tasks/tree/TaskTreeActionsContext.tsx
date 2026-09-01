@@ -20,6 +20,7 @@ export type TaskTreeActions = {
   onEditDraftChange: (patch: Partial<TasksComposerDraft>) => void;
   onCommitEdit: () => void;
   onCancelEdit: () => void;
+  onStartAddSubtask: (parentPath: string) => void;
 };
 
 export type TaskTreeEditState = {
@@ -55,6 +56,7 @@ export function TaskTreeActionsProvider({
       onEditDraftChange: (patch) => ref.current.onEditDraftChange(patch),
       onCommitEdit: () => ref.current.onCommitEdit(),
       onCancelEdit: () => ref.current.onCancelEdit(),
+      onStartAddSubtask: (path) => ref.current.onStartAddSubtask(path),
     }),
     [],
   );

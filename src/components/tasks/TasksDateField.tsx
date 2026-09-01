@@ -361,8 +361,8 @@ export function TasksDateField({
               : "tasks-date-trigger is-icon"
             : variant === "chip"
               ? value
-                ? "tasks-date-trigger is-chip has-value"
-                : "tasks-date-trigger is-chip"
+                ? "tasks-composer-ctrl tasks-date-trigger is-chip has-value"
+                : "tasks-composer-ctrl tasks-date-trigger is-chip"
               : value
                 ? "tasks-date-trigger is-field has-value"
                 : "tasks-date-trigger is-field"
@@ -383,8 +383,8 @@ export function TasksDateField({
             {value || emptyLabel !== "+" ? (
               <svg
                 className="tasks-date-trigger-icon"
-                width="16"
-                height="16"
+                width="12"
+                height="12"
                 viewBox="0 0 16 16"
                 aria-hidden="true"
               >
@@ -407,7 +407,9 @@ export function TasksDateField({
                 />
               </svg>
             ) : null}
-            <span>{formatDisplay(value, emptyLabel)}</span>
+            <span className="tasks-composer-ctrl-label">
+              {formatDisplay(value, emptyLabel)}
+            </span>
           </>
         )}
       </button>
