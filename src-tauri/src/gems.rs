@@ -340,7 +340,7 @@ mod tests {
             id: "g1".into(),
             name: "Tutor".into(),
             instructions: "Help with Spanish.".into(),
-            model_id: "anthropic/claude-sonnet-5".into(),
+            model_id: "openai/gpt-5.6-sol".into(),
             enable_reasoning: false,
             recent_user_turns: Some(5),
             created_at: 1,

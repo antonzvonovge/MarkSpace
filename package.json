@@ -17,7 +17,6 @@
     "postinstall": "node scripts/download-drawio.mjs && rm -rf node_modules/.vite"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.27",
     "@ai-sdk/google": "^4.0.31",
     "@ai-sdk/openai": "^4.0.20",
     "@blocknote/code-block": "^0.52.1",

@@ -11,6 +11,7 @@ mod git_sync;
 mod http_fetch;
 mod indexing;
 mod mcp;
+mod md_merge;
 mod order_merge;
 mod pdf_text;
 mod projects;

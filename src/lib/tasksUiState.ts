@@ -104,7 +104,20 @@ export function saveTasksFilters(filters: TasksFilters): void {
   }
 }
 
-/** Paths of task notes that are expanded (children visible). */
+/** Storage key for expanded parent tasks in the main Tasks list (per vault + view). */
+export function tasksListContextKey(
+  view: TasksViewId,
+  list: string,
+): string {
+  if (view === "inbox") return "inbox";
+  if (view === "today") return "today";
+  if (view === "filters") return "filters";
+  const named = list.trim();
+  if (view === "all" && named) return `list:${named}`;
+  return "all";
+}
+
+/** @deprecated Legacy flat list — migrated into vault-scoped map on first open. */
 export function loadTasksExpandedPaths(): string[] {
   try {
     const raw = localStorage.getItem(EXPANDED_KEY);

@@ -1,6 +1,10 @@
 import { Store } from "@tauri-apps/plugin-store";
 import { resolveModelId } from "../ai/resolveModelId";
-import { OPENROUTER_BASE_URL, OPENROUTER_MODELS } from "../ai/models";
+import {
+  OPENAI_BASE_URL,
+  OPENROUTER_BASE_URL,
+  OPENROUTER_MODELS,
+} from "../ai/models";
 import {
   DEFAULT_AI_SETTINGS,
   clampAgentMaxSteps,
@@ -11,16 +15,16 @@ import {
   type AiModelVendor,
   type ChatMode,
 } from "../ai/types";
+import { normalizeOpenAiBaseUrl } from "./openAiBaseUrl";
 
 const STORE_FILE = "settings.json";
 const AI_KEY = "ai";
 
-const VENDORS: AiModelVendor[] = ["openai", "anthropic", "google"];
+const VENDORS: AiModelVendor[] = ["openai", "google"];
 const KINDS: AiModelKind[] = ["chat", "reasoning"];
 const TIERS: AiModelTier[] = ["flagship", "worker"];
 
 function vendorFromId(id: string): AiModelVendor {
-  if (id.startsWith("anthropic/")) return "anthropic";
   if (id.startsWith("google/")) return "google";
   return "openai";
 }
@@ -34,14 +38,14 @@ function kindFromId(id: string): AiModelKind {
   }
   if (/flash-lite/i.test(id)) return "chat";
   if (/\/(o[0-9]|gpt-5)/i.test(id)) return "reasoning";
-  if (id.startsWith("anthropic/") || id.startsWith("google/")) {
+  if (id.startsWith("google/")) {
     return "reasoning";
   }
   return "chat";
 }
 
 function tierFromId(id: string): AiModelTier {
-  if (/haiku|luna|flash-lite|(^|\/).*-mini(\b|$)/i.test(id)) return "worker";
+  if (/luna|flash-lite|(^|\/).*-mini(\b|$)/i.test(id)) return "worker";
   return "flagship";
 }
 
@@ -112,9 +116,43 @@ function mergeModels(rawModels: AiModelOption[] | null): AiModelOption[] {
   for (const m of rawModels) {
     if (catalogIds.has(m.id)) continue;
     if (!m.id.includes("/")) continue;
+    // Drop removed Anthropic catalog / BYOK entries.
+    if (m.id.startsWith("anthropic/") || (m.vendor as string) === "anthropic")
+      continue;
     catalog.push(coerceModel(m));
   }
   return catalog;
+}
+
+function resolveBaseUrl(
+  raw: Partial<AiSettings> & { apiKey?: string } | null | undefined,
+  migratedFromLegacyOpenRouter: boolean,
+): string {
+  if (typeof raw?.baseUrl === "string" && raw.baseUrl.trim()) {
+    return normalizeOpenAiBaseUrl(raw.baseUrl);
+  }
+  if (migratedFromLegacyOpenRouter) {
+    return OPENROUTER_BASE_URL;
+  }
+  return OPENAI_BASE_URL;
+}
+
+function resolveOpenAiApiKey(
+  raw: Partial<AiSettings> & { apiKey?: string } | null | undefined,
+): { openaiApiKey: string; migratedFromLegacyOpenRouter: boolean } {
+  const openaiApiKey = stringField(raw, "openaiApiKey");
+  const legacyOpenRouterKey =
+    typeof raw?.apiKey === "string" ? raw.apiKey.trim() : "";
+  if (openaiApiKey) {
+    return { openaiApiKey, migratedFromLegacyOpenRouter: false };
+  }
+  if (legacyOpenRouterKey) {
+    return {
+      openaiApiKey: legacyOpenRouterKey,
+      migratedFromLegacyOpenRouter: true,
+    };
+  }
+  return { openaiApiKey: "", migratedFromLegacyOpenRouter: false };
 }
 
 function stringField(
@@ -127,9 +165,13 @@ function stringField(
 
 /** Normalize persisted / partial AI settings (exported for tests). */
 export function normalizeAiSettings(
-  raw: Partial<AiSettings> | null | undefined,
+  raw: Partial<AiSettings> & { apiKey?: string } | null | undefined,
 ): AiSettings {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_AI_SETTINGS };
+
+  const { openaiApiKey, migratedFromLegacyOpenRouter } =
+    resolveOpenAiApiKey(raw);
+  const baseUrl = resolveBaseUrl(raw, migratedFromLegacyOpenRouter);
 
   const rawList = Array.isArray(raw.models) ? (raw.models as unknown[]) : null;
   const rawModels = rawList
@@ -173,10 +215,8 @@ export function normalizeAiSettings(
     : DEFAULT_AI_SETTINGS.modelId;
 
   return {
-    baseUrl: OPENROUTER_BASE_URL,
-    apiKey: stringField(raw, "apiKey"),
-    openaiApiKey: stringField(raw, "openaiApiKey"),
-    anthropicApiKey: stringField(raw, "anthropicApiKey"),
+    baseUrl,
+    openaiApiKey,
     googleApiKey: stringField(raw, "googleApiKey"),
     tavilyApiKey: stringField(raw, "tavilyApiKey"),
     omdbApiKey: stringField(raw, "omdbApiKey"),
@@ -214,9 +254,8 @@ function buildPersistedAiSettings(settings: AiSettings): AiSettings {
   return {
     ...normalizeAiSettings(settings),
     // Preserve keys/mode from the in-memory object after normalize defaults.
-    apiKey: settings.apiKey ?? "",
+    baseUrl: normalizeOpenAiBaseUrl(settings.baseUrl ?? OPENAI_BASE_URL),
     openaiApiKey: settings.openaiApiKey ?? "",
-    anthropicApiKey: settings.anthropicApiKey ?? "",
     googleApiKey: settings.googleApiKey ?? "",
     tavilyApiKey: settings.tavilyApiKey ?? "",
     omdbApiKey: settings.omdbApiKey ?? "",
@@ -241,7 +280,10 @@ function buildPersistedAiSettings(settings: AiSettings): AiSettings {
 
 /** True when on-disk shape must be rewritten (not merely catalog/models refresh). */
 export function aiSettingsNeedPersistRewrite(
-  raw: Partial<AiSettings> | null | undefined,
+  raw: Partial<AiSettings> & {
+    apiKey?: string;
+    anthropicApiKey?: string;
+  } | null | undefined,
   merged: AiSettings,
 ): boolean {
   if (!raw) return true;
@@ -249,8 +291,12 @@ export function aiSettingsNeedPersistRewrite(
     raw.baseUrl !== merged.baseUrl ||
     raw.modelId !== merged.modelId ||
     raw.openaiApiKey !== merged.openaiApiKey ||
-    raw.anthropicApiKey !== merged.anthropicApiKey ||
-    raw.googleApiKey !== merged.googleApiKey
+    raw.googleApiKey !== merged.googleApiKey ||
+    // Strip removed Anthropic key from on-disk settings.
+    typeof raw.anthropicApiKey === "string" ||
+    (typeof raw.apiKey === "string" &&
+      raw.apiKey.trim() !== "" &&
+      raw.openaiApiKey !== merged.openaiApiKey)
   );
 }
 

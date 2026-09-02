@@ -290,10 +290,9 @@ function CommentListRows({
             type="button"
             className={
               ref.comment.resolved
-                ? "comments-inbox-row is-comment is-resolved"
-                : "comments-inbox-row is-comment"
+                ? "comments-inbox-row is-comment is-list-item is-resolved"
+                : "comments-inbox-row is-comment is-list-item"
             }
-            style={{ paddingLeft: rowPad(0) }}
             title={`${text}\n${ref.notePath}`}
             onClick={() => onOpenComment(ref.notePath, ref.comment.id)}
           >

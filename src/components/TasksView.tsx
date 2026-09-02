@@ -953,6 +953,13 @@ function TaskDetailPanel({
                     );
                   }}
                   onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                      e.preventDefault();
+                      const title =
+                        e.currentTarget.value.trim() || "Untitled";
+                      void persist({ ...note, title }).then(() => onClose());
+                      return;
+                    }
                     if (e.key === "Enter") e.preventDefault();
                   }}
                   onBlur={(e) => {
@@ -1383,6 +1390,7 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
   const selectedPath = useTasksPanelStore((s) => s.selectedPath);
   const setSelectedPath = useTasksPanelStore((s) => s.setSelectedPath);
   const expandedPaths = useTasksPanelStore((s) => s.expandedPaths);
+  const setExpandedPaths = useTasksPanelStore((s) => s.setExpandedPaths);
   const toggleExpandedPath = useTasksPanelStore((s) => s.toggleExpandedPath);
   const expandPath = useTasksPanelStore((s) => s.expandPath);
 
@@ -1494,6 +1502,15 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
   useEffect(() => {
     void reloadIndex();
   }, [tree, reloadIndex]);
+
+  useEffect(() => {
+    if (entries.length === 0) return;
+    const live = new Set(entries.map((e) => e.path));
+    const pruned = expandedPaths.filter((p) => live.has(p));
+    if (pruned.length !== expandedPaths.length) {
+      setExpandedPaths(pruned);
+    }
+  }, [entries, expandedPaths, setExpandedPaths]);
 
   useEffect(() => {
     void refreshMeta();

@@ -3,7 +3,7 @@ import { DEFAULT_WORKER_MODEL_ID } from "../lib/vaultAiSettings";
 
 /**
  * Curated model catalog (`vendor/model` ids).
- * Routed via direct provider BYOK when that key is set, otherwise OpenRouter.
+ * Routed via direct provider BYOK when that key is set, otherwise the OpenAI-compatible gateway.
  */
 export const OPENROUTER_MODELS: AiModelOption[] = [
   // OpenAI — flagship
@@ -40,40 +40,6 @@ export const OPENROUTER_MODELS: AiModelOption[] = [
     tier: "worker",
     contextWindow: 1_047_576,
   },
-  // Anthropic — flagship
-  {
-    id: "anthropic/claude-fable-5",
-    label: "Claude Fable 5",
-    vendor: "anthropic",
-    kind: "reasoning",
-    tier: "flagship",
-    contextWindow: 1_000_000,
-  },
-  {
-    id: "anthropic/claude-opus-5",
-    label: "Claude Opus 5",
-    vendor: "anthropic",
-    kind: "reasoning",
-    tier: "flagship",
-    contextWindow: 1_000_000,
-  },
-  {
-    id: "anthropic/claude-sonnet-5",
-    label: "Claude Sonnet 5",
-    vendor: "anthropic",
-    kind: "reasoning",
-    tier: "flagship",
-    contextWindow: 1_000_000,
-  },
-  // Anthropic — worker
-  {
-    id: "anthropic/claude-haiku-4.5",
-    label: "Claude Haiku 4.5",
-    vendor: "anthropic",
-    kind: "reasoning",
-    tier: "worker",
-    contextWindow: 200_000,
-  },
   // Google — flagship
   {
     id: "google/gemini-3.1-pro-preview",
@@ -102,11 +68,12 @@ export const OPENROUTER_MODELS: AiModelOption[] = [
   },
 ];
 
+export const OPENAI_BASE_URL = "https://api.openai.com/v1";
+/** Legacy OpenRouter endpoint — used when migrating an old OpenRouter-only key. */
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 export const VENDOR_LABEL: Record<AiModelOption["vendor"], string> = {
   openai: "OpenAI",
-  anthropic: "Anthropic",
   google: "Google",
 };
 
@@ -142,9 +109,5 @@ export function modelSupportsReasoning(
   ) {
     return false;
   }
-  return (
-    /\/(o[0-9]|gpt-5)/i.test(modelId) ||
-    modelId.startsWith("anthropic/") ||
-    modelId.startsWith("google/")
-  );
+  return /\/(o[0-9]|gpt-5)/i.test(modelId) || modelId.startsWith("google/");
 }

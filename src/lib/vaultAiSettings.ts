@@ -39,7 +39,7 @@ export function effectiveChatModelId(
   doc: VaultAiSettings,
   appModelId: string,
 ): string {
-  return doc.chatModelId?.trim() || appModelId.trim() || "anthropic/claude-sonnet-5";
+  return doc.chatModelId?.trim() || appModelId.trim() || "openai/gpt-5.6-sol";
 }
 
 export function effectiveWorkerModelId(doc: VaultAiSettings): string {

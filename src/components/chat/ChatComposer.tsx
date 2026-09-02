@@ -57,6 +57,7 @@ import {
   type EditContextMenuState,
 } from "../EditContextMenu";
 import { ChatContextMeter } from "./ChatContextMeter";
+import { ChatCostLabel } from "./ChatCostLabel";
 import { ChatModePicker } from "./ChatModePicker";
 import { ChatModelPicker } from "./ChatModelPicker";
 import { ChatProjectPicker } from "./ChatProjectPicker";
@@ -192,6 +193,7 @@ export function ChatComposer() {
   const contextAnchorMessageCount = useChatStore(
     (s) => s.contextAnchorMessageCount,
   );
+  const totalCostUsd = useChatStore((s) => s.totalCostUsd);
   const gemRecentUserTurns = useChatStore((s) => s.gemRecentUserTurns);
   const settings = useAiSettingsStore((s) => s.settings);
   const activePath = useVaultStore((s) => s.activePath);
@@ -940,6 +942,8 @@ export function ChatComposer() {
           limit={limit}
           willCompactOnSend={contextBlocked && !streaming}
         />
+
+        <ChatCostLabel totalUsd={totalCostUsd} />
 
         <div className="chat-composer-spacer" />
 

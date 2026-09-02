@@ -20,6 +20,7 @@ import {
 } from "../../ai/chatAttachments";
 import {
   credentialsFromSettings,
+  modelRouteViaLabel,
   planModelRoute,
 } from "../../ai/languageModel";
 import {
@@ -31,7 +32,6 @@ import { chipLabelForPath } from "../../lib/chatComposerDom";
 import { commentQuoteLabel } from "../../lib/commentAnchors";
 import { chatMarkdownToPasteHtml } from "../../lib/chatCopyHtml";
 import { writeClipboardHtml, writeClipboardText } from "../../lib/clipboardText";
-import { findModel, OPENROUTER_MODELS } from "../../ai/models";
 import { displayAgentStepLimitNotice, isAgentStepLimitNotice } from "../../ai/runChat";
 import { resolveModelId } from "../../ai/resolveModelId";
 import {
@@ -154,11 +154,10 @@ function streamTargetLabel(
   try {
     const id = resolveModelId(settings.baseUrl, modelId || vaultChatModelId());
     const plan = planModelRoute(id, credentialsFromSettings(settings));
-    const model =
-      findModel(OPENROUTER_MODELS, plan.catalogModelId)?.label ??
-      plan.catalogModelId;
-    const via = plan.transport === "openrouter" ? "OpenRouter" : "Direct";
-    return { model, via };
+    return {
+      model: plan.catalogModelId,
+      via: modelRouteViaLabel(plan, settings.baseUrl),
+    };
   } catch {
     return null;
   }
@@ -180,7 +179,7 @@ function WaitingIndicator({ compacting }: { compacting?: boolean }) {
   const label = compacting
     ? "Compacting older messages…"
     : target
-      ? `Requesting ${target.model} (${target.via})…`
+      ? `Requesting ${target.model} · ${target.via}…`
       : "Requesting…";
 
   return (

@@ -1,27 +1,30 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { JSONObject, SharedV4ProviderOptions } from "@ai-sdk/provider";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
 import { modelSupportsReasoning, VENDOR_LABEL } from "./models";
 import { resolveModelId } from "./resolveModelId";
 import type { AiModelVendor, AiSettings } from "./types";
 import { DEFAULT_WORKER_MODEL_ID } from "../lib/vaultAiSettings";
+import {
+  isOfficialOpenAiEndpoint,
+  normalizeOpenAiBaseUrl,
+  supportsMultiVendorGateway,
+} from "../lib/openAiBaseUrl";
+import { gatewayLlmFetch } from "./gatewayCostCapture";
 
 export type AiProviderCredentials = {
-  openrouterApiKey: string;
   openaiApiKey: string;
-  anthropicApiKey: string;
+  openaiBaseUrl: string;
   googleApiKey: string;
 };
 
-export type ModelTransport = "direct" | "openrouter";
+export type ModelTransport = "direct" | "gateway";
 
 export type ModelRoutePlan = {
   transport: ModelTransport;
   vendor: AiModelVendor;
-  /** Catalog id with vendor prefix (`anthropic/claude-sonnet-4.6`). */
+  /** Catalog id with vendor prefix (`openai/gpt-5.6-sol`). */
   catalogModelId: string;
   /** Id passed to the chosen SDK. */
   providerModelId: string;
@@ -37,43 +40,25 @@ export type ResolvedLanguageModel = {
   providerOptions?: SharedV4ProviderOptions;
 };
 
-const OPENROUTER_HEADERS = {
-  "HTTP-Referer": "https://markspace.app",
-  "X-Title": "MarkSpace",
-};
-
 export function credentialsFromSettings(
-  settings: Pick<
-    AiSettings,
-    "apiKey" | "openaiApiKey" | "anthropicApiKey" | "googleApiKey"
-  >,
+  settings: Pick<AiSettings, "openaiApiKey" | "googleApiKey" | "baseUrl">,
 ): AiProviderCredentials {
   return {
-    openrouterApiKey: settings.apiKey?.trim() ?? "",
     openaiApiKey: settings.openaiApiKey?.trim() ?? "",
-    anthropicApiKey: settings.anthropicApiKey?.trim() ?? "",
+    openaiBaseUrl: normalizeOpenAiBaseUrl(settings.baseUrl ?? ""),
     googleApiKey: settings.googleApiKey?.trim() ?? "",
   };
 }
 
 export function hasAnyLlmCredentials(
-  settings: Pick<
-    AiSettings,
-    "apiKey" | "openaiApiKey" | "anthropicApiKey" | "googleApiKey"
-  >,
+  settings: Pick<AiSettings, "openaiApiKey" | "googleApiKey" | "baseUrl">,
 ): boolean {
   const c = credentialsFromSettings(settings);
-  return !!(
-    c.openrouterApiKey ||
-    c.openaiApiKey ||
-    c.anthropicApiKey ||
-    c.googleApiKey
-  );
+  return !!(c.openaiApiKey || c.googleApiKey);
 }
 
 export function vendorFromModelId(modelId: string): AiModelVendor {
   const id = resolveModelId("", modelId);
-  if (id.startsWith("anthropic/")) return "anthropic";
   if (id.startsWith("google/")) return "google";
   return "openai";
 }
@@ -86,19 +71,12 @@ export function stripVendorPrefix(catalogModelId: string): string {
   return id.slice(slash + 1);
 }
 
-/**
- * Map OpenRouter-shaped catalog ids to native provider model ids.
- * Anthropic uses hyphens in version segments (`claude-sonnet-4-6`).
- */
+/** Map catalog ids to native provider model ids. */
 export function toDirectProviderModelId(
-  vendor: AiModelVendor,
+  _vendor: AiModelVendor,
   catalogModelId: string,
 ): string {
-  const bare = stripVendorPrefix(catalogModelId);
-  if (vendor === "anthropic") {
-    return bare.replace(/\./g, "-");
-  }
-  return bare;
+  return stripVendorPrefix(catalogModelId);
 }
 
 function directKeyForVendor(
@@ -108,11 +86,22 @@ function directKeyForVendor(
   switch (vendor) {
     case "openai":
       return keys.openaiApiKey;
-    case "anthropic":
-      return keys.anthropicApiKey;
     case "google":
       return keys.googleApiKey;
   }
+}
+
+/** True when the vendor key hits that provider's native API (not the OpenAI gateway field). */
+function usesDirectProviderTransport(
+  vendor: AiModelVendor,
+  keys: AiProviderCredentials,
+): boolean {
+  if (!directKeyForVendor(vendor, keys)) return false;
+  // openaiApiKey doubles as the gateway key — only direct on api.openai.com.
+  if (vendor === "openai" && !isOfficialOpenAiEndpoint(keys.openaiBaseUrl)) {
+    return false;
+  }
+  return true;
 }
 
 export function missingCredentialsMessage(
@@ -121,14 +110,24 @@ export function missingCredentialsMessage(
 ): string {
   const vendor = vendorFromModelId(modelId);
   const label = VENDOR_LABEL[vendor];
-  if (!directKeyForVendor(vendor, keys) && !keys.openrouterApiKey) {
-    return `Add a ${label} or OpenRouter API key in Settings → API keys`;
+  if (directKeyForVendor(vendor, keys)) {
+    return `Add an API key in Settings → API keys`;
+  }
+  if (
+    keys.openaiApiKey &&
+    !supportsMultiVendorGateway(keys.openaiBaseUrl) &&
+    vendor !== "openai"
+  ) {
+    return `Add a ${label} API key in Settings → API keys, or set Base URL to an OpenAI-compatible gateway (LiteLLM, OpenRouter, …) that routes ${label} models.`;
+  }
+  if (!keys.openaiApiKey) {
+    return `Add a ${label} or OpenAI-compatible gateway API key in Settings → API keys`;
   }
   return `Add an API key in Settings → API keys`;
 }
 
 /**
- * Choose transport: direct provider key first, else OpenRouter fallback.
+ * Choose transport: direct provider key first, else OpenAI-compatible gateway.
  * Pure — no SDK clients created.
  */
 export function planModelRoute(
@@ -137,9 +136,8 @@ export function planModelRoute(
 ): ModelRoutePlan {
   const catalogModelId = resolveModelId("", modelId);
   const vendor = vendorFromModelId(catalogModelId);
-  const directKey = directKeyForVendor(vendor, keys);
 
-  if (directKey) {
+  if (usesDirectProviderTransport(vendor, keys)) {
     return {
       transport: "direct",
       vendor,
@@ -148,12 +146,21 @@ export function planModelRoute(
     };
   }
 
-  if (keys.openrouterApiKey) {
+  if (keys.openaiApiKey) {
+    if (
+      vendor !== "openai" &&
+      !supportsMultiVendorGateway(keys.openaiBaseUrl)
+    ) {
+      throw new Error(missingCredentialsMessage(catalogModelId, keys));
+    }
     return {
-      transport: "openrouter",
+      transport: "gateway",
       vendor,
       catalogModelId,
-      providerModelId: catalogModelId,
+      providerModelId:
+        vendor === "openai"
+          ? toDirectProviderModelId("openai", catalogModelId)
+          : catalogModelId,
     };
   }
 
@@ -240,21 +247,19 @@ function buildProviderOptions(
   plan: ModelRoutePlan,
   enableReasoning: boolean,
 ): SharedV4ProviderOptions | undefined {
-  if (plan.transport === "openrouter") {
-    if (!enableReasoning) return undefined;
+  if (plan.transport === "gateway") {
+    if (!enableReasoning || plan.vendor !== "openai") return undefined;
     return {
-      openrouter: {
-        reasoning: {
-          effort: "medium",
-          exclude: false,
-        },
+      openai: {
+        parallelToolCalls: true,
+        reasoningEffort: "medium",
+        reasoningSummary: "auto",
       },
     };
   }
 
   switch (plan.vendor) {
     case "openai": {
-      // Keep parallel tool calls on (OpenAI default, but be explicit).
       const openai: JSONObject = { parallelToolCalls: true };
       if (enableReasoning) {
         openai.reasoningEffort = "medium";
@@ -262,16 +267,6 @@ function buildProviderOptions(
       }
       return { openai };
     }
-    case "anthropic":
-      if (!enableReasoning) return undefined;
-      return {
-        anthropic: {
-          thinking: {
-            type: "enabled",
-            budgetTokens: 10_000,
-          },
-        },
-      };
     case "google":
       if (!enableReasoning) return undefined;
       return {
@@ -285,20 +280,39 @@ function buildProviderOptions(
   }
 }
 
+function createOpenAiClient(keys: AiProviderCredentials) {
+  const gateway = !isOfficialOpenAiEndpoint(keys.openaiBaseUrl);
+  return createOpenAI({
+    apiKey: keys.openaiApiKey,
+    baseURL: keys.openaiBaseUrl,
+    ...(gateway ? { fetch: gatewayLlmFetch() } : {}),
+  });
+}
+
+/**
+ * Official OpenAI defaults to the Responses API (`openai(id)`).
+ * LiteLLM / OpenRouter / other OpenAI-compatible proxies usually only
+ * implement Chat Completions — use `.chat()` there.
+ */
+function createOpenAiCompatibleModel(
+  keys: AiProviderCredentials,
+  providerModelId: string,
+): LanguageModel {
+  const openai = createOpenAiClient(keys);
+  if (isOfficialOpenAiEndpoint(keys.openaiBaseUrl)) {
+    return openai(providerModelId);
+  }
+  return openai.chat(providerModelId);
+}
+
 function createDirectModel(
   vendor: AiModelVendor,
   providerModelId: string,
   keys: AiProviderCredentials,
 ): LanguageModel {
   switch (vendor) {
-    case "openai": {
-      const openai = createOpenAI({ apiKey: keys.openaiApiKey });
-      return openai(providerModelId);
-    }
-    case "anthropic": {
-      const anthropic = createAnthropic({ apiKey: keys.anthropicApiKey });
-      return anthropic(providerModelId);
-    }
+    case "openai":
+      return createOpenAiCompatibleModel(keys, providerModelId);
     case "google": {
       const google = createGoogle({ apiKey: keys.googleApiKey });
       return google(providerModelId);
@@ -320,12 +334,7 @@ export function resolveLanguageModel(params: {
   if (plan.transport === "direct") {
     model = createDirectModel(plan.vendor, plan.providerModelId, params.keys);
   } else {
-    const openrouter = createOpenRouter({
-      apiKey: params.keys.openrouterApiKey,
-      compatibility: "strict",
-      headers: OPENROUTER_HEADERS,
-    });
-    model = openrouter(plan.providerModelId);
+    model = createOpenAiCompatibleModel(params.keys, plan.providerModelId);
   }
 
   return {
@@ -336,4 +345,26 @@ export function resolveLanguageModel(params: {
     providerModelId: plan.providerModelId,
     providerOptions: buildProviderOptions(plan, enableReasoning),
   };
+}
+
+export function gatewayTransportLabel(baseUrl: string): string {
+  try {
+    const host = new URL(normalizeOpenAiBaseUrl(baseUrl)).hostname;
+    if (host.includes("openrouter.ai")) return "OpenRouter";
+    if (host === "api.openai.com") return "OpenAI";
+    return host || "Gateway";
+  } catch {
+    return "Gateway";
+  }
+}
+
+/** Human-readable route for chat status (`Gateway · host` or `Direct · Vendor`). */
+export function modelRouteViaLabel(
+  plan: Pick<ModelRoutePlan, "transport" | "vendor">,
+  baseUrl: string,
+): string {
+  if (plan.transport === "gateway") {
+    return `Gateway · ${gatewayTransportLabel(baseUrl)}`;
+  }
+  return `Direct · ${VENDOR_LABEL[plan.vendor]}`;
 }

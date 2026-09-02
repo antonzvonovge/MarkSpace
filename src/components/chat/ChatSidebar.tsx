@@ -63,7 +63,9 @@ export const ChatSidebar = memo(function ChatSidebar() {
         </div>
       ) : !hasCredentials ? (
         <div className="chat-empty-state">
-          <p>Add a provider or OpenRouter API key to use AI chat.</p>
+          <p>
+            Add a Google or OpenAI-compatible gateway key to use AI chat.
+          </p>
           <button
             type="button"
             className="chat-settings-link"

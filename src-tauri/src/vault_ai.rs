@@ -148,14 +148,14 @@ mod tests {
         let root = temp_root();
         let doc = VaultAiSettings {
             version: 1,
-            chat_model_id: Some(" anthropic/claude-sonnet-5 ".into()),
+            chat_model_id: Some(" openai/gpt-5.6-sol ".into()),
             worker_model_id: Some("openai/gpt-4.1-mini".into()),
         };
         save_settings(&root, &normalize_doc(doc)).unwrap();
         let loaded = load_settings(&root).unwrap();
         assert_eq!(
             loaded.chat_model_id.as_deref(),
-            Some("anthropic/claude-sonnet-5")
+            Some("openai/gpt-5.6-sol")
         );
         assert_eq!(
             loaded.worker_model_id.as_deref(),

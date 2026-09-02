@@ -4,10 +4,6 @@ import { formatCaptureListTime } from "../lib/incomingCaptureIndex";
 import { useVaultStore } from "../store/vaultStore";
 import { IncomingSectionIcon } from "./treeIcons";
 
-function rowPad(depth: number): string {
-  return `calc(var(--tree-pad-x) + ${depth + 1} * var(--tree-indent))`;
-}
-
 const IncomingCaptureRow = memo(function IncomingCaptureRow({
   entry,
   onOpen,
@@ -20,7 +16,6 @@ const IncomingCaptureRow = memo(function IncomingCaptureRow({
     <button
       type="button"
       className="incoming-capture-row"
-      style={{ paddingLeft: rowPad(0) }}
       title={entry.source ? `${label}\n${entry.source}` : label}
       onClick={() => onOpen(entry.path)}
     >

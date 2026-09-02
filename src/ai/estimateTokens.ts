@@ -111,7 +111,7 @@ export function estimateToolSchemaTokens(
       chars += 400;
     }
   }
-  // Extra framing per tool (OpenAI/Anthropic tool-call envelopes).
+  // Extra framing per tool (OpenAI / Gemini tool-call envelopes).
   const tokens = Math.ceil(chars / 4) + count * 24;
   toolSchemaTokenCache.set(key, tokens);
   return tokens;

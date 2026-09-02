@@ -37,6 +37,8 @@ export type ChatThreadFile = {
   contextAnchorTokens?: number | null;
   /** `messages.length` when `contextAnchorTokens` was recorded. */
   contextAnchorMessageCount?: number | null;
+  /** Cumulative USD spend when reported by the provider or gateway. */
+  totalCostUsd?: number | null;
   /** Sticky Reasoning toggle; omit on older threads. */
   enableReasoning?: boolean | null;
   /** Off / Auto / On. Older threads omit this and use `enableReasoning`. */

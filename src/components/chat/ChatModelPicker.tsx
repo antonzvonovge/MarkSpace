@@ -4,7 +4,7 @@ import { KIND_LABEL, TIER_LABEL, VENDOR_LABEL } from "../../ai/models";
 import type { AiModelOption, AiModelVendor } from "../../ai/types";
 import { placeChatComposerMenu } from "../../lib/chatMenuPlacement";
 
-const VENDOR_ORDER: AiModelVendor[] = ["anthropic", "openai", "google"];
+const VENDOR_ORDER: AiModelVendor[] = ["openai", "google"];
 
 type Props = {
   models: AiModelOption[];
@@ -182,9 +182,7 @@ export function ChatModelPicker({
                     >
                       <span className="chat-model-option-main">
                         <ModelTierDot model={m} />
-                        <span className="chat-model-option-name">
-                          {m.label}
-                        </span>
+                        <span className="chat-model-option-name">{m.id}</span>
                       </span>
                       <ModelKindBadge kind={m.kind} />
                     </button>
@@ -214,14 +212,14 @@ export function ChatModelPicker({
         aria-label="Model"
         title={
           selected
-            ? `${selected.label} · ${TIER_LABEL[selected.tier ?? "flagship"]}`
+            ? `${selected.id} · ${TIER_LABEL[selected.tier ?? "flagship"]}`
             : value
         }
         onClick={() => setOpen((v) => !v)}
       >
         <ModelTierDot model={selected} />
         <span className="chat-model-trigger-label">
-          {selected?.label ?? value}
+          {selected?.id ?? value}
         </span>
         {isField ? (
           <span className="chat-model-trigger-caret" aria-hidden="true">

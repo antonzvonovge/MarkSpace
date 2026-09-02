@@ -17,11 +17,11 @@ describe("normalizeVaultAiSettings", () => {
   it("keeps vendor/model ids and drops invalid ones", () => {
     const doc = normalizeVaultAiSettings({
       version: 9,
-      chatModelId: " anthropic/claude-sonnet-5 ",
+      chatModelId: " openai/gpt-5.6-sol ",
       workerModelId: "gpt-4.1-mini",
     });
     expect(doc.version).toBe(1);
-    expect(doc.chatModelId).toBe("anthropic/claude-sonnet-5");
+    expect(doc.chatModelId).toBe("openai/gpt-5.6-sol");
     expect(doc.workerModelId).toBeNull();
   });
 });
@@ -29,8 +29,8 @@ describe("normalizeVaultAiSettings", () => {
 describe("effective vault model ids", () => {
   it("inherits app chat model and built-in worker when vault file is empty", () => {
     expect(
-      effectiveChatModelId(EMPTY_VAULT_AI_SETTINGS, "anthropic/claude-opus-5"),
-    ).toBe("anthropic/claude-opus-5");
+      effectiveChatModelId(EMPTY_VAULT_AI_SETTINGS, "openai/gpt-5.6-terra"),
+    ).toBe("openai/gpt-5.6-terra");
     expect(effectiveWorkerModelId(EMPTY_VAULT_AI_SETTINGS)).toBe(
       DEFAULT_WORKER_MODEL_ID,
     );
@@ -39,18 +39,18 @@ describe("effective vault model ids", () => {
   it("prefers explicit vault ids", () => {
     const doc = normalizeVaultAiSettings({
       chatModelId: "openai/gpt-5.6-sol",
-      workerModelId: "anthropic/claude-haiku-4.5",
+      workerModelId: "google/gemini-3.5-flash-lite",
     });
-    expect(effectiveChatModelId(doc, "anthropic/claude-sonnet-5")).toBe(
+    expect(effectiveChatModelId(doc, "openai/gpt-5.6-terra")).toBe(
       "openai/gpt-5.6-sol",
     );
-    expect(effectiveWorkerModelId(doc)).toBe("anthropic/claude-haiku-4.5");
+    expect(effectiveWorkerModelId(doc)).toBe("google/gemini-3.5-flash-lite");
   });
 });
 
 describe("curated catalog tiers", () => {
   it("gives every vendor both flagship and worker models", () => {
-    for (const vendor of ["openai", "anthropic", "google"] as const) {
+    for (const vendor of ["openai", "google"] as const) {
       const group = OPENROUTER_MODELS.filter((m) => m.vendor === vendor);
       expect(group.some((m) => m.tier === "flagship")).toBe(true);
       expect(group.some((m) => m.tier === "worker")).toBe(true);

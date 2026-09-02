@@ -24,16 +24,16 @@ describe("ieltsFit", () => {
     expect(ieltsChipTooltip(listening!, false)).toContain("Add this key");
   });
 
-  it("picks Anthropic flagship for text when that key is set", () => {
+  it("picks OpenAI flagship for text when that key is set", () => {
     const settings = {
       ...DEFAULT_AI_SETTINGS,
-      anthropicApiKey: "sk-ant",
       openaiApiKey: "sk-openai",
+      googleApiKey: "AIza",
     };
-    expect(pickIeltsTextModelId(settings)).toBe("anthropic/claude-sonnet-5");
+    expect(pickIeltsTextModelId(settings)).toBe("openai/gpt-5.6-sol");
   });
 
-  it("falls back OpenAI then Google then OpenRouter for text", () => {
+  it("falls back OpenAI then Google for text", () => {
     expect(
       pickIeltsTextModelId({
         ...DEFAULT_AI_SETTINGS,
@@ -46,12 +46,6 @@ describe("ieltsFit", () => {
         googleApiKey: "AIza",
       }),
     ).toBe("google/gemini-3.1-pro-preview");
-    expect(
-      pickIeltsTextModelId({
-        ...DEFAULT_AI_SETTINGS,
-        apiKey: "sk-or",
-      }),
-    ).toBe("anthropic/claude-sonnet-5");
     expect(pickIeltsTextModelId(DEFAULT_AI_SETTINGS)).toBeNull();
   });
 

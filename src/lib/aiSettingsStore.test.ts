@@ -11,14 +11,12 @@ describe("normalizeAiSettings", () => {
     expect(normalizeAiSettings(undefined)).toEqual(DEFAULT_AI_SETTINGS);
   });
 
-  it("keeps legacy openrouter apiKey and fills new BYOK fields", () => {
+  it("migrates legacy OpenRouter apiKey into openaiApiKey and base URL", () => {
     const merged = normalizeAiSettings({
       apiKey: "sk-or-legacy",
       modelId: "openai/gpt-4.1-mini",
     });
-    expect(merged.apiKey).toBe("sk-or-legacy");
-    expect(merged.openaiApiKey).toBe("");
-    expect(merged.anthropicApiKey).toBe("");
+    expect(merged.openaiApiKey).toBe("sk-or-legacy");
     expect(merged.googleApiKey).toBe("");
     expect(merged.modelId).toBe("openai/gpt-4.1-mini");
     expect(merged.baseUrl).toContain("openrouter.ai");
@@ -26,9 +24,7 @@ describe("normalizeAiSettings", () => {
 
   it("persists direct provider keys when present", () => {
     const merged = normalizeAiSettings({
-      apiKey: "or",
       openaiApiKey: "sk-openai",
-      anthropicApiKey: "sk-ant",
       googleApiKey: "AIza",
       tavilyApiKey: "tvly",
       firecrawlApiKey: "fc-",
@@ -36,7 +32,6 @@ describe("normalizeAiSettings", () => {
       kinopoiskApiKey: "kp",
     });
     expect(merged.openaiApiKey).toBe("sk-openai");
-    expect(merged.anthropicApiKey).toBe("sk-ant");
     expect(merged.googleApiKey).toBe("AIza");
     expect(merged.tavilyApiKey).toBe("tvly");
     expect(merged.firecrawlApiKey).toBe("fc-");
@@ -55,15 +50,27 @@ describe("normalizeAiSettings", () => {
     expect(aiSettingsNeedPersistRewrite(null, merged)).toBe(true);
   });
 
+  it("rewrites disk when a legacy Anthropic key is present", () => {
+    const raw = {
+      ...DEFAULT_AI_SETTINGS,
+      anthropicApiKey: "sk-ant",
+    } as Partial<typeof DEFAULT_AI_SETTINGS> & { anthropicApiKey: string };
+    const merged = normalizeAiSettings(raw);
+    expect(aiSettingsNeedPersistRewrite(raw, merged)).toBe(true);
+    expect(
+      (merged as { anthropicApiKey?: string }).anthropicApiKey,
+    ).toBeUndefined();
+  });
+
   it("ignores non-string key fields", () => {
     const merged = normalizeAiSettings({
       // @ts-expect-error intentional bad persist shape
       openaiApiKey: 123,
       // @ts-expect-error intentional bad persist shape
-      anthropicApiKey: null,
+      googleApiKey: null,
     });
     expect(merged.openaiApiKey).toBe("");
-    expect(merged.anthropicApiKey).toBe("");
+    expect(merged.googleApiKey).toBe("");
   });
 
   it("clamps agentMaxSteps and defaults when missing", () => {
@@ -85,7 +92,7 @@ describe("normalizeAiSettings", () => {
     ).toBe(false);
   });
 
-  it("infers worker tier for mini/haiku/luna/flash-lite custom ids", () => {
+  it("infers worker tier for mini/luna/flash-lite custom ids", () => {
     const merged = normalizeAiSettings({
       models: [
         {
@@ -98,8 +105,9 @@ describe("normalizeAiSettings", () => {
     });
     const custom = merged.models.find((m) => m.id === "openai/custom-mini");
     expect(custom?.tier).toBe("worker");
-    const haiku = merged.models.find((m) => m.id === "anthropic/claude-haiku-4.5");
-    expect(haiku?.tier).toBe("worker");
+    expect(
+      merged.models.some((m) => m.id.startsWith("anthropic/")),
+    ).toBe(false);
     const sol = merged.models.find((m) => m.id === "openai/gpt-5.6-sol");
     expect(sol?.tier).toBe("flagship");
   });

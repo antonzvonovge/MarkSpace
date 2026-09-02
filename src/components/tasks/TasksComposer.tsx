@@ -1,7 +1,13 @@
-import { useEffect, useRef, type FocusEvent, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type FocusEvent, type MouseEvent, type RefObject } from "react";
 import type { TaskPriority } from "../../lib/taskNotes";
 import { syncAutosizeTextarea } from "../../lib/autosizeTextarea";
+import { writeClipboardText } from "../../lib/clipboardText";
 import { TagChipsInput } from "../TagChipsInput";
+import {
+  EditContextMenu,
+  type EditContextMenuState,
+} from "../EditContextMenu";
+import { readTextFromSystemClipboard } from "../../editor/pasteImages";
 import { TasksComposerPicker } from "./TasksComposerPicker";
 import { TasksDateField } from "./TasksDateField";
 import { TasksPriorityPicker } from "./TasksPriorityPicker";
@@ -59,6 +65,97 @@ export function TasksComposer({
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const ignoreBlurUntilRef = useRef(0);
+  const pendingSelectionRef = useRef<{ start: number; end: number } | null>(
+    null,
+  );
+  const [contextMenu, setContextMenu] = useState<EditContextMenuState | null>(
+    null,
+  );
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const readTextareaSelection = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return { text: "", start: 0, end: 0 };
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? start;
+    return {
+      text: start !== end ? el.value.slice(start, end) : "",
+      start,
+      end,
+    };
+  }, [textareaRef]);
+
+  const restoreTextareaSelection = useCallback(
+    (start: number, end: number = start) => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(start, end);
+    },
+    [textareaRef],
+  );
+
+  const openContextMenu = useCallback(
+    (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const { text, start, end } = readTextareaSelection();
+      pendingSelectionRef.current = { start, end };
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        canCut: text.length > 0,
+        canCopy: text.length > 0,
+        canPaste: true,
+      });
+    },
+    [readTextareaSelection],
+  );
+
+  const cutSelection = useCallback(async () => {
+    const el = textareaRef.current;
+    const pending = pendingSelectionRef.current;
+    if (!el || !pending || pending.start === pending.end) return;
+    const { start, end } = pending;
+    const text = el.value.slice(start, end);
+    await writeClipboardText(text);
+    onChange({
+      title: `${el.value.slice(0, start)}${el.value.slice(end)}`,
+    });
+    requestAnimationFrame(() => {
+      restoreTextareaSelection(start);
+      syncAutosizeTextarea(el);
+    });
+    pendingSelectionRef.current = null;
+  }, [onChange, restoreTextareaSelection, textareaRef]);
+
+  const copySelection = useCallback(async () => {
+    const pending = pendingSelectionRef.current;
+    const el = textareaRef.current;
+    if (!el) return;
+    const { start, end } = pending ?? readTextareaSelection();
+    if (start === end) return;
+    await writeClipboardText(el.value.slice(start, end));
+  }, [readTextareaSelection, textareaRef]);
+
+  const pasteAtCursor = useCallback(async () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const text = await readTextFromSystemClipboard();
+    if (!text) return;
+    const pending = pendingSelectionRef.current;
+    const start = pending?.start ?? el.selectionStart ?? el.value.length;
+    const end = pending?.end ?? el.selectionEnd ?? start;
+    const next = `${el.value.slice(0, start)}${text}${el.value.slice(end)}`;
+    onChange({ title: next });
+    const cursor = start + text.length;
+    requestAnimationFrame(() => {
+      restoreTextareaSelection(cursor);
+      syncAutosizeTextarea(el);
+    });
+    pendingSelectionRef.current = null;
+  }, [onChange, restoreTextareaSelection, textareaRef]);
 
   useEffect(() => {
     ignoreBlurUntilRef.current = performance.now() + 150;
@@ -115,6 +212,7 @@ export function TasksComposer({
         variant === "row" ? "tasks-composer is-row" : "tasks-composer"
       }
       onClick={(e) => e.stopPropagation()}
+      onContextMenu={openContextMenu}
       onBlurCapture={handleBlurCapture}
     >
       <textarea
@@ -216,6 +314,15 @@ export function TasksComposer({
           </button>
         </div>
       </div>
+      {contextMenu ? (
+        <EditContextMenu
+          menu={contextMenu}
+          onClose={closeContextMenu}
+          onCut={() => void cutSelection()}
+          onCopy={() => void copySelection()}
+          onPaste={() => void pasteAtCursor()}
+        />
+      ) : null}
     </div>
   );
 }

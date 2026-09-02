@@ -1,4 +1,4 @@
-import { OPENROUTER_BASE_URL, OPENROUTER_MODELS } from "./models";
+import { OPENAI_BASE_URL, OPENROUTER_MODELS } from "./models";
 
 export type ChatMode = "ask" | "agent";
 
@@ -30,7 +30,7 @@ export function resolveThreadReasoningMode(opts: {
   return opts.defaultAuto ? "auto" : "on";
 }
 
-export type AiModelVendor = "openai" | "anthropic" | "google";
+export type AiModelVendor = "openai" | "google";
 
 /** How the model is meant to be used — thinking tokens in the chat picker. */
 export type AiModelKind = "chat" | "reasoning";
@@ -48,15 +48,11 @@ export type AiModelOption = {
 };
 
 export type AiSettings = {
-  /** Always OpenRouter; kept for persistence / SDK baseURL. */
+  /** OpenAI-compatible API base URL (OpenAI, OpenRouter, Azure OpenAI, local proxies). */
   baseUrl: string;
-  /** OpenRouter API key (fallback when no direct provider key). */
-  apiKey: string;
-  /** Direct OpenAI API key — bypasses OpenRouter when set. */
+  /** OpenAI-compatible API key — direct OpenAI models and gateway fallback. */
   openaiApiKey: string;
-  /** Direct Anthropic API key — bypasses OpenRouter when set. */
-  anthropicApiKey: string;
-  /** Direct Google AI API key — bypasses OpenRouter when set. */
+  /** Direct Google AI API key — bypasses gateway when set. */
   googleApiKey: string;
   /**
    * Optional Tavily API key. When set, web_search / fetch_url / clip_article prefer Tavily;
@@ -113,10 +109,8 @@ export function clampAgentMaxSteps(value: unknown): number {
 }
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
-  baseUrl: OPENROUTER_BASE_URL,
-  apiKey: "",
+  baseUrl: OPENAI_BASE_URL,
   openaiApiKey: "",
-  anthropicApiKey: "",
   googleApiKey: "",
   tavilyApiKey: "",
   omdbApiKey: "",
@@ -126,7 +120,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   elevenLabsApiKey: "",
   azureSpeechKey: "",
   azureSpeechRegion: "",
-  modelId: "anthropic/claude-sonnet-5",
+  modelId: "openai/gpt-5.6-sol",
   defaultMode: "ask",
   agentMaxSteps: DEFAULT_AGENT_MAX_STEPS,
   agentTerminalEnabled: false,

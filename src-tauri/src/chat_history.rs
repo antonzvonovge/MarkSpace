@@ -61,6 +61,9 @@ pub struct ChatThreadFile {
     /// `messages.len` when `context_anchor_tokens` was recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_anchor_message_count: Option<i64>,
+    /// Cumulative USD spend when reported by the provider or gateway.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_cost_usd: Option<f64>,
     pub messages: Value,
 }
 

@@ -170,13 +170,12 @@ export const TasksListColumn = memo(function TasksListColumn({
         ) : null}
       </header>
 
-      <div className="tasks-list-scroll">
-        {loading && entriesLength === 0 ? (
-          <p className="tasks-empty">Loading…</p>
-        ) : visible.length === 0 && !adding ? (
-          <p className="tasks-empty">{emptyMessage}</p>
-        ) : (
-          <TasksSortableTree
+      {loading && entriesLength === 0 ? (
+        <p className="tasks-empty">Loading…</p>
+      ) : visible.length === 0 && !adding ? (
+        <p className="tasks-empty">{emptyMessage}</p>
+      ) : (
+        <TasksSortableTree
             entries={visible}
             expanded={expanded}
             selectedPath={selectedPath}
@@ -200,10 +199,10 @@ export const TasksListColumn = memo(function TasksListColumn({
             onSubmitAddSubtask={onSubmitAddSubtask}
             onCancelAddSubtask={onCancelAddSubtask}
             onStartAddSubtask={onStartAddSubtask}
-          />
-        )}
+        />
+      )}
 
-        {adding ? (
+      {adding ? (
           <TasksComposer
             draft={quickDraft}
             lists={lists}
@@ -232,10 +231,9 @@ export const TasksListColumn = memo(function TasksListColumn({
                 size={18}
               />
             </span>
-            Add task
-          </button>
-        )}
-      </div>
+          Add task
+        </button>
+      )}
     </div>
   );
 });

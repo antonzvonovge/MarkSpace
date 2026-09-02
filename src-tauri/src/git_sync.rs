@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::State;
 
+use crate::md_merge;
 use crate::order_merge::{self, ORDER_REL};
 use crate::vault::VaultState;
 
@@ -368,6 +369,7 @@ fn do_merge(repo: &Repository, fetch_commit: &AnnotatedCommit<'_>) -> Result<Vec
         .map_err(|e| format!("Merge failed: {e}"))?;
 
     let _ = auto_resolve_order_conflict(repo)?;
+    let _ = auto_resolve_delete_conflicts(repo)?;
     let _ = auto_resolve_md_both_conflicts(repo)?;
     let conflicts = conflicted_paths(repo);
     if !conflicts.is_empty() {
@@ -426,7 +428,62 @@ fn auto_resolve_order_conflict(repo: &Repository) -> Result<bool, String> {
     Ok(true)
 }
 
-/// For conflicted `.md` notes, keep both sides immediately (Accept Both).
+/// Resolve delete/modify conflicts:
+/// - both deleted → accept deletion
+/// - one side deleted, other modified → keep the modified version
+fn auto_resolve_delete_conflicts(repo: &Repository) -> Result<usize, String> {
+    let conflicts = conflicted_paths(repo);
+    let mut n = 0;
+    for rel in &conflicts {
+        if resolve_delete_conflict(repo, rel)? {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+fn resolve_delete_conflict(repo: &Repository, rel: &str) -> Result<bool, String> {
+    let index = repo
+        .index()
+        .map_err(|e| format!("Cannot read index: {e}"))?;
+    let stage2 = index.get_path(Path::new(rel), 2);
+    let stage3 = index.get_path(Path::new(rel), 3);
+
+    match (stage2, stage3) {
+        (None, None) => {
+            // Deleted on both sides — accept deletion.
+            drop(index);
+            let mut index = repo
+                .index()
+                .map_err(|e| format!("Cannot read index: {e}"))?;
+            index
+                .remove_path(Path::new(rel))
+                .map_err(|e| format!("Cannot remove {rel} from index: {e}"))?;
+            index
+                .write()
+                .map_err(|e| format!("Cannot write index: {e}"))?;
+            if let Some(workdir) = repo.workdir() {
+                let abs = workdir.join(rel);
+                if abs.exists() {
+                    let _ = std::fs::remove_file(&abs);
+                }
+            }
+            Ok(true)
+        }
+        (None, Some(entry)) => keep_conflict_stage(repo, rel, entry),
+        (Some(entry), None) => keep_conflict_stage(repo, rel, entry),
+        (Some(_), Some(_)) => Ok(false),
+    }
+}
+
+fn keep_conflict_stage(repo: &Repository, rel: &str, entry: IndexEntry) -> Result<bool, String> {
+    let blob = repo
+        .find_blob(entry.id)
+        .map_err(|e| format!("Cannot read blob for {rel}: {e}"))?;
+    write_and_stage(repo, rel, blob.content())?;
+    Ok(true)
+}
+
 /// Skips `order.json` (semantic merge), binaries, `.drawio`, and other non-markdown.
 fn auto_resolve_md_both_conflicts(repo: &Repository) -> Result<usize, String> {
     let conflicts = conflicted_paths(repo);
@@ -523,7 +580,7 @@ fn accept_both_from_markers(text: &str) -> Option<String> {
     Some(out)
 }
 
-/// Resolve a conflicted `.md` by keeping both sides.
+/// Resolve a conflicted `.md` by keeping both sides (semantic frontmatter merge when possible).
 fn resolve_md_both(repo: &Repository, rel: &str) -> Result<bool, String> {
     let index = repo
         .index()
@@ -543,6 +600,22 @@ fn resolve_md_both(repo: &Repository, rel: &str) -> Result<bool, String> {
         .map_err(|e| format!("Cannot read theirs blob for {rel}: {e}"))?;
     if looks_binary(ours_blob.content()) || looks_binary(theirs_blob.content()) {
         return Ok(false);
+    }
+
+    let ours_text = String::from_utf8_lossy(ours_blob.content()).into_owned();
+    let theirs_text = String::from_utf8_lossy(theirs_blob.content()).into_owned();
+    let base_text = index
+        .get_path(Path::new(rel), 1)
+        .and_then(|entry| repo.find_blob(entry.id).ok())
+        .map(|blob| String::from_utf8_lossy(blob.content()).into_owned());
+
+    if let Some(merged) = md_merge::merge_markdown_notes(
+        &ours_text,
+        &theirs_text,
+        base_text.as_deref(),
+    ) {
+        write_and_stage(repo, rel, merged.as_bytes())?;
+        return Ok(true);
     }
 
     // Prefer workdir conflict markers → Accept Both (ours hunk then theirs hunk).
@@ -784,6 +857,7 @@ pub fn sync_now(
     let existing_conflicts = conflicted_paths(&repo);
     if !existing_conflicts.is_empty() {
         let _ = auto_resolve_order_conflict(&repo)?;
+        let _ = auto_resolve_delete_conflicts(&repo)?;
         let _ = auto_resolve_md_both_conflicts(&repo)?;
         let remaining = conflicted_paths(&repo);
         if remaining.is_empty() {
@@ -883,6 +957,7 @@ pub fn sync_resolve_conflict(
     }
 
     let _ = auto_resolve_order_conflict(&repo)?;
+    let _ = auto_resolve_delete_conflicts(&repo)?;
     let _ = auto_resolve_md_both_conflicts(&repo)?;
     if conflicted_paths(&repo).is_empty() {
         finalize_merge_commit(&repo)?;

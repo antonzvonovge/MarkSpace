@@ -204,6 +204,8 @@ type ChatStore = {
   contextAnchorTokens: number | null;
   /** `messages.length` when `contextAnchorTokens` was set. */
   contextAnchorMessageCount: number | null;
+  /** Cumulative USD spend for this chat when reported by the provider or gateway. */
+  totalCostUsd: number | null;
   status: ChatStatus;
   error: string | null;
   draft: string;
@@ -289,7 +291,7 @@ function DEFAULT_MODEL_PLACEHOLDER(): string {
   try {
     return vaultChatModelId();
   } catch {
-    return "anthropic/claude-sonnet-5";
+    return "openai/gpt-5.6-sol";
   }
 }
 
@@ -321,6 +323,7 @@ function emptySession(vaultBound: string | null = null) {
     skillsCatalog: [] as SkillMeta[],
     contextAnchorTokens: null as number | null,
     contextAnchorMessageCount: null as number | null,
+    totalCostUsd: null as number | null,
     terminalAllowForChat: false,
     ...defaultsFromSettings(),
   };
@@ -367,6 +370,14 @@ const STREAM_PERSIST_MS = 2000;
 let persistActiveChain: Promise<void> = Promise.resolve();
 let lastStreamPersistAt = 0;
 
+function addThreadCostUsd(
+  current: number | null,
+  delta: number | null | undefined,
+): number | null {
+  if (delta == null || delta <= 0) return current;
+  return (current ?? 0) + delta;
+}
+
 async function writeActiveThread(get: () => ChatStore): Promise<void> {
   const {
     vaultBound,
@@ -380,6 +391,7 @@ async function writeActiveThread(get: () => ChatStore): Promise<void> {
     terminalAllowForChat,
     contextAnchorTokens,
     contextAnchorMessageCount,
+    totalCostUsd,
     threads,
   } = get();
   if (!vaultBound || !activeThreadId) return;
@@ -410,6 +422,7 @@ async function writeActiveThread(get: () => ChatStore): Promise<void> {
     terminalAllowForChat,
     contextAnchorTokens,
     contextAnchorMessageCount,
+    ...(totalCostUsd != null && totalCostUsd > 0 ? { totalCostUsd } : {}),
     messages,
     ...(meta?.titleLocked ? { titleLocked: true as const } : {}),
   };
@@ -636,6 +649,7 @@ async function createNewThread(
     gemRecentUserTurns: gem.recentUserTurns,
     contextAnchorTokens: null,
     contextAnchorMessageCount: null,
+    totalCostUsd: null,
     status: "ready",
     error: null,
     draft: "",
@@ -705,6 +719,10 @@ async function loadThreadIntoState(
     contextAnchorTokens: anchorTokens,
     contextAnchorMessageCount:
       anchorTokens != null ? anchorCount : null,
+    totalCostUsd:
+      typeof thread.totalCostUsd === "number" && thread.totalCostUsd > 0
+        ? thread.totalCostUsd
+        : null,
     status: "ready" as const,
     error: null,
     abort: null,
@@ -1069,7 +1087,8 @@ async function runAssistantTurn(params: {
       await get().persistActive();
       return;
     }
-    const { messages: finalMessages, lastStepInputTokens } = await runChat({
+    const { messages: finalMessages, lastStepInputTokens, turnCostUsd } =
+      await runChat({
       messages,
       mode,
       modelId,
@@ -1128,6 +1147,7 @@ async function runAssistantTurn(params: {
       messages: finalMessages,
       contextAnchorTokens: anchor.tokens,
       contextAnchorMessageCount: anchor.messageCount,
+      totalCostUsd: addThreadCostUsd(get().totalCostUsd, turnCostUsd),
       status: "ready",
       abort: null,
       streamStartedAt: null,
@@ -1283,6 +1303,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   skillsCatalog: [],
   contextAnchorTokens: null,
   contextAnchorMessageCount: null,
+  totalCostUsd: null,
   status: "ready",
   error: null,
   draft: "",

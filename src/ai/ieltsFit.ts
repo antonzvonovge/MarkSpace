@@ -10,9 +10,7 @@ export const IELTS_SKILLS = [
 export type IeltsSkill = (typeof IELTS_SKILLS)[number];
 
 export type IeltsKeySlot =
-  | "openrouter"
   | "openai"
-  | "anthropic"
   | "google"
   | "tavily"
   | "deepgram"
@@ -27,59 +25,14 @@ export type IeltsChip = {
   why: string;
 };
 
-const LLM_FLAGSHIP: Record<"anthropic" | "openai" | "google", string> = {
-  anthropic: "anthropic/claude-sonnet-5",
+const LLM_FLAGSHIP: Record<"openai" | "google", string> = {
   openai: "openai/gpt-5.6-sol",
   google: "google/gemini-3.1-pro-preview",
 };
 
 /** Static fit of a Settings key field to IELTS tasks (chips). */
 export const IELTS_KEY_CHIPS: Record<IeltsKeySlot, IeltsChip[]> = {
-  openrouter: [
-    {
-      skill: "writing",
-      fit: 2,
-      why: "chat via OpenRouter; no native TTS or speech-to-text",
-    },
-    {
-      skill: "reading",
-      fit: 2,
-      why: "chat via OpenRouter; no native TTS or speech-to-text",
-    },
-    {
-      skill: "listening",
-      fit: 1,
-      why: "can write a script, but cannot synthesize exam audio",
-    },
-    {
-      skill: "speaking",
-      fit: 1,
-      why: "examiner text only; no speech-to-text or TTS",
-    },
-  ],
   openai: [
-    {
-      skill: "writing",
-      fit: 2,
-      why: "works; flagship Claude is often stronger for band feedback",
-    },
-    {
-      skill: "reading",
-      fit: 2,
-      why: "works; flagship Claude is often stronger for traps and keys",
-    },
-    {
-      skill: "listening",
-      fit: 2,
-      why: "fallback TTS if Azure Speech is not set",
-    },
-    {
-      skill: "speaking",
-      fit: 3,
-      why: "best fit (Whisper STT and TTS for the examiner)",
-    },
-  ],
-  anthropic: [
     {
       skill: "writing",
       fit: 3,
@@ -92,25 +45,25 @@ export const IELTS_KEY_CHIPS: Record<IeltsKeySlot, IeltsChip[]> = {
     },
     {
       skill: "listening",
-      fit: 1,
-      why: "can write a script, but cannot synthesize exam audio",
+      fit: 2,
+      why: "fallback TTS if Azure Speech is not set",
     },
     {
       skill: "speaking",
-      fit: 1,
-      why: "examiner text only; no speech-to-text or TTS",
+      fit: 3,
+      why: "best fit (Whisper STT and TTS for the examiner)",
     },
   ],
   google: [
     {
       skill: "writing",
       fit: 2,
-      why: "solid generated prompts; Claude is often stronger for bands",
+      why: "solid generated prompts; OpenAI is often stronger for bands",
     },
     {
       skill: "reading",
       fit: 2,
-      why: "solid generated passages; Claude is often stronger for keys",
+      why: "solid generated passages; OpenAI is often stronger for keys",
     },
     {
       skill: "listening",
@@ -181,9 +134,7 @@ function filled(value: string | undefined): boolean {
 }
 
 export type IeltsKeyBag = {
-  openrouter: boolean;
   openai: boolean;
-  anthropic: boolean;
   google: boolean;
   tavily: boolean;
   deepgram: boolean;
@@ -193,9 +144,7 @@ export type IeltsKeyBag = {
 
 export function ieltsKeysFromSettings(settings: AiSettings): IeltsKeyBag {
   return {
-    openrouter: filled(settings.apiKey),
     openai: filled(settings.openaiApiKey),
-    anthropic: filled(settings.anthropicApiKey),
     google: filled(settings.googleApiKey),
     tavily: filled(settings.tavilyApiKey),
     deepgram: filled(settings.deepgramApiKey),
@@ -217,10 +166,8 @@ function pickByFit(
 export function pickIeltsTextModelId(settings: AiSettings): string | null {
   const keys = ieltsKeysFromSettings(settings);
   return pickByFit([
-    { fit: 3, ok: keys.anthropic, id: LLM_FLAGSHIP.anthropic },
-    { fit: 2, ok: keys.openai, id: LLM_FLAGSHIP.openai },
+    { fit: 3, ok: keys.openai, id: LLM_FLAGSHIP.openai },
     { fit: 2, ok: keys.google, id: LLM_FLAGSHIP.google },
-    { fit: 1, ok: keys.openrouter, id: LLM_FLAGSHIP.anthropic },
   ]);
 }
 
@@ -267,7 +214,7 @@ export function hasIeltsAzure(settings: AiSettings): boolean {
 }
 
 export function missingIeltsTextKeyMessage(): string {
-  return "Add an Anthropic, OpenAI, Google, or OpenRouter API key in Settings → API keys to generate IELTS practice.";
+  return "Add an OpenAI or Google API key in Settings → API keys to generate IELTS practice.";
 }
 
 export function missingIeltsTtsMessage(): string {

@@ -159,6 +159,46 @@ export async function saveExpandedPaths(
   await store.save();
 }
 
+/** Expanded parent tasks in the Tasks panel — keyed by sidebar context (inbox, list:…). */
+export type TasksExpandedByVault = Record<
+  string,
+  Record<string, string[]>
+>;
+
+export async function loadTasksExpandedMap(
+  vaultPath: string,
+): Promise<Record<string, string[]>> {
+  const store = await Store.load(STORE_FILE);
+  const all =
+    (await store.get<TasksExpandedByVault>("tasksExpandedByVault")) ?? {};
+  const map = all[vaultPath];
+  if (!map || typeof map !== "object") return {};
+  const out: Record<string, string[]> = {};
+  for (const [key, paths] of Object.entries(map)) {
+    if (!Array.isArray(paths)) continue;
+    out[key] = paths.filter(
+      (p): p is string => typeof p === "string" && p.length > 0,
+    );
+  }
+  return out;
+}
+
+export async function saveTasksExpandedMap(
+  vaultPath: string,
+  byContext: Record<string, string[]>,
+): Promise<void> {
+  const store = await Store.load(STORE_FILE);
+  const all =
+    (await store.get<TasksExpandedByVault>("tasksExpandedByVault")) ?? {};
+  const cleaned: Record<string, string[]> = {};
+  for (const [key, paths] of Object.entries(byContext)) {
+    cleaned[key] = paths.filter((p) => p !== "");
+  }
+  all[vaultPath] = cleaned;
+  await store.set("tasksExpandedByVault", all);
+  await store.save();
+}
+
 /** Sigma camera pose — vault-local, restored when the graph tab reopens. */
 export type GraphCameraState = {
   x: number;

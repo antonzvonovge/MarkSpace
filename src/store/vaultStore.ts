@@ -1615,6 +1615,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         pendingCommentFocusId: null,
         tabs: restoredTabs,
       });
+      const { useTasksPanelStore } = await import("./tasksPanelStore");
+      await useTasksPanelStore.getState().hydrateExpandedForVault(path);
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
       void get().refreshAllComments();

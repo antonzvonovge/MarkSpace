@@ -288,8 +288,9 @@ export function SyncSettingsPanel() {
             <section className="sync-block sync-conflicts">
               <h3 className="sync-block-title">Conflicts</h3>
               <p className="sync-block-desc">
-                Markdown conflicts are resolved automatically (both sides kept).
-                Draw.io (`.drawio`) conflicts are never auto-merged — choose Keep
+                Markdown conflicts are merged automatically: frontmatter is combined
+                (tags union, earliest created, latest updated), duplicate headings
+                are collapsed, and both sides&apos; unique content is kept. Draw.io (`.drawio`) conflicts are never auto-merged — choose Keep
                 mine or Keep theirs. For other remaining conflicts choose Keep
                 both, Keep mine / Keep theirs, or open the file and edit markers
                 manually, then Sync again.

@@ -41,6 +41,11 @@ import type { FolderAbout } from "../lib/folderContext";
 import { unwrapComposerMarkers } from "../lib/chatComposerDom";
 import { pingUserActivity } from "../lib/userActivity";
 import { collapseDuplicateTextParts } from "./collapseDuplicateTextParts";
+import { sumStepCostsUsd } from "./llmCost";
+import {
+  beginGatewayCostCapture,
+  endGatewayCostCapture,
+} from "./gatewayCostCapture";
 
 /** @deprecated Prefer DEFAULT_AGENT_MAX_STEPS / settings.agentMaxSteps */
 export const AGENT_MAX_STEPS = DEFAULT_AGENT_MAX_STEPS;
@@ -75,6 +80,8 @@ export type RunChatResult = {
   messages: UIMessage[];
   /** Final step prompt size from the provider, when reported. */
   lastStepInputTokens: number | null;
+  /** USD spend for this user send, when the provider or gateway reports cost. */
+  turnCostUsd: number | null;
 };
 
 export type RunChatParams = {
@@ -447,6 +454,7 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
 
   let remainingSteps = maxSteps;
   let lastStepInputTokens: number | null = null;
+  let turnCostUsd: number | null = null;
   let aborted = false;
   let hitStepLimit = false;
   let lastFinishWasToolCalls = false;
@@ -511,15 +519,18 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
         : {}),
     });
 
+    let batchStepCost: number | null = null;
+    beginGatewayCostCapture();
     try {
-      for await (const part of result.fullStream) {
-        if (params.abortSignal?.aborted) {
-          aborted = true;
-          break;
-        }
+      try {
+        for await (const part of result.fullStream) {
+          if (params.abortSignal?.aborted) {
+            aborted = true;
+            break;
+          }
 
-        switch (part.type) {
-        case "reasoning-start": {
+          switch (part.type) {
+          case "reasoning-start": {
           const idx = parts.length;
           reasoningIndex.set(part.id, idx);
           parts.push({
@@ -696,40 +707,48 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
         case "error": {
           throw part.error;
         }
-        default:
-          break;
+          default:
+            break;
+          }
+        }
+      } catch (error) {
+        if (isAbortError(error, params.abortSignal)) {
+          aborted = true;
+        } else {
+          clearReasoningPreview();
+          throw error instanceof Error ? error : new Error(formatAiError(error));
+        }
       }
-    }
-    } catch (error) {
-      if (isAbortError(error, params.abortSignal)) {
-        aborted = true;
-      } else {
-        clearReasoningPreview();
-        throw error instanceof Error ? error : new Error(formatAiError(error));
-      }
-    }
 
-    try {
-      await result.text;
-    } catch (error) {
-      if (isAbortError(error, params.abortSignal)) {
-        aborted = true;
-      } else {
-        throw error instanceof Error ? error : new Error(formatAiError(error));
+      try {
+        await result.text;
+      } catch (error) {
+        if (isAbortError(error, params.abortSignal)) {
+          aborted = true;
+        } else {
+          throw error instanceof Error ? error : new Error(formatAiError(error));
+        }
       }
-    }
 
-    try {
-      const steps = await result.steps;
-      remainingSteps -= Math.max(steps.length, 1);
-      const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
-      const n = last?.usage?.inputTokens;
-      if (n != null && n > 0) lastStepInputTokens = n;
-      // Must assign, not `|=` — a later text-only step has to stop the loop.
-      lastFinishWasToolCalls = last?.finishReason === "tool-calls";
-      if (remainingSteps <= 0) hitStepLimit = true;
-    } catch {
-      /* stream already consumed */
+      try {
+        const steps = await result.steps;
+        remainingSteps -= Math.max(steps.length, 1);
+        const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
+        const n = last?.usage?.inputTokens;
+        if (n != null && n > 0) lastStepInputTokens = n;
+        batchStepCost = sumStepCostsUsd(steps);
+        // Must assign, not `|=` — a later text-only step has to stop the loop.
+        lastFinishWasToolCalls = last?.finishReason === "tool-calls";
+        if (remainingSteps <= 0) hitStepLimit = true;
+      } catch {
+        /* stream already consumed */
+      }
+    } finally {
+      const fetchCost = endGatewayCostCapture();
+      const batchCost = batchStepCost ?? fetchCost;
+      if (batchCost != null) {
+        turnCostUsd = (turnCostUsd ?? 0) + batchCost;
+      }
     }
 
     // Eager runs started on `tool-call` may still be going; without this the
@@ -814,5 +833,6 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
   return {
     messages: finalMessages,
     lastStepInputTokens,
+    turnCostUsd,
   };
 }

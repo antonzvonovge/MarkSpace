@@ -61,8 +61,9 @@ function queryMatchesKeys(query: string): boolean {
     q.includes("apikey") ||
     q.includes("byok") ||
     q.includes("openrouter") ||
+    q.includes("litellm") ||
+    q.includes("gateway") ||
     q.includes("openai") ||
-    q.includes("anthropic") ||
     q.includes("google") ||
     q.includes("tavily") ||
     q.includes("firecrawl") ||
@@ -82,8 +83,6 @@ function queryMatchesAi(query: string): boolean {
     q.includes("ai") ||
     q.includes("model") ||
     q.includes("openai") ||
-    q.includes("anthropic") ||
-    q.includes("claude") ||
     q.includes("google") ||
     q.includes("gemini") ||
     q.includes("llm") ||
