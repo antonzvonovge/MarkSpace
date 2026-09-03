@@ -50,6 +50,7 @@ export const TasksListColumn = memo(function TasksListColumn({
   titleRef,
   onExpandPath,
   onPersisted,
+  onDropOnList,
   onPatchQuickDraft,
   onSubmitQuickAdd,
   onCancelQuickAdd,
@@ -86,6 +87,7 @@ export const TasksListColumn = memo(function TasksListColumn({
   titleRef: RefObject<HTMLTextAreaElement | null>;
   onExpandPath: (path: string) => void;
   onPersisted: () => void | Promise<void>;
+  onDropOnList?: (path: string, list: string) => void | Promise<void>;
   onPatchQuickDraft: (patch: Partial<TasksComposerDraft>) => void;
   onSubmitQuickAdd: () => void;
   onCancelQuickAdd: () => void;
@@ -189,6 +191,7 @@ export const TasksListColumn = memo(function TasksListColumn({
             listColors={listColors}
             onExpandPath={onExpandPath}
             onPersisted={onPersisted}
+            onDropOnList={onDropOnList}
             addComposerParentPath={addComposerParentPath}
             addDraft={addDraft ?? quickDraft}
             addTitleRef={addTitleRef ?? titleRef}

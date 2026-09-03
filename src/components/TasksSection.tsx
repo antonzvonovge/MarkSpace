@@ -43,6 +43,13 @@ import { useTaskListMetaStore } from "../store/taskListMetaStore";
 import { useTasksPanelStore } from "../store/tasksPanelStore";
 import { TASKS_TAB_PATH, useVaultStore } from "../store/vaultStore";
 
+/** Ignore list-open clicks briefly after a task is dropped onto a sidebar list. */
+let suppressListOpenUntil = 0;
+
+export function markTaskListDropJustHappened(): void {
+  suppressListOpenUntil = Date.now() + 400;
+}
+
 const SMART_VIEWS: {
   id: TasksViewId;
   label: string;
@@ -261,11 +268,13 @@ function TaskGroupContextMenu({
 const ListRow = memo(function ListRow({
   entry,
   selected,
+  dropTarget,
   onOpenList,
   onContextMenu,
 }: {
   entry: SidebarListEntry;
   selected: boolean;
+  dropTarget: boolean;
   onOpenList: (listName: string) => void;
   onContextMenu: (listName: string, x: number, y: number) => void;
 }) {
@@ -273,10 +282,18 @@ const ListRow = memo(function ListRow({
     <li>
       <button
         type="button"
-        className={
-          selected ? "tasks-section-row is-selected" : "tasks-section-row"
-        }
-        onClick={() => onOpenList(entry.name)}
+        data-task-list-drop={entry.name}
+        className={[
+          "tasks-section-row",
+          selected ? "is-selected" : "",
+          dropTarget ? "is-task-drop-target" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onClick={() => {
+          if (Date.now() < suppressListOpenUntil) return;
+          onOpenList(entry.name);
+        }}
         onMouseDown={(e) => {
           if (e.button === 2) e.preventDefault();
         }}
@@ -298,22 +315,33 @@ const SmartViewRow = memo(function SmartViewRow({
   label,
   icon,
   selected,
+  dropTarget,
   onOpen,
 }: {
   id: TasksViewId;
   label: string;
   icon: ReactNode;
   selected: boolean;
+  dropTarget?: boolean;
   onOpen: (view: TasksViewId) => void;
 }) {
+  const dropList = id === "inbox" ? "Inbox" : undefined;
   return (
     <li>
       <button
         type="button"
-        className={
-          selected ? "tasks-section-row is-selected" : "tasks-section-row"
-        }
-        onClick={() => onOpen(id)}
+        data-task-list-drop={dropList}
+        className={[
+          "tasks-section-row",
+          selected ? "is-selected" : "",
+          dropTarget ? "is-task-drop-target" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onClick={() => {
+          if (dropList && Date.now() < suppressListOpenUntil) return;
+          onOpen(id);
+        }}
       >
         <span className="tasks-section-row-icon" aria-hidden="true">
           {icon}
@@ -355,6 +383,7 @@ export const TasksSection = memo(function TasksSection() {
   const setSidebarHighlight = useTasksPanelStore((s) => s.setSidebarHighlight);
   const setView = useTasksPanelStore((s) => s.setView);
   const patchFilters = useTasksPanelStore((s) => s.patchFilters);
+  const taskListDropTarget = useTasksPanelStore((s) => s.taskListDropTarget);
   const groups = useTaskListMetaStore((s) => s.groups);
   const metaByName = useTaskListMetaStore((s) => s.metaByName);
   const refreshMeta = useTaskListMetaStore((s) => s.refresh);
@@ -537,6 +566,9 @@ export const TasksSection = memo(function TasksSection() {
                 effectiveHighlight?.kind === "view" &&
                 effectiveHighlight.view === v.id
               }
+              dropTarget={
+                v.id === "inbox" && taskListDropTarget === "Inbox"
+              }
               onOpen={openSmartView}
             />
           ))}
@@ -591,6 +623,7 @@ export const TasksSection = memo(function TasksSection() {
                           effectiveHighlight?.kind === "list" &&
                           effectiveHighlight.list === entry.name
                         }
+                        dropTarget={taskListDropTarget === entry.name}
                         onOpenList={openList}
                         onContextMenu={handleListContextMenu}
                       />
@@ -608,6 +641,7 @@ export const TasksSection = memo(function TasksSection() {
                 effectiveHighlight?.kind === "list" &&
                 effectiveHighlight.list === entry.name
               }
+              dropTarget={taskListDropTarget === entry.name}
               onOpenList={openList}
               onContextMenu={handleListContextMenu}
             />

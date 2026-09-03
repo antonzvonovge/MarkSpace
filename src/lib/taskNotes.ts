@@ -956,23 +956,73 @@ export async function saveTaskNote(note: TaskNote): Promise<void> {
 }
 
 /**
- * Move a task note into another list folder under Tasks/ (e.g. Inbox → Work).
+ * Move a single task note into another list folder (no child cascade).
  * Returns the new path (unchanged when already in that list's active folder).
  * Tasks in `completed/` move to the target list root (not into its archive).
+ */
+async function moveTaskFileToList(
+  path: string,
+  targetList: string,
+): Promise<string> {
+  const p = path.replace(/^\/+|\/+$/g, "");
+  const current = taskListFromPath(p) || "Inbox";
+  const inCompleted = isTaskInCompleted(p);
+  if (current === targetList && !inCompleted) return p;
+  const folder = joinPath(TASKS_ROOT, targetList);
+  await ensureFolder(folder);
+  // Large index = append (see vault::move_entry).
+  return moveEntry(p, folder, 1_000_000);
+}
+
+/**
+ * Move a task note into another list folder under Tasks/ (e.g. Inbox → Work).
+ * When the task has file children (`parent` = its id), those are moved too
+ * (same cascade as complete). Returns the parent's new path.
  */
 export async function moveTaskToList(
   path: string,
   list: string,
+  opts?: {
+    tree?: TreeNode | null;
+    index?: readonly TaskIndexEntry[];
+  },
 ): Promise<string> {
   const targetList =
     (list ?? "Inbox").replace(/^\/+|\/+$/g, "") || "Inbox";
-  const current = taskListFromPath(path) || "Inbox";
-  const inCompleted = isTaskInCompleted(path);
-  if (current === targetList && !inCompleted) return path;
-  const folder = joinPath(TASKS_ROOT, targetList);
-  await ensureFolder(folder);
-  // Large index = append (see vault::move_entry).
-  return moveEntry(path, folder, 1_000_000);
+  const p = path.replace(/^\/+|\/+$/g, "");
+
+  let index = opts?.index ? [...opts.index] : null;
+  if (!index && opts?.tree != null) {
+    index = await loadTaskIndex(opts.tree);
+  }
+
+  let parentId: string | null = null;
+  if (index) {
+    const fromIndex = index.find((e) => e.path === p);
+    parentId = fromIndex?.id ?? null;
+  }
+  if (!parentId) {
+    try {
+      const note = await loadTaskNote(p);
+      parentId = note.attrs.id;
+    } catch {
+      parentId = null;
+    }
+  }
+
+  if (parentId && index) {
+    const kids = index.filter(
+      (e) =>
+        e.parent === parentId &&
+        e.path !== p &&
+        !isTaskInCompleted(e.path),
+    );
+    for (const kid of kids) {
+      await moveTaskFileToList(kid.path, targetList);
+    }
+  }
+
+  return moveTaskFileToList(p, targetList);
 }
 
 /** Toggle done/open and persist (file stays in place). Prefer `completeTask` to archive. */

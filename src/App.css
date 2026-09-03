@@ -1525,6 +1525,16 @@ select {
   color: var(--accent);
 }
 
+.tasks-section-row.is-task-drop-target {
+  background: rgba(var(--accent-rgb), 0.14);
+  outline: 1px solid rgba(var(--accent-rgb), 0.45);
+  outline-offset: -1px;
+}
+
+.tasks-section-row.is-task-drop-target .tasks-section-row-icon:not(.has-list-color) {
+  color: var(--accent);
+}
+
 .tasks-section-row-icon.has-list-color {
   color: var(--task-list-color, var(--sidebar-muted, var(--muted)));
 }

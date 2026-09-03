@@ -40,6 +40,8 @@ import {
 import { parseTaskTreeId, type TaskTreeItems } from "./types";
 import type { TasksComposerDraft } from "../TasksComposer";
 import type { RefObject } from "react";
+import { useTasksPanelStore } from "../../../store/tasksPanelStore";
+import { taskListDropTargetAt } from "./taskListDropTarget";
 import {
   buildTree,
   flattenTree,
@@ -83,6 +85,8 @@ type TasksTreeProps = {
   onExpandPath?: (path: string) => void;
   /** Called after vault write; may return a Promise — kept under persisting lock until done. */
   onPersisted?: () => void | Promise<void>;
+  /** Drop a dragged task onto a Tasks sidebar list (Inbox / named list). */
+  onDropOnList?: (path: string, list: string) => void | Promise<void>;
   addComposerParentPath?: string | null;
   addDraft?: TasksComposerDraft;
   addTitleRef?: RefObject<HTMLTextAreaElement | null>;
@@ -139,6 +143,7 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
   listColors = {},
   onExpandPath,
   onPersisted,
+  onDropOnList,
   addComposerParentPath = null,
   addDraft,
   addTitleRef,
@@ -160,20 +165,40 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
   const overIdRef = useRef<UniqueIdentifier | null>(null);
   const offsetLeftRef = useRef(0);
   const dragStartXRef = useRef(0);
+  const lastPointerRef = useRef({ x: 0, y: 0 });
   const stopPointerTrackingRef = useRef<(() => void) | null>(null);
+  const listDropTargetRef = useRef<string | null>(null);
+  const setTaskListDropTarget = useTasksPanelStore(
+    (s) => s.setTaskListDropTarget,
+  );
 
   const stopPointerTracking = () => {
     stopPointerTrackingRef.current?.();
     stopPointerTrackingRef.current = null;
   };
 
-  const startPointerTracking = (startX: number) => {
+  const clearListDropTarget = () => {
+    listDropTargetRef.current = null;
+    setTaskListDropTarget(null);
+  };
+
+  const syncListDropTarget = (clientX: number, clientY: number) => {
+    lastPointerRef.current = { x: clientX, y: clientY };
+    const next = taskListDropTargetAt(clientX, clientY);
+    if (next === listDropTargetRef.current) return;
+    listDropTargetRef.current = next;
+    setTaskListDropTarget(next);
+  };
+
+  const startPointerTracking = (startX: number, startY: number) => {
     stopPointerTracking();
     dragStartXRef.current = startX;
+    lastPointerRef.current = { x: startX, y: startY };
     const onPointerMove = (event: PointerEvent) => {
       const x = event.clientX - dragStartXRef.current;
       setOffsetLeft(x);
       offsetLeftRef.current = x;
+      syncListDropTarget(event.clientX, event.clientY);
     };
     document.addEventListener("pointermove", onPointerMove);
     stopPointerTrackingRef.current = () => {
@@ -270,6 +295,7 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
 
   const resetState = () => {
     stopPointerTracking();
+    clearListDropTarget();
     setOverId(null);
     overIdRef.current = null;
     setActiveId(null);
@@ -283,7 +309,12 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
       activatorEvent && "clientX" in activatorEvent
         ? Number(activatorEvent.clientX)
         : 0;
-    startPointerTracking(startX);
+    const startY =
+      activatorEvent && "clientY" in activatorEvent
+        ? Number(activatorEvent.clientY)
+        : 0;
+    startPointerTracking(startX, startY);
+    clearListDropTarget();
     setActiveId(active.id);
     setOverId(active.id);
     overIdRef.current = active.id;
@@ -307,6 +338,34 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
 
   const handleDragEnd = ({ active, over, delta }: DragEndEvent) => {
     const fullFlat = flattenTree(items);
+    const listDrop =
+      listDropTargetRef.current ??
+      taskListDropTargetAt(
+        lastPointerRef.current.x,
+        lastPointerRef.current.y,
+      );
+
+    if (listDrop && onDropOnList) {
+      const meta = parseTaskTreeId(active.id);
+      const activePath = meta?.kind === "task" ? meta.path : null;
+      resetState();
+      setItems(taskEntriesToTreeItems(entries, expanded));
+      if (activePath) {
+        persisting.current = true;
+        void (async () => {
+          try {
+            await onDropOnList(activePath, listDrop);
+          } catch (err) {
+            console.error("Task list drop failed", err);
+            setItems(taskEntriesToTreeItems(entries, expanded));
+          } finally {
+            persisting.current = false;
+          }
+        })();
+      }
+      return;
+    }
+
     // Indicator ghost is 8px — pointer often leaves droppables on release.
     const resolvedOverId = over?.id ?? overIdRef.current ?? overId;
     // DragEnd delta.x is often 0; prefer last drag-move offset (ref > state > delta).

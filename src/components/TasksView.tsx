@@ -59,6 +59,7 @@ import {
 } from "./tasks/tasksIcons";
 import { TasksInboxIcon, TasksListIcon } from "./treeIcons";
 import { TasksListColumn } from "./tasks/TasksListColumn";
+import { markTaskListDropJustHappened } from "./TasksSection";
 import type {
   TaskTreeActions,
   TaskTreeEditState,
@@ -519,6 +520,7 @@ function TaskDetailPanel({
   onStartWithCommentConsumed,
   onClose,
   onChanged,
+  onExpandPath,
   onOpenTask,
   onPrev,
   onNext,
@@ -532,7 +534,10 @@ function TaskDetailPanel({
   startWithComment?: boolean;
   onStartWithCommentConsumed?: () => void;
   onClose: () => void;
-  onChanged: () => void;
+  /** Persist side-effect: refresh vault tree then reload the task index (await). */
+  onChanged: () => Promise<void>;
+  /** Expand a path in the main tasks tree (e.g. after adding a subtask). */
+  onExpandPath?: (path: string) => void;
   onOpenTask: (path: string, opts?: { focusComment?: boolean }) => void;
   onPrev?: () => void;
   onNext?: () => void;
@@ -568,7 +573,6 @@ function TaskDetailPanel({
   const childTitleRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
-  const refreshTree = useVaultStore((s) => s.refreshTree);
 
   const reload = useCallback(async () => {
     try {
@@ -643,10 +647,9 @@ function TaskDetailPanel({
     async (next: TaskNote) => {
       setNote(next);
       await saveTaskNote(next);
-      onChanged();
-      void refreshTree();
+      await onChanged();
     },
-    [onChanged, refreshTree],
+    [onChanged],
   );
 
   const listName = taskListFromPath(path) || "Inbox";
@@ -766,19 +769,17 @@ function TaskDetailPanel({
           labels,
         },
       });
-      let nextPath = editingChildPath;
       try {
-        nextPath = await moveTaskToList(editingChildPath, list);
+        await moveTaskToList(editingChildPath, list, {
+          tree: useVaultStore.getState().tree,
+          index: entries,
+        });
       } catch {
-        nextPath = editingChildPath;
+        // Keep child in place; index refresh still runs.
       }
       setEditingChildPath(null);
       setChildDraft((prev) => ({ ...prev, title: "" }));
-      onChanged();
-      await refreshTree();
-      if (nextPath !== editingChildPath) {
-        // Stay on parent detail; index refresh is enough.
-      }
+      await onChanged();
       return;
     }
 
@@ -806,16 +807,18 @@ function TaskDetailPanel({
       list,
     });
     setAddingChild(false);
-    onChanged();
-    await refreshTree();
+    onExpandPath?.(path);
+    await onChanged();
   }, [
     note,
     childDraft,
     listName,
     editingChildPath,
+    entries,
+    path,
     persist,
     onChanged,
-    refreshTree,
+    onExpandPath,
   ]);
 
   const saveChildDue = useCallback(
@@ -825,10 +828,9 @@ function TaskDetailPanel({
         ...childNote,
         attrs: { ...childNote.attrs, due },
       });
-      onChanged();
-      await refreshTree();
+      await onChanged();
     },
-    [onChanged, refreshTree],
+    [onChanged],
   );
 
   return createPortal(
@@ -930,8 +932,7 @@ function TaskDetailPanel({
                           tree: useVaultStore.getState().tree,
                           index: entries,
                         });
-                        onChanged();
-                        await refreshTree();
+                        await onChanged();
                         onClose();
                       } catch (e) {
                         console.error(e);
@@ -1038,8 +1039,7 @@ function TaskDetailPanel({
                                       tree: useVaultStore.getState().tree,
                                       index: entries,
                                     });
-                                    onChanged();
-                                    await refreshTree();
+                                    await onChanged();
                                   } catch (e) {
                                     console.error(e);
                                     setCompletingChildPaths((prev) => {
@@ -1293,9 +1293,12 @@ function TaskDetailPanel({
                           const nextPath = await moveTaskToList(
                             note.path,
                             nextList,
+                            {
+                              tree: useVaultStore.getState().tree,
+                              index: entries,
+                            },
                           );
-                          onChanged();
-                          await refreshTree();
+                          await onChanged();
                           if (nextPath !== note.path) {
                             onOpenTask(nextPath);
                           }
@@ -1647,6 +1650,18 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
 
   const selectedIndex = visible.findIndex((e) => e.path === selectedPath);
 
+  const followListIfNeeded = useCallback(
+    (list: string) => {
+      if (view === "all" && filters.list && list !== filters.list) {
+        patchFilters({ list });
+      } else if (view === "inbox" && list !== "Inbox") {
+        patchFilters({ list });
+        setView("all");
+      }
+    },
+    [filters.list, patchFilters, setView, view],
+  );
+
   const commitEdit = useCallback(async () => {
     if (!editingPath || !editDraft) {
       cancelEdit();
@@ -1672,7 +1687,10 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
       });
       let nextPath = pathBefore;
       try {
-        nextPath = await moveTaskToList(pathBefore, list);
+        nextPath = await moveTaskToList(pathBefore, list, {
+          tree: treeRef.current,
+          index: entriesRef.current,
+        });
       } catch {
         nextPath = pathBefore;
       }
@@ -1744,12 +1762,7 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
       });
       setQuickDraft((prev) => ({ ...prev, title: "", list: contextList }));
       // If the new task would be hidden in the current sidebar view, follow it.
-      if (view === "all" && filters.list && list !== filters.list) {
-        patchFilters({ list });
-      } else if (view === "inbox" && list !== "Inbox") {
-        patchFilters({ list });
-        setView("all");
-      }
+      followListIfNeeded(list);
       await refreshTree();
       await reloadIndex();
       requestAnimationFrame(() => titleRef.current?.focus());
@@ -1758,11 +1771,9 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     }
   }, [
     contextList,
-    filters.list,
-    patchFilters,
+    followListIfNeeded,
     refreshTree,
     reloadIndex,
-    setView,
     today,
     view,
   ]);
@@ -2001,6 +2012,48 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     await reloadIndex();
   }, [refreshTree, reloadIndex]);
 
+  const onDropOnList = useCallback(
+    async (path: string, list: string) => {
+      const current = taskListFromPath(path) || "Inbox";
+      if (current === list) return;
+      markTaskListDropJustHappened();
+      const childPaths = (() => {
+        const entry = entriesRef.current.find((e) => e.path === path);
+        if (!entry?.id) return [] as string[];
+        return entriesRef.current
+          .filter((e) => e.parent === entry.id && e.path !== path)
+          .map((e) => e.path);
+      })();
+      const branch = [path, ...childPaths];
+      setHiddenPaths((prev) => {
+        const next = new Set(prev);
+        for (const p of branch) next.add(p);
+        return next;
+      });
+      try {
+        const nextPath = await moveTaskToList(path, list, {
+          tree: treeRef.current,
+          index: entriesRef.current,
+        });
+        if (selectedPathRef.current && branch.includes(selectedPathRef.current)) {
+          setSelectedPath(
+            selectedPathRef.current === path ? nextPath : null,
+          );
+        }
+        await refreshTree();
+        await reloadIndex();
+      } catch (e) {
+        console.error(e);
+        setHiddenPaths((prev) => {
+          const next = new Set(prev);
+          for (const p of branch) next.delete(p);
+          return next;
+        });
+      }
+    },
+    [refreshTree, reloadIndex, setSelectedPath],
+  );
+
   return (
     <div className="tasks-view">
       <TasksListColumn
@@ -2028,6 +2081,7 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
         titleRef={titleRef}
         onExpandPath={expandPath}
         onPersisted={onPersistedTree}
+        onDropOnList={onDropOnList}
         onPatchQuickDraft={patchQuickDraft}
         onSubmitQuickAdd={handleSubmitQuickAdd}
         onCancelQuickAdd={onCancelQuickAdd}
@@ -2064,7 +2118,11 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
             setStartWithComment(false);
             setSelectedPath(null);
           }}
-          onChanged={() => void reloadIndex()}
+          onChanged={async () => {
+            await refreshTree();
+            await reloadIndex();
+          }}
+          onExpandPath={expandPath}
           onOpenTask={openTask}
           onPrev={
             selectedIndex > 0

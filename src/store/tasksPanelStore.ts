@@ -21,6 +21,8 @@ type TasksPanelStore = {
   expandedPaths: string[];
   /** Selected task path inside the Tasks panel (not a tab). */
   selectedPath: string | null;
+  /** Sidebar list under the pointer while dragging a task from the tree. */
+  taskListDropTarget: string | null;
   /** Sidebar row highlight (list / smart view) without requiring the Tasks tab. */
   sidebarHighlight:
     | { kind: "view"; view: TasksViewId }
@@ -34,6 +36,7 @@ type TasksPanelStore = {
   toggleExpandedPath: (path: string) => void;
   expandPath: (path: string) => void;
   setSelectedPath: (path: string | null) => void;
+  setTaskListDropTarget: (list: string | null) => void;
   setSidebarHighlight: (
     highlight:
       | { kind: "view"; view: TasksViewId }
@@ -112,6 +115,7 @@ export const useTasksPanelStore = create<TasksPanelStore>((set, get) => ({
   filters: loadTasksFilters(),
   expandedPaths: [],
   selectedPath: null,
+  taskListDropTarget: null,
   sidebarHighlight: null,
 
   hydrateExpandedForVault: async (vaultPath) => {
@@ -179,5 +183,6 @@ export const useTasksPanelStore = create<TasksPanelStore>((set, get) => ({
   },
 
   setSelectedPath: (path) => set({ selectedPath: path }),
+  setTaskListDropTarget: (taskListDropTarget) => set({ taskListDropTarget }),
   setSidebarHighlight: (sidebarHighlight) => set({ sidebarHighlight }),
 }));

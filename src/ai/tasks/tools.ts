@@ -479,7 +479,7 @@ export function buildTasksTools(mode: ChatMode) {
 
     move_task_to_list: tool({
       description:
-        "Move a task note into another Tasks/<list>/ folder (active list root).",
+        "Move a task note into another Tasks/<list>/ folder (active list root). File children (parent = this task's id) move with it.",
       inputSchema: z.object({
         path: z.string().optional(),
         id: z.string().optional(),
@@ -488,7 +488,9 @@ export function buildTasksTools(mode: ChatMode) {
       execute: async ({ path, id, list }) => {
         try {
           const p = await resolveTaskPath({ path, id });
-          const next = await moveTaskToList(p, list);
+          const next = await moveTaskToList(p, list, {
+            tree: useVaultStore.getState().tree,
+          });
           await useVaultStore.getState().refreshTree();
           return {
             ok: true as const,
