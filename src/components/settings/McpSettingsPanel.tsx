@@ -258,16 +258,19 @@ function McpSwitch({
   checked,
   label,
   onChange,
+  disabled = false,
 }: {
   checked: boolean;
   label: string;
   onChange: (next: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className={`mcp-switch${checked ? " is-on" : ""}`}>
+    <label className={`mcp-switch${checked ? " is-on" : ""}${disabled ? " is-disabled" : ""}`}>
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         aria-label={label}
       />

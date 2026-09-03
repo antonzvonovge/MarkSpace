@@ -71,6 +71,7 @@ import {
 } from "./lib/settingsStore";
 import { useAiSettingsStore } from "./store/aiSettingsStore";
 import { useMcpStore } from "./store/mcpStore";
+import { useMcpHostStore } from "./store/mcpHostStore";
 import { applyBackgroundJobPayload } from "./store/backgroundJobsStore";
 import { useChatUiStore } from "./store/chatUiStore";
 import { useDocumentFindStore } from "./store/documentFindStore";
@@ -600,6 +601,9 @@ function App() {
   const hydrateMcp = useMcpStore((s) => s.hydrate);
   const hydrateMcpVault = useMcpStore((s) => s.hydrateForVault);
   const mcpHydrated = useMcpStore((s) => s.hydrated);
+  const hydrateMcpHost = useMcpHostStore((s) => s.hydrate);
+  const mcpHostHydrated = useMcpHostStore((s) => s.hydrated);
+  const syncMcpHost = useMcpHostStore((s) => s.syncForVault);
   const refreshSyncStatus = useSyncStore((s) => s.refreshStatus);
   const sidebarOpen = useSidebarUiStore((s) => s.open);
   const chatOpen = useChatUiStore((s) => s.open);
@@ -758,13 +762,19 @@ function App() {
     void hydratePrefs();
     void hydrateAi();
     void hydrateMcp();
+    void hydrateMcpHost();
     void loadRecentCommands().then(setRecentCommandIds);
-  }, [hydratePrefs, hydrateAi, hydrateMcp]);
+  }, [hydratePrefs, hydrateAi, hydrateMcp, hydrateMcpHost]);
 
   useEffect(() => {
     if (!mcpHydrated) return;
     void hydrateMcpVault(vaultPath);
   }, [vaultPath, mcpHydrated, hydrateMcpVault]);
+
+  useEffect(() => {
+    if (!mcpHostHydrated) return;
+    void syncMcpHost(Boolean(vaultPath));
+  }, [vaultPath, mcpHostHydrated, syncMcpHost]);
 
   useEffect(() => {
     void (async () => {

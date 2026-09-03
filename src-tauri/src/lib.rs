@@ -11,6 +11,7 @@ mod git_sync;
 mod http_fetch;
 mod indexing;
 mod mcp;
+mod mcp_host;
 mod md_merge;
 mod order_merge;
 mod pdf_text;
@@ -26,6 +27,8 @@ pub use embeddings::run_stdio_server;
 
 use git_sync::SyncRuntime;
 use mcp::McpRuntime;
+use mcp_host::McpHostRuntime;
+use std::sync::Arc;
 use terminal::TerminalRuntime;
 use vault::VaultState;
 
@@ -159,6 +162,7 @@ pub fn run() {
         .manage(SyncRuntime::default())
         .manage(TerminalRuntime::default())
         .manage(McpRuntime::default())
+        .manage(Arc::new(McpHostRuntime::default()))
         .invoke_handler(tauri::generate_handler![
             vault::open_vault,
             vault::list_tree,
@@ -248,6 +252,12 @@ pub fn run() {
             mcp::mcp_reload,
             mcp::mcp_reload_server,
             mcp::mcp_call_tool,
+            mcp_host::mcp_host_get_status,
+            mcp_host::mcp_host_start,
+            mcp_host::mcp_host_stop,
+            mcp_host::mcp_host_register_tools,
+            mcp_host::mcp_host_set_bridge_ready,
+            mcp_host::mcp_host_tool_result,
             http_fetch::http_fetch,
             http_fetch::http_fetch_bytes,
             http_fetch::http_post_multipart,

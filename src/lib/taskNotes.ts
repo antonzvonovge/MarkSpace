@@ -9,6 +9,7 @@ import {
 } from "./noteFrontmatter";
 import {
   createNote,
+  deletePath,
   ensureFolder,
   isFolderNotePath,
   isTasksPath,
@@ -16,6 +17,7 @@ import {
   moveEntry,
   parentPath,
   readNote,
+  renamePath,
   TASKS_FOLDER,
   writeNote,
   type TreeNode,
@@ -1104,6 +1106,122 @@ export async function addTaskComment(
   };
   await saveTaskNote(next);
   return next;
+}
+
+/** Replace comment body at index (keeps original timestamp). */
+export async function updateTaskComment(
+  path: string,
+  index: number,
+  body: string,
+): Promise<TaskNote> {
+  const text = body.trim();
+  if (!text) throw new Error("Comment body is empty");
+  const note = await loadTaskNote(path);
+  if (index < 0 || index >= note.comments.length) {
+    throw new Error(`Comment index out of range: ${index}`);
+  }
+  const comments = note.comments.map((c, i) =>
+    i === index ? { ...c, body: text } : c,
+  );
+  const next: TaskNote = { ...note, comments };
+  await saveTaskNote(next);
+  return next;
+}
+
+/** Remove comment at index. */
+export async function deleteTaskComment(
+  path: string,
+  index: number,
+): Promise<TaskNote> {
+  const note = await loadTaskNote(path);
+  if (index < 0 || index >= note.comments.length) {
+    throw new Error(`Comment index out of range: ${index}`);
+  }
+  const next: TaskNote = {
+    ...note,
+    comments: note.comments.filter((_, i) => i !== index),
+  };
+  await saveTaskNote(next);
+  return next;
+}
+
+/**
+ * Permanently delete a task note and its file children (`parent` = its id).
+ * Returns deleted paths (children then parent).
+ */
+export async function deleteTask(
+  path: string,
+  opts?: {
+    tree?: TreeNode | null;
+    index?: readonly TaskIndexEntry[];
+  },
+): Promise<string[]> {
+  const p = path.replace(/^\/+|\/+$/g, "");
+  const note = await loadTaskNote(p);
+  const deleted: string[] = [];
+
+  let index = opts?.index ? [...opts.index] : null;
+  if (!index && opts?.tree != null) {
+    index = await loadTaskIndex(opts.tree);
+  }
+
+  if (note.attrs.id && index) {
+    const kids = index.filter(
+      (e) => e.parent === note.attrs.id && e.path !== p,
+    );
+    for (const kid of kids) {
+      await deletePath(kid.path);
+      deleted.push(kid.path);
+    }
+  }
+
+  await deletePath(p);
+  deleted.push(p);
+  return deleted;
+}
+
+/**
+ * Rename a list folder under Tasks/ (not Inbox). Returns the new list name.
+ */
+export async function renameTaskList(
+  fromName: string,
+  toName: string,
+): Promise<string> {
+  const from = fromName.trim();
+  const to = toName
+    .trim()
+    .replace(/[/\\]/g, "-")
+    .replace(/\s+/g, " ");
+  if (!from) throw new Error("Current list name is required");
+  if (!to) throw new Error("New list name is required");
+  if (/^inbox$/i.test(from)) {
+    throw new Error("Inbox cannot be renamed");
+  }
+  if (/^inbox$/i.test(to)) {
+    throw new Error("Inbox is a reserved list");
+  }
+  if (to.toLowerCase() === TASKS_COMPLETED_DIR) {
+    throw new Error("completed is a reserved folder name");
+  }
+  if (from === to) return from;
+  const fromPath = joinPath(TASKS_ROOT, from);
+  const toPath = joinPath(TASKS_ROOT, to);
+  await renamePath(fromPath, toPath);
+  return to;
+}
+
+/**
+ * Delete a list folder under Tasks/ and all of its tasks (not Inbox).
+ */
+export async function deleteTaskList(name: string): Promise<string> {
+  const cleaned = name.trim();
+  if (!cleaned) throw new Error("List name is required");
+  if (/^inbox$/i.test(cleaned)) {
+    throw new Error("Inbox cannot be deleted");
+  }
+  const path = joinPath(TASKS_ROOT, cleaned);
+  await deletePath(path);
+  return cleaned;
 }
 
 export function parentFolderOfTask(path: string): string {

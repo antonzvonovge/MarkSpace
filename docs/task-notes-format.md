@@ -18,6 +18,7 @@ Agents and UIs must prefer dedicated task helpers over inventing a second format
 - Active index and filters scan `Tasks/**/*.md` **excluding** `Tasks/<list>/completed/**`. Do not treat checklists outside `Tasks/` as tasks.
 - List order follows vault `order.json` (tree order under each list folder). Sibling order (among roots or among children of one parent) follows that order. Dragging a task onto another sets `parent` to the parent’s `id` (file is kept). Outdent clears `parent`.
 - Today view may sort by priority and due; Inbox and per-list views keep manual order.
+- External MCP clients can use the **MarkSpace MCP host** (Settings → MCP → MarkSpace MCP host) while the app is running with a vault open; tools share the same semantics as `run_specialist` kind=`tasks`.
 <!-- core-rules:end -->
 
 ## Layout

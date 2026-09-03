@@ -14169,6 +14169,44 @@ button.status-bar-jobs-menu-item:hover {
   margin: 0;
 }
 
+.mcp-host-status {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mcp-host-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-host-port-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.mcp-host-port-row .app-dialog-input {
+  max-width: 140px;
+}
+
+.mcp-host-panel .sync-block-title {
+  margin-bottom: 6px;
+}
+
+.mcp-host-panel .mcp-host-snippet {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.mcp-host-snippet {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  min-height: 180px;
+}
+
 .mcp-server-list {
   list-style: none;
   margin: 0;

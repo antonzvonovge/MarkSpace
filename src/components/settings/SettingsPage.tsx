@@ -18,6 +18,7 @@ import { KeysSettingsPanel } from "./KeysSettingsPanel";
 import { MediaLibrarySettingsPanel } from "./MediaLibrarySettingsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
+import { McpHostSettingsPanel } from "./McpHostSettingsPanel";
 import { SettingRow } from "./SettingRow";
 import { SyncSettingsPanel } from "./SyncSettingsPanel";
 
@@ -30,6 +31,7 @@ const PANEL_CATEGORIES = new Set([
   "keys",
   "ai",
   "mcp",
+  "mcpHost",
   "memory",
   "diary",
   "mediaLibrary",
@@ -152,12 +154,30 @@ function queryMatchesIndexing(query: string): boolean {
 function queryMatchesMcp(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
+  if (queryMatchesMcpHost(query)) return false;
   return (
     "mcp".includes(q) ||
     q.includes("mcp") ||
     q.includes("model context") ||
     q.includes("stdio") ||
     q.includes("server")
+  );
+}
+
+function queryMatchesMcpHost(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    q.includes("mcp host") ||
+    q.includes("mcphost") ||
+    q.includes("markspace mcp") ||
+    q.includes("streamable http") ||
+    q === "host" ||
+    q.includes("17832") ||
+    (q.includes("port") && (q.includes("mcp") || q.includes("host"))) ||
+    q === "port" ||
+    (q.includes("bearer") && q.includes("mcp")) ||
+    (q.includes("token") && q.includes("mcp") && q.includes("host"))
   );
 }
 
@@ -212,6 +232,7 @@ export function SettingsPage({ onClose }: Props) {
   const showKeysInSearch = searching && queryMatchesKeys(query);
   const showAiInSearch = searching && queryMatchesAi(query);
   const showMcpInSearch = searching && queryMatchesMcp(query);
+  const showMcpHostInSearch = searching && queryMatchesMcpHost(query);
   const showMemoryInSearch = searching && queryMatchesMemory(query);
   const showDiaryInSearch = searching && queryMatchesDiary(query);
   const showMediaLibraryInSearch =
@@ -242,6 +263,8 @@ export function SettingsPage({ onClose }: Props) {
   const showKeysPanel = (!searching && category === "keys") || showKeysInSearch;
   const showAiPanel = (!searching && category === "ai") || showAiInSearch;
   const showMcpPanel = (!searching && category === "mcp") || showMcpInSearch;
+  const showMcpHostPanel =
+    (!searching && category === "mcpHost") || showMcpHostInSearch;
   const showMemoryPanel =
     (!searching && category === "memory") || showMemoryInSearch;
   const showDiaryPanel =
@@ -313,8 +336,10 @@ export function SettingsPage({ onClose }: Props) {
             !showKeysPanel &&
             !showAiPanel &&
             !showMcpPanel &&
+            !showMcpHostPanel &&
             !showMemoryPanel &&
             !showDiaryPanel &&
+            !showMediaLibraryPanel &&
             !showIndexingPanel &&
             !showAboutPanel &&
             !showAccentRow && (
@@ -367,6 +392,15 @@ export function SettingsPage({ onClose }: Props) {
             <section className="settings-section">
               {searching && <h2 className="settings-section-title">MCP</h2>}
               <McpSettingsPanel />
+            </section>
+          )}
+
+          {showMcpHostPanel && (
+            <section className="settings-section">
+              {searching && (
+                <h2 className="settings-section-title">MCP host</h2>
+              )}
+              <McpHostSettingsPanel />
             </section>
           )}
 

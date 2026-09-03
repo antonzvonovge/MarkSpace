@@ -12,6 +12,7 @@ export type SettingCategory =
   | "keys"
   | "ai"
   | "mcp"
+  | "mcpHost"
   | "memory"
   | "diary"
   | "mediaLibrary"
@@ -64,6 +65,7 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "keys", label: "API keys", scope: "app", separatorBefore: true },
   { id: "ai", label: "AI", scope: "app" },
   { id: "mcp", label: "MCP", scope: "app" },
+  { id: "mcpHost", label: "MCP host", scope: "app" },
   { id: "memory", label: "Memory", scope: "vault" },
   { id: "diary", label: "Diary", scope: "vault" },
   { id: "mediaLibrary", label: "Media library", scope: "app" },
