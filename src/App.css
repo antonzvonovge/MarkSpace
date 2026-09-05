@@ -57,6 +57,8 @@
   --tree-pad-x: 10px;
   --tree-indent: 14px;
   --tree-row-height: 28px;
+  /* Vault root row keeps this height in every density (see .is-vault-root). */
+  --tree-root-row-height: 28px;
   --tree-row-gap: 6px;
   --tree-label-pad-y: 4px;
   --tree-label-size: 14px;
@@ -135,7 +137,7 @@
 
 :root[data-density="compact"] .sidebar-top {
   gap: 8px;
-  padding: 10px 0 6px;
+  padding: 10px 0 0;
 }
 
 :root[data-density="compact"] .brand-block {
@@ -230,11 +232,10 @@
   background: transparent;
 }
 
-/* Wider vertical scrollbars in the note editor and chat feed. */
+/* Wider vertical scrollbars in the note editor (chat matches the sidebar). */
 .editor-main::-webkit-scrollbar,
 .tasks-view::-webkit-scrollbar,
 .outline-scroll::-webkit-scrollbar,
-.chat-messages::-webkit-scrollbar,
 .source-editor-canvas .cm-scroller::-webkit-scrollbar {
   width: 12px;
 }
@@ -242,7 +243,6 @@
 .editor-main::-webkit-scrollbar-thumb,
 .tasks-view::-webkit-scrollbar-thumb,
 .outline-scroll::-webkit-scrollbar-thumb,
-.chat-messages::-webkit-scrollbar-thumb,
 .source-editor-canvas .cm-scroller::-webkit-scrollbar-thumb {
   background-color: color-mix(in srgb, var(--muted) 28%, transparent);
   border: 2px solid transparent;
@@ -252,7 +252,6 @@
 .editor-main::-webkit-scrollbar-thumb:hover,
 .tasks-view::-webkit-scrollbar-thumb:hover,
 .outline-scroll::-webkit-scrollbar-thumb:hover,
-.chat-messages::-webkit-scrollbar-thumb:hover,
 .source-editor-canvas .cm-scroller::-webkit-scrollbar-thumb:hover {
   background-color: color-mix(in srgb, var(--muted) 55%, transparent);
 }
@@ -261,7 +260,6 @@
   .editor-main,
   .tasks-view,
   .outline-scroll,
-  .chat-messages,
   .source-editor-canvas .cm-scroller {
     scrollbar-width: auto;
     scrollbar-color: color-mix(in srgb, var(--muted) 35%, transparent) transparent;
@@ -471,7 +469,8 @@ select {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 18px 0 10px;
+  /* No bottom padding: the tree scroll area runs down to the footer border. */
+  padding: 18px 0 0;
 }
 
 .brand-block {
@@ -1951,8 +1950,6 @@ select {
   padding-right: 0;
   box-sizing: border-box;
   position: relative;
-  content-visibility: auto;
-  contain-intrinsic-size: auto var(--tree-row-height);
 }
 
 .tree-row.has-project-color::before {
@@ -1971,8 +1968,6 @@ select {
   font-weight: 600;
   cursor: pointer;
   color: var(--sidebar-text);
-  /* content-visibility:auto + fixed row height clips the Create menu. */
-  content-visibility: visible;
 }
 
 .tree-folder-row.is-vault-root:hover .section-header-actions,
@@ -1987,7 +1982,7 @@ select {
 
 /* Vault root stays comfortable size even in compact density. */
 :root[data-density="compact"] .tree-folder-row.is-vault-root {
-  --tree-row-height: 28px;
+  --tree-row-height: var(--tree-root-row-height);
   --tree-row-gap: 6px;
   --tree-label-pad-y: 4px;
   --tree-label-size: 14px;
@@ -2081,13 +2076,11 @@ select {
 }
 
 /*
- * Insert line sits 4px outside the row box. content-visibility:auto would
- * clip that overflow; the virtual item wrapper needs a raised z-index so a
- * neighbor row does not paint over the protruding half.
+ * Insert line sits 4px outside the row box, so the row needs a raised z-index
+ * or a neighbor row paints over the protruding half.
  */
 .tree-row.is-drop-before,
 .tree-row.is-drop-after {
-  content-visibility: visible;
   z-index: 1;
 }
 
@@ -8977,13 +8970,11 @@ button.status-bar-jobs-menu-item:hover {
      push items inward (flush first row + content under the scrollbar). */
   padding: 0;
   box-sizing: border-box;
-  scrollbar-gutter: stable;
 }
 
 .chat-messages-list {
   padding-left: 20px;
-  /* Narrower than left: scrollbar-gutter already reserves the track. */
-  padding-right: 8px;
+  padding-right: 20px;
   box-sizing: border-box;
 }
 
@@ -9017,7 +9008,7 @@ button.status-bar-jobs-menu-item:hover {
   left: 0;
   right: 0;
   z-index: 4;
-  padding: 12px 8px 10px 20px;
+  padding: 12px 20px 10px;
   background: var(--editor-surface);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   pointer-events: auto;
@@ -9035,8 +9026,9 @@ button.status-bar-jobs-menu-item:hover {
   /* Stick under the tab chrome; top inset is a Virtuoso Header spacer now. */
   top: 0;
   z-index: 3;
-  margin: 0 -20px 0 -8px;
-  padding: 12px 8px 10px 20px;
+  /* Cancel .chat-messages-list horizontal padding so the sticky bar is full-bleed. */
+  margin: 0 -20px;
+  padding: 12px 20px 10px;
   background: var(--editor-surface);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }

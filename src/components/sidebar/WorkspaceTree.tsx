@@ -61,7 +61,8 @@ import {
 } from "../../lib/vaultTreeDrag";
 
 const ROW_HEIGHT = 28;
-const OVERSCAN = 8;
+const ROOT_ROW_HEIGHT = 28;
+const OVERSCAN = 12;
 
 /** Chip sits just right and below the pointer (ignore grab point on the wide row). */
 const CHIP_CURSOR_GAP_X = 12;
@@ -139,13 +140,51 @@ function isUnsupported(isDir: boolean, path: string): boolean {
   return !isDir && !isVaultDocumentPath(path);
 }
 
-function readTreeRowHeight(): number {
-  if (typeof document === "undefined") return ROW_HEIGHT;
+/**
+ * Rows have a fixed height per density, so the virtualizer needs no DOM
+ * measuring — it only needs the two heights CSS gives them.
+ */
+type RowHeights = { row: number; root: number };
+
+function readCssPx(name: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
   const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue("--tree-row-height")
+    .getPropertyValue(name)
     .trim();
   const n = Number.parseFloat(raw);
-  return Number.isFinite(n) && n > 0 ? n : ROW_HEIGHT;
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function readRowHeights(): RowHeights {
+  return {
+    row: readCssPx("--tree-row-height", ROW_HEIGHT),
+    root: readCssPx("--tree-root-row-height", ROOT_ROW_HEIGHT),
+  };
+}
+
+/**
+ * Offset of `el` inside `parent`'s padding box, read from layout (`offsetTop`)
+ * rather than rects, so the result never depends on `scrollTop` and cannot
+ * drift while the list is scrolled.
+ */
+function offsetWithinScrollParent(
+  el: HTMLElement,
+  parent: HTMLElement,
+): number {
+  // `offsetTop` is already measured from the offsetParent's padding box.
+  if (el.offsetParent === parent) return el.offsetTop;
+  // offsetTop values are comparable only within one offsetParent; the sidebar
+  // scroll container is static, so it shares its own with the list.
+  if (el.offsetParent === parent.offsetParent) {
+    return el.offsetTop - parent.offsetTop - parent.clientTop;
+  }
+  // Positioned element in between: rects need scrollTop to stay stable.
+  return (
+    el.getBoundingClientRect().top -
+    parent.getBoundingClientRect().top +
+    parent.scrollTop -
+    parent.clientTop
+  );
 }
 
 function WorkspaceListHost({
@@ -208,7 +247,8 @@ export const WorkspaceTree = memo(function WorkspaceTree({
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
-  const [rowHeight, setRowHeight] = useState(ROW_HEIGHT);
+  const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null);
+  const [heights, setHeights] = useState<RowHeights>(readRowHeights);
 
   const rows = useMemo(
     () => flattenVisibleWorkspace(tree, expandedPaths),
@@ -269,38 +309,91 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   }, []);
 
   useLayoutEffect(() => {
-    setRowHeight(readTreeRowHeight());
-    const root = document.documentElement;
-    const obs = new MutationObserver(() => {
-      setRowHeight(readTreeRowHeight());
-    });
-    obs.observe(root, {
+    const apply = () => {
+      const next = readRowHeights();
+      setHeights((prev) =>
+        prev.row === next.row && prev.root === next.root ? prev : next,
+      );
+    };
+    apply();
+    const obs = new MutationObserver(apply);
+    obs.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-density"],
     });
     return () => obs.disconnect();
   }, []);
 
+  // A stale scrollMargin does not move the rows (their transform subtracts it
+  // again) but it does shift the visible range, leaving a blank strip. Sections
+  // above the tree mount, unmount and resize on their own, so track presence,
+  // size and — because a section can resize mid-scroll — the scroll itself.
   useLayoutEffect(() => {
-    const list = listRef.current;
-    const parent = scrollParentRef.current;
-    if (!list || !parent) return;
+    let setupRaf = 0;
+    let updateRaf = 0;
+    let host: HTMLElement | null = null;
+    let ro: ResizeObserver | null = null;
+    let mo: MutationObserver | null = null;
+
     const update = () => {
-      const parentTop = parent.getBoundingClientRect().top;
-      const listTop = list.getBoundingClientRect().top;
-      setScrollMargin(listTop - parentTop + parent.scrollTop);
+      const parent = scrollParentRef.current;
+      const list = listRef.current;
+      if (!parent || !list) return;
+      const next = offsetWithinScrollParent(list, parent);
+      setScrollMargin((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
     };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(parent);
-    for (const child of parent.children) ro.observe(child);
-    return () => ro.disconnect();
-  }, [scrollParentRef, rows.length, expandedPaths]);
+    const schedule = () => {
+      if (updateRaf) return;
+      updateRaf = requestAnimationFrame(() => {
+        updateRaf = 0;
+        update();
+      });
+    };
+
+    const setup = () => {
+      const parent = scrollParentRef.current;
+      // The scroll host is a callback ref on an ancestor, and React attaches
+      // those after the layout effects of its children — so on mount it can
+      // still be missing and we have to wait for it.
+      if (!parent || !listRef.current) {
+        setupRaf = requestAnimationFrame(setup);
+        return;
+      }
+      host = parent;
+      setScrollHost(parent);
+      const observeAll = () => {
+        ro?.disconnect();
+        ro?.observe(parent);
+        for (const child of parent.children) ro?.observe(child);
+      };
+      ro = new ResizeObserver(update);
+      observeAll();
+      mo = new MutationObserver(() => {
+        observeAll();
+        update();
+      });
+      mo.observe(parent, { childList: true });
+      parent.addEventListener("scroll", schedule, { passive: true });
+      update();
+    };
+    setup();
+
+    return () => {
+      cancelAnimationFrame(setupRaf);
+      cancelAnimationFrame(updateRaf);
+      ro?.disconnect();
+      mo?.disconnect();
+      host?.removeEventListener("scroll", schedule);
+    };
+  }, [scrollParentRef]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => scrollParentRef.current,
-    estimateSize: () => rowHeight,
+    // `scrollHost` state exists so finding the host late still triggers the
+    // render that lets the virtualizer attach to it.
+    getScrollElement: () => scrollHost ?? scrollParentRef.current,
+    // Row 0 is the vault root, which stays 28px tall in compact density.
+    estimateSize: (index) => (index === 0 ? heights.root : heights.row),
     overscan: OVERSCAN,
     scrollMargin,
     getItemKey: (index) => rows[index]?.path ?? index,
@@ -308,9 +401,14 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   const virtualizerRef = useRef(virtualizer);
   virtualizerRef.current = virtualizer;
 
+  // `estimateSize` is not part of the measurement cache key, so a density
+  // switch is the only thing that has to invalidate it.
+  const heightsRef = useRef(heights);
   useLayoutEffect(() => {
+    if (heightsRef.current === heights) return;
+    heightsRef.current = heights;
     virtualizer.measure();
-  }, [rows.length, scrollMargin, rowHeight, virtualizer]);
+  }, [heights, virtualizer]);
 
   const updateDropFromPointer = useCallback(
     (activeDragId: UniqueIdentifier) => {
@@ -654,7 +752,6 @@ export const WorkspaceTree = memo(function WorkspaceTree({
             <div
               key={row.path}
               data-index={vItem.index}
-              ref={virtualizer.measureElement}
               className={
                 lineHost
                   ? "workspace-virtual-row is-drop-line-host"
