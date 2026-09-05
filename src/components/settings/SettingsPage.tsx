@@ -331,18 +331,19 @@ export function SettingsPage({ onClose }: Props) {
         )}
 
         <div className="settings-list" ref={setListEl}>
-          {rows.length === 0 &&
-            !showSyncPanel &&
-            !showKeysPanel &&
-            !showAiPanel &&
-            !showMcpPanel &&
-            !showMcpHostPanel &&
-            !showMemoryPanel &&
-            !showDiaryPanel &&
-            !showMediaLibraryPanel &&
-            !showIndexingPanel &&
-            !showAboutPanel &&
-            !showAccentRow && (
+          {searching &&
+            rows.length === 0 &&
+            !showSyncInSearch &&
+            !showKeysInSearch &&
+            !showAiInSearch &&
+            !showMcpInSearch &&
+            !showMcpHostInSearch &&
+            !showMemoryInSearch &&
+            !showDiaryInSearch &&
+            !showMediaLibraryInSearch &&
+            !showIndexingInSearch &&
+            !showAboutInSearch &&
+            !showAccentInSearch && (
               <div className="settings-empty">
                 No settings match “{query.trim()}”
               </div>
