@@ -5466,6 +5466,8 @@ button.status-bar-jobs-menu-item:hover {
   border-collapse: collapse;
   width: 100%;
   margin: 0.5em 0;
+  /* Slightly smaller than body text (same as former BlockNote tables). */
+  font-size: 0.875em;
 }
 
 .editor-canvas .bn-editor th,
@@ -5608,47 +5610,23 @@ button.status-bar-jobs-menu-item:hover {
   margin: 1.1em 0 0.5em;
 }
 
-.editor-canvas [data-content-type="table"] table {
-  font-size: 0.875em;
-}
-
 /* Wide tables (4+ columns): break out of the ~760px reading measure to
    the full editor column, center, cap columns at 15vw. Narrower tables
-   (≤3 columns) keep the default reading-column layout. */
-.editor-canvas
-  .bn-block-outer:has(
-    > .bn-block
-      > .bn-block-content[data-content-type="table"]
-      tr:first-child
-      > :nth-child(4)
-  ) {
+   (≤3 columns) keep the default reading-column layout.
+   TipTap wraps tables in `.tableWrapper` (BlockNote used data-content-type). */
+.editor-canvas .bn-editor .tableWrapper:has(tr:first-child > :nth-child(4)) {
   width: calc(100cqi - 2 * var(--editor-gutter));
   max-width: calc(100cqi - 2 * var(--editor-gutter));
   margin-left: calc(50% - 50cqi + var(--editor-gutter));
   box-sizing: border-box;
-}
-
-.editor-canvas
-  .bn-block-content[data-content-type="table"]:has(tr:first-child > :nth-child(4)) {
-  width: 100%;
-  max-width: none;
-  justify-content: center;
-}
-
-.editor-canvas
-  .bn-editor
-  [data-content-type="table"]:has(tr:first-child > :nth-child(4))
-  .tableWrapper {
-  width: 100%;
-  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
 .editor-canvas
   .bn-editor
-  [data-content-type="table"]:has(tr:first-child > :nth-child(4))
-  table {
+  .tableWrapper:has(tr:first-child > :nth-child(4))
+  > table {
   /* Grow to column content (capped by 15vw); overflow scrolls on the wrapper
      instead of squeezing the table into the available width. */
   width: max-content !important;
@@ -5661,7 +5639,7 @@ button.status-bar-jobs-menu-item:hover {
 
 .editor-canvas
   .bn-editor
-  [data-content-type="table"]:has(tr:first-child > :nth-child(4))
+  .tableWrapper:has(tr:first-child > :nth-child(4))
   :is(th, td) {
   max-width: 15vw;
   overflow-wrap: break-word;
