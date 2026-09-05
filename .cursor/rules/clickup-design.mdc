@@ -1,0 +1,107 @@
+---
+description: Pixel-perfect ClickUp 3.0 UI Design System & Component Guidelines — use for new UI; propose redesign for legacy screens
+globs: **/*.{tsx,jsx,ts,js,css,scss}
+alwaysApply: true
+---
+
+# ClickUp 3.0 Strict Design Contract
+
+When refactoring or creating UI components, strictly replicate ClickUp's signature high-density, flat, utility-first SaaS interface. Never use generic large cards, floating rounded widgets, or heavy shadows.
+
+**Accent precedence:** On surfaces following this contract, use ClickUp brand purple `#7B68EE` (not Wildberries `--accent` / `#cb11ab`). See exception in `brand-accent.mdc`.
+
+**When to apply**
+- New UI features and screens: implement to this contract by default.
+- Existing UI not yet migrated: when a functional task touches that surface (or is a natural fit), **propose a redesign** to this contract before or alongside the feature work; wait for user approval before redesigning.
+
+---
+
+## 1. Design Tokens & Palette (Tailwind CSS)
+
+### Backgrounds & Surfaces
+- App Background (Canvas): `bg-[#F7F8FA]` (light) / `bg-[#18191B]` (dark)
+- Primary Surface (Tables, Panels, Modals): `bg-[#FFFFFF]` / `bg-[#242528]`
+- Secondary Surface (Sidebar, Filter bars): `bg-[#F9FAFB]` / `bg-[#1F2023]`
+- Row / Item Hover: `hover:bg-[#F0F1F3]` / `dark:hover:bg-[#2D2E32]`
+- Active / Selected Item: `bg-[#EBECEF]` / `dark:bg-[#34363A]`
+
+### Borders & Dividers
+- Base Border: `border border-[#E5E7EB]` / `dark:border-[#2F3136]`
+- Subtle Separator (Rows, Inset Lines): `border-[#F1F2F4]` / `dark:border-[#282A2D]`
+- Focus Outline: `outline-2 outline-[#7B68EE] outline-offset-1`
+
+### Accent Colors (ClickUp Brand)
+- Brand Purple: `#7B68EE` (`bg-[#7B68EE]` / `text-[#7B68EE]`)
+- Brand Purple Hover: `#6952EB`
+- Brand Magenta (Gradient/Pro badge): `#DA22FF`
+
+### Statuses & Priority Badges
+- Urgent (Red): `bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]` / dark: `bg-[#451A1A] text-[#F87171] border-[#7F1D1D]`
+- High (Yellow): `bg-[#FEF3C7] text-[#D97706] border-[#FDE68A]` / dark: `bg-[#45361A] text-[#FBBF24] border-[#785412]`
+- Normal (Blue): `bg-[#E0F2FE] text-[#0284C7] border-[#BAE6FD]` / dark: `bg-[#16364D] text-[#38BDF8] border-[#075985]`
+- Low (Gray): `bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]` / dark: `bg-[#2B2D31] text-[#9CA3AF] border-[#3F4248]`
+- Complete / Done (Green): `bg-[#DCFCE7] text-[#16A34A] border-[#BBF7D0]` / dark: `bg-[#143D23] text-[#4ADE80] border-[#166534]`
+
+---
+
+## 2. Typography & Density Hierarchy
+- Font Family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif.
+- Headings: Compact, semi-bold (`text-[15px] font-semibold tracking-tight`).
+- Body / Table Cell: `text-[13px] leading-tight font-normal text-[#292D34] dark:text-[#E2E4E9]`.
+- Secondary / Meta / Timestamps: `text-[11px] font-medium text-[#7C828D] dark:text-[#9A9FA8]`.
+- Section Headers / Column Labels: `text-[11px] uppercase tracking-wider font-semibold text-[#8C939F]`.
+
+---
+
+## 3. Geometry, Spacing & Sizing Rules
+- Base Radius:
+  - Pills / Status Badges: `rounded-[4px]`
+  - Inputs / Buttons: `rounded-[6px]`
+  - Modals / Popovers: `rounded-[8px]`
+  - No large rounded corners (`rounded-xl` and `rounded-2xl` are strictly forbidden).
+- Heights & Padding:
+  - Table Row Height: Exactly `32px` (dense) to `36px` (normal). Never exceed `40px`.
+  - Sidebar Item Height: `30px` with `px-2 py-1`.
+  - Icon Buttons (actions): `w-6 h-6` or `w-7 h-7` with centered `14px`–`16px` SVG icons.
+  - Cell horizontal padding: `px-2.5`.
+
+---
+
+## 4. Specific Component Anatomy & Interactions
+
+### Data Rows (List & Table Views)
+- Rows must span full width with a 1px border-bottom (`border-b border-[#F1F2F4] dark:border-[#282A2D]`).
+- Row Selection: Checkbox on the left is hidden by default and becomes visible on row hover or when checked:
+  - Container class pattern: `group relative flex items-center`.
+  - Checkbox class pattern: `opacity-0 group-hover:opacity-100 transition-opacity`.
+- Action Buttons (Rename, Delete, Copy link, More '...'):
+  - Always right-aligned.
+  - Hidden by default (`opacity-0`), visible on row hover (`group-hover:opacity-100`).
+- Left Border Color Cue: Task group or status group must feature a `3px` solid colored vertical line on the far-left edge corresponding to the group's status.
+
+### Chevrons & Collapsible Trees
+- Chevron Icon: 12x12px or 14x14px (`stroke-[2]`, `text-[#8C939F]`).
+- Chevron Placement: Directly before the group/task name with `mr-1.5`.
+- Chevron Interaction: Smooth 90-degree transition when expanded:
+  `transition-transform duration-150 ease-out transform group-data-[state=open]:rotate-90`.
+- Hover behavior: Hovering over the chevron highlights only the chevron wrapper (`hover:bg-[#E4E6EA] rounded-[3px] p-0.5`).
+
+### Status Dropdown Pill
+- Layout: Inline-flex items-center gap-1.5, `h-[22px] px-2 text-[11px] font-medium rounded-[4px] cursor-pointer`.
+- Circle Indicator (Optional classic ClickUp style): 6px solid dot on the left of status text.
+- Dropdown Menu: Popover shadow `shadow-[0_4px_16px_rgba(0,0,0,0.12)]`, `p-1 border border-[#E5E7EB] rounded-[6px] bg-white`.
+
+### Group Headers (Status/Category bar)
+- Header row height: `28px`.
+- Layout: Sticky top, flex items-center, background transparent or subtle surface.
+- Left side: Chevron + Colored Badge with task count:
+  - Badge: `text-[11px] font-semibold uppercase px-2 py-0.5 rounded-[4px]`.
+- Right side: Quick "Add Task" button (`+` icon button `opacity-0 group-hover:opacity-100`).
+
+---
+
+## 5. Rules for Refactoring Code
+1. Replace all bulky cards with border-delimited flat rows and columns.
+2. Remove any shadows exceeding `shadow-sm` on standard content surfaces. Shadows belong strictly to floating dropdowns and modals.
+3. Keep controls (assignee avatar, date picker, priority flag) inline-editable inside the table cells.
+4. Use SVG icons with standard `14px` or `16px` sizes and `stroke-width="1.5"` or `"2"`.
