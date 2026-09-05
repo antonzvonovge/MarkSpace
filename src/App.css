@@ -2046,8 +2046,95 @@ select {
 
 .tree-folder-row.is-drop-target,
 .tree-file.is-drop-target {
-  outline: 1px solid rgba(203, 17, 171, 0.55);
-  background: rgba(203, 17, 171, 0.1);
+  outline: 1px solid rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+/* Source stub: same row, faded — shows what is being dragged. */
+.tree-row.is-drag-stub {
+  opacity: 0.4;
+  box-shadow: none;
+  outline: none;
+  pointer-events: none;
+}
+
+/* Nest-into highlight — outline only, no layout shift. */
+.tree-row.is-drop-inside {
+  outline: 1px solid rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.tree-row.is-drag-stub.is-drop-inside,
+.tree-row.is-drag-stub.is-drop-before,
+.tree-row.is-drag-stub.is-drop-after {
+  outline: none;
+  /* Keep selected/hover look faded via opacity; don't wipe background. */
+}
+
+/*
+ * Insert line sits 4px outside the row box. content-visibility:auto would
+ * clip that overflow; the virtual item wrapper needs a raised z-index so a
+ * neighbor row does not paint over the protruding half.
+ */
+.tree-row.is-drop-before,
+.tree-row.is-drop-after {
+  content-visibility: visible;
+  z-index: 1;
+}
+
+.workspace-virtual-row.is-drop-line-host {
+  z-index: 2;
+}
+
+/* Insert line (reorder) — absolute, no gap between rows. */
+.tree-row.is-drop-before::before,
+.tree-row.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: calc(
+    var(--tree-pad-x) + var(--tree-drop-depth, 0) * var(--tree-indent) +
+      var(--tree-chevron-size)
+  );
+  right: var(--tree-pad-x);
+  height: 8px;
+  pointer-events: none;
+  z-index: 5;
+  background:
+    radial-gradient(
+      circle closest-side,
+      var(--editor-surface, #fff) 0,
+      var(--editor-surface, #fff) 2.25px,
+      var(--accent) 2.25px,
+      var(--accent) 3.5px,
+      transparent 3.55px
+    )
+    0 50% / 8px 8px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) 7px 50% /
+      calc(100% - 7px) 2px no-repeat;
+}
+
+.tree-row.is-drop-before::before {
+  top: -4px;
+}
+
+.tree-row.is-drop-after::after {
+  bottom: -4px;
+}
+
+:root[data-theme="dark"] .tree-row.is-drop-before::before,
+:root[data-theme="dark"] .tree-row.is-drop-after::after {
+  background:
+    radial-gradient(
+      circle closest-side,
+      var(--editor-surface, #1e1e1e) 0,
+      var(--editor-surface, #1e1e1e) 2.25px,
+      var(--accent) 2.25px,
+      var(--accent) 3.5px,
+      transparent 3.55px
+    )
+    0 50% / 8px 8px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) 7px 50% /
+      calc(100% - 7px) 2px no-repeat;
 }
 
 /* Library may leave `.dnd-drop-target` on a row after dragend; only paint while dragging. */
@@ -2293,6 +2380,40 @@ select {
   pointer-events: none;
   white-space: nowrap;
   z-index: 1000;
+}
+
+/* Workspace tree drag ghost — compact chip offset from the pointer. */
+.vault-tree-drag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  width: max-content;
+  padding: 4px 10px 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--editor-surface);
+  color: var(--sidebar-text);
+  box-shadow:
+    0 1px 2px rgba(20, 30, 34, 0.08),
+    0 6px 16px rgba(20, 30, 34, 0.14);
+  font-size: 12px;
+  line-height: 1.2;
+  pointer-events: none;
+  white-space: nowrap;
+  cursor: grabbing;
+}
+
+:root[data-theme="dark"] .vault-tree-drag-chip {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.vault-tree-drag-chip .dnd-preview-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dnd-preview-label {

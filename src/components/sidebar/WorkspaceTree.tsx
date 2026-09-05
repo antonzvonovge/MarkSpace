@@ -12,19 +12,19 @@ import {
 import {
   DndContext,
   DragOverlay,
+  MeasuringStrategy,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type Modifier,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { getEventCoordinates } from "@dnd-kit/utilities";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TreeNode } from "../../lib/vaultApi";
 import { isVaultDocumentPath } from "../../lib/vaultApi";
@@ -36,16 +36,54 @@ import {
   type FlattenedVaultRow,
   VAULT_PATH,
 } from "./vaultTreeFlatten";
-import { resolveVaultDrop } from "./vaultTreeDnD";
 import {
+  dropIndicatorsEqual,
+  placementFromPointerRatio,
+  resolveVaultDrop,
+  type VaultDropIndicator,
+} from "./vaultTreeDnD";
+import {
+  VaultTreeDragChip,
   VaultTreeRow,
   projectMetaForPath,
   type PromptKind,
   type ProjectPropsMap,
+  type VaultDropLine,
 } from "./VaultTreeRow";
 
 const ROW_HEIGHT = 28;
 const OVERSCAN = 16;
+
+/** Chip sits just right and below the pointer (ignore grab point on the wide row). */
+const CHIP_CURSOR_GAP_X = 12;
+const CHIP_CURSOR_GAP_Y = 16;
+
+const placeChipByCursor: Modifier = ({
+  activatorEvent,
+  draggingNodeRect,
+  transform,
+}) => {
+  if (!draggingNodeRect || !activatorEvent) return transform;
+  const cursor = getEventCoordinates(activatorEvent);
+  if (!cursor) return transform;
+  return {
+    ...transform,
+    x:
+      transform.x +
+      (cursor.x - draggingNodeRect.left) +
+      CHIP_CURSOR_GAP_X,
+    y:
+      transform.y +
+      (cursor.y - draggingNodeRect.top) +
+      CHIP_CURSOR_GAP_Y,
+  };
+};
+
+const measuring = {
+  droppable: {
+    strategy: MeasuringStrategy.Always,
+  },
+};
 
 export type WorkspaceTreeProps = {
   tree: TreeNode;
@@ -121,16 +159,81 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     () => flattenVisibleWorkspace(tree, expandedPaths),
     [tree, expandedPaths],
   );
+  const rowsByPath = useMemo(() => {
+    const map = new Map<string, FlattenedVaultRow>();
+    for (const row of rows) map.set(row.path, row);
+    return map;
+  }, [rows]);
   const expandedSet = useMemo(() => new Set(expandedPaths), [expandedPaths]);
-  const rowIds = useMemo(() => rows.map((r) => r.path), [rows]);
 
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
-  const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<VaultDropIndicator | null>(
+    null,
+  );
+  const dropIndicatorRef = useRef<VaultDropIndicator | null>(null);
+  const pointerYRef = useRef(0);
+  const stopPointerTrackingRef = useRef<(() => void) | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
     }),
+  );
+
+  const stopPointerTracking = useCallback(() => {
+    stopPointerTrackingRef.current?.();
+    stopPointerTrackingRef.current = null;
+  }, []);
+
+  const startPointerTracking = useCallback((clientY: number) => {
+    stopPointerTrackingRef.current?.();
+    pointerYRef.current = clientY;
+    const onMove = (ev: PointerEvent) => {
+      pointerYRef.current = ev.clientY;
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    stopPointerTrackingRef.current = () => {
+      window.removeEventListener("pointermove", onMove);
+    };
+  }, []);
+
+  const commitDropIndicator = useCallback((next: VaultDropIndicator | null) => {
+    if (dropIndicatorsEqual(dropIndicatorRef.current, next)) return;
+    dropIndicatorRef.current = next;
+    setDropIndicator(next);
+  }, []);
+
+  const updateDropFromOver = useCallback(
+    (
+      over:
+        | {
+            id: UniqueIdentifier;
+            rect: { top: number; height: number };
+          }
+        | null
+        | undefined,
+      activeDragId: UniqueIdentifier,
+    ) => {
+      if (over == null) {
+        commitDropIndicator(null);
+        return;
+      }
+      const overPath = String(over.id);
+      if (overPath === String(activeDragId)) {
+        commitDropIndicator(null);
+        return;
+      }
+      const overRow = rowsByPath.get(overPath);
+      if (!overRow) {
+        commitDropIndicator(null);
+        return;
+      }
+      const h = over.rect.height || ROW_HEIGHT;
+      const ratio = (pointerYRef.current - over.rect.top) / h;
+      const placement = placementFromPointerRatio(overRow, ratio);
+      commitDropIndicator({ path: overPath, placement });
+    },
+    [commitDropIndicator, rowsByPath],
   );
 
   useLayoutEffect(() => {
@@ -162,23 +265,53 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     virtualizer.measure();
   }, [rows.length, scrollMargin, virtualizer]);
 
-  const onDragStart = useCallback((event: DragStartEvent) => {
-    setActiveId(event.active.id);
-    setOverId(event.active.id);
-  }, []);
+  const onDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const y =
+        "clientY" in event.activatorEvent
+          ? (event.activatorEvent as PointerEvent).clientY
+          : 0;
+      startPointerTracking(y);
+      setActiveId(event.active.id);
+      dropIndicatorRef.current = null;
+      setDropIndicator(null);
+    },
+    [startPointerTracking],
+  );
 
-  const onDragOver = useCallback((event: DragOverEvent) => {
-    setOverId(event.over?.id ?? null);
-  }, []);
+  const onDragOver = useCallback(
+    (event: DragOverEvent) => {
+      updateDropFromOver(event.over, event.active.id);
+    },
+    [updateDropFromOver],
+  );
+
+  const onDragMove = useCallback(
+    (event: DragMoveEvent) => {
+      updateDropFromOver(event.over, event.active.id);
+    },
+    [updateDropFromOver],
+  );
+
+  const clearDragState = useCallback(() => {
+    stopPointerTracking();
+    setActiveId(null);
+    dropIndicatorRef.current = null;
+    setDropIndicator(null);
+  }, [stopPointerTracking]);
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
       const from = String(event.active.id);
-      const over = event.over ? String(event.over.id) : null;
-      setActiveId(null);
-      setOverId(null);
-      if (!over || from === over) return;
-      const drop = resolveVaultDrop(rows, from, over);
+      const indicator = dropIndicatorRef.current;
+      clearDragState();
+      if (!indicator || from === indicator.path) return;
+      const drop = resolveVaultDrop(
+        rows,
+        from,
+        indicator.path,
+        indicator.placement,
+      );
       if (!drop) return;
       void (async () => {
         const next =
@@ -192,21 +325,46 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         onMoved?.(from, next);
       })();
     },
-    [rows, moveTreeEntry, nestTreeEntryUnderNote, onMoved],
+    [
+      rows,
+      moveTreeEntry,
+      nestTreeEntryUnderNote,
+      onMoved,
+      clearDragState,
+    ],
   );
 
   const onDragCancel = useCallback(() => {
-    setActiveId(null);
-    setOverId(null);
-  }, []);
+    clearDragState();
+  }, [clearDragState]);
 
   const activeRow = activeId
-    ? rows.find((r) => r.path === String(activeId))
+    ? rowsByPath.get(String(activeId)) ?? null
+    : null;
+  const activeIdStr = activeId != null ? String(activeId) : null;
+  const activeChipMeta = activeRow
+    ? (() => {
+        const meta = projectMetaForPath(
+          activeRow.path,
+          projectPropertiesByPath,
+        );
+        if (isVaultProjectFolder(activeRow.path, activeRow.isDir)) {
+          const props = projectPropertiesByPath[activeRow.path];
+          return {
+            projectType: props?.projectType,
+            learningLanguage: props?.learningLanguage,
+          };
+        }
+        return {
+          projectType: meta.projectType,
+          learningLanguage: meta.learningLanguage,
+        };
+      })()
     : null;
 
   const renderRow = (
     row: FlattenedVaultRow,
-    opts?: { overlay?: boolean; style?: CSSProperties },
+    opts?: { style?: CSSProperties },
   ) => {
     const path = row.path;
     const isDir = row.isDir;
@@ -229,6 +387,13 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         ? projectPropertiesByPath[projectRoot]!.color
         : meta.projectColor;
 
+    const dropLine: VaultDropLine =
+      dropIndicator != null &&
+      dropIndicator.path === path &&
+      activeIdStr !== path
+        ? dropIndicator.placement
+        : null;
+
     return (
       <VaultTreeRow
         key={path}
@@ -238,14 +403,10 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         hasChildren={row.hasChildren}
         depth={row.depth}
         isOpen={isOpen}
-        isDropTarget={
-          !opts?.overlay &&
-          overId != null &&
-          String(overId) === path &&
-          activeId != null &&
-          String(activeId) !== path
-        }
-        isDragging={Boolean(opts?.overlay)}
+        dropLine={dropLine}
+        isDragStub={activeIdStr != null && activeIdStr === path}
+        isDropTarget={false}
+        isDragging={false}
         isVault={isVault}
         selected={selected}
         active={active}
@@ -263,7 +424,6 @@ export const WorkspaceTree = memo(function WorkspaceTree({
             ? projectPropertiesByPath[path]?.learningLanguage
             : meta.learningLanguage
         }
-        staticRow={Boolean(opts?.overlay)}
         style={opts?.style}
         onToggle={() => {
           if (isVault) return;
@@ -321,50 +481,68 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      measuring={measuring}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
+      onDragMove={onDragMove}
       onDragEnd={onDragEnd}
       onDragCancel={onDragCancel}
     >
-      <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
-        <div
-          ref={listRef}
-          className="workspace-virtual-tree"
-          style={{
-            height: totalSize,
-            width: "100%",
-            position: "relative",
-          }}
-        >
-          {virtualItems.map((vItem) => {
-            const row = rows[vItem.index];
-            if (!row) return null;
-            return (
-              <div
-                key={row.path}
-                data-index={vItem.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${vItem.start - scrollMargin}px)`,
-                }}
-              >
-                {renderRow(row)}
-              </div>
-            );
-          })}
-        </div>
-      </SortableContext>
-      <DragOverlay dropAnimation={null}>
-        {activeRow
-          ? renderRow(activeRow, {
-              overlay: true,
-              style: { opacity: 0.92, cursor: "grabbing" },
-            })
-          : null}
+      <div
+        ref={listRef}
+        className={
+          activeId != null
+            ? "workspace-virtual-tree is-tree-dragging"
+            : "workspace-virtual-tree"
+        }
+        style={{
+          height: totalSize,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualItems.map((vItem) => {
+          const row = rows[vItem.index];
+          if (!row) return null;
+          const lineHost =
+            dropIndicator != null &&
+            dropIndicator.path === row.path &&
+            (dropIndicator.placement === "before" ||
+              dropIndicator.placement === "after") &&
+            activeIdStr !== row.path;
+          return (
+            <div
+              key={row.path}
+              data-index={vItem.index}
+              ref={virtualizer.measureElement}
+              className={
+                lineHost
+                  ? "workspace-virtual-row is-drop-line-host"
+                  : "workspace-virtual-row"
+              }
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${vItem.start - scrollMargin}px)`,
+              }}
+            >
+              {renderRow(row)}
+            </div>
+          );
+        })}
+      </div>
+      <DragOverlay dropAnimation={null} modifiers={[placeChipByCursor]}>
+        {activeRow && activeChipMeta ? (
+          <VaultTreeDragChip
+            path={activeRow.path}
+            name={activeRow.name}
+            isDir={activeRow.isDir}
+            projectType={activeChipMeta.projectType}
+            learningLanguage={activeChipMeta.learningLanguage}
+          />
+        ) : null}
       </DragOverlay>
     </DndContext>
   );

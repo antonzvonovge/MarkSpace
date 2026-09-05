@@ -6,7 +6,7 @@ import {
   flattenVisibleWorkspace,
   VAULT_PATH,
 } from "./vaultTreeFlatten";
-import { resolveVaultDrop } from "./vaultTreeDnD";
+import { resolveVaultDrop, placementFromPointerRatio } from "./vaultTreeDnD";
 
 function node(
   path: string,
@@ -81,9 +81,9 @@ describe("canDropVaultPath / Skills", () => {
 });
 
 describe("resolveVaultDrop", () => {
-  it("nests onto markdown note", () => {
+  it("nests onto markdown note when placement is inside", () => {
     const rows = flattenVisibleWorkspace(sample, ["Proj"]);
-    const drop = resolveVaultDrop(rows, "root.md", "Proj/note.md");
+    const drop = resolveVaultDrop(rows, "root.md", "Proj/note.md", "inside");
     expect(drop).toEqual({
       kind: "nest-note",
       from: "root.md",
@@ -92,10 +92,43 @@ describe("resolveVaultDrop", () => {
     });
   });
 
-  it("moves into folder", () => {
+  it("moves into folder when placement is inside", () => {
     const rows = flattenVisibleWorkspace(sample, []);
-    const drop = resolveVaultDrop(rows, "root.md", "Proj");
+    const drop = resolveVaultDrop(rows, "root.md", "Proj", "inside");
     expect(drop?.kind).toBe("move");
     expect(drop?.targetPath).toBe("Proj");
+  });
+
+  it("reorders as sibling before target", () => {
+    const rows = flattenVisibleWorkspace(sample, []);
+    const drop = resolveVaultDrop(rows, "root.md", "Proj", "before");
+    expect(drop).toEqual({
+      kind: "move",
+      from: "root.md",
+      targetPath: VAULT_PATH,
+      toIndex: rows.find((r) => r.path === "Proj")!.indexAmongSiblings,
+    });
+  });
+
+  it("reorders as sibling after target", () => {
+    const rows = flattenVisibleWorkspace(sample, []);
+    const drop = resolveVaultDrop(rows, "Skills", "Proj", "after");
+    expect(drop).toEqual({
+      kind: "move",
+      from: "Skills",
+      targetPath: VAULT_PATH,
+      // Skills(0) after Proj(1) → toIndex 2, then same-parent adjust → 1
+      toIndex: 1,
+    });
+  });
+});
+
+describe("placementFromPointerRatio", () => {
+  it("uses edge bands for folders and center for inside", () => {
+    const rows = flattenVisibleWorkspace(sample, []);
+    const proj = rows.find((r) => r.path === "Proj")!;
+    expect(placementFromPointerRatio(proj, 0.1)).toBe("before");
+    expect(placementFromPointerRatio(proj, 0.5)).toBe("inside");
+    expect(placementFromPointerRatio(proj, 0.9)).toBe("after");
   });
 });

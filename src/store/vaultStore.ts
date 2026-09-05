@@ -6,6 +6,10 @@ import { flushLiveEditor } from "../editor/liveEditorFlush";
 import { localIsoDate } from "../lib/mdhabitFormat";
 import type { TreeNode } from "../lib/vaultApi";
 import {
+  optimisticMoveInTree,
+  optimisticNestUnderNoteInTree,
+} from "../lib/optimisticVaultTree";
+import {
   addFavorite,
   createDrawio,
   createFolder,
@@ -2818,44 +2822,131 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot move the Skills folder into another folder" });
       return null;
     }
-    const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
-      get();
+    const prev = get();
+    const {
+      activePath,
+      dirty,
+      saveActive,
+      vaultPath,
+      expandedPaths,
+      selectedFolderPath,
+      selectedFolderExplicit,
+      treeSelectedFilePath,
+      tabs,
+      tree,
+    } = prev;
+
+    const snapshot = {
+      tree,
+      expandedPaths,
+      tabs,
+      activePath,
+      selectedFolderPath,
+      selectedFolderExplicit,
+      treeSelectedFilePath,
+    };
+
     try {
       if (dirty && activePath) {
         await saveActive();
       }
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+
+    // Paint the destination immediately; roll back if the vault write fails.
+    if (tree) {
+      const optimistic = optimisticMoveInTree(tree, from, toParent, toIndex);
+      if (optimistic) {
+        const { tree: nextTree, nextPath } = optimistic;
+        const patch: Partial<VaultStore> = {
+          tree: nextTree,
+          suppressWatchUntil: Date.now() + 1200,
+        };
+        if (from !== nextPath) {
+          const nextExpanded = remapExpanded(expandedPaths, from, nextPath);
+          patch.expandedPaths = nextExpanded;
+          patch.tabs = remapTabs(tabs, from, nextPath);
+          if (activePath === from || activePath?.startsWith(`${from}/`)) {
+            patch.activePath =
+              activePath === from
+                ? nextPath
+                : `${nextPath}${activePath!.slice(from.length)}`;
+          }
+          if (
+            selectedFolderPath === from ||
+            selectedFolderPath.startsWith(`${from}/`)
+          ) {
+            patch.selectedFolderPath =
+              selectedFolderPath === from
+                ? nextPath
+                : `${nextPath}${selectedFolderPath.slice(from.length)}`;
+          }
+          if (
+            treeSelectedFilePath === from ||
+            treeSelectedFilePath?.startsWith(`${from}/`)
+          ) {
+            patch.treeSelectedFilePath =
+              treeSelectedFilePath === from
+                ? nextPath
+                : treeSelectedFilePath
+                  ? `${nextPath}${treeSelectedFilePath.slice(from.length)}`
+                  : null;
+          }
+          if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+        }
+        set(patch);
+      } else {
+        set({ suppressWatchUntil: Date.now() + 1200 });
+      }
+    } else {
       set({ suppressWatchUntil: Date.now() + 1200 });
+    }
+
+    try {
       const nextPath = await moveEntry(from, toParent, toIndex);
 
-      let nextExpanded = expandedPaths;
+      // Reconcile remaps in case optimistic prediction differed (should match).
+      const cur = get();
+      let nextExpanded = cur.expandedPaths;
       if (from !== nextPath) {
-        nextExpanded = remapExpanded(expandedPaths, from, nextPath);
+        nextExpanded = remapExpanded(snapshot.expandedPaths, from, nextPath);
         set({ expandedPaths: nextExpanded });
         if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       }
 
       const patch: Partial<VaultStore> = {
-        tabs: remapTabs(tabs, from, nextPath),
+        tabs: remapTabs(snapshot.tabs, from, nextPath),
       };
-      if (activePath === from || activePath?.startsWith(`${from}/`)) {
-        if (activePath === from) {
+      if (
+        snapshot.activePath === from ||
+        snapshot.activePath?.startsWith(`${from}/`)
+      ) {
+        if (snapshot.activePath === from) {
           patch.activePath = nextPath;
-        } else if (activePath) {
-          patch.activePath = `${nextPath}${activePath.slice(from.length)}`;
+        } else if (snapshot.activePath) {
+          patch.activePath = `${nextPath}${snapshot.activePath.slice(from.length)}`;
         }
       }
-      if (selectedFolderPath === from || selectedFolderPath.startsWith(`${from}/`)) {
-        if (selectedFolderPath === from) {
+      if (
+        snapshot.selectedFolderPath === from ||
+        snapshot.selectedFolderPath.startsWith(`${from}/`)
+      ) {
+        if (snapshot.selectedFolderPath === from) {
           patch.selectedFolderPath = nextPath;
         } else {
-          patch.selectedFolderPath = `${nextPath}${selectedFolderPath.slice(from.length)}`;
+          patch.selectedFolderPath = `${nextPath}${snapshot.selectedFolderPath.slice(from.length)}`;
         }
       }
       set(patch);
 
-      // Reload content if the open note moved (asset refs may have been rewritten).
       const openAfter = get().activePath;
-      if (openAfter && (activePath === from || (activePath && openAfter !== activePath))) {
+      if (
+        openAfter &&
+        (snapshot.activePath === from ||
+          (snapshot.activePath && openAfter !== snapshot.activePath))
+      ) {
         try {
           const content = await readNote(openAfter);
           set({
@@ -2875,7 +2966,17 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       void get().refreshDictionaryTags();
       return nextPath;
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      set({
+        tree: snapshot.tree,
+        expandedPaths: snapshot.expandedPaths,
+        tabs: snapshot.tabs,
+        activePath: snapshot.activePath,
+        selectedFolderPath: snapshot.selectedFolderPath,
+        selectedFolderExplicit: snapshot.selectedFolderExplicit,
+        treeSelectedFilePath: snapshot.treeSelectedFilePath,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      if (vaultPath) void saveExpandedPaths(vaultPath, snapshot.expandedPaths);
       return null;
     }
   },
@@ -2885,19 +2986,110 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot move the reserved folder" });
       return null;
     }
-    const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
-      get();
+    const prev = get();
+    const {
+      activePath,
+      dirty,
+      saveActive,
+      vaultPath,
+      expandedPaths,
+      selectedFolderPath,
+      selectedFolderExplicit,
+      treeSelectedFilePath,
+      tabs,
+      tree,
+    } = prev;
+
+    const snapshot = {
+      tree,
+      expandedPaths,
+      tabs,
+      activePath,
+      selectedFolderPath,
+      selectedFolderExplicit,
+      treeSelectedFilePath,
+    };
+
     try {
       if (dirty && activePath) {
         await saveActive();
       }
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+
+    if (tree) {
+      const optimistic = optimisticNestUnderNoteInTree(
+        tree,
+        from,
+        notePath,
+        toIndex,
+      );
+      if (optimistic) {
+        let nextExpanded = remapExpanded(
+          expandedPaths,
+          from,
+          optimistic.moved,
+        );
+        if (!nextExpanded.includes(optimistic.folder)) {
+          nextExpanded = [...nextExpanded, optimistic.folder];
+        }
+        let nextTabs = remapTabs(tabs, notePath, optimistic.folderNote);
+        nextTabs = remapTabs(nextTabs, from, optimistic.moved);
+
+        const remapActive = (path: string | null): string | null => {
+          if (!path) return null;
+          if (path === notePath) return optimistic.folderNote;
+          if (path === from) return optimistic.moved;
+          if (path.startsWith(`${from}/`)) {
+            return `${optimistic.moved}${path.slice(from.length)}`;
+          }
+          return path;
+        };
+
+        const patch: Partial<VaultStore> = {
+          tree: optimistic.tree,
+          expandedPaths: nextExpanded,
+          tabs: nextTabs,
+          suppressWatchUntil: Date.now() + 1500,
+          activePath: remapActive(activePath),
+        };
+
+        if (
+          selectedFolderPath === from ||
+          selectedFolderPath.startsWith(`${from}/`)
+        ) {
+          patch.selectedFolderPath =
+            selectedFolderPath === from
+              ? optimistic.moved
+              : `${optimistic.moved}${selectedFolderPath.slice(from.length)}`;
+        } else if (selectedFolderPath === notePath) {
+          patch.selectedFolderPath = optimistic.folder;
+          patch.selectedFolderExplicit = true;
+          patch.treeSelectedFilePath = null;
+        }
+
+        set(patch);
+        if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+      } else {
+        set({ suppressWatchUntil: Date.now() + 1500 });
+      }
+    } else {
       set({ suppressWatchUntil: Date.now() + 1500 });
+    }
+
+    try {
       const result = await nestUnderNote(from, notePath, toIndex);
 
-      let nextTabs = remapTabs(tabs, notePath, result.folderNote);
+      let nextTabs = remapTabs(snapshot.tabs, notePath, result.folderNote);
       nextTabs = remapTabs(nextTabs, from, result.moved);
 
-      let nextExpanded = remapExpanded(expandedPaths, from, result.moved);
+      let nextExpanded = remapExpanded(
+        snapshot.expandedPaths,
+        from,
+        result.moved,
+      );
       if (!nextExpanded.includes(result.folder)) {
         nextExpanded = [...nextExpanded, result.folder];
       }
@@ -2915,18 +3107,21 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         }
         return path;
       };
-      const nextActive = remapActive(activePath);
-      if (nextActive !== activePath) {
+      const nextActive = remapActive(snapshot.activePath);
+      if (nextActive !== snapshot.activePath) {
         patch.activePath = nextActive;
       }
 
-      if (selectedFolderPath === from || selectedFolderPath.startsWith(`${from}/`)) {
-        if (selectedFolderPath === from) {
+      if (
+        snapshot.selectedFolderPath === from ||
+        snapshot.selectedFolderPath.startsWith(`${from}/`)
+      ) {
+        if (snapshot.selectedFolderPath === from) {
           patch.selectedFolderPath = result.moved;
         } else {
-          patch.selectedFolderPath = `${result.moved}${selectedFolderPath.slice(from.length)}`;
+          patch.selectedFolderPath = `${result.moved}${snapshot.selectedFolderPath.slice(from.length)}`;
         }
-      } else if (selectedFolderPath === notePath) {
+      } else if (snapshot.selectedFolderPath === notePath) {
         patch.selectedFolderPath = result.folder;
         patch.selectedFolderExplicit = true;
         patch.treeSelectedFilePath = null;
@@ -2937,9 +3132,9 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       const openAfter = get().activePath;
       if (
         openAfter &&
-        (activePath === from ||
-          activePath === notePath ||
-          (activePath && openAfter !== activePath))
+        (snapshot.activePath === from ||
+          snapshot.activePath === notePath ||
+          (snapshot.activePath && openAfter !== snapshot.activePath))
       ) {
         try {
           const content = await readNote(openAfter);
@@ -2961,7 +3156,17 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       void get().refreshDictionaryTags();
       return result.moved;
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      set({
+        tree: snapshot.tree,
+        expandedPaths: snapshot.expandedPaths,
+        tabs: snapshot.tabs,
+        activePath: snapshot.activePath,
+        selectedFolderPath: snapshot.selectedFolderPath,
+        selectedFolderExplicit: snapshot.selectedFolderExplicit,
+        treeSelectedFilePath: snapshot.treeSelectedFilePath,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      if (vaultPath) void saveExpandedPaths(vaultPath, snapshot.expandedPaths);
       return null;
     }
   },

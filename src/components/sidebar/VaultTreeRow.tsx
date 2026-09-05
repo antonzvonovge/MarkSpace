@@ -7,8 +7,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
   FcCalendar,
   FcClapperboard,
@@ -223,6 +222,8 @@ function InlineRenameInput({
   );
 }
 
+export type VaultDropLine = "before" | "after" | "inside" | null;
+
 export type VaultTreeRowProps = {
   path: string;
   name: string;
@@ -230,6 +231,11 @@ export type VaultTreeRowProps = {
   hasChildren: boolean;
   depth: number;
   isOpen: boolean;
+  /** Insert line / nest highlight while dragging (not OS file drop). */
+  dropLine?: VaultDropLine;
+  /** Full-height source stub while this row is the active drag. */
+  isDragStub?: boolean;
+  /** OS file drag highlight onto this row. */
   isDropTarget: boolean;
   isDragging: boolean;
   isVault: boolean;
@@ -277,6 +283,8 @@ function VaultTreeRowView({
   hasChildren,
   depth,
   isOpen,
+  dropLine = null,
+  isDragStub = false,
   isDropTarget,
   isDragging,
   isVault,
@@ -317,14 +325,14 @@ function VaultTreeRowView({
   const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
 
   useEffect(() => {
-    if (!isDragging) return;
+    if (!isDragging && !isDragStub) return;
     beginVaultTreeDrag(path);
     if (isDrawio) beginDrawioTreeDrag(path);
     return () => {
       endVaultTreeDrag();
       if (isDrawio) endDrawioTreeDrag();
     };
-  }, [isDragging, path, isDrawio]);
+  }, [isDragging, isDragStub, path, isDrawio]);
 
   return (
     <div
@@ -340,6 +348,10 @@ function VaultTreeRowView({
         selected || active ? "is-selected" : "",
         isDropTarget ? "is-drop-target" : "",
         osDropHighlight ? "is-drop-target" : "",
+        dropLine === "before" ? "is-drop-before" : "",
+        dropLine === "after" ? "is-drop-after" : "",
+        dropLine === "inside" ? "is-drop-inside" : "",
+        isDragStub ? "is-drag-stub" : "",
         isDragging ? "is-dragging" : "",
         renaming ? "is-renaming" : "",
       ]
@@ -348,6 +360,7 @@ function VaultTreeRowView({
       style={{
         paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
         paddingRight: "var(--tree-pad-x)",
+        ["--tree-drop-depth" as string]: String(depth),
         ...(projectColor
           ? ({ ["--project-color"]: projectColor } as CSSProperties)
           : null),
@@ -465,7 +478,7 @@ export const VaultTreeRow = memo(
       return <VaultTreeRowView {...props} />;
     }
 
-    return <SortableVaultTreeRow {...props} />;
+    return <DraggableVaultTreeRow {...props} />;
   },
   (a, b) =>
     a.path === b.path &&
@@ -474,6 +487,8 @@ export const VaultTreeRow = memo(
     a.hasChildren === b.hasChildren &&
     a.depth === b.depth &&
     a.isOpen === b.isOpen &&
+    a.dropLine === b.dropLine &&
+    a.isDragStub === b.isDragStub &&
     a.isDropTarget === b.isDropTarget &&
     a.isDragging === b.isDragging &&
     a.isVault === b.isVault &&
@@ -489,39 +504,127 @@ export const VaultTreeRow = memo(
     a.staticRow === b.staticRow,
 );
 
-const SortableVaultTreeRow = memo(function SortableVaultTreeRow(
+function mergeRefs(
+  a: (node: HTMLElement | null) => void,
+  b: (node: HTMLElement | null) => void,
+): (node: HTMLElement | null) => void {
+  return (node) => {
+    a(node);
+    b(node);
+  };
+}
+
+const DraggableVaultTreeRow = memo(function DraggableVaultTreeRow(
   props: VaultTreeRowProps,
 ) {
   const { path, isVault, renaming } = props;
+  const disabled = isVault || renaming;
   const {
     attributes,
     listeners,
-    setNodeRef,
-    transform,
-    transition,
+    setNodeRef: setDragRef,
     isDragging,
-  } = useSortable({
+  } = useDraggable({
     id: path,
-    disabled: isVault || renaming,
+    disabled,
   });
-
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    ...props.style,
-  };
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: path,
+    disabled: renaming,
+  });
 
   return (
     <VaultTreeRowView
       {...props}
       isDragging={isDragging || props.isDragging}
-      setNodeRef={setNodeRef}
-      attributes={attributes as unknown as Record<string, unknown>}
-      listeners={listeners as unknown as Record<string, unknown>}
-      style={style}
+      setNodeRef={mergeRefs(setDragRef, setDropRef)}
+      attributes={
+        disabled
+          ? undefined
+          : (attributes as unknown as Record<string, unknown>)
+      }
+      listeners={
+        disabled
+          ? undefined
+          : (listeners as unknown as Record<string, unknown>)
+      }
     />
   );
 });
+
+function vaultRowGlyph({
+  path,
+  isDir,
+  isOpen,
+  projectType,
+  learningLanguage,
+  size = 16,
+}: {
+  path: string;
+  isDir: boolean;
+  isOpen?: boolean;
+  projectType?: string | null;
+  learningLanguage?: string | null;
+  size?: number;
+}): ReactNode {
+  if (isDir) {
+    if (path === "") return <VaultSectionIcon />;
+    return (
+      <FolderTreeIcon
+        path={path}
+        isOpen={Boolean(isOpen)}
+        size={size}
+        projectType={projectType}
+        learningLanguage={learningLanguage}
+      />
+    );
+  }
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".drawio")) return <DiagramIcon size={size} />;
+  if (lower.endsWith(".mdlnks")) return <FcLink size={size} />;
+  if (lower.endsWith(".mddict")) return <FcReading size={size} />;
+  if (lower.endsWith(".mdhabit")) return <FcCalendar size={size} />;
+  if (lower.endsWith(".mdcourse")) return <CourseTrackerIcon size={size} />;
+  if (lower.endsWith(".pdf")) {
+    return (
+      <span className="tree-pdf-icon">
+        <PdfIcon />
+      </span>
+    );
+  }
+  return <FcDocument size={size} />;
+}
+
+/** Compact drag ghost — stays small so the drop line stays visible under the cursor. */
+export function VaultTreeDragChip({
+  path,
+  name,
+  isDir,
+  projectType,
+  learningLanguage,
+}: {
+  path: string;
+  name: string;
+  isDir: boolean;
+  projectType?: string | null;
+  learningLanguage?: string | null;
+}): ReactNode {
+  return (
+    <div className="vault-tree-drag-chip" aria-hidden>
+      <span className="dnd-preview-icon">
+        {vaultRowGlyph({
+          path,
+          isDir,
+          isOpen: true,
+          projectType,
+          learningLanguage,
+          size: 16,
+        })}
+      </span>
+      <span className="dnd-preview-label">{name}</span>
+    </div>
+  );
+}
 
 export type ProjectPropsMap = Record<string, ProjectProperties>;
 
