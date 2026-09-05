@@ -1,3 +1,4 @@
+import type { LanguageModel } from "ai";
 import { describe, expect, it } from "vitest";
 import {
   credentialsFromSettings,
@@ -22,6 +23,14 @@ const emptyKeys: AiProviderCredentials = {
   openaiBaseUrl: OPENAI_BASE_URL,
   googleApiKey: "",
 };
+
+/** `LanguageModel` may be a string id; SDK instances expose `.provider`. */
+function languageModelProvider(model: LanguageModel): string {
+  if (typeof model === "string") {
+    throw new Error(`expected LanguageModel instance, got id ${model}`);
+  }
+  return model.provider;
+}
 
 describe("vendor / id helpers", () => {
   it("detects vendor from catalog id", () => {
@@ -158,7 +167,7 @@ describe("resolveLanguageModel gateway API selection", () => {
       enableReasoning: true,
     });
     expect(resolved.transport).toBe("gateway");
-    expect(resolved.model.provider).toBe("openai.responses");
+    expect(languageModelProvider(resolved.model)).toBe("openai.responses");
     expect(resolved.providerOptions).toEqual({
       openai: {
         parallelToolCalls: true,
@@ -174,7 +183,7 @@ describe("resolveLanguageModel gateway API selection", () => {
       keys: gatewayKeys,
       enableReasoning: false,
     });
-    expect(resolved.model.provider).toBe("openai.chat");
+    expect(languageModelProvider(resolved.model)).toBe("openai.chat");
     expect(resolved.providerOptions).toBeUndefined();
   });
 
@@ -185,7 +194,7 @@ describe("resolveLanguageModel gateway API selection", () => {
       enableReasoning: true,
     });
     expect(resolved.transport).toBe("direct");
-    expect(resolved.model.provider).toBe("openai.responses");
+    expect(languageModelProvider(resolved.model)).toBe("openai.responses");
   });
 });
 
