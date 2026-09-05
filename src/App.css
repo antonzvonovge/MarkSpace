@@ -11617,10 +11617,17 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-model-kind.is-reasoning {
-  font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
   font-weight: 400;
-  font-synthesis: style;
   color: #9a6b3f;
+  line-height: 0;
+}
+
+.chat-model-kind.is-reasoning svg {
+  display: block;
 }
 
 .chat-model-kind.is-chat {

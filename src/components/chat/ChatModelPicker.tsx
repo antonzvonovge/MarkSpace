@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { MdAutoAwesome } from "react-icons/md";
 import { KIND_LABEL, TIER_LABEL, VENDOR_LABEL } from "../../ai/models";
 import type { AiModelOption, AiModelVendor } from "../../ai/types";
 import { placeChatComposerMenu } from "../../lib/chatMenuPlacement";
@@ -15,10 +16,17 @@ type Props = {
   onChange: (modelId: string) => void;
 };
 
+function modelDisplayName(model: AiModelOption | null, fallback: string) {
+  return model?.label || model?.id || fallback;
+}
+
 function ModelKindBadge({ kind }: { kind: AiModelOption["kind"] }) {
   if (kind !== "reasoning") return null;
+  const label = KIND_LABEL[kind];
   return (
-    <em className="chat-model-kind is-reasoning">{KIND_LABEL[kind]}</em>
+    <em className="chat-model-kind is-reasoning" title={label} aria-label={label}>
+      <MdAutoAwesome size={12} aria-hidden="true" />
+    </em>
   );
 }
 
@@ -182,7 +190,9 @@ export function ChatModelPicker({
                     >
                       <span className="chat-model-option-main">
                         <ModelTierDot model={m} />
-                        <span className="chat-model-option-name">{m.id}</span>
+                        <span className="chat-model-option-name" title={m.id}>
+                          {modelDisplayName(m, m.id)}
+                        </span>
                       </span>
                       <ModelKindBadge kind={m.kind} />
                     </button>
@@ -212,14 +222,18 @@ export function ChatModelPicker({
         aria-label="Model"
         title={
           selected
-            ? `${selected.id} · ${TIER_LABEL[selected.tier ?? "flagship"]}`
+            ? `${selected.id} · ${TIER_LABEL[selected.tier ?? "flagship"]}${
+                selected.kind === "reasoning"
+                  ? ` · ${KIND_LABEL.reasoning}`
+                  : ""
+              }`
             : value
         }
         onClick={() => setOpen((v) => !v)}
       >
         <ModelTierDot model={selected} />
         <span className="chat-model-trigger-label">
-          {selected?.id ?? value}
+          {modelDisplayName(selected, value)}
         </span>
         {isField ? (
           <span className="chat-model-trigger-caret" aria-hidden="true">
