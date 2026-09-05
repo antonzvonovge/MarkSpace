@@ -5894,6 +5894,265 @@ button.status-bar-jobs-menu-item:hover {
   z-index: 2;
 }
 
+/* TipTap Live formatting bubble (selection toolbar) */
+.ms-fmt-toolbar {
+  z-index: 1100;
+}
+
+.ms-fmt-toolbar-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  max-width: min(520px, calc(100vw - 24px));
+  background: var(--editor-surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+}
+
+.ms-fmt-block-picker {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ms-fmt-block-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  max-width: 140px;
+  margin: 0;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel, var(--editor-surface));
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ms-fmt-block-trigger:hover {
+  background: var(--menu-item-hover, var(--sidebar-hover));
+}
+
+.ms-fmt-block-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+
+.ms-fmt-block-trigger-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.ms-fmt-block-trigger-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-fmt-block-trigger-caret {
+  flex-shrink: 0;
+  color: var(--muted);
+  display: block;
+}
+
+.ms-fmt-block-trigger[aria-expanded="true"] .ms-fmt-block-trigger-caret {
+  transform: rotate(180deg);
+}
+
+.ms-fmt-block-menu {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  overflow: hidden;
+  background: var(--editor-surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  color: var(--fg);
+}
+
+.ms-fmt-block-menu:focus {
+  outline: none;
+}
+
+.ms-fmt-block-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ms-fmt-block-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.ms-fmt-block-option:hover,
+.ms-fmt-block-option.is-selected {
+  background: var(--menu-item-hover, var(--sidebar-hover));
+}
+
+.ms-fmt-block-option.is-active .ms-fmt-block-option-label {
+  font-weight: 600;
+}
+
+.ms-fmt-block-option-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.ms-fmt-block-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-fmt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.ms-fmt-btn:hover {
+  background: var(--menu-item-hover, var(--sidebar-hover));
+}
+
+.ms-fmt-btn.is-active {
+  background: var(--menu-item-active, var(--sidebar-hover));
+}
+
+.ms-fmt-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+
+/* Portaled slash / tag menus (body) — mirror editor-canvas suggestion chrome */
+.bn-suggestion-menu {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  overflow: auto;
+  background: var(--editor-surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  color: var(--fg);
+}
+
+.bn-suggestion-menu-label {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bn-suggestion-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  /* Indent past group labels so headers read as left-aligned section titles */
+  padding: 6px 8px 6px 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.bn-suggestion-menu:focus {
+  outline: none;
+}
+
+.bn-suggestion-menu-item:hover,
+.bn-suggestion-menu-item.is-selected {
+  background: var(--menu-item-hover, var(--sidebar-hover));
+}
+
+.bn-suggestion-menu-item-small {
+  padding: 4px 8px 4px 20px;
+  font-size: 0.8125rem;
+}
+
+.bn-tag-suggestion-menu .bn-suggestion-menu-item,
+.bn-tag-suggestion-menu .bn-suggestion-menu-item-small {
+  /* Tag list has no group headers — keep compact gutter */
+  padding-left: 8px;
+}
+
+.ms-suggest-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.ms-suggest-body {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ms-suggest-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-suggest-sub {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 /* Guard against stacked duplicate group headers in the slash menu */
 .editor-canvas .bn-suggestion-menu-label + .bn-suggestion-menu-label {
   display: none;

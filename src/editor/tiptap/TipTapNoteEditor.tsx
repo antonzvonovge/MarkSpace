@@ -112,7 +112,9 @@ import {
   warnClipboardImageMissing,
 } from "../pasteImages";
 import { createHashtagDecorationExtension } from "../tag/tagDecorations";
+import { LiveFormattingToolbar } from "./FormattingToolbar";
 import { createTiptapLayoutAgnosticKeymap } from "./layoutAgnosticKeymap";
+import { LiveEditorMenus } from "./LiveEditorMenus";
 import { focusTiptapEditorFromEmptyClick } from "./focusTiptapEditor";
 import { markdownToEditorHtml, editorHtmlToMarkdown } from "./markdownBridge";
 import { createNoteTiptapExtensions } from "./noteExtensions";
@@ -1182,6 +1184,29 @@ export const TipTapNoteEditor = memo(function TipTapNoteEditor({
               <NotePageChrome path={path} content={content} onChange={onChange} />
               <div className="bn-container">
                 <EditorContent editor={editor} />
+                {editor && isActive ? (
+                  <>
+                    <LiveFormattingToolbar
+                      editor={editor}
+                      notePath={path}
+                      onComment={startCommentFromSelection}
+                      onCapture={startCaptureFromSelection}
+                      onInsertNoteLink={() => openWikiLinkPicker()}
+                    />
+                    <LiveEditorMenus
+                      editor={editor}
+                      notePath={path}
+                      active={isActive}
+                      openWikiLinkPicker={(opts) =>
+                        openWikiLinkPicker({
+                          from: opts.from,
+                          to: opts.to,
+                          initialLabel: opts.initialLabel,
+                        })
+                      }
+                    />
+                  </>
+                ) : null}
               </div>
             </div>
           </div>

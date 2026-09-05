@@ -70,6 +70,17 @@ export function createTiptapLayoutAgnosticKeymap(opts: {
                 return true;
               }
 
+              // Same insert palette as `/` (Ctrl/Cmd+Space), without inserting `/`.
+              if (code === "Space" && !event.shiftKey) {
+                event.preventDefault();
+                editor.view.dom.dispatchEvent(
+                  new CustomEvent("markspace-open-slash-palette", {
+                    bubbles: true,
+                  }),
+                );
+                return true;
+              }
+
               if (code === "KeyV" && !event.shiftKey) {
                 if (latin) return false;
                 event.preventDefault();
