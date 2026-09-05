@@ -69,7 +69,7 @@
   );
   --tree-toolbar-btn: 28px;
   --tree-toolbar-icon: 16px;
-  --editor-tab-label-size: 14px;
+  --editor-tab-label-size: 13px;
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-ui);
