@@ -1,4 +1,4 @@
-import { useCallback, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { FcCalendar, FcDocument, FcLink, FcPlanner, FcReading } from "react-icons/fc";
 import {
   useVaultStore,
@@ -256,7 +256,27 @@ function TabItem({
 }
 
 export function EditorChrome() {
-  const tabs = useVaultStore((s) => s.tabs);
+  // Ignore body/dirty — tab chrome only needs shell fields.
+  const tabsSignature = useVaultStore((s) =>
+    s.tabs
+      .map(
+        (t) =>
+          `${t.path}\0${t.kind}\0${t.preview ? 1 : 0}\0${t.pinned ? 1 : 0}\0${t.viewMode ?? "live"}`,
+      )
+      .join("\n"),
+  );
+  const tabs = useMemo((): EditorTab[] => {
+    void tabsSignature;
+    return useVaultStore.getState().tabs.map((t) => ({
+      path: t.path,
+      kind: t.kind,
+      preview: t.preview,
+      pinned: t.pinned,
+      body: "",
+      dirty: false,
+      viewMode: t.viewMode,
+    }));
+  }, [tabsSignature]);
   const reorderTabs = useVaultStore((s) => s.reorderTabs);
   const closeTab = useVaultStore((s) => s.closeTab);
   const closeOtherTabs = useVaultStore((s) => s.closeOtherTabs);

@@ -124,7 +124,6 @@ function liveMarkdownWordCount(): number | null {
 function WordCountItem() {
   const activePath = useVaultStore((s) => s.activePath);
   const viewMode = useVaultStore((s) => s.viewMode);
-  const content = useVaultStore((s) => s.content);
   const [label, setLabel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -164,7 +163,9 @@ function WordCountItem() {
       document.removeEventListener("selectionchange", scheduleSync);
       document.removeEventListener("input", scheduleSync, true);
     };
-  }, [activePath, viewMode, content]);
+    // Intentionally omit `content`: typing already fires `input`; avoid status-bar
+    // re-subscribe on every Live serialize / setContent.
+  }, [activePath, viewMode]);
 
   if (!label) return null;
   return (

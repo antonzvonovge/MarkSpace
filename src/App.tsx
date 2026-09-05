@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -377,7 +377,24 @@ const MainPane = memo(function MainPane({
   onEditorChange: (path: string, nextContent: string) => void;
 }) {
   const vaultPath = useVaultStore((s) => s.vaultPath);
-  const tabs = useVaultStore((s) => s.tabs);
+  // Shell identity only — ignore body/dirty from Live serialize.
+  const tabsSignature = useVaultStore((s) =>
+    s.tabs
+      .map(
+        (t) =>
+          `${t.path}\0${t.kind}\0${t.preview ? 1 : 0}\0${t.pinned ? 1 : 0}`,
+      )
+      .join("\n"),
+  );
+  const tabs = useMemo(() => {
+    void tabsSignature;
+    return useVaultStore.getState().tabs.map((t) => ({
+      path: t.path,
+      kind: t.kind,
+      preview: t.preview,
+      pinned: t.pinned,
+    }));
+  }, [tabsSignature]);
   const activePath = useVaultStore((s) => s.activePath);
   const projectPropertiesByPath = useVaultStore(
     (s) => s.projectPropertiesByPath,

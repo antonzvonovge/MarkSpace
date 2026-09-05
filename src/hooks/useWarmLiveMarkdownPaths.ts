@@ -6,7 +6,7 @@ import { isFileTab, type EditorTab } from "../store/vaultStore";
 /** How many Live markdown editors stay mounted (including the active one). */
 export const WARM_LIVE_MARKDOWN_LIMIT = 4;
 
-function openMarkdownPaths(tabs: EditorTab[]): string[] {
+function openMarkdownPaths(tabs: Pick<EditorTab, "path" | "kind">[]): string[] {
   const out: string[] = [];
   for (const tab of tabs) {
     if (!isFileTab(tab)) continue;
@@ -29,7 +29,7 @@ function sameOrder(a: string[], b: string[]): boolean {
  * first; colder open notes drop out and remount from `tab.body` on return.
  */
 export function useWarmLiveMarkdownPaths(
-  tabs: EditorTab[],
+  tabs: Pick<EditorTab, "path" | "kind">[],
   activePath: string | null,
 ): Set<string> {
   // Ignore body/dirty churn — only open markdown paths matter for LRU.

@@ -3,10 +3,12 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import {
   isFileUIPart,
   isReasoningUIPart,
@@ -709,12 +711,15 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   );
 });
 
+const EMPTY_STICKY_REF: React.RefObject<HTMLDivElement | null> = {
+  current: null,
+};
+
 export function ChatMessages({ messages, streaming, compacting }: Props) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const stickyRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const pinnedUserIdRef = useRef<string | null>(null);
   const followBottomRef = useRef(true);
-  const ignoreScrollRef = useRef(false);
+  const [showStickyOverlay, setShowStickyOverlay] = useState(false);
   const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
   const [savePrompt, setSavePrompt] = useState<SavePromptState | null>(null);
   const [savedMessageId, setSavedMessageId] = useState<string | null>(null);
@@ -782,6 +787,7 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
 
   const stickyIdx = lastStickyUserIndex(messages);
   const stickyId = stickyIdx >= 0 ? messages[stickyIdx]!.id : null;
+  const stickyMessage = stickyIdx >= 0 ? messages[stickyIdx]! : null;
   const last = messages[messages.length - 1];
   const showWaiting =
     !!compacting ||
@@ -790,69 +796,96 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
         last.role === "user" ||
         (last.role === "assistant" && !assistantHasVisibleContent(last))));
 
-  const scrollToBottom = () => {
-    const scroller = scrollerRef.current;
-    if (!scroller || !followBottomRef.current) return;
-    ignoreScrollRef.current = true;
-    scroller.scrollTop = scroller.scrollHeight;
-    requestAnimationFrame(() => {
-      ignoreScrollRef.current = false;
-    });
-  };
+  const visibleMessages = useMemo(() => {
+    const out: UIMessage[] = [];
+    for (const message of messages) {
+      if (message.role === "user") {
+        out.push(message);
+        continue;
+      }
+      if (message.role !== "assistant") continue;
+      if (
+        streaming &&
+        message.id === last?.id &&
+        !assistantHasVisibleContent(message)
+      ) {
+        continue;
+      }
+      out.push(message);
+    }
+    return out;
+  }, [messages, streaming, last]);
+
+  const stickyVisibleIdx = useMemo(() => {
+    if (!stickyId) return -1;
+    return visibleMessages.findIndex((m) => m.id === stickyId);
+  }, [visibleMessages, stickyId]);
 
   useLayoutEffect(() => {
     if (!stickyId || stickyId === pinnedUserIdRef.current) return;
     pinnedUserIdRef.current = stickyId;
     followBottomRef.current = true;
-    const scroller = scrollerRef.current;
-    const sticky = stickyRef.current;
-    if (!scroller || !sticky) return;
-    ignoreScrollRef.current = true;
-    const sRect = scroller.getBoundingClientRect();
-    const tRect = sticky.getBoundingClientRect();
-    scroller.scrollTop += tRect.top - sRect.top;
-    requestAnimationFrame(() => {
-      ignoreScrollRef.current = false;
+    if (stickyVisibleIdx < 0) return;
+    virtuosoRef.current?.scrollToIndex({
+      index: stickyVisibleIdx,
+      align: "start",
+      behavior: "auto",
     });
-  }, [stickyId]);
+  }, [stickyId, stickyVisibleIdx]);
 
-  useLayoutEffect(() => {
-    if (!followBottomRef.current) return;
-    if (stickyId && stickyId !== pinnedUserIdRef.current) return;
-    scrollToBottom();
-  }, [messages, streaming, showWaiting, stickyId]);
+  const itemContent = useCallback(
+    (_index: number, message: UIMessage) => {
+      if (message.role === "user") {
+        return (
+          <UserMessageRow
+            message={message}
+            sticky={message.id === stickyId && !showStickyOverlay}
+            stickyRef={EMPTY_STICKY_REF}
+            onOpenCopyMenu={openCopyMenu}
+            onRetry={onRetry}
+            canRetry={canRetry}
+          />
+        );
+      }
+      return (
+        <AssistantMessageRow
+          message={message}
+          streaming={streaming}
+          isLast={message.id === last?.id}
+          saved={message.id === savedMessageId}
+          copied={message.id === copiedMessageId}
+          onOpenCopyMenu={openCopyMenu}
+          onSave={requestSave}
+          onCopyMarkdown={copyMarkdown}
+        />
+      );
+    },
+    [
+      stickyId,
+      showStickyOverlay,
+      openCopyMenu,
+      onRetry,
+      canRetry,
+      streaming,
+      last?.id,
+      savedMessageId,
+      copiedMessageId,
+      requestSave,
+      copyMarkdown,
+    ],
+  );
 
-  useEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-
-    const onScroll = () => {
-      if (ignoreScrollRef.current) return;
-      const gap =
-        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-      followBottomRef.current = gap < 80;
-    };
-    scroller.addEventListener("scroll", onScroll, { passive: true });
-
-    // Follow layout growth (streamed text, tools, markdown) even when the
-    // messages reference has not changed yet this frame.
-    const ro = new ResizeObserver(() => {
-      if (followBottomRef.current) scrollToBottom();
-    });
-    const observeChildren = () => {
-      ro.disconnect();
-      for (const child of scroller.children) ro.observe(child);
-    };
-    observeChildren();
-    const mo = new MutationObserver(observeChildren);
-    mo.observe(scroller, { childList: true });
-
-    return () => {
-      scroller.removeEventListener("scroll", onScroll);
-      ro.disconnect();
-      mo.disconnect();
-    };
-  }, []);
+  const virtuosoComponents = useMemo(
+    () => ({
+      Footer: () =>
+        showWaiting ? (
+          <div className="chat-msg chat-msg-assistant">
+            <WaitingIndicator compacting={compacting} />
+          </div>
+        ) : null,
+    }),
+    [showWaiting, compacting],
+  );
 
   if (!messages.length && !streaming) {
     return (
@@ -863,50 +896,40 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
   }
 
   return (
-    <div className="chat-messages" ref={scrollerRef}>
-      {messages.map((message, index) => {
-        if (message.role === "user") {
-          return (
-            <UserMessageRow
-              key={message.id}
-              message={message}
-              sticky={index === stickyIdx}
-              stickyRef={stickyRef}
-              onOpenCopyMenu={openCopyMenu}
-              onRetry={onRetry}
-              canRetry={canRetry}
-            />
-          );
-        }
-        if (message.role !== "assistant") return null;
-
-        if (
-          streaming &&
-          message.id === last?.id &&
-          !assistantHasVisibleContent(message)
-        ) {
-          return null;
-        }
-
-        return (
-          <AssistantMessageRow
-            key={message.id}
-            message={message}
-            streaming={streaming}
-            isLast={message.id === last?.id}
-            saved={message.id === savedMessageId}
-            copied={message.id === copiedMessageId}
+    <div className="chat-messages-host">
+      {showStickyOverlay && stickyMessage ? (
+        <div className="chat-sticky-overlay" aria-hidden>
+          <UserMessageRow
+            message={stickyMessage}
+            sticky
+            stickyRef={EMPTY_STICKY_REF}
             onOpenCopyMenu={openCopyMenu}
-            onSave={requestSave}
-            onCopyMarkdown={copyMarkdown}
+            onRetry={onRetry}
+            canRetry={canRetry}
           />
-        );
-      })}
-      {showWaiting && (
-        <div className="chat-msg chat-msg-assistant">
-          <WaitingIndicator compacting={compacting} />
         </div>
-      )}
+      ) : null}
+      <Virtuoso
+        ref={virtuosoRef}
+        className="chat-messages"
+        data={visibleMessages}
+        computeItemKey={(_index, message) => message.id}
+        increaseViewportBy={{ top: 400, bottom: 600 }}
+        atBottomThreshold={80}
+        atBottomStateChange={(atBottom) => {
+          followBottomRef.current = atBottom;
+        }}
+        followOutput={() => (followBottomRef.current ? "smooth" : false)}
+        rangeChanged={(range) => {
+          if (stickyVisibleIdx < 0) {
+            setShowStickyOverlay(false);
+            return;
+          }
+          setShowStickyOverlay(range.startIndex > stickyVisibleIdx);
+        }}
+        itemContent={itemContent}
+        components={virtuosoComponents}
+      />
       {copyMenu ? (
         <EditContextMenu
           menu={{ x: copyMenu.x, y: copyMenu.y }}

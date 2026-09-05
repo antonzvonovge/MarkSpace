@@ -70,6 +70,7 @@
     "react-icons": "^5.7.0",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.12.2",
+    "react-virtuoso": "^4.18.12",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
