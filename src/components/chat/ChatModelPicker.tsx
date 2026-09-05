@@ -1,11 +1,19 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MdAutoAwesome } from "react-icons/md";
+import {
+  formatPerMillionPair,
+  formatPerMillionTitle,
+  lookupModelPrice,
+  type ModelPricePerMillion,
+} from "../../ai/modelPrices";
 import { KIND_LABEL, TIER_LABEL, VENDOR_LABEL } from "../../ai/models";
 import type { AiModelOption, AiModelVendor } from "../../ai/types";
 import { placeChatComposerMenu } from "../../lib/chatMenuPlacement";
+import { useModelPricesStore } from "../../store/modelPricesStore";
 
 const VENDOR_ORDER: AiModelVendor[] = ["openai", "google"];
+const MENU_MIN_WIDTH = 260;
 
 type Props = {
   models: AiModelOption[];
@@ -27,6 +35,19 @@ function ModelKindBadge({ kind }: { kind: AiModelOption["kind"] }) {
     <em className="chat-model-kind is-reasoning" title={label} aria-label={label}>
       <MdAutoAwesome size={12} aria-hidden="true" />
     </em>
+  );
+}
+
+function ModelPriceMeta({ price }: { price: ModelPricePerMillion }) {
+  const label = formatPerMillionPair(price);
+  return (
+    <span
+      className="chat-model-option-price"
+      title={formatPerMillionTitle(price)}
+      aria-label={formatPerMillionTitle(price)}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -80,6 +101,8 @@ export function ChatModelPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const prices = useModelPricesStore((s) => s.prices);
+  const ensureFresh = useModelPricesStore((s) => s.ensureFresh);
 
   const selected = useMemo(
     () => models.find((m) => m.id === value) ?? null,
@@ -93,7 +116,7 @@ export function ChatModelPicker({
     const placed = placeChatComposerMenu(r, {
       from: el,
       gap: MENU_GAP,
-      width: Math.max(r.width, 220),
+      width: Math.max(r.width, MENU_MIN_WIDTH),
       maxHeight: MENU_MAX_HEIGHT,
       minHeight: MENU_MIN_HEIGHT,
     });
@@ -105,6 +128,11 @@ export function ChatModelPicker({
       maxHeight: placed.maxHeight,
     });
   };
+
+  useEffect(() => {
+    if (!open) return;
+    void ensureFresh();
+  }, [open, ensureFresh]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -172,31 +200,37 @@ export function ChatModelPicker({
                   <div className="chat-model-group-label">
                     {VENDOR_LABEL[vendor]}
                   </div>
-                  {group.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      role="option"
-                      aria-selected={m.id === value}
-                      className={
-                        m.id === value
-                          ? "chat-model-option is-active"
-                          : "chat-model-option"
-                      }
-                      onClick={() => {
-                        onChange(m.id);
-                        setOpen(false);
-                      }}
-                    >
-                      <span className="chat-model-option-main">
-                        <ModelTierDot model={m} />
-                        <span className="chat-model-option-name" title={m.id}>
-                          {modelDisplayName(m, m.id)}
+                  {group.map((m) => {
+                    const price = lookupModelPrice(m.id, prices);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        role="option"
+                        aria-selected={m.id === value}
+                        className={
+                          m.id === value
+                            ? "chat-model-option is-active"
+                            : "chat-model-option"
+                        }
+                        onClick={() => {
+                          onChange(m.id);
+                          setOpen(false);
+                        }}
+                      >
+                        <span className="chat-model-option-main">
+                          <ModelTierDot model={m} />
+                          <span className="chat-model-option-name" title={m.id}>
+                            {modelDisplayName(m, m.id)}
+                          </span>
                         </span>
-                      </span>
-                      <ModelKindBadge kind={m.kind} />
-                    </button>
-                  ))}
+                        <span className="chat-model-option-meta">
+                          {price ? <ModelPriceMeta price={price} /> : null}
+                          <ModelKindBadge kind={m.kind} />
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               );
             })}
