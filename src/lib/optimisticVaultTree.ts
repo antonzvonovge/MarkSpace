@@ -10,15 +10,6 @@ function entryName(path: string): string {
   return i === -1 ? path : path.slice(i + 1);
 }
 
-function cloneTree(node: TreeNode): TreeNode {
-  return {
-    name: node.name,
-    path: node.path,
-    isDir: node.isDir,
-    children: node.children?.map(cloneTree),
-  };
-}
-
 /** Remap `fromPrefix` → `toPrefix` on a subtree (move into another folder). */
 export function remapSubtreePaths(
   node: TreeNode,
@@ -116,6 +107,11 @@ function findNode(node: TreeNode, path: string): TreeNode | null {
   return null;
 }
 
+/** Whether `path` exists anywhere in the vault tree. */
+export function treeHasPath(root: TreeNode, path: string): boolean {
+  return findNode(root, path) != null;
+}
+
 export function predictMovePath(from: string, toParent: string): string {
   const fromParent = parentPath(from);
   if (fromParent === toParent) return from;
@@ -138,7 +134,7 @@ export function optimisticMoveInTree(
   const nextPath = predictMovePath(from, toParent);
   if (nextPath !== from && findNode(root, nextPath)) return null;
 
-  const removed = extractNode(cloneTree(root), from);
+  const removed = extractNode(root, from);
   if (!removed) return null;
 
   let node = removed.extracted;
@@ -186,7 +182,7 @@ export function optimisticNestUnderNoteInTree(
   const folderNote = joinPath(folder, FOLDER_NOTE_NAME);
   if (findNode(root, folder)) return null;
 
-  const removedFrom = extractNode(cloneTree(root), from);
+  const removedFrom = extractNode(root, from);
   if (!removedFrom) return null;
 
   const removedNote = extractNode(removedFrom.tree, notePath);
@@ -235,4 +231,60 @@ export function optimisticNestUnderNoteInTree(
     folderNote,
     moved,
   };
+}
+
+/**
+ * Remove a node from the tree (structural share along the spine).
+ * Returns null if the path is missing.
+ */
+export function optimisticRemoveFromTree(
+  root: TreeNode,
+  path: string,
+): TreeNode | null {
+  if (!path) return null;
+  const removed = extractNode(root, path);
+  return removed?.tree ?? null;
+}
+
+/**
+ * Rename / rempath a node in place (same parent index).
+ */
+export function optimisticRenameInTree(
+  root: TreeNode,
+  from: string,
+  to: string,
+): TreeNode | null {
+  if (!from || !to || from === to) return null;
+  if (to.startsWith(`${from}/`)) return null;
+  if (findNode(root, to)) return null;
+
+  const parent = parentPath(from);
+  const parentNode = findNode(root, parent);
+  if (!parentNode?.children) return null;
+  const siblingIndex = parentNode.children.findIndex((c) => c.path === from);
+  if (siblingIndex < 0) return null;
+
+  const removed = extractNode(root, from);
+  if (!removed) return null;
+  const renamed = remapSubtreePaths(removed.extracted, from, to);
+  return insertNode(removed.tree, parent, renamed, siblingIndex);
+}
+
+/**
+ * Insert a new leaf or folder under `parentPathArg` at `toIndex` (default: end).
+ */
+export function optimisticInsertInTree(
+  root: TreeNode,
+  parentPathArg: string,
+  child: TreeNode,
+  toIndex?: number,
+): TreeNode | null {
+  if (!child.path || findNode(root, child.path)) return null;
+  const parent = findNode(root, parentPathArg);
+  if (!parent?.isDir) return null;
+  const idx =
+    toIndex === undefined
+      ? (parent.children?.length ?? 0)
+      : toIndex;
+  return insertNode(root, parentPathArg, child, idx);
 }

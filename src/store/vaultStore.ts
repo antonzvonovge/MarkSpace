@@ -6,8 +6,11 @@ import { flushLiveEditor } from "../editor/liveEditorFlush";
 import { localIsoDate } from "../lib/mdhabitFormat";
 import type { TreeNode } from "../lib/vaultApi";
 import {
+  optimisticInsertInTree,
   optimisticMoveInTree,
   optimisticNestUnderNoteInTree,
+  optimisticRemoveFromTree,
+  optimisticRenameInTree,
 } from "../lib/optimisticVaultTree";
 import {
   addFavorite,
@@ -615,6 +618,137 @@ function flushActiveEditorBuffer(get: () => VaultStore): void {
   const path = get().activePath;
   flushLiveEditor(path);
   flushDrawioEditor(path);
+}
+
+/**
+ * After optimistic path remaps, write the dirty buffer to the path that still
+ * exists on disk (`diskPath`). Call after UI paint so DnD never waits on save.
+ */
+async function saveDirtyAtDiskPath(
+  get: () => VaultStore,
+  set: (
+    partial:
+      | Partial<VaultStore>
+      | ((state: VaultStore) => Partial<VaultStore>),
+  ) => void,
+  diskPath: string,
+): Promise<void> {
+  flushActiveEditorBuffer(get);
+  const state = get();
+  if (!state.dirty) return;
+  if (isPdfPath(diskPath)) return;
+  const logical = state.activePath;
+  const active = logical
+    ? state.tabs.find((t) => t.path === logical)
+    : undefined;
+  if (active && isVirtualTab(active)) return;
+  const body = state.content;
+  set({ saving: true, suppressWatchUntil: Date.now() + 6_000 });
+  try {
+    const savedContent = await writeNote(diskPath, body);
+    const current = get();
+    const tabPath = current.activePath;
+    set({
+      content: savedContent,
+      dirty: false,
+      saving: false,
+      tabs: tabPath
+        ? withTabBody(current.tabs, tabPath, savedContent, false)
+        : current.tabs,
+    });
+    if (isDrawioPath(diskPath)) warmDrawioPreview(diskPath, savedContent);
+    get().rememberDiaryDayMarker(diskPath, savedContent);
+  } catch (e) {
+    set({ saving: false });
+    throw e;
+  }
+}
+
+function scheduleSoftTreeReconcile(get: () => VaultStore): void {
+  const run = () => {
+    void get().refreshTree();
+  };
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(() => run(), { timeout: 2000 });
+  } else {
+    window.setTimeout(run, 0);
+  }
+}
+
+function entryBasename(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i === -1 ? path : path.slice(i + 1);
+}
+
+/** Paint a new file/folder into the sidebar tree before IPC returns. */
+function paintOptimisticInsert(
+  get: () => VaultStore,
+  set: (
+    partial:
+      | Partial<VaultStore>
+      | ((state: VaultStore) => Partial<VaultStore>),
+  ) => void,
+  parent: string,
+  path: string,
+  isDir: boolean,
+): TreeNode | null {
+  const tree = get().tree;
+  if (!tree) return null;
+  const next = optimisticInsertInTree(tree, parent, {
+    name: entryBasename(path),
+    path,
+    isDir,
+    children: isDir ? [] : undefined,
+  });
+  if (!next) return null;
+  set({ tree: next, suppressWatchUntil: Date.now() + 1500 });
+  return next;
+}
+
+async function runOptimisticCreate(
+  get: () => VaultStore,
+  set: (
+    partial:
+      | Partial<VaultStore>
+      | ((state: VaultStore) => Partial<VaultStore>),
+  ) => void,
+  parent: string,
+  predictedPath: string,
+  isDir: boolean,
+  create: () => Promise<string>,
+  options?: { open?: boolean; onSuccess?: (created: string) => void },
+): Promise<string | null> {
+  const snapshotTree = get().tree;
+  paintOptimisticInsert(get, set, parent, predictedPath, isDir);
+  try {
+    const created = await create();
+    const curTree = get().tree;
+    if (curTree && created !== predictedPath) {
+      const renamed =
+        optimisticRenameInTree(curTree, predictedPath, created) ??
+        optimisticInsertInTree(
+          optimisticRemoveFromTree(curTree, predictedPath) ?? curTree,
+          parent,
+          {
+            name: entryBasename(created),
+            path: created,
+            isDir,
+            children: isDir ? [] : undefined,
+          },
+        );
+      if (renamed) set({ tree: renamed });
+    }
+    scheduleSoftTreeReconcile(get);
+    options?.onSuccess?.(created);
+    if (options?.open !== false && !isDir) {
+      await get().openNote(created, { preview: false });
+    }
+    return created;
+  } catch (e) {
+    if (snapshotTree) set({ tree: snapshotTree });
+    set({ error: e instanceof Error ? e.message : String(e) });
+    return null;
+  }
 }
 
 function tabLabel(path: string, kind?: TabKind): string {
@@ -2506,14 +2640,16 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const { selectedFolderPath } = get();
     const trimmed = name.trim().replace(/\.md$/i, "");
     if (!trimmed) return;
-    try {
-      const rel = joinPath(selectedFolderPath, trimmed);
-      const created = await createNote(rel);
-      await get().refreshTree();
-      await get().openNote(created, { preview: false });
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-    }
+    const rel = joinPath(selectedFolderPath, trimmed);
+    const predicted = rel.toLowerCase().endsWith(".md") ? rel : `${rel}.md`;
+    await runOptimisticCreate(
+      get,
+      set,
+      selectedFolderPath,
+      predicted,
+      false,
+      () => createNote(rel),
+    );
   },
 
   createFilmNote: async (folder, input) => {
@@ -2659,14 +2795,18 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const { selectedFolderPath } = get();
     const trimmed = name.trim().replace(/\.drawio$/i, "").replace(/\.md$/i, "");
     if (!trimmed) return;
-    try {
-      const rel = joinPath(selectedFolderPath, trimmed);
-      const created = await createDrawio(rel);
-      await get().refreshTree();
-      await get().openNote(created, { preview: false });
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-    }
+    const rel = joinPath(selectedFolderPath, trimmed);
+    const predicted = rel.toLowerCase().endsWith(".drawio")
+      ? rel
+      : `${rel}.drawio`;
+    await runOptimisticCreate(
+      get,
+      set,
+      selectedFolderPath,
+      predicted,
+      false,
+      () => createDrawio(rel),
+    );
   },
 
   createMdlnksInSelection: async (name) => {
@@ -2680,14 +2820,18 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       .replace(/\.drawio$/i, "")
       .replace(/\.md$/i, "");
     if (!trimmed) return;
-    try {
-      const rel = joinPath(selectedFolderPath, trimmed);
-      const created = await createMdlnks(rel);
-      await get().refreshTree();
-      await get().openNote(created, { preview: false });
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-    }
+    const rel = joinPath(selectedFolderPath, trimmed);
+    const predicted = rel.toLowerCase().endsWith(".mdlnks")
+      ? rel
+      : `${rel}.mdlnks`;
+    await runOptimisticCreate(
+      get,
+      set,
+      selectedFolderPath,
+      predicted,
+      false,
+      () => createMdlnks(rel),
+    );
   },
 
   createMddictInSelection: async (name) => {
@@ -2699,15 +2843,19 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       .replace(/\.drawio$/i, "")
       .replace(/\.md$/i, "");
     if (!trimmed) return;
-    try {
-      const rel = joinPath(selectedFolderPath, trimmed);
-      const created = await createMddict(rel);
-      await get().refreshTree();
-      void get().refreshDictionaryTags();
-      await get().openNote(created, { preview: false });
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-    }
+    const rel = joinPath(selectedFolderPath, trimmed);
+    const predicted = rel.toLowerCase().endsWith(".mddict")
+      ? rel
+      : `${rel}.mddict`;
+    await runOptimisticCreate(
+      get,
+      set,
+      selectedFolderPath,
+      predicted,
+      false,
+      () => createMddict(rel),
+      { onSuccess: () => void get().refreshDictionaryTags() },
+    );
   },
 
   createMdhabitInSelection: async (name, year) => {
@@ -2720,14 +2868,18 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       .replace(/\.drawio$/i, "")
       .replace(/\.md$/i, "");
     if (!trimmed) return;
-    try {
-      const rel = joinPath(selectedFolderPath, trimmed);
-      const created = await createMdhabit(rel, year, localIsoDate());
-      await get().refreshTree();
-      await get().openNote(created, { preview: false });
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-    }
+    const rel = joinPath(selectedFolderPath, trimmed);
+    const predicted = rel.toLowerCase().endsWith(".mdhabit")
+      ? rel
+      : `${rel}.mdhabit`;
+    await runOptimisticCreate(
+      get,
+      set,
+      selectedFolderPath,
+      predicted,
+      false,
+      () => createMdhabit(rel, year, localIsoDate()),
+    );
   },
 
   createMdcourseInSelection: async (name) => {
@@ -2741,37 +2893,43 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       .replace(/\.drawio$/i, "")
       .replace(/\.md$/i, "");
     if (!trimmed) return;
-    try {
-      const rel = joinPath(selectedFolderPath, trimmed);
-      const created = await createMdcourse(rel, localIsoDate());
-      await get().refreshTree();
-      await get().openNote(created, { preview: false });
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-    }
+    const rel = joinPath(selectedFolderPath, trimmed);
+    const predicted = rel.toLowerCase().endsWith(".mdcourse")
+      ? rel
+      : `${rel}.mdcourse`;
+    await runOptimisticCreate(
+      get,
+      set,
+      selectedFolderPath,
+      predicted,
+      false,
+      () => createMdcourse(rel, localIsoDate()),
+    );
   },
 
   createFolderInSelection: async (name) => {
-    const { selectedFolderPath, vaultPath, expandedPaths } = get();
+    const { selectedFolderPath, vaultPath, expandedPaths, tree } = get();
     const trimmed = name.trim().replace(/\/+$/g, "");
     if (!trimmed) return;
+    const rel = joinPath(selectedFolderPath, trimmed);
+    const snapshotTree = tree;
+    paintOptimisticInsert(get, set, selectedFolderPath, rel, true);
+    if (selectedFolderPath && !expandedPaths.includes(selectedFolderPath)) {
+      const nextExpanded = [...expandedPaths, selectedFolderPath];
+      set({ expandedPaths: nextExpanded });
+      if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+    }
     try {
-      const rel = joinPath(selectedFolderPath, trimmed);
       const created = await createFolder(rel);
-      let nextExpanded = expandedPaths;
-      if (selectedFolderPath && !expandedPaths.includes(selectedFolderPath)) {
-        nextExpanded = [...expandedPaths, selectedFolderPath];
-        set({ expandedPaths: nextExpanded });
-        if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+      const curTree = get().tree;
+      if (curTree && created !== rel) {
+        const renamed = optimisticRenameInTree(curTree, rel, created);
+        if (renamed) set({ tree: renamed });
       }
-      set({
-        selectedFolderPath: created,
-        selectedFolderExplicit: true,
-        treeSelectedFilePath: null,
-        treeSelectionVisible: true,
-      });
-      await get().refreshTree();
+      scheduleSoftTreeReconcile(get);
+      get().selectFolder(created);
     } catch (e) {
+      if (snapshotTree) set({ tree: snapshotTree });
       set({ error: e instanceof Error ? e.message : String(e) });
     }
   },
@@ -2826,7 +2984,6 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const {
       activePath,
       dirty,
-      saveActive,
       vaultPath,
       expandedPaths,
       selectedFolderPath,
@@ -2846,19 +3003,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       treeSelectedFilePath,
     };
 
-    try {
-      if (dirty && activePath) {
-        await saveActive();
-      }
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-      return null;
-    }
+    let optimisticNextPath: string | null = null;
 
-    // Paint the destination immediately; roll back if the vault write fails.
+    // Paint the destination immediately; roll back if save or vault write fails.
     if (tree) {
       const optimistic = optimisticMoveInTree(tree, from, toParent, toIndex);
       if (optimistic) {
+        optimisticNextPath = optimistic.nextPath;
         const { tree: nextTree, nextPath } = optimistic;
         const patch: Partial<VaultStore> = {
           tree: nextTree,
@@ -2902,6 +3053,25 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
     } else {
       set({ suppressWatchUntil: Date.now() + 1200 });
+    }
+
+    if (dirty && snapshot.activePath) {
+      try {
+        await saveDirtyAtDiskPath(get, set, snapshot.activePath);
+      } catch (e) {
+        set({
+          tree: snapshot.tree,
+          expandedPaths: snapshot.expandedPaths,
+          tabs: snapshot.tabs,
+          activePath: snapshot.activePath,
+          selectedFolderPath: snapshot.selectedFolderPath,
+          selectedFolderExplicit: snapshot.selectedFolderExplicit,
+          treeSelectedFilePath: snapshot.treeSelectedFilePath,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        if (vaultPath) void saveExpandedPaths(vaultPath, snapshot.expandedPaths);
+        return null;
+      }
     }
 
     try {
@@ -2961,7 +3131,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
       if (from !== nextPath) applyPathRemaps(set, get, from, nextPath);
       persistSession(get());
-      await get().refreshTree();
+      if (optimisticNextPath != null && optimisticNextPath === nextPath) {
+        scheduleSoftTreeReconcile(get);
+      } else {
+        await get().refreshTree();
+      }
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
       return nextPath;
@@ -2990,7 +3164,6 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const {
       activePath,
       dirty,
-      saveActive,
       vaultPath,
       expandedPaths,
       selectedFolderPath,
@@ -3010,14 +3183,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       treeSelectedFilePath,
     };
 
-    try {
-      if (dirty && activePath) {
-        await saveActive();
-      }
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
-      return null;
-    }
+    let didOptimistic = false;
 
     if (tree) {
       const optimistic = optimisticNestUnderNoteInTree(
@@ -3027,6 +3193,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         toIndex,
       );
       if (optimistic) {
+        didOptimistic = true;
         let nextExpanded = remapExpanded(
           expandedPaths,
           from,
@@ -3077,6 +3244,25 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
     } else {
       set({ suppressWatchUntil: Date.now() + 1500 });
+    }
+
+    if (dirty && snapshot.activePath) {
+      try {
+        await saveDirtyAtDiskPath(get, set, snapshot.activePath);
+      } catch (e) {
+        set({
+          tree: snapshot.tree,
+          expandedPaths: snapshot.expandedPaths,
+          tabs: snapshot.tabs,
+          activePath: snapshot.activePath,
+          selectedFolderPath: snapshot.selectedFolderPath,
+          selectedFolderExplicit: snapshot.selectedFolderExplicit,
+          treeSelectedFilePath: snapshot.treeSelectedFilePath,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        if (vaultPath) void saveExpandedPaths(vaultPath, snapshot.expandedPaths);
+        return null;
+      }
     }
 
     try {
@@ -3151,7 +3337,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (from !== result.moved) applyPathRemaps(set, get, from, result.moved);
       applyPathRemaps(set, get, notePath, result.folderNote);
       persistSession(get());
-      await get().refreshTree();
+      if (didOptimistic) {
+        scheduleSoftTreeReconcile(get);
+      } else {
+        await get().refreshTree();
+      }
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
       return result.moved;
@@ -3277,43 +3467,142 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       return null;
     }
 
-    const { activePath, dirty, saveActive, vaultPath, expandedPaths, selectedFolderPath, tabs } =
-      get();
-    try {
-      if (dirty && activePath) {
-        await saveActive();
+    const {
+      activePath,
+      dirty,
+      vaultPath,
+      expandedPaths,
+      selectedFolderPath,
+      tabs,
+      tree,
+      treeSelectedFilePath,
+      selectedFolderExplicit,
+    } = get();
+
+    const snapshot = {
+      tree,
+      expandedPaths,
+      tabs,
+      activePath,
+      selectedFolderPath,
+      selectedFolderExplicit,
+      treeSelectedFilePath,
+    };
+
+    let optimisticApplied = false;
+    if (tree) {
+      const optimistic = optimisticRenameInTree(tree, from, to);
+      if (optimistic) {
+        optimisticApplied = true;
+        const nextExpanded = remapExpanded(expandedPaths, from, to);
+        const patch: Partial<VaultStore> = {
+          tree: optimistic,
+          expandedPaths: nextExpanded,
+          tabs: remapTabs(tabs, from, to),
+          suppressWatchUntil: Date.now() + 1200,
+        };
+        if (activePath === from || activePath?.startsWith(`${from}/`)) {
+          patch.activePath =
+            activePath === from
+              ? to
+              : `${to}${activePath!.slice(from.length)}`;
+        }
+        if (
+          selectedFolderPath === from ||
+          selectedFolderPath.startsWith(`${from}/`)
+        ) {
+          patch.selectedFolderPath =
+            selectedFolderPath === from
+              ? to
+              : `${to}${selectedFolderPath.slice(from.length)}`;
+        }
+        if (
+          treeSelectedFilePath === from ||
+          treeSelectedFilePath?.startsWith(`${from}/`)
+        ) {
+          patch.treeSelectedFilePath =
+            treeSelectedFilePath === from
+              ? to
+              : treeSelectedFilePath
+                ? `${to}${treeSelectedFilePath.slice(from.length)}`
+                : null;
+        }
+        set(patch);
+        if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
+      } else {
+        set({ suppressWatchUntil: Date.now() + 1200 });
       }
+    } else {
       set({ suppressWatchUntil: Date.now() + 1200 });
+    }
+
+    if (dirty && snapshot.activePath) {
+      try {
+        await saveDirtyAtDiskPath(get, set, snapshot.activePath);
+      } catch (e) {
+        set({
+          tree: snapshot.tree,
+          expandedPaths: snapshot.expandedPaths,
+          tabs: snapshot.tabs,
+          activePath: snapshot.activePath,
+          selectedFolderPath: snapshot.selectedFolderPath,
+          selectedFolderExplicit: snapshot.selectedFolderExplicit,
+          treeSelectedFilePath: snapshot.treeSelectedFilePath,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        if (vaultPath) void saveExpandedPaths(vaultPath, snapshot.expandedPaths);
+        return null;
+      }
+    }
+
+    try {
       const nextPath = await renamePath(from, to);
 
-      let nextExpanded = expandedPaths;
+      let nextExpanded = get().expandedPaths;
       if (from !== nextPath) {
-        nextExpanded = remapExpanded(expandedPaths, from, nextPath);
+        nextExpanded = remapExpanded(snapshot.expandedPaths, from, nextPath);
         set({ expandedPaths: nextExpanded });
         if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       }
 
       const patch: Partial<VaultStore> = {
-        tabs: remapTabs(tabs, from, nextPath),
+        tabs: remapTabs(snapshot.tabs, from, nextPath),
       };
-      if (activePath === from || activePath?.startsWith(`${from}/`)) {
-        if (activePath === from) {
+      if (
+        snapshot.activePath === from ||
+        snapshot.activePath?.startsWith(`${from}/`)
+      ) {
+        if (snapshot.activePath === from) {
           patch.activePath = nextPath;
-        } else if (activePath) {
-          patch.activePath = `${nextPath}${activePath.slice(from.length)}`;
+        } else if (snapshot.activePath) {
+          patch.activePath = `${nextPath}${snapshot.activePath.slice(from.length)}`;
         }
       }
-      if (selectedFolderPath === from || selectedFolderPath.startsWith(`${from}/`)) {
-        if (selectedFolderPath === from) {
+      if (
+        snapshot.selectedFolderPath === from ||
+        snapshot.selectedFolderPath.startsWith(`${from}/`)
+      ) {
+        if (snapshot.selectedFolderPath === from) {
           patch.selectedFolderPath = nextPath;
         } else {
-          patch.selectedFolderPath = `${nextPath}${selectedFolderPath.slice(from.length)}`;
+          patch.selectedFolderPath = `${nextPath}${snapshot.selectedFolderPath.slice(from.length)}`;
         }
       }
+
+      const curTree = get().tree;
+      if (curTree && optimisticApplied && to !== nextPath) {
+        const fixed = optimisticRenameInTree(curTree, to, nextPath);
+        if (fixed) patch.tree = fixed;
+      }
+
       set(patch);
 
       const openAfter = get().activePath;
-      if (openAfter && (activePath === from || (activePath && openAfter !== activePath))) {
+      if (
+        openAfter &&
+        (snapshot.activePath === from ||
+          (snapshot.activePath && openAfter !== snapshot.activePath))
+      ) {
         try {
           const content = await readNote(openAfter);
           set({
@@ -3329,13 +3618,15 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (from !== nextPath) applyPathRemaps(set, get, from, nextPath);
       persistSession(get());
 
-      // Pin selection across refreshTree: a stale listTree snapshot must not leave
-      // the editor on an unrelated neighbour tab.
       const pinnedActive = get().activePath;
       const pinnedFolder = get().selectedFolderPath;
       const pinnedExplicit = get().selectedFolderExplicit;
 
-      await get().refreshTree();
+      if (optimisticApplied) {
+        scheduleSoftTreeReconcile(get);
+      } else {
+        await get().refreshTree();
+      }
 
       if (
         pinnedActive &&
@@ -3360,7 +3651,17 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       void get().refreshDictionaryTags();
       return nextPath;
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      set({
+        tree: snapshot.tree,
+        expandedPaths: snapshot.expandedPaths,
+        tabs: snapshot.tabs,
+        activePath: snapshot.activePath,
+        selectedFolderPath: snapshot.selectedFolderPath,
+        selectedFolderExplicit: snapshot.selectedFolderExplicit,
+        treeSelectedFilePath: snapshot.treeSelectedFilePath,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      if (vaultPath) void saveExpandedPaths(vaultPath, snapshot.expandedPaths);
       return null;
     }
   },
@@ -3378,12 +3679,54 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot delete the Tasks folder" });
       return false;
     }
-    const { vaultPath, expandedPaths, selectedFolderPath, tabs, activePath, dirty, saveActive } =
-      get();
-    try {
-      if (dirty && activePath && (activePath === path || activePath.startsWith(`${path}/`))) {
-        await saveActive();
+    const {
+      vaultPath,
+      expandedPaths,
+      selectedFolderPath,
+      tabs,
+      activePath,
+      dirty,
+      tree,
+      selectedFolderExplicit,
+      treeSelectedFilePath,
+    } = get();
+
+    const snapshot = {
+      tree,
+      expandedPaths,
+      tabs,
+      activePath,
+      selectedFolderPath,
+      selectedFolderExplicit,
+      treeSelectedFilePath,
+      content: get().content,
+      dirty,
+    };
+
+    if (dirty && activePath && (activePath === path || activePath.startsWith(`${path}/`))) {
+      try {
+        await saveDirtyAtDiskPath(get, set, activePath);
+      } catch (e) {
+        set({ error: e instanceof Error ? e.message : String(e) });
+        return false;
       }
+    }
+
+    if (tree) {
+      const nextTree = optimisticRemoveFromTree(tree, path);
+      if (nextTree) {
+        set({
+          tree: nextTree,
+          suppressWatchUntil: Date.now() + 1500,
+        });
+      } else {
+        set({ suppressWatchUntil: Date.now() + 1500 });
+      }
+    } else {
+      set({ suppressWatchUntil: Date.now() + 1500 });
+    }
+
+    try {
       await deletePath(path);
 
       const nextTabs = tabs.filter(
@@ -3418,12 +3761,24 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (vaultPath) void saveExpandedPaths(vaultPath, nextExpanded);
       applyPathRemaps(set, get, path, null);
       persistSession(get());
-      await get().refreshTree();
+      scheduleSoftTreeReconcile(get);
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
       return true;
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      set({
+        tree: snapshot.tree,
+        expandedPaths: snapshot.expandedPaths,
+        tabs: snapshot.tabs,
+        activePath: snapshot.activePath,
+        selectedFolderPath: snapshot.selectedFolderPath,
+        selectedFolderExplicit: snapshot.selectedFolderExplicit,
+        treeSelectedFilePath: snapshot.treeSelectedFilePath,
+        content: snapshot.content,
+        dirty: snapshot.dirty,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      if (vaultPath) void saveExpandedPaths(vaultPath, snapshot.expandedPaths);
       return false;
     }
   },

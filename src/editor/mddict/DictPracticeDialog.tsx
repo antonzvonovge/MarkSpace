@@ -9,7 +9,7 @@ import {
   recordDictCorrectAnswer,
   type DictProgressDoc,
 } from "../../lib/dictProgress";
-import type { TreeNode } from "../../lib/vaultApi";
+import { useVaultStore } from "../../store/vaultStore";
 import {
   answersMatch,
   loadPracticeDeck,
@@ -19,7 +19,6 @@ import {
 type Props = {
   open: boolean;
   projectPath: string;
-  tree: TreeNode | null;
   onClose: () => void;
   onProgressChange?: () => void;
 };
@@ -27,10 +26,11 @@ type Props = {
 export function DictPracticeDialog({
   open,
   projectPath,
-  tree,
   onClose,
   onProgressChange,
 }: Props) {
+  // Subscribe only while open so tree updates do not re-render App shell.
+  const tree = useVaultStore((s) => (open ? s.tree : null));
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);

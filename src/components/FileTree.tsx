@@ -1447,6 +1447,38 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }
   }, []);
 
+  const onWorkspaceOpenFolder = useCallback(
+    (path: string, options?: { preview?: boolean; replaceActive?: boolean }) => {
+      void useVaultStore.getState().openOrCreateFolderNote(path, options);
+    },
+    [],
+  );
+
+  const onWorkspaceOpenNote = useCallback(
+    (path: string, options?: { preview?: boolean }) => {
+      void useVaultStore.getState().openNote(path, options);
+    },
+    [],
+  );
+
+  const onWorkspaceContextMenu = useCallback(
+    (menu: {
+      x: number;
+      y: number;
+      path: string;
+      name: string;
+      isDir: boolean;
+      isFavorite: boolean;
+    }) => {
+      setContextMenu(menu);
+    },
+    [],
+  );
+
+  const onWorkspaceCreate = useCallback((kind: PromptKind) => {
+    setPromptKind(kind);
+  }, []);
+
   /** Favorites list only: close nested folders under favorite roots. */
   const collapseFavoritesToTopLevel = useCallback(() => {
     const { expandedPaths, vaultPath: vp } = useVaultStore.getState();
@@ -2390,17 +2422,13 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             scrollParentRef={treeFocusRef}
             onToggleExpanded={toggleExpanded}
             onSelectFolder={selectFolder}
-            onOpenFolder={(path, options) => {
-              void openOrCreateFolderNote(path, options);
-            }}
-            onOpenNote={(path, options) => {
-              void openNote(path, options);
-            }}
+            onOpenFolder={onWorkspaceOpenFolder}
+            onOpenNote={onWorkspaceOpenNote}
             onSelectInTree={selectInTree}
-            onContextMenu={(menu) => setContextMenu(menu)}
+            onContextMenu={onWorkspaceContextMenu}
             onRenameCommit={commitInlineRename}
             onRenameCancel={cancelInlineRename}
-            onCreate={(kind) => setPromptKind(kind)}
+            onCreate={onWorkspaceCreate}
             onLocateActive={revealActiveInTree}
             onCollapseAll={collapseAllInTree}
             favoriteSet={favoriteSet}

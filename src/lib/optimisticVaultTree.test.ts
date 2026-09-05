@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { TreeNode } from "./vaultApi";
 import {
   notePathToFolderPath,
+  optimisticInsertInTree,
   optimisticMoveInTree,
   optimisticNestUnderNoteInTree,
+  optimisticRemoveFromTree,
+  optimisticRenameInTree,
   predictMovePath,
+  treeHasPath,
 } from "./optimisticVaultTree";
 
 function node(
@@ -96,5 +100,47 @@ describe("optimisticNestUnderNoteInTree", () => {
   it("parses note stem folder path", () => {
     expect(notePathToFolderPath("Proj/Note.md")).toBe("Proj/Note");
     expect(notePathToFolderPath("x.drawio")).toBeNull();
+  });
+});
+
+describe("optimisticRemoveFromTree / rename / insert", () => {
+  it("removes a leaf and shares untouched siblings", () => {
+    const result = optimisticRemoveFromTree(sample, "Proj/a.md");
+    expect(result).not.toBeNull();
+    const proj = result!.children!.find((c) => c.path === "Proj")!;
+    expect(proj.children!.map((c) => c.path)).toEqual([
+      "Proj/b.md",
+      "Proj/sub",
+    ]);
+    const skills = result!.children!.find((c) => c.path === "Skills")!;
+    const sampleSkills = sample.children!.find((c) => c.path === "Skills")!;
+    expect(skills).toBe(sampleSkills);
+  });
+
+  it("renames in place", () => {
+    const result = optimisticRenameInTree(sample, "Proj/a.md", "Proj/z.md");
+    expect(result).not.toBeNull();
+    const proj = result!.children!.find((c) => c.path === "Proj")!;
+    expect(proj.children!.map((c) => c.path)).toEqual([
+      "Proj/z.md",
+      "Proj/b.md",
+      "Proj/sub",
+    ]);
+  });
+
+  it("inserts a new file at end of folder", () => {
+    const result = optimisticInsertInTree(sample, "Proj", {
+      name: "n.md",
+      path: "Proj/n.md",
+      isDir: false,
+    });
+    expect(result).not.toBeNull();
+    const proj = result!.children!.find((c) => c.path === "Proj")!;
+    expect(proj.children![proj.children!.length - 1]!.path).toBe("Proj/n.md");
+  });
+
+  it("treeHasPath finds nested paths", () => {
+    expect(treeHasPath(sample, "Proj/sub/c.md")).toBe(true);
+    expect(treeHasPath(sample, "missing.md")).toBe(false);
   });
 });

@@ -7,7 +7,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { useDraggable } from "@dnd-kit/core";
 import {
   FcCalendar,
   FcClapperboard,
@@ -504,16 +504,6 @@ export const VaultTreeRow = memo(
     a.staticRow === b.staticRow,
 );
 
-function mergeRefs(
-  a: (node: HTMLElement | null) => void,
-  b: (node: HTMLElement | null) => void,
-): (node: HTMLElement | null) => void {
-  return (node) => {
-    a(node);
-    b(node);
-  };
-}
-
 const DraggableVaultTreeRow = memo(function DraggableVaultTreeRow(
   props: VaultTreeRowProps,
 ) {
@@ -522,22 +512,18 @@ const DraggableVaultTreeRow = memo(function DraggableVaultTreeRow(
   const {
     attributes,
     listeners,
-    setNodeRef: setDragRef,
+    setNodeRef,
     isDragging,
   } = useDraggable({
     id: path,
     disabled,
-  });
-  const { setNodeRef: setDropRef } = useDroppable({
-    id: path,
-    disabled: renaming,
   });
 
   return (
     <VaultTreeRowView
       {...props}
       isDragging={isDragging || props.isDragging}
-      setNodeRef={mergeRefs(setDragRef, setDropRef)}
+      setNodeRef={setNodeRef}
       attributes={
         disabled
           ? undefined

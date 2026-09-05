@@ -14,9 +14,11 @@ import {
   DragOverlay,
   MeasuringStrategy,
   PointerSensor,
-  closestCenter,
+  pointerWithin,
+  useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragMoveEvent,
   type DragOverEvent,
@@ -37,7 +39,9 @@ import {
   VAULT_PATH,
 } from "./vaultTreeFlatten";
 import {
+  WORKSPACE_LIST_DROPPABLE_ID,
   dropIndicatorsEqual,
+  hitTestVirtualRow,
   placementFromPointerRatio,
   resolveVaultDrop,
   type VaultDropIndicator,
@@ -52,7 +56,7 @@ import {
 } from "./VaultTreeRow";
 
 const ROW_HEIGHT = 28;
-const OVERSCAN = 16;
+const OVERSCAN = 8;
 
 /** Chip sits just right and below the pointer (ignore grab point on the wide row). */
 const CHIP_CURSOR_GAP_X = 12;
@@ -81,8 +85,16 @@ const placeChipByCursor: Modifier = ({
 
 const measuring = {
   droppable: {
-    strategy: MeasuringStrategy.Always,
+    strategy: MeasuringStrategy.WhileDragging,
   },
+};
+
+/** Prefer the list host droppable so we never need per-row droppables. */
+const listCollision: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  const listHit = hits.find((c) => c.id === WORKSPACE_LIST_DROPPABLE_ID);
+  if (listHit) return [listHit];
+  return hits;
 };
 
 export type WorkspaceTreeProps = {
@@ -122,6 +134,43 @@ function isUnsupported(isDir: boolean, path: string): boolean {
   return !isDir && !isVaultDocumentPath(path);
 }
 
+function readTreeRowHeight(): number {
+  if (typeof document === "undefined") return ROW_HEIGHT;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--tree-row-height")
+    .trim();
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : ROW_HEIGHT;
+}
+
+function WorkspaceListHost({
+  listRef,
+  className,
+  style,
+  children,
+}: {
+  listRef: React.MutableRefObject<HTMLDivElement | null>;
+  className: string;
+  style: CSSProperties;
+  children: ReactNode;
+}) {
+  const { setNodeRef } = useDroppable({
+    id: WORKSPACE_LIST_DROPPABLE_ID,
+  });
+  return (
+    <div
+      ref={(node) => {
+        listRef.current = node;
+        setNodeRef(node);
+      }}
+      className={className}
+      style={style}
+    >
+      {children}
+    </div>
+  );
+}
+
 export const WorkspaceTree = memo(function WorkspaceTree({
   tree,
   expandedPaths,
@@ -154,6 +203,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
+  const [rowHeight, setRowHeight] = useState(ROW_HEIGHT);
 
   const rows = useMemo(
     () => flattenVisibleWorkspace(tree, expandedPaths),
@@ -173,6 +223,10 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   const dropIndicatorRef = useRef<VaultDropIndicator | null>(null);
   const pointerYRef = useRef(0);
   const stopPointerTrackingRef = useRef<(() => void) | null>(null);
+  const scrollMarginRef = useRef(scrollMargin);
+  scrollMarginRef.current = scrollMargin;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -203,38 +257,18 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     setDropIndicator(next);
   }, []);
 
-  const updateDropFromOver = useCallback(
-    (
-      over:
-        | {
-            id: UniqueIdentifier;
-            rect: { top: number; height: number };
-          }
-        | null
-        | undefined,
-      activeDragId: UniqueIdentifier,
-    ) => {
-      if (over == null) {
-        commitDropIndicator(null);
-        return;
-      }
-      const overPath = String(over.id);
-      if (overPath === String(activeDragId)) {
-        commitDropIndicator(null);
-        return;
-      }
-      const overRow = rowsByPath.get(overPath);
-      if (!overRow) {
-        commitDropIndicator(null);
-        return;
-      }
-      const h = over.rect.height || ROW_HEIGHT;
-      const ratio = (pointerYRef.current - over.rect.top) / h;
-      const placement = placementFromPointerRatio(overRow, ratio);
-      commitDropIndicator({ path: overPath, placement });
-    },
-    [commitDropIndicator, rowsByPath],
-  );
+  useLayoutEffect(() => {
+    setRowHeight(readTreeRowHeight());
+    const root = document.documentElement;
+    const obs = new MutationObserver(() => {
+      setRowHeight(readTreeRowHeight());
+    });
+    obs.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-density"],
+    });
+    return () => obs.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -255,15 +289,62 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollParentRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: OVERSCAN,
     scrollMargin,
     getItemKey: (index) => rows[index]?.path ?? index,
   });
+  const virtualizerRef = useRef(virtualizer);
+  virtualizerRef.current = virtualizer;
 
   useLayoutEffect(() => {
     virtualizer.measure();
-  }, [rows.length, scrollMargin, virtualizer]);
+  }, [rows.length, scrollMargin, rowHeight, virtualizer]);
+
+  const updateDropFromPointer = useCallback(
+    (activeDragId: UniqueIdentifier) => {
+      const list = listRef.current;
+      if (!list) {
+        commitDropIndicator(null);
+        return;
+      }
+      const listRect = list.getBoundingClientRect();
+      const y = pointerYRef.current;
+      const parent = scrollParentRef.current;
+      const parentRect = parent?.getBoundingClientRect();
+      if (
+        parentRect &&
+        (y < parentRect.top || y > parentRect.bottom)
+      ) {
+        commitDropIndicator(null);
+        return;
+      }
+
+      const vItems = virtualizerRef.current.getVirtualItems();
+      const hit = hitTestVirtualRow(
+        y,
+        listRect.top,
+        scrollMarginRef.current,
+        vItems.map((v) => ({
+          index: v.index,
+          start: v.start,
+          size: v.size,
+        })),
+      );
+      if (!hit) {
+        commitDropIndicator(null);
+        return;
+      }
+      const overRow = rowsRef.current[hit.index];
+      if (!overRow || overRow.path === String(activeDragId)) {
+        commitDropIndicator(null);
+        return;
+      }
+      const placement = placementFromPointerRatio(overRow, hit.ratio);
+      commitDropIndicator({ path: overRow.path, placement });
+    },
+    [commitDropIndicator, scrollParentRef],
+  );
 
   const onDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -281,16 +362,24 @@ export const WorkspaceTree = memo(function WorkspaceTree({
 
   const onDragOver = useCallback(
     (event: DragOverEvent) => {
-      updateDropFromOver(event.over, event.active.id);
+      if (event.over == null) {
+        commitDropIndicator(null);
+        return;
+      }
+      updateDropFromPointer(event.active.id);
     },
-    [updateDropFromOver],
+    [commitDropIndicator, updateDropFromPointer],
   );
 
   const onDragMove = useCallback(
     (event: DragMoveEvent) => {
-      updateDropFromOver(event.over, event.active.id);
+      if (event.over == null) {
+        commitDropIndicator(null);
+        return;
+      }
+      updateDropFromPointer(event.active.id);
     },
-    [updateDropFromOver],
+    [commitDropIndicator, updateDropFromPointer],
   );
 
   const clearDragState = useCallback(() => {
@@ -394,6 +483,10 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         ? dropIndicator.placement
         : null;
 
+    // While dragging, only the active row keeps useDraggable so other rows
+    // unsubscribe from dnd-kit context and skip pointer-move re-renders.
+    const staticRow = activeIdStr != null && activeIdStr !== path;
+
     return (
       <VaultTreeRow
         key={path}
@@ -424,6 +517,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
             ? projectPropertiesByPath[path]?.learningLanguage
             : meta.learningLanguage
         }
+        staticRow={staticRow}
         style={opts?.style}
         onToggle={() => {
           if (isVault) return;
@@ -480,7 +574,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={listCollision}
       measuring={measuring}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -488,8 +582,8 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       onDragEnd={onDragEnd}
       onDragCancel={onDragCancel}
     >
-      <div
-        ref={listRef}
+      <WorkspaceListHost
+        listRef={listRef}
         className={
           activeId != null
             ? "workspace-virtual-tree is-tree-dragging"
@@ -532,7 +626,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
             </div>
           );
         })}
-      </div>
+      </WorkspaceListHost>
       <DragOverlay dropAnimation={null} modifiers={[placeChipByCursor]}>
         {activeRow && activeChipMeta ? (
           <VaultTreeDragChip

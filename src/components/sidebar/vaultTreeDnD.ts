@@ -1,6 +1,9 @@
 import type { FlattenedVaultRow } from "./vaultTreeFlatten";
 import { VAULT_PATH, canDropVaultPath } from "./vaultTreeFlatten";
 
+/** Single droppable id for the workspace virtual list host. */
+export const WORKSPACE_LIST_DROPPABLE_ID = "__workspace_list__";
+
 export type VaultDropKind = "move" | "nest-note";
 
 /** Where the pointer sits relative to the hovered row. */
@@ -131,4 +134,65 @@ export function dropIndicatorsEqual(
   if (a === b) return true;
   if (!a || !b) return false;
   return a.path === b.path && a.placement === b.placement;
+}
+
+export type VirtualRowGeom = {
+  index: number;
+  /** Virtualizer start offset (content coordinates). */
+  start: number;
+  size: number;
+};
+
+/**
+ * Map pointer clientY to a visible virtual row and Y ratio within that row.
+ * `listTop` is the list host's getBoundingClientRect().top; row screen top is
+ * `listTop + start - scrollMargin` (same as WorkspaceTree translateY).
+ */
+export function hitTestVirtualRow(
+  clientY: number,
+  listTop: number,
+  scrollMargin: number,
+  items: VirtualRowGeom[],
+): { index: number; ratio: number } | null {
+  if (items.length === 0) return null;
+
+  for (const item of items) {
+    const top = listTop + item.start - scrollMargin;
+    const bottom = top + item.size;
+    if (clientY >= top && clientY < bottom) {
+      const ratio = item.size > 0 ? (clientY - top) / item.size : 0.5;
+      return { index: item.index, ratio: Math.min(1, Math.max(0, ratio)) };
+    }
+  }
+
+  const first = items[0]!;
+  const last = items[items.length - 1]!;
+  const firstTop = listTop + first.start - scrollMargin;
+  const lastBottom = listTop + last.start - scrollMargin + last.size;
+  if (clientY < firstTop) {
+    return { index: first.index, ratio: 0 };
+  }
+  if (clientY >= lastBottom) {
+    return { index: last.index, ratio: 1 };
+  }
+
+  // Gap between measured rows — pick nearest edge.
+  let best = first;
+  let bestDist = Infinity;
+  for (const item of items) {
+    const top = listTop + item.start - scrollMargin;
+    const mid = top + item.size / 2;
+    const dist = Math.abs(clientY - mid);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = item;
+    }
+  }
+  const top = listTop + best.start - scrollMargin;
+  const ratio =
+    best.size > 0 ? (clientY - top) / best.size : 0.5;
+  return {
+    index: best.index,
+    ratio: Math.min(1, Math.max(0, ratio)),
+  };
 }

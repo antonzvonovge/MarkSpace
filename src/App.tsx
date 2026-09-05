@@ -57,6 +57,7 @@ import { CourseTrackerEditor } from "./editor/mdcourse/CourseTrackerEditor";
 import { DictPracticeDialog } from "./editor/mddict/DictPracticeDialog";
 import { PdfViewer } from "./editor/pdf/PdfViewer";
 import type { VaultChange } from "./lib/vaultApi";
+import { treeHasPath } from "./lib/optimisticVaultTree";
 import { documentKind, readNote } from "./lib/vaultApi";
 import {
   loadShellLayout,
@@ -627,7 +628,6 @@ function App() {
   const toggleChat = useChatUiStore((s) => s.toggle);
   const sidebarSizePercent = useSidebarUiStore((s) => s.lastSizePercent);
   const chatSizePercent = useChatUiStore((s) => s.lastSizePercent);
-  const tree = useVaultStore((s) => s.tree);
   const recentPaths = useVaultStore((s) => s.recentPaths);
   const openNote = useVaultStore((s) => s.openNote);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -1056,7 +1056,17 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let debounceTimer: number | null = null;
-    const pendingPaths = new Set<string>();
+    /** path → notify Debug kind string (worst structural kind wins). */
+    const pending = new Map<string, string>();
+
+    const isStructuralVaultChange = (kind: string): boolean => {
+      const k = kind.toLowerCase();
+      if (k.includes("create")) return true;
+      if (k.includes("remove")) return true;
+      // Modify(Name(...)) / rename — tree shape changes.
+      if (k.includes("name")) return true;
+      return false;
+    };
 
     const flush = async () => {
       debounceTimer = null;
@@ -1070,10 +1080,26 @@ function App() {
         return;
       }
 
-      const paths = [...pendingPaths];
-      pendingPaths.clear();
+      const events = [...pending.entries()].map(([path, kind]) => ({
+        path,
+        kind,
+      }));
+      pending.clear();
+      const paths = events.map((e) => e.path);
 
-      await refreshTree();
+      const tree = useVaultStore.getState().tree;
+      const needsTreeRefresh = events.some((e) => {
+        if (isStructuralVaultChange(e.kind)) return true;
+        // Modify on a path not in the tree may be a create we mis-classified —
+        // still refresh. Folder notes / assets omitted from the tree are OK to skip.
+        if (!tree) return true;
+        if (e.path.includes("/.") || e.path.startsWith(".")) return false;
+        return !treeHasPath(tree, e.path);
+      });
+
+      if (needsTreeRefresh) {
+        await refreshTree();
+      }
       void refreshSyncStatus();
 
       const tagPaths = paths.filter((p) => {
@@ -1115,7 +1141,13 @@ function App() {
     };
 
     void listen<VaultChange>("vault-change", (event) => {
-      pendingPaths.add(event.payload.path);
+      const { path, kind } = event.payload;
+      const prev = pending.get(path);
+      if (!prev || isStructuralVaultChange(kind)) {
+        pending.set(path, kind);
+      } else if (!isStructuralVaultChange(prev)) {
+        pending.set(path, kind);
+      }
       if (debounceTimer != null) window.clearTimeout(debounceTimer);
       debounceTimer = window.setTimeout(() => void flush(), 400);
     }).then((fn) => {
@@ -1316,7 +1348,6 @@ function App() {
       <CommandPalette
         open={paletteOpen}
         mode={paletteMode}
-        tree={tree}
         recentPaths={recentPaths}
         commands={PALETTE_COMMANDS}
         recentCommandIds={recentCommandIds}
@@ -1336,7 +1367,6 @@ function App() {
       <DictPracticeDialog
         open={practiceOpen}
         projectPath={practiceProjectPath}
-        tree={tree}
         onClose={() => setPracticeOpen(false)}
       />
       <QuickTranslateDialog

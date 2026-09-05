@@ -7,11 +7,12 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import type { TreeNode } from "../lib/vaultApi";
 import {
   RECENT_COMMANDS_LIMIT,
   RECENT_FILES_LIMIT,
 } from "../lib/settingsStore";
+import { useVaultStore } from "../store/vaultStore";
+import type { TreeNode } from "../lib/vaultApi";
 
 export type CommandPaletteMode = "files" | "commands";
 
@@ -60,7 +61,6 @@ export function formatPaletteShortcut(
 type Props = {
   open: boolean;
   mode: CommandPaletteMode;
-  tree: TreeNode | null;
   recentPaths: string[];
   commands: PaletteCommand[];
   /** Most recently run command ids first. */
@@ -224,7 +224,6 @@ function restoreFocus(saved: SavedFocus | null) {
 export function CommandPalette({
   open,
   mode,
-  tree,
   recentPaths,
   commands,
   recentCommandIds,
@@ -232,6 +231,8 @@ export function CommandPalette({
   onOpenFile,
   onRunCommand,
 }: Props) {
+  // Subscribe only while open so tree updates do not re-render App shell.
+  const tree = useVaultStore((s) => (open ? s.tree : null));
   const commandById = useMemo(
     () => new Map(commands.map((c) => [c.id, c])),
     [commands],
