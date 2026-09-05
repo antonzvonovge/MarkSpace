@@ -3112,7 +3112,7 @@ checksum = "fc04a4c58212d57930a24bf47d3fa87485264a3a054e9c10e042eb373573ad3c"
 
 [[package]]
 name = "markspace"
-version = "1.35.0"
+version = "1.36.0"
 dependencies = [
  "anyhow",
  "axum",
