@@ -128,6 +128,12 @@ import {
   getActiveDrawioTreeDrag,
 } from "./drawio/treeDrag";
 import {
+  clearVaultTreeDrag,
+  pointOverElement,
+  VAULT_TREE_POINTER_DROP_EVENT,
+  type VaultTreePointerDropDetail,
+} from "../lib/vaultTreeDrag";
+import {
   createCommentDecorationExtension,
   getCommentRanges,
   scrollToCommentRange,
@@ -1252,6 +1258,43 @@ export const NoteEditor = memo(function NoteEditor({
       document.removeEventListener("dragover", onDragOver, true);
       document.removeEventListener("drop", onDrop, true);
       document.removeEventListener("dragend", onDragEnd, true);
+    };
+  }, [editor, isActive]);
+
+  // dnd-kit tree drag: no HTML5 dataTransfer — accept pointer drops via bridge event.
+  useEffect(() => {
+    if (!isActive) return;
+    const onPointerDrop = (event: Event) => {
+      const detail = (event as CustomEvent<VaultTreePointerDropDetail>).detail;
+      if (!detail?.path) return;
+      const shell = shellRef.current;
+      if (!pointOverElement(shell, detail.clientX, detail.clientY)) return;
+      event.preventDefault();
+      const src = detail.path;
+      if (isDrawioPath(src)) {
+        insertDrawioEmbed(editor, src, {
+          x: detail.clientX,
+          y: detail.clientY,
+        });
+        clearDrawioTreeDrag();
+        clearVaultTreeDrag();
+        clearBlockNoteDropCursor(editor.prosemirrorView?.dom);
+        return;
+      }
+      // Match old HTML5 text/plain path insertion into the live editor.
+      editor.pasteText(src);
+      clearVaultTreeDrag();
+      clearBlockNoteDropCursor(editor.prosemirrorView?.dom);
+    };
+    window.addEventListener(
+      VAULT_TREE_POINTER_DROP_EVENT,
+      onPointerDrop as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        VAULT_TREE_POINTER_DROP_EVENT,
+        onPointerDrop as EventListener,
+      );
     };
   }, [editor, isActive]);
 

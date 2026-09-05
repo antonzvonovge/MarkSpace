@@ -1875,7 +1875,7 @@ select {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 30;
+  z-index: 40;
   min-width: 168px;
   padding: 6px;
   border: 1px solid var(--line);
@@ -1884,6 +1884,7 @@ select {
   color: var(--text);
   box-shadow: 0 10px 28px rgba(20, 30, 34, 0.16);
   animation: tree-create-in 0.16s ease;
+  isolation: isolate;
 }
 
 .tree-create-item {
@@ -1970,6 +1971,14 @@ select {
   font-weight: 600;
   cursor: pointer;
   color: var(--sidebar-text);
+  /* content-visibility:auto + fixed row height clips the Create menu. */
+  content-visibility: visible;
+}
+
+.tree-folder-row.is-vault-root:hover .section-header-actions,
+.tree-folder-row.is-vault-root .section-header-actions:focus-within,
+.tree-folder-row.is-vault-root .section-header-actions:has(.tree-create-menu) {
+  opacity: 1;
 }
 
 .tree-folder-row.is-vault-root .tree-node-icon {
@@ -2084,6 +2093,12 @@ select {
 
 .workspace-virtual-row.is-drop-line-host {
   z-index: 2;
+}
+
+/* Create menu lives inside the vault-root virtual row; raise that host so
+   later sibling rows do not paint over the dropdown. */
+.workspace-virtual-row:has(.tree-create-menu) {
+  z-index: 40;
 }
 
 /* Insert line (reorder) — absolute, no gap between rows. */
@@ -2402,6 +2417,12 @@ select {
   pointer-events: none;
   white-space: nowrap;
   cursor: grabbing;
+}
+
+/* Force grabbing cursor everywhere while dragging a vault tree row. */
+body.is-vault-tree-dragging,
+body.is-vault-tree-dragging * {
+  cursor: grabbing !important;
 }
 
 :root[data-theme="dark"] .vault-tree-drag-chip {

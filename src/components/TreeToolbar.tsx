@@ -62,7 +62,12 @@ function TreeCreateMenu({
   };
 
   return (
-    <div className="tree-create" ref={rootRef}>
+    <div
+      className="tree-create"
+      ref={rootRef}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <button
         type="button"
         className={open ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
@@ -75,10 +80,12 @@ function TreeCreateMenu({
         aria-expanded={open}
         aria-haspopup="menu"
         disabled={disabled}
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation();
           if (disabled) return;
           setOpen((v) => !v);
         }}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <PlusIcon />
       </button>
@@ -294,7 +301,12 @@ export function WorkspaceHeaderActions({
   );
 
   return (
-    <div className="section-header-actions">
+    <div
+      className="section-header-actions"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <button
         type="button"
         className="tree-toolbar-btn"

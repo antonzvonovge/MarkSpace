@@ -46,7 +46,11 @@ import { writeClipboardHtml } from "../../lib/clipboardText";
 import {
   clearVaultTreeDrag,
   isVaultTreeDrag,
+  pointOverElement,
+  subscribeVaultTreeDrag,
   vaultPathFromDrop,
+  VAULT_TREE_POINTER_DROP_EVENT,
+  type VaultTreePointerDropDetail,
 } from "../../lib/vaultTreeDrag";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { vaultChatModelId } from "../../store/vaultAiSettingsStore";
@@ -444,6 +448,65 @@ export function ChatComposer() {
       window.removeEventListener("dragend", onDragEnd);
     };
   }, [dragOver]);
+
+  // dnd-kit tree drag has no HTML5 dataTransfer — hint + drop via bridge/events.
+  useEffect(() => {
+    if (streaming) return;
+    let stopMove: (() => void) | null = null;
+    const unsub = subscribeVaultTreeDrag((path) => {
+      stopMove?.();
+      stopMove = null;
+      if (!path) {
+        hideDropHint();
+        return;
+      }
+      const onMove = (ev: PointerEvent) => {
+        const root = composerRef.current;
+        if (pointOverElement(root, ev.clientX, ev.clientY)) {
+          showDropHint("vault");
+        } else {
+          hideDropHint();
+        }
+      };
+      window.addEventListener("pointermove", onMove, { passive: true });
+      stopMove = () => window.removeEventListener("pointermove", onMove);
+    });
+    return () => {
+      stopMove?.();
+      unsub();
+    };
+  }, [streaming]);
+
+  useEffect(() => {
+    if (streaming) return;
+    const onPointerDrop = (event: Event) => {
+      const detail = (event as CustomEvent<VaultTreePointerDropDetail>).detail;
+      if (!detail?.path) return;
+      const root = composerRef.current;
+      if (!pointOverElement(root, detail.clientX, detail.clientY)) return;
+      event.preventDefault();
+      hideDropHint();
+      const el = inputRef.current;
+      clearVaultTreeDrag();
+      if (!el) return;
+      void useChatStore
+        .getState()
+        .adoptProjectFromVaultPathIfComposerEmpty(detail.path);
+      insertPathChip(el, detail.path, detail.clientX, detail.clientY);
+      syncDraftFromDom();
+      focusInput();
+    };
+    window.addEventListener(
+      VAULT_TREE_POINTER_DROP_EVENT,
+      onPointerDrop as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        VAULT_TREE_POINTER_DROP_EVENT,
+        onPointerDrop as EventListener,
+      );
+    };
+  }, [streaming]);
 
   const clipboardImageInFlight = useRef(false);
   const [contextMenu, setContextMenu] = useState<EditContextMenuState | null>(

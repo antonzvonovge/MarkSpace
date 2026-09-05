@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -54,6 +55,10 @@ import {
   type ProjectPropsMap,
   type VaultDropLine,
 } from "./VaultTreeRow";
+import {
+  dispatchVaultTreePointerDrop,
+  normalizeVaultTreeDragPath,
+} from "../../lib/vaultTreeDrag";
 
 const ROW_HEIGHT = 28;
 const OVERSCAN = 8;
@@ -221,6 +226,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     null,
   );
   const dropIndicatorRef = useRef<VaultDropIndicator | null>(null);
+  const pointerXRef = useRef(0);
   const pointerYRef = useRef(0);
   const stopPointerTrackingRef = useRef<(() => void) | null>(null);
   const scrollMarginRef = useRef(scrollMargin);
@@ -239,17 +245,22 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     stopPointerTrackingRef.current = null;
   }, []);
 
-  const startPointerTracking = useCallback((clientY: number) => {
-    stopPointerTrackingRef.current?.();
-    pointerYRef.current = clientY;
-    const onMove = (ev: PointerEvent) => {
-      pointerYRef.current = ev.clientY;
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    stopPointerTrackingRef.current = () => {
-      window.removeEventListener("pointermove", onMove);
-    };
-  }, []);
+  const startPointerTracking = useCallback(
+    (clientX: number, clientY: number) => {
+      stopPointerTrackingRef.current?.();
+      pointerXRef.current = clientX;
+      pointerYRef.current = clientY;
+      const onMove = (ev: PointerEvent) => {
+        pointerXRef.current = ev.clientX;
+        pointerYRef.current = ev.clientY;
+      };
+      window.addEventListener("pointermove", onMove, { passive: true });
+      stopPointerTrackingRef.current = () => {
+        window.removeEventListener("pointermove", onMove);
+      };
+    },
+    [],
+  );
 
   const commitDropIndicator = useCallback((next: VaultDropIndicator | null) => {
     if (dropIndicatorsEqual(dropIndicatorRef.current, next)) return;
@@ -348,14 +359,20 @@ export const WorkspaceTree = memo(function WorkspaceTree({
 
   const onDragStart = useCallback(
     (event: DragStartEvent) => {
-      const y =
-        "clientY" in event.activatorEvent
-          ? (event.activatorEvent as PointerEvent).clientY
+      const activator = event.activatorEvent;
+      const x =
+        activator && "clientX" in activator
+          ? (activator as PointerEvent).clientX
           : 0;
-      startPointerTracking(y);
+      const y =
+        activator && "clientY" in activator
+          ? (activator as PointerEvent).clientY
+          : 0;
+      startPointerTracking(x, y);
       setActiveId(event.active.id);
       dropIndicatorRef.current = null;
       setDropIndicator(null);
+      document.body.classList.add("is-vault-tree-dragging");
     },
     [startPointerTracking],
   );
@@ -387,32 +404,60 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     setActiveId(null);
     dropIndicatorRef.current = null;
     setDropIndicator(null);
+    document.body.classList.remove("is-vault-tree-dragging");
   }, [stopPointerTracking]);
+
+  useEffect(() => {
+    return () => {
+      document.body.classList.remove("is-vault-tree-dragging");
+    };
+  }, []);
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
       const from = String(event.active.id);
       const indicator = dropIndicatorRef.current;
+      const clientX = pointerXRef.current;
+      const clientY = pointerYRef.current;
+      const fromRow = rowsRef.current.find((r) => r.path === from);
       clearDragState();
-      if (!indicator || from === indicator.path) return;
-      const drop = resolveVaultDrop(
-        rows,
-        from,
-        indicator.path,
-        indicator.placement,
-      );
-      if (!drop) return;
-      void (async () => {
-        const next =
-          drop.kind === "nest-note"
-            ? await nestTreeEntryUnderNote(
-                drop.from,
-                drop.targetPath,
-                drop.toIndex,
-              )
-            : await moveTreeEntry(drop.from, drop.targetPath, drop.toIndex);
-        onMoved?.(from, next);
-      })();
+
+      // Tree-internal drop (reorder / nest).
+      if (indicator && from !== indicator.path) {
+        const drop = resolveVaultDrop(
+          rows,
+          from,
+          indicator.path,
+          indicator.placement,
+        );
+        if (!drop) return;
+        void (async () => {
+          const next =
+            drop.kind === "nest-note"
+              ? await nestTreeEntryUnderNote(
+                  drop.from,
+                  drop.targetPath,
+                  drop.toIndex,
+                )
+              : await moveTreeEntry(drop.from, drop.targetPath, drop.toIndex);
+          onMoved?.(from, next);
+        })();
+        return;
+      }
+
+      // Outside the list: deliver to chat composer / note editor (no HTML5 DnD).
+      const parent = scrollParentRef.current;
+      const parentRect = parent?.getBoundingClientRect();
+      const overTree =
+        parentRect != null &&
+        clientX >= parentRect.left &&
+        clientX <= parentRect.right &&
+        clientY >= parentRect.top &&
+        clientY <= parentRect.bottom;
+      if (overTree) return;
+
+      const path = normalizeVaultTreeDragPath(from, Boolean(fromRow?.isDir));
+      dispatchVaultTreePointerDrop(path, clientX, clientY);
     },
     [
       rows,
@@ -420,6 +465,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       nestTreeEntryUnderNote,
       onMoved,
       clearDragState,
+      scrollParentRef,
     ],
   );
 

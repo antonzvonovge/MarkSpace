@@ -326,13 +326,16 @@ function VaultTreeRowView({
 
   useEffect(() => {
     if (!isDragging && !isDragStub) return;
-    beginVaultTreeDrag(path);
+    // Folder chips use trailing `/` (chat composer + old HTML5 dragstart).
+    const dragPath =
+      isDir && path && !path.endsWith("/") ? `${path}/` : path;
+    beginVaultTreeDrag(dragPath);
     if (isDrawio) beginDrawioTreeDrag(path);
     return () => {
       endVaultTreeDrag();
       if (isDrawio) endDrawioTreeDrag();
     };
-  }, [isDragging, isDragStub, path, isDrawio]);
+  }, [isDragging, isDragStub, path, isDir, isDrawio]);
 
   return (
     <div
