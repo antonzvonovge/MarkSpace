@@ -1,15 +1,18 @@
-import { useEditorChange } from "@blocknote/react";
+/** Heading outline (TOC) for TipTap live documents, levels 1–3. */
+
+import type { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  buildDocumentOutline,
+  buildOutlineTree,
   collectExpandableKeys,
+  type OutlineHeading,
   type OutlineNode,
 } from "../lib/documentOutline";
 import { saveDocOutlineCollapsed, loadDocOutlineUi } from "../lib/outlineUiState";
-import type { NoteEditor } from "../editor/schema";
 
 type Props = {
-  editor: NoteEditor;
+  editor: Editor;
   width: number;
   notePath: string;
   vaultPath: string | null;
@@ -69,7 +72,6 @@ function OutlineItem({
   onNavigate: (id: string) => void;
 }) {
   const hasChildren = node.children.length > 0;
-  // Levels 1–2 start expanded (key absent from collapsed).
   const open = hasChildren && !collapsed.has(node.key);
 
   return (
@@ -116,6 +118,30 @@ function OutlineItem({
   );
 }
 
+/** Collect h1–h3 from a TipTap doc (`heading` nodes with `attrs.level`). */
+export function collectTiptapOutlineHeadings(
+  editor: Editor,
+): OutlineHeading[] {
+  const out: OutlineHeading[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== "heading") return;
+    const level = Number(node.attrs.level);
+    if (level < 1 || level > 3) return false;
+    const text = node.textContent.trim() || "Untitled";
+    out.push({
+      id: `pos:${pos}`,
+      level: level as 1 | 2 | 3,
+      text,
+    });
+    return false;
+  });
+  return out;
+}
+
+export function buildTiptapDocumentOutline(editor: Editor): OutlineNode[] {
+  return buildOutlineTree(collectTiptapOutlineHeadings(editor));
+}
+
 export function DocumentOutline({
   editor,
   width,
@@ -123,7 +149,7 @@ export function DocumentOutline({
   vaultPath,
 }: Props) {
   const [tree, setTree] = useState<OutlineNode[]>(() =>
-    buildDocumentOutline(editor.document),
+    buildTiptapDocumentOutline(editor),
   );
   const [collapsed, setCollapsed] = useState<Set<string>>(
     () => new Set(loadDocOutlineUi(vaultPath, notePath).collapsed),
@@ -138,28 +164,31 @@ export function DocumentOutline({
   );
 
   const refresh = useCallback(() => {
-    setTree(buildDocumentOutline(editor.document));
+    setTree(buildTiptapDocumentOutline(editor));
   }, [editor]);
 
-  useEditorChange(() => {
-    // Headings rarely change every keystroke; keep Live typing off the outline path.
-    if (outlineTimerRef.current != null) {
-      window.clearTimeout(outlineTimerRef.current);
-    }
-    outlineTimerRef.current = window.setTimeout(() => {
-      outlineTimerRef.current = null;
-      refresh();
-    }, 200);
-  }, editor);
-
   useEffect(() => {
-    refresh();
+    const onUpdate = () => {
+      if (outlineTimerRef.current != null) {
+        window.clearTimeout(outlineTimerRef.current);
+      }
+      outlineTimerRef.current = window.setTimeout(() => {
+        outlineTimerRef.current = null;
+        refresh();
+      }, 200);
+    };
+    editor.on("update", onUpdate);
     return () => {
+      editor.off("update", onUpdate);
       if (outlineTimerRef.current != null) {
         window.clearTimeout(outlineTimerRef.current);
         outlineTimerRef.current = null;
       }
     };
+  }, [editor, refresh]);
+
+  useEffect(() => {
+    refresh();
   }, [refresh]);
 
   const onToggle = useCallback(
@@ -183,10 +212,24 @@ export function DocumentOutline({
 
   const onNavigate = useCallback(
     (id: string) => {
-      const el = editor.domElement?.querySelector(
-        `[data-id="${CSS.escape(id)}"]`,
-      );
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const m = /^pos:(\d+)$/.exec(id);
+      if (!m) return;
+      const pos = Number(m[1]);
+      if (!Number.isFinite(pos)) return;
+      const view = editor.view;
+      try {
+        const node = view.state.doc.nodeAt(pos);
+        if (!node) return;
+        const dom = view.nodeDOM(pos);
+        if (dom instanceof HTMLElement) {
+          dom.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        const sel = TextSelection.near(view.state.doc.resolve(pos + 1));
+        view.dispatch(view.state.tr.setSelection(sel).scrollIntoView());
+        view.focus();
+      } catch {
+        /* doc changed */
+      }
     },
     [editor],
   );

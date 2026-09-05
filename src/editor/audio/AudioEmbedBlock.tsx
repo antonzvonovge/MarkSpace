@@ -1,8 +1,5 @@
-import { createExtension } from "@blocknote/core";
-import { createReactBlockSpec } from "@blocknote/react";
 import { AudioPlayer } from "../../components/audio/AudioPlayer";
 import { joinPath, parentPath } from "../../lib/vaultApi";
-import { parseAudioFenceBody } from "../../lib/wikiMarkdown";
 import { useVaultStore } from "../../store/vaultStore";
 import { selectAtomBlockOnMouseDown } from "../selectAtomBlock";
 
@@ -18,32 +15,11 @@ export function resolveAudioEmbedPath(
   return folder ? joinPath(folder, trimmed) : trimmed;
 }
 
-function parseAudioElement(element: HTMLElement): { src: string } | undefined {
-  if (element.tagName !== "PRE") return undefined;
-  if (
-    element.childElementCount !== 1 ||
-    element.firstElementChild?.tagName !== "CODE"
-  ) {
-    return undefined;
-  }
-  const codeEl = element.firstElementChild!;
-  const language =
-    codeEl.getAttribute("data-language") ||
-    codeEl.className
-      .split(/\s+/)
-      .find((name) => name.startsWith("language-"))
-      ?.replace("language-", "");
-  if (language !== "audio") return undefined;
-  const src = parseAudioFenceBody(codeEl.textContent ?? "");
-  if (!src) return undefined;
-  return { src };
-}
-
-function AudioEmbedView(props: {
+export function AudioEmbedView(props: {
   block: { id: string; props: { src: string } };
   editor: {
     isEditable: boolean;
-    prosemirrorView?: import("prosemirror-view").EditorView;
+    prosemirrorView?: import("@tiptap/pm/view").EditorView;
   };
 }) {
   const { block, editor } = props;
@@ -63,41 +39,3 @@ function AudioEmbedView(props: {
     </div>
   );
 }
-
-export const createAudioBlock = createReactBlockSpec(
-  {
-    type: "audio",
-    propSchema: {
-      src: { default: "" },
-    },
-    content: "none",
-  },
-  {
-    meta: {
-      isolating: true,
-    },
-    runsBefore: ["codeBlock"],
-    parse: (element) => parseAudioElement(element),
-    toExternalHTML: ({ block }) => (
-      <pre>
-        <code data-language="audio">{block.props.src}</code>
-      </pre>
-    ),
-    render: (props) => <AudioEmbedView {...props} />,
-  },
-  [
-    createExtension({
-      key: "audio-input-rule",
-      runsBefore: ["code-block-keyboard-shortcuts"],
-      inputRules: [
-        {
-          find: /^```audio\s$/,
-          replace: () => ({
-            type: "audio",
-            props: { src: "" },
-          }),
-        },
-      ],
-    }),
-  ],
-);

@@ -1,5 +1,3 @@
-import { createExtension } from "@blocknote/core";
-import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useRef, useState } from "react";
 import {
   DiagramExpandIcon,
@@ -14,8 +12,6 @@ export const DEFAULT_PLANTUML_CODE = `@startuml
 Alice -> Bob: Hello
 Bob --> Alice: Hi
 @enduml`;
-
-const PLANTUML_LANGS = new Set(["plantuml", "puml"]);
 
 type ViewMode = "preview" | "edit";
 
@@ -59,11 +55,11 @@ function PlantUmlPreview({ code, dark }: { code: string; dark: boolean }) {
   );
 }
 
-function PlantUmlBlockView(props: {
+export function PlantUmlBlockView(props: {
   block: { id: string; props: { code: string } };
   editor: {
     isEditable: boolean;
-    prosemirrorView?: import("prosemirror-view").EditorView;
+    prosemirrorView?: import("@tiptap/pm/view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: { code: string } },
@@ -167,61 +163,3 @@ function PlantUmlBlockView(props: {
   );
 }
 
-export const createPlantUmlBlock = createReactBlockSpec(
-  {
-    type: "plantuml",
-    propSchema: {
-      code: {
-        default: "",
-      },
-    },
-    content: "none",
-  },
-  {
-    meta: {
-      isolating: true,
-    },
-    runsBefore: ["codeBlock"],
-    parse: (element) => {
-      if (element.tagName !== "PRE") return undefined;
-      if (
-        element.childElementCount !== 1 ||
-        element.firstElementChild?.tagName !== "CODE"
-      ) {
-        return undefined;
-      }
-      const codeEl = element.firstElementChild!;
-      const language =
-        codeEl.getAttribute("data-language") ||
-        codeEl.className
-          .split(/\s+/)
-          .find((name) => name.startsWith("language-"))
-          ?.replace("language-", "");
-      if (!language || !PLANTUML_LANGS.has(language.toLowerCase())) {
-        return undefined;
-      }
-      return { code: codeEl.textContent ?? "" };
-    },
-    toExternalHTML: ({ block }) => (
-      <pre>
-        <code data-language="plantuml">{block.props.code}</code>
-      </pre>
-    ),
-    render: (props) => <PlantUmlBlockView {...props} />,
-  },
-  [
-    createExtension({
-      key: "plantuml-input-rule",
-      runsBefore: ["code-block-keyboard-shortcuts"],
-      inputRules: [
-        {
-          find: /^```(?:plantuml|puml)\s$/,
-          replace: () => ({
-            type: "plantuml",
-            props: { code: DEFAULT_PLANTUML_CODE },
-          }),
-        },
-      ],
-    }),
-  ],
-);

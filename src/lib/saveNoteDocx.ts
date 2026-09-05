@@ -1,10 +1,7 @@
-import { BlockNoteEditor } from "@blocknote/core";
 import { getLiveEditor } from "../editor/completedTasksCommand";
-import { noteEditorSchema } from "../editor/schema";
+import { markdownToEditorHtml } from "../editor/tiptap/markdownBridge";
 import { editorMarkdownToHashtags } from "./hashtagMarkdown";
-import { restoreImagePreviewWidthsFromAlt } from "./imageMarkdown";
 import { mathToEditorMarkdown } from "./mathMarkdown";
-import { markdownToNestedBlocks } from "./nestedListMarkdown";
 import { normalizeMarkdown } from "./normalizeMarkdown";
 import { noteBody } from "./noteFrontmatter";
 import { writeFileBytes } from "./vaultApi";
@@ -67,23 +64,13 @@ function reportJob(
 async function noteHtmlFromEditor(path: string, markdown: string): Promise<string> {
   const live = getLiveEditor(path);
   if (live) {
-    return Promise.resolve(live.blocksToHTMLLossy(live.document));
+    return Promise.resolve(live.getHTML());
   }
-  const ed = BlockNoteEditor.create({ schema: noteEditorSchema });
-  try {
-    const body = noteBody(normalizeMarkdown(markdown));
-    const blocks = restoreImagePreviewWidthsFromAlt(
-      markdownToNestedBlocks(
-        ed,
-        mathToEditorMarkdown(editorMarkdownToHashtags(wikiToMarkdown(body))),
-      ),
-    );
-    const resolved = await Promise.resolve(blocks);
-    ed.replaceBlocks(ed.document, resolved as never);
-    return Promise.resolve(ed.blocksToHTMLLossy(ed.document));
-  } finally {
-    ed._tiptapEditor.destroy();
-  }
+  const body = noteBody(normalizeMarkdown(markdown));
+  const projected = mathToEditorMarkdown(
+    editorMarkdownToHashtags(wikiToMarkdown(body)),
+  );
+  return Promise.resolve(markdownToEditorHtml(projected));
 }
 
 /** Save the open markdown note as a sibling .docx. Status bar shows progress. */

@@ -1,5 +1,3 @@
-import { createExtension } from "@blocknote/core";
-import { createReactBlockSpec } from "@blocknote/react";
 import katex from "katex";
 import { useEffect, useState } from "react";
 import { selectAtomBlockOnMouseDown } from "../selectAtomBlock";
@@ -16,11 +14,11 @@ function renderDisplayLatex(latex: string): string {
   });
 }
 
-function MathEquationView(props: {
+export function MathEquationView(props: {
   block: { id: string; props: { latex: string } };
   editor: {
     isEditable: boolean;
-    prosemirrorView?: import("prosemirror-view").EditorView;
+    prosemirrorView?: import("@tiptap/pm/view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: { latex: string } },
@@ -110,80 +108,3 @@ function MathEquationView(props: {
   );
 }
 
-function codeLanguage(codeEl: Element): string | undefined {
-  return (
-    codeEl.getAttribute("data-language") ||
-    codeEl.className
-      .split(/\s+/)
-      .find((name) => name.startsWith("language-"))
-      ?.replace("language-", "")
-  );
-}
-
-const MATH_FENCE_LANGS = new Set(["math", "latex", "equation", "tex"]);
-
-export const createMathEquationBlock = createReactBlockSpec(
-  {
-    type: "equation",
-    propSchema: {
-      latex: {
-        default: "",
-      },
-    },
-    content: "none",
-  },
-  {
-    meta: {
-      isolating: true,
-    },
-    runsBefore: ["codeBlock"],
-    parse: (element) => {
-      if (element.tagName === "PRE") {
-        if (
-          element.childElementCount !== 1 ||
-          element.firstElementChild?.tagName !== "CODE"
-        ) {
-          return undefined;
-        }
-        const codeEl = element.firstElementChild!;
-        const language = codeLanguage(codeEl)?.toLowerCase();
-        if (!language || !MATH_FENCE_LANGS.has(language)) return undefined;
-        return { latex: codeEl.textContent ?? "" };
-      }
-
-      // Paste / legacy HTML from blocknote-math.
-      if (
-        element.tagName === "DIV" &&
-        (element.classList.contains("bn-equation") ||
-          element.getAttribute("data-content-type") === "equation")
-      ) {
-        const latex =
-          element.getAttribute("data-latex") ||
-          element.querySelector("[data-latex]")?.getAttribute("data-latex");
-        if (latex !== null && latex !== undefined) return { latex };
-      }
-      return undefined;
-    },
-    toExternalHTML: ({ block }) => (
-      <pre>
-        <code data-language="math">{block.props.latex}</code>
-      </pre>
-    ),
-    render: (props) => <MathEquationView {...props} />,
-  },
-  [
-    createExtension({
-      key: "math-equation-input-rule",
-      runsBefore: ["code-block-keyboard-shortcuts"],
-      inputRules: [
-        {
-          find: /^```math\s$/,
-          replace: () => ({
-            type: "equation",
-            props: { latex: DEFAULT_EQUATION_LATEX },
-          }),
-        },
-      ],
-    }),
-  ],
-);

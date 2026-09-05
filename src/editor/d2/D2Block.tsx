@@ -1,5 +1,3 @@
-import { createExtension } from "@blocknote/core";
-import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useRef, useState } from "react";
 import {
   DiagramExpandIcon,
@@ -57,11 +55,11 @@ function D2Preview({ code, dark }: { code: string; dark: boolean }) {
   );
 }
 
-function D2BlockView(props: {
+export function D2BlockView(props: {
   block: { id: string; props: { code: string } };
   editor: {
     isEditable: boolean;
-    prosemirrorView?: import("prosemirror-view").EditorView;
+    prosemirrorView?: import("@tiptap/pm/view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: { code: string } },
@@ -165,61 +163,3 @@ function D2BlockView(props: {
   );
 }
 
-export const createD2Block = createReactBlockSpec(
-  {
-    type: "d2",
-    propSchema: {
-      code: {
-        default: "",
-      },
-    },
-    content: "none",
-  },
-  {
-    meta: {
-      isolating: true,
-    },
-    runsBefore: ["codeBlock"],
-    parse: (element) => {
-      if (element.tagName !== "PRE") return undefined;
-      if (
-        element.childElementCount !== 1 ||
-        element.firstElementChild?.tagName !== "CODE"
-      ) {
-        return undefined;
-      }
-      const codeEl = element.firstElementChild!;
-      const language = (
-        codeEl.getAttribute("data-language") ||
-        codeEl.className
-          .split(/\s+/)
-          .find((name) => name.startsWith("language-"))
-          ?.replace("language-", "") ||
-        ""
-      ).toLowerCase();
-      if (language !== "d2") return undefined;
-      return { code: codeEl.textContent ?? "" };
-    },
-    toExternalHTML: ({ block }) => (
-      <pre>
-        <code data-language="d2">{block.props.code}</code>
-      </pre>
-    ),
-    render: (props) => <D2BlockView {...props} />,
-  },
-  [
-    createExtension({
-      key: "d2-input-rule",
-      runsBefore: ["code-block-keyboard-shortcuts"],
-      inputRules: [
-        {
-          find: /^```d2\s$/,
-          replace: () => ({
-            type: "d2",
-            props: { code: DEFAULT_D2_CODE },
-          }),
-        },
-      ],
-    }),
-  ],
-);

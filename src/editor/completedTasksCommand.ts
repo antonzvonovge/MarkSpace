@@ -1,21 +1,14 @@
 import type { EditorView } from "@codemirror/view";
-import type { BlockNoteEditor } from "@blocknote/core";
-import {
-  collectCompletedTaskIds,
-  removeCompletedTaskLines,
-  type TaskBlockLike,
-} from "../lib/completedTasks";
+import type { Editor } from "@tiptap/core";
+import { removeCompletedTaskLines } from "../lib/completedTasks";
 import { documentKind } from "../lib/vaultApi";
 import { useVaultStore } from "../store/vaultStore";
-import type { NoteEditor } from "./schema";
 
-type AnyEditor = BlockNoteEditor<any, any, any>;
-
-const liveEditors = new Map<string, NoteEditor>();
+const liveEditors = new Map<string, Editor>();
 const sourceEditors = new Map<string, EditorView>();
 
-/** Register a Live BlockNote instance so palette commands can reach it. */
-export function registerLiveEditor(path: string, editor: NoteEditor): () => void {
+/** Register a Live TipTap instance so palette commands can reach it. */
+export function registerLiveEditor(path: string, editor: Editor): () => void {
   liveEditors.set(path, editor);
   return () => {
     if (liveEditors.get(path) === editor) liveEditors.delete(path);
@@ -33,7 +26,7 @@ export function registerSourceEditor(
   };
 }
 
-export function getLiveEditor(path: string): NoteEditor | undefined {
+export function getLiveEditor(path: string): Editor | undefined {
   return liveEditors.get(path);
 }
 
@@ -42,7 +35,7 @@ export function getSourceEditor(path: string): EditorView | undefined {
 }
 
 export function forEachLiveEditor(
-  fn: (path: string, editor: NoteEditor) => void,
+  fn: (path: string, editor: Editor) => void,
 ): void {
   for (const [path, editor] of liveEditors) fn(path, editor);
 }
@@ -53,24 +46,48 @@ export function forEachSourceEditor(
   for (const [path, view] of sourceEditors) fn(path, view);
 }
 
-export function deleteCompletedTasksFromLiveEditor(editor: AnyEditor): number {
+function isTaskItemChecked(attrs: Record<string, unknown>): boolean {
+  const checked = attrs.checked;
+  return checked === true || checked === "true";
+}
+
+/** Delete completed TipTap `taskItem` nodes (selection scope or whole doc). */
+export function deleteCompletedTasksFromLiveEditor(editor: Editor): number {
   if (!editor.isEditable) return 0;
-  const selection = editor.getSelection();
-  const roots = (selection?.blocks ?? editor.document) as TaskBlockLike[];
-  const ids = collectCompletedTaskIds(roots);
-  if (ids.length === 0) return 0;
 
-  const idSet = new Set(ids);
-  const removingAllTop =
-    editor.document.length > 0 &&
-    editor.document.every((block) => idSet.has(block.id));
+  const { from, to, empty } = editor.state.selection;
+  const positions: number[] = [];
 
-  if (removingAllTop) {
-    editor.replaceBlocks(editor.document, [{ type: "paragraph" }]);
-  } else {
-    editor.removeBlocks(ids);
-  }
-  return ids.length;
+  editor.state.doc.nodesBetween(
+    empty ? 0 : from,
+    empty ? editor.state.doc.content.size : to,
+    (node, pos) => {
+      if (node.type.name === "taskItem" && isTaskItemChecked(node.attrs)) {
+        positions.push(pos);
+        return false;
+      }
+    },
+  );
+
+  if (positions.length === 0) return 0;
+
+  // Delete from the end so earlier positions stay valid.
+  positions.sort((a, b) => b - a);
+  editor
+    .chain()
+    .focus()
+    .command(({ tr }) => {
+      for (const pos of positions) {
+        const node = tr.doc.nodeAt(pos);
+        if (!node || node.type.name !== "taskItem") continue;
+        if (!isTaskItemChecked(node.attrs)) continue;
+        tr.delete(pos, pos + node.nodeSize);
+      }
+      return true;
+    })
+    .run();
+
+  return positions.length;
 }
 
 export function deleteCompletedTasksFromSourceEditor(view: EditorView): number {
@@ -117,7 +134,9 @@ export function getActiveMarkdownSelection(): string {
   }
   const editor = liveEditors.get(activePath);
   if (!editor) return "";
-  return editor.getSelectedText() ?? "";
+  const { from, to } = editor.state.selection;
+  if (from === to) return "";
+  return editor.state.doc.textBetween(from, to, " ");
 }
 
 /** Insert (or replace the selection) in the active markdown editor. */
@@ -141,8 +160,8 @@ export function insertTextInActiveMarkdown(text: string): boolean {
 
   const editor = liveEditors.get(activePath);
   if (!editor || !editor.isEditable) return false;
-  editor.pasteText(text);
-  focusSoon(() => editor.focus());
+  editor.chain().focus().insertContent(text).run();
+  focusSoon(() => editor.commands.focus());
   return true;
 }
 
@@ -160,7 +179,7 @@ export function focusActiveMarkdownEditor(): boolean {
 
   const editor = liveEditors.get(activePath);
   if (!editor) return false;
-  focusSoon(() => editor.focus());
+  focusSoon(() => editor.commands.focus());
   return true;
 }
 
@@ -183,6 +202,6 @@ export function deleteCompletedTasksInActiveEditor(): number {
   const editor = liveEditors.get(activePath);
   if (!editor) return 0;
   const removed = deleteCompletedTasksFromLiveEditor(editor);
-  if (removed > 0) focusSoon(() => editor.focus());
+  if (removed > 0) focusSoon(() => editor.commands.focus());
   return removed;
 }

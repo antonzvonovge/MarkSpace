@@ -1,12 +1,6 @@
 import { defaultKeymap, history, historyKeymap, redo, undo } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
-import {
-  HighlightStyle,
-  syntaxHighlighting,
-} from "@codemirror/language";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
-import { tags as t } from "@lezer/highlight";
 import { useEffect, useRef, useState } from "react";
 import { usePersistedEditorScroll } from "../hooks/usePersistedEditorScroll";
 import { registerSourceEditor } from "./completedTasksCommand";
@@ -19,45 +13,7 @@ type Props = {
   onChange: (markdown: string) => void;
 };
 
-/** Markers like *, **, #, `, [], > — distinct from body text */
-const markdownHighlightStyle = HighlightStyle.define([
-  { tag: t.heading1, color: "var(--heading-1)", fontWeight: "700", fontSize: "1.2em" },
-  { tag: t.heading2, color: "var(--text)", fontWeight: "700", fontSize: "1.15em" },
-  { tag: t.heading3, color: "var(--text)", fontWeight: "650", fontSize: "1.08em" },
-  { tag: t.heading4, color: "var(--text)", fontWeight: "650" },
-  { tag: t.heading5, color: "var(--text)", fontWeight: "600" },
-  { tag: t.heading6, color: "var(--text)", fontWeight: "600" },
-  { tag: t.heading, color: "var(--text)", fontWeight: "650" },
-  { tag: t.strong, color: "var(--text)", fontWeight: "700" },
-  { tag: t.emphasis, color: "var(--text)", fontStyle: "italic" },
-  { tag: t.strikethrough, textDecoration: "line-through", color: "var(--muted)" },
-  { tag: t.monospace, color: "var(--accent-strong)", backgroundColor: "color-mix(in srgb, var(--accent) 6%, transparent)" },
-  { tag: t.link, color: "var(--accent-wb)", textDecoration: "underline" },
-  { tag: t.url, color: "#7a5a9a" },
-  { tag: t.quote, color: "var(--muted)", fontStyle: "italic" },
-  { tag: t.list, color: "var(--text)" },
-  { tag: t.contentSeparator, color: "var(--muted)" },
-  { tag: t.meta, color: "var(--muted)" },
-  {
-    tag: t.processingInstruction,
-    color: "var(--accent-wb)",
-    fontWeight: "600",
-  },
-  { tag: t.atom, color: "var(--accent-wb)" },
-  { tag: t.bool, color: "var(--accent-wb)" },
-  { tag: t.comment, color: "var(--muted)", fontStyle: "italic" },
-  { tag: t.keyword, color: "var(--accent-strong)" },
-  { tag: t.string, color: "#2f6f8f" },
-  { tag: t.number, color: "#b86a2f" },
-  { tag: t.operator, color: "var(--muted)" },
-  { tag: t.punctuation, color: "var(--muted)" },
-  { tag: t.name, color: "#2f6f8f" },
-  { tag: t.variableName, color: "var(--text)" },
-  { tag: t.typeName, color: "#6b4f8f" },
-  { tag: t.propertyName, color: "#2f6f8f" },
-  { tag: t.invalid, color: "var(--danger)" },
-]);
-
+/** Plain-text source view for .md notes (no language / highlighting). */
 const markspaceTheme = EditorView.theme({
   "&": {
     height: "100%",
@@ -123,8 +79,6 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
       extensions: [
         lineNumbers(),
         history(),
-        markdown(),
-        syntaxHighlighting(markdownHighlightStyle),
         markspaceTheme,
         sourceFindField,
         EditorView.lineWrapping,
@@ -135,8 +89,6 @@ export function MarkdownSourceEditor({ path, content, onChange }: Props) {
           EditorView.domEventHandlers({
             keydown(event, view) {
               if (!(event.ctrlKey || event.metaKey) || event.altKey) return false;
-              // Always use physical key so undo works on Russian/other layouts,
-              // even when the browser still reports a latin event.key.
               if (event.code === "KeyZ" && !event.shiftKey) {
                 event.preventDefault();
                 return undo(view);

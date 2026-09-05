@@ -1,5 +1,3 @@
-import { createExtension } from "@blocknote/core";
-import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useRef, useState } from "react";
 import {
   DiagramExpandIcon,
@@ -58,11 +56,11 @@ function MarkmapPreview({ code, dark }: { code: string; dark: boolean }) {
   );
 }
 
-function MarkmapBlockView(props: {
+export function MarkmapBlockView(props: {
   block: { id: string; props: { code: string } };
   editor: {
     isEditable: boolean;
-    prosemirrorView?: import("prosemirror-view").EditorView;
+    prosemirrorView?: import("@tiptap/pm/view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: { code: string } },
@@ -166,61 +164,3 @@ function MarkmapBlockView(props: {
   );
 }
 
-export const createMarkmapBlock = createReactBlockSpec(
-  {
-    type: "markmap",
-    propSchema: {
-      code: {
-        default: "",
-      },
-    },
-    content: "none",
-  },
-  {
-    meta: {
-      isolating: true,
-    },
-    runsBefore: ["codeBlock"],
-    parse: (element) => {
-      if (element.tagName !== "PRE") return undefined;
-      if (
-        element.childElementCount !== 1 ||
-        element.firstElementChild?.tagName !== "CODE"
-      ) {
-        return undefined;
-      }
-      const codeEl = element.firstElementChild!;
-      const language = (
-        codeEl.getAttribute("data-language") ||
-        codeEl.className
-          .split(/\s+/)
-          .find((name) => name.startsWith("language-"))
-          ?.replace("language-", "") ||
-        ""
-      ).toLowerCase();
-      if (language !== "markmap") return undefined;
-      return { code: codeEl.textContent ?? "" };
-    },
-    toExternalHTML: ({ block }) => (
-      <pre>
-        <code data-language="markmap">{block.props.code}</code>
-      </pre>
-    ),
-    render: (props) => <MarkmapBlockView {...props} />,
-  },
-  [
-    createExtension({
-      key: "markmap-input-rule",
-      runsBefore: ["code-block-keyboard-shortcuts"],
-      inputRules: [
-        {
-          find: /^```markmap\s$/,
-          replace: () => ({
-            type: "markmap",
-            props: { code: DEFAULT_MARKMAP_CODE },
-          }),
-        },
-      ],
-    }),
-  ],
-);

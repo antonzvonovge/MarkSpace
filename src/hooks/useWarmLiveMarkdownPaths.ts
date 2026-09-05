@@ -4,7 +4,7 @@ import { documentKind } from "../lib/vaultApi";
 import { isFileTab, type EditorTab } from "../store/vaultStore";
 
 /** How many Live markdown editors stay mounted (including the active one). */
-export const WARM_LIVE_MARKDOWN_LIMIT = 4;
+export const WARM_LIVE_MARKDOWN_LIMIT = 2;
 
 function openMarkdownPaths(tabs: Pick<EditorTab, "path" | "kind">[]): string[] {
   const out: string[] = [];
@@ -25,7 +25,7 @@ function sameOrder(a: string[], b: string[]): boolean {
 }
 
 /**
- * MRU keep-alive set for BlockNote Live editors. Active markdown is always
+ * MRU keep-alive set for TipTap Live editors. Active markdown is always
  * first; colder open notes drop out and remount from `tab.body` on return.
  */
 export function useWarmLiveMarkdownPaths(

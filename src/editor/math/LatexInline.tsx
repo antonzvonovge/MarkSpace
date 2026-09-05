@@ -1,4 +1,3 @@
-import { createReactInlineContentSpec } from "@blocknote/react";
 import katex from "katex";
 import { useEffect, useRef, useState } from "react";
 
@@ -10,7 +9,7 @@ function renderInlineLatex(latex: string): string {
   });
 }
 
-function LatexInlineView(props: {
+export function LatexInlineView(props: {
   inlineContent: { props: { latex: string } };
   updateInlineContent: (update: {
     type: "latex";
@@ -116,54 +115,3 @@ function LatexInlineView(props: {
   );
 }
 
-/**
- * Inline TeX atom. `toExternalHTML` emits `$latex$` text (no KaTeX DOM) so
- * `blocksToMarkdownLossy` round-trips cleanly.
- */
-export const latexInlineContent = createReactInlineContentSpec(
-  {
-    type: "latex",
-    content: "none",
-    propSchema: {
-      latex: { default: "" },
-      displayMode: { default: false },
-    },
-  },
-  {
-    render: (props) => <LatexInlineView {...props} />,
-    toExternalHTML: ({ inlineContent }) => {
-      const latex = inlineContent.props.latex;
-      return (
-        <span data-inline-content-type="latex" data-latex={latex}>
-          {latex ? `$${latex}$` : ""}
-        </span>
-      );
-    },
-    parse: (element) => {
-      // Only match the element itself. BlockNote registers custom parse as
-      // tag:"*"; querySelector on ancestors would claim <ul>/<li>/<p> that
-      // merely contain a math span and wipe the rest of the list.
-      if (!element.matches("[data-latex]")) return undefined;
-      // Do not claim equation block HTML / math fences.
-      if (element.tagName === "DIV" || element.tagName === "PRE") {
-        return undefined;
-      }
-      if (
-        element.classList.contains("bn-equation") ||
-        element.getAttribute("data-content-type") === "equation"
-      ) {
-        return undefined;
-      }
-      const latex = element.getAttribute("data-latex");
-      if (latex === null || latex === undefined) return undefined;
-      return {
-        latex,
-        displayMode: false,
-      };
-    },
-  },
-);
-
-export const latexInlineContentSpecs = {
-  latex: latexInlineContent,
-};

@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -32,8 +41,6 @@ import {
 } from "./components/MediaCatalogView";
 import { TasksView } from "./components/TasksView";
 import { TagGraphView } from "./components/graph/TagGraphView";
-import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
-import { PlainSourceEditor } from "./editor/PlainSourceEditor";
 import { startAutoTagActiveNote } from "./ai/autoTagNote";
 import { startSaveActiveNoteAsDocx } from "./lib/saveNoteDocx";
 import { IELTS_REVIEW_MAX_CHARS } from "./ai/ieltsGeneralReview";
@@ -48,7 +55,18 @@ import {
   stepDocumentFind,
   subscribeDocumentFind,
 } from "./editor/find/documentFindController";
-import { NoteEditor } from "./editor/NoteEditor";
+import { TipTapNoteEditor } from "./editor/tiptap/TipTapNoteEditor";
+
+const MarkdownSourceEditor = lazy(() =>
+  import("./editor/MarkdownSourceEditor").then((m) => ({
+    default: m.MarkdownSourceEditor,
+  })),
+);
+const PlainSourceEditor = lazy(() =>
+  import("./editor/PlainSourceEditor").then((m) => ({
+    default: m.PlainSourceEditor,
+  })),
+);
 import { DrawioEditor } from "./editor/drawio/DrawioEditor";
 import { LinksEditor } from "./editor/mdlnks/LinksEditor";
 import { DictionaryEditor } from "./editor/mddict/DictionaryEditor";
@@ -238,11 +256,13 @@ const DocumentTab = memo(function DocumentTab({
           {isActive && viewMode === "source" ? (
             <div className="document-editor-slot is-active">
               <div className="source-editor-wrap">
-                <PlainSourceEditor
-                  path={path}
-                  content={content}
-                  onChange={(text) => onEditorChange(path, text)}
-                />
+                <Suspense fallback={null}>
+                  <PlainSourceEditor
+                    path={path}
+                    content={content}
+                    onChange={(text) => onEditorChange(path, text)}
+                  />
+                </Suspense>
               </div>
             </div>
           ) : null}
@@ -265,11 +285,13 @@ const DocumentTab = memo(function DocumentTab({
           {isActive && viewMode === "source" ? (
             <div className="document-editor-slot is-active">
               <div className="source-editor-wrap">
-                <PlainSourceEditor
-                  path={path}
-                  content={content}
-                  onChange={(text) => onEditorChange(path, text)}
-                />
+                <Suspense fallback={null}>
+                  <PlainSourceEditor
+                    path={path}
+                    content={content}
+                    onChange={(text) => onEditorChange(path, text)}
+                  />
+                </Suspense>
               </div>
             </div>
           ) : null}
@@ -292,11 +314,13 @@ const DocumentTab = memo(function DocumentTab({
           {isActive && viewMode === "source" ? (
             <div className="document-editor-slot is-active">
               <div className="source-editor-wrap">
-                <PlainSourceEditor
-                  path={path}
-                  content={content}
-                  onChange={(text) => onEditorChange(path, text)}
-                />
+                <Suspense fallback={null}>
+                  <PlainSourceEditor
+                    path={path}
+                    content={content}
+                    onChange={(text) => onEditorChange(path, text)}
+                  />
+                </Suspense>
               </div>
             </div>
           ) : null}
@@ -319,11 +343,13 @@ const DocumentTab = memo(function DocumentTab({
           {isActive && viewMode === "source" ? (
             <div className="document-editor-slot is-active">
               <div className="source-editor-wrap">
-                <PlainSourceEditor
-                  path={path}
-                  content={content}
-                  onChange={(text) => onEditorChange(path, text)}
-                />
+                <Suspense fallback={null}>
+                  <PlainSourceEditor
+                    path={path}
+                    content={content}
+                    onChange={(text) => onEditorChange(path, text)}
+                  />
+                </Suspense>
               </div>
             </div>
           ) : null}
@@ -338,7 +364,7 @@ const DocumentTab = memo(function DocumentTab({
             }
           >
             {keepLiveMounted ? (
-              <NoteEditor
+              <TipTapNoteEditor
                 path={path}
                 content={content}
                 isActive={isActive}
@@ -354,11 +380,13 @@ const DocumentTab = memo(function DocumentTab({
                   content={content}
                   onChange={(markdown) => onEditorChange(path, markdown)}
                 />
-                <MarkdownSourceEditor
-                  path={path}
-                  content={content}
-                  onChange={(markdown) => onEditorChange(path, markdown)}
-                />
+                <Suspense fallback={null}>
+                  <MarkdownSourceEditor
+                    path={path}
+                    content={content}
+                    onChange={(markdown) => onEditorChange(path, markdown)}
+                  />
+                </Suspense>
               </div>
             </div>
           ) : null}

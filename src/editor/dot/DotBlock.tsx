@@ -1,5 +1,3 @@
-import { createExtension } from "@blocknote/core";
-import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useRef, useState } from "react";
 import {
   DiagramExpandIcon,
@@ -16,8 +14,6 @@ export const DEFAULT_DOT_CODE = `digraph {
   B [label="End"]
   A -> B
 }`;
-
-const DOT_LANGS = new Set(["dot", "graphviz"]);
 
 type ViewMode = "preview" | "edit";
 
@@ -61,11 +57,11 @@ function DotPreview({ code, dark }: { code: string; dark: boolean }) {
   );
 }
 
-function DotBlockView(props: {
+export function DotBlockView(props: {
   block: { id: string; props: { code: string } };
   editor: {
     isEditable: boolean;
-    prosemirrorView?: import("prosemirror-view").EditorView;
+    prosemirrorView?: import("@tiptap/pm/view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: { code: string } },
@@ -169,61 +165,3 @@ function DotBlockView(props: {
   );
 }
 
-export const createDotBlock = createReactBlockSpec(
-  {
-    type: "dot",
-    propSchema: {
-      code: {
-        default: "",
-      },
-    },
-    content: "none",
-  },
-  {
-    meta: {
-      isolating: true,
-    },
-    runsBefore: ["codeBlock"],
-    parse: (element) => {
-      if (element.tagName !== "PRE") return undefined;
-      if (
-        element.childElementCount !== 1 ||
-        element.firstElementChild?.tagName !== "CODE"
-      ) {
-        return undefined;
-      }
-      const codeEl = element.firstElementChild!;
-      const language = (
-        codeEl.getAttribute("data-language") ||
-        codeEl.className
-          .split(/\s+/)
-          .find((name) => name.startsWith("language-"))
-          ?.replace("language-", "") ||
-        ""
-      ).toLowerCase();
-      if (!DOT_LANGS.has(language)) return undefined;
-      return { code: codeEl.textContent ?? "" };
-    },
-    toExternalHTML: ({ block }) => (
-      <pre>
-        <code data-language="dot">{block.props.code}</code>
-      </pre>
-    ),
-    render: (props) => <DotBlockView {...props} />,
-  },
-  [
-    createExtension({
-      key: "dot-input-rule",
-      runsBefore: ["code-block-keyboard-shortcuts"],
-      inputRules: [
-        {
-          find: /^```(?:dot|graphviz)\s$/,
-          replace: () => ({
-            type: "dot",
-            props: { code: DEFAULT_DOT_CODE },
-          }),
-        },
-      ],
-    }),
-  ],
-);

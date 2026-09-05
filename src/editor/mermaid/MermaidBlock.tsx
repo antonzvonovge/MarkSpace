@@ -1,5 +1,3 @@
-import { createExtension } from "@blocknote/core";
-import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useRef, useState } from "react";
 import {
   DiagramExpandIcon,
@@ -57,11 +55,11 @@ function MermaidPreview({ code, dark }: { code: string; dark: boolean }) {
   );
 }
 
-function MermaidBlockView(props: {
+export function MermaidBlockView(props: {
   block: { id: string; props: { code: string } };
   editor: {
     isEditable: boolean;
-    prosemirrorView?: import("prosemirror-view").EditorView;
+    prosemirrorView?: import("@tiptap/pm/view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: { code: string } },
@@ -164,60 +162,3 @@ function MermaidBlockView(props: {
     </div>
   );
 }
-
-export const createMermaidBlock = createReactBlockSpec(
-  {
-    type: "mermaid",
-    propSchema: {
-      code: {
-        default: "",
-      },
-    },
-    content: "none",
-  },
-  {
-    meta: {
-      isolating: true,
-    },
-    runsBefore: ["codeBlock"],
-    parse: (element) => {
-      if (element.tagName !== "PRE") return undefined;
-      if (
-        element.childElementCount !== 1 ||
-        element.firstElementChild?.tagName !== "CODE"
-      ) {
-        return undefined;
-      }
-      const codeEl = element.firstElementChild!;
-      const language =
-        codeEl.getAttribute("data-language") ||
-        codeEl.className
-          .split(/\s+/)
-          .find((name) => name.startsWith("language-"))
-          ?.replace("language-", "");
-      if (language !== "mermaid") return undefined;
-      return { code: codeEl.textContent ?? "" };
-    },
-    toExternalHTML: ({ block }) => (
-      <pre>
-        <code data-language="mermaid">{block.props.code}</code>
-      </pre>
-    ),
-    render: (props) => <MermaidBlockView {...props} />,
-  },
-  [
-    createExtension({
-      key: "mermaid-input-rule",
-      runsBefore: ["code-block-keyboard-shortcuts"],
-      inputRules: [
-        {
-          find: /^```mermaid\s$/,
-          replace: () => ({
-            type: "mermaid",
-            props: { code: DEFAULT_MERMAID_CODE },
-          }),
-        },
-      ],
-    }),
-  ],
-);

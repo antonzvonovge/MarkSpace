@@ -1,6 +1,5 @@
-import { getBlockInfo, getNodeById } from "@blocknote/core";
-import { NodeSelection } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
+import { NodeSelection } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 type EditorLike = {
@@ -18,9 +17,9 @@ export function isDiagramInteractiveTarget(target: EventTarget | null): boolean 
 }
 
 /**
- * Force a NodeSelection on the block's atom content node and focus the editor.
- * Needed after BlockNote's `blockDragEnd` blurs the editor: clicks inside
- * `contentEditable={false}` diagram chrome often fail to create the blue frame.
+ * Force a NodeSelection on the atom node and focus the editor.
+ * Clicks inside `contentEditable={false}` diagram chrome often fail to create
+ * the selection frame without this.
  */
 export function selectAtomBlockOnMouseDown(
   event: ReactMouseEvent,
@@ -32,16 +31,23 @@ export function selectAtomBlockOnMouseDown(
   const view = editor.prosemirrorView;
   if (!view) return;
 
-  const posInfo = getNodeById(blockId, view.state.doc);
-  if (!posInfo) return;
+  let foundPos: number | null = null;
+  view.state.doc.descendants((node, pos) => {
+    if (node.attrs?.id === blockId) {
+      foundPos = pos;
+      return false;
+    }
+    return true;
+  });
+  if (foundPos == null) return;
 
-  const blockInfo = getBlockInfo(posInfo);
-  if (!blockInfo.isBlockContainer) return;
-
-  const contentPos = blockInfo.blockContent.beforePos;
-  const selection = NodeSelection.create(view.state.doc, contentPos);
-  if (!view.state.selection.eq(selection)) {
-    view.dispatch(view.state.tr.setSelection(selection));
+  try {
+    const selection = NodeSelection.create(view.state.doc, foundPos);
+    if (!view.state.selection.eq(selection)) {
+      view.dispatch(view.state.tr.setSelection(selection));
+    }
+    view.focus();
+  } catch {
+    /* node may not allow NodeSelection */
   }
-  view.focus();
 }

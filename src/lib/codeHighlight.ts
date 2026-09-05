@@ -1,50 +1,73 @@
-import type { CodeBlockOptions } from "@blocknote/core";
-import { codeBlockOptions } from "@blocknote/code-block";
+import {
+  createHighlighter,
+  type BundledLanguage,
+  type Highlighter,
+} from "shiki";
 
 /** Shared light Shiki theme for Live code blocks and chat fences. */
 export const CODE_HIGHLIGHT_THEME = "github-light" as const;
 
-type Highlighter = Awaited<
-  ReturnType<NonNullable<CodeBlockOptions["createHighlighter"]>>
->;
+type LangMeta = { aliases?: string[] };
 
 /**
- * Prefer `github-light` as the first loaded theme so BlockNote's
- * `prosemirror-highlight` (which uses `getLoadedThemes()[0]`) paints light tokens.
+ * Common language catalog for chat / fence highlighting.
+ * Keys are Shiki language ids; aliases map fence tags → id.
  */
-function preferLightTheme(highlighter: Highlighter): Highlighter {
-  const original = highlighter.getLoadedThemes.bind(highlighter);
-  highlighter.getLoadedThemes = () => {
-    const themes = original();
-    if (!themes.includes(CODE_HIGHLIGHT_THEME)) return themes;
-    return [
-      CODE_HIGHLIGHT_THEME,
-      ...themes.filter((theme) => theme !== CODE_HIGHLIGHT_THEME),
-    ];
-  };
-  return highlighter;
-}
+export const HIGHLIGHT_LANGUAGES: Record<string, LangMeta> = {
+  javascript: { aliases: ["js", "jsx", "mjs", "cjs"] },
+  typescript: { aliases: ["ts", "tsx", "mts", "cts"] },
+  python: { aliases: ["py"] },
+  rust: { aliases: ["rs"] },
+  go: { aliases: ["golang"] },
+  java: {},
+  kotlin: { aliases: ["kt"] },
+  csharp: { aliases: ["cs", "c#"] },
+  cpp: { aliases: ["c++", "cc", "cxx", "hpp"] },
+  c: { aliases: ["h"] },
+  ruby: { aliases: ["rb"] },
+  php: {},
+  swift: {},
+  scala: {},
+  html: { aliases: ["htm"] },
+  css: {},
+  scss: {},
+  json: {},
+  yaml: { aliases: ["yml"] },
+  toml: {},
+  markdown: { aliases: ["md", "mdx"] },
+  shellscript: { aliases: ["bash", "sh", "shell", "zsh"] },
+  powershell: { aliases: ["ps1", "ps"] },
+  sql: {},
+  graphql: { aliases: ["gql"] },
+  xml: {},
+  dockerfile: { aliases: ["docker"] },
+  diff: {},
+  ini: {},
+  lua: {},
+  r: {},
+  perl: {},
+  haskell: { aliases: ["hs"] },
+  elixir: { aliases: ["ex", "exs"] },
+  erlang: { aliases: ["erl"] },
+  clojure: { aliases: ["clj"] },
+  zig: {},
+  vue: {},
+  svelte: {},
+};
+
+const LANG_IDS = Object.keys(HIGHLIGHT_LANGUAGES) as BundledLanguage[];
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
-    highlighterPromise = codeBlockOptions
-      .createHighlighter()
-      .then(preferLightTheme);
+    highlighterPromise = createHighlighter({
+      themes: [CODE_HIGHLIGHT_THEME],
+      langs: LANG_IDS,
+    });
   }
   return highlighterPromise;
 }
-
-/**
- * BlockNote code-block options: same language catalog as `@blocknote/code-block`,
- * forced onto the light Shiki theme.
- */
-export const markspaceCodeBlockOptions: CodeBlockOptions = {
-  ...codeBlockOptions,
-  defaultLanguage: "text",
-  createHighlighter: () => getHighlighter(),
-};
 
 /** Resolve a fence language id to one in the shared catalog (or null). */
 export function resolveHighlightLanguage(
@@ -62,8 +85,7 @@ export function resolveHighlightLanguage(
   ) {
     return null;
   }
-  const supported = markspaceCodeBlockOptions.supportedLanguages ?? {};
-  const match = Object.entries(supported).find(
+  const match = Object.entries(HIGHLIGHT_LANGUAGES).find(
     ([id, meta]) => id === key || meta.aliases?.includes(key),
   );
   return match?.[0] ?? null;
@@ -84,7 +106,7 @@ export async function highlightCodeToHtml(
   try {
     const highlighter = await getHighlighter();
     if (!highlighter.getLoadedLanguages().includes(resolved)) {
-      await highlighter.loadLanguage(resolved as never);
+      await highlighter.loadLanguage(resolved as BundledLanguage);
     }
     return highlighter.codeToHtml(code, {
       lang: resolved,

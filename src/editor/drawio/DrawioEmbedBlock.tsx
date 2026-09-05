@@ -1,5 +1,3 @@
-import { createExtension } from "@blocknote/core";
-import { createReactBlockSpec } from "@blocknote/react";
 import {
   useCallback,
   useEffect,
@@ -9,10 +7,6 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from "react";
 import { isDrawioPath, readNote } from "../../lib/vaultApi";
-import {
-  formatDrawioFenceBody,
-  parseDrawioFenceBody,
-} from "../../lib/wikiMarkdown";
 import { useVaultStore } from "../../store/vaultStore";
 import { selectAtomBlockOnMouseDown } from "../selectAtomBlock";
 import { DEFAULT_DRAWIO_PREVIEW_WIDTH } from "./constants";
@@ -92,7 +86,7 @@ function clientXOf(
   return "touches" in event ? event.touches[0].clientX : event.clientX;
 }
 
-function DrawioEmbedView(props: {
+export function DrawioEmbedView(props: {
   block: {
     id: string;
     props: { src: string; previewWidth: number };
@@ -100,7 +94,7 @@ function DrawioEmbedView(props: {
   editor: {
     isEditable: boolean;
     domElement: HTMLElement | undefined;
-    prosemirrorView?: import("prosemirror-view").EditorView;
+    prosemirrorView?: import("@tiptap/pm/view").EditorView;
     updateBlock: (
       block: { id: string } | string,
       update: { props: Partial<{ src: string; previewWidth: number }> },
@@ -256,94 +250,3 @@ function DrawioEmbedView(props: {
   );
 }
 
-function parseDrawioElement(element: HTMLElement):
-  | { src: string; previewWidth: number }
-  | undefined {
-  // Preferred: fenced ```drawio
-  if (element.tagName === "PRE") {
-    if (
-      element.childElementCount !== 1 ||
-      element.firstElementChild?.tagName !== "CODE"
-    ) {
-      return undefined;
-    }
-    const codeEl = element.firstElementChild!;
-    const language =
-      codeEl.getAttribute("data-language") ||
-      codeEl.className
-        .split(/\s+/)
-        .find((name) => name.startsWith("language-"))
-        ?.replace("language-", "");
-    if (language !== "drawio") return undefined;
-    const parsed = parseDrawioFenceBody(codeEl.textContent ?? "");
-    if (!parsed?.src) return undefined;
-    return {
-      src: parsed.src,
-      previewWidth: parsed.previewWidth ?? DEFAULT_DRAWIO_PREVIEW_WIDTH,
-    };
-  }
-
-  // Legacy HTML from earlier builds
-  if (element.tagName === "DIV") {
-    const src = element.getAttribute("data-drawio-src");
-    if (!src) return undefined;
-    const widthRaw = element.getAttribute("data-preview-width");
-    const previewWidth = widthRaw ? Number(widthRaw) : DEFAULT_DRAWIO_PREVIEW_WIDTH;
-    return {
-      src,
-      previewWidth:
-        Number.isFinite(previewWidth) && previewWidth > 0
-          ? previewWidth
-          : DEFAULT_DRAWIO_PREVIEW_WIDTH,
-    };
-  }
-
-  return undefined;
-}
-
-export const createDrawioBlock = createReactBlockSpec(
-  {
-    type: "drawio",
-    propSchema: {
-      src: { default: "" },
-      previewWidth: { default: DEFAULT_DRAWIO_PREVIEW_WIDTH },
-    },
-    content: "none",
-  },
-  {
-    meta: {
-      isolating: true,
-    },
-    runsBefore: ["codeBlock"],
-    parse: (element) => parseDrawioElement(element),
-    toExternalHTML: ({ block }) => (
-      <pre>
-        <code data-language="drawio">
-          {formatDrawioFenceBody(
-            block.props.src,
-            block.props.previewWidth || DEFAULT_DRAWIO_PREVIEW_WIDTH,
-          )}
-        </code>
-      </pre>
-    ),
-    render: (props) => <DrawioEmbedView {...props} />,
-  },
-  [
-    createExtension({
-      key: "drawio-input-rule",
-      runsBefore: ["code-block-keyboard-shortcuts"],
-      inputRules: [
-        {
-          find: /^```drawio\s$/,
-          replace: () => ({
-            type: "drawio",
-            props: {
-              src: "",
-              previewWidth: DEFAULT_DRAWIO_PREVIEW_WIDTH,
-            },
-          }),
-        },
-      ],
-    }),
-  ],
-);

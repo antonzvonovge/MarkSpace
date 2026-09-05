@@ -30,12 +30,12 @@ export function isActiveMarkdownFile(): boolean {
 }
 
 function liveView(path: string) {
-  return getLiveEditor(path)?._tiptapEditor?.view ?? null;
+  return getLiveEditor(path)?.view ?? null;
 }
 
 function clearAllFindDecorations(): void {
   forEachLiveEditor((_path, editor) => {
-    const view = editor._tiptapEditor?.view;
+    const view = editor.view;
     if (!view) return;
     const st = getFindPluginState(view);
     if (!st || (!st.query && st.ranges.length === 0)) return;
@@ -63,7 +63,7 @@ function refreshDocumentFind(opts: {
 
   if (viewMode === "source") {
     forEachLiveEditor((_path, editor) => {
-      const view = editor._tiptapEditor?.view;
+      const view = editor.view;
       if (!view) return;
       const st = getFindPluginState(view);
       if (!st || (!st.query && st.ranges.length === 0)) return;
@@ -96,7 +96,7 @@ function refreshDocumentFind(opts: {
 
   let applied = false;
   forEachLiveEditor((path, editor) => {
-    const view = editor._tiptapEditor?.view;
+    const view = editor.view;
     if (!view) return;
     if (path !== activePath) {
       const st = getFindPluginState(view);
