@@ -1318,8 +1318,13 @@ select {
   min-height: 0;
 }
 
+.workspace-virtual-tree {
+  /* Height set inline from virtualizer totalSize; scrolls with .tree-scroll. */
+  flex-shrink: 0;
+}
+
 .workspace-section .dnd-tree-root {
-  /* Tree scrolls with Favorites / Comments inside .tree-scroll. */
+  /* Legacy class kept for any residual styles; Tree scrolls with sections. */
   overflow: visible;
 }
 

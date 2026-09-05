@@ -1,28 +1,17 @@
 import {
   forwardRef,
-  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   startTransition,
   useSyncExternalStore,
   type CSSProperties,
-  type MouseEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { DndProvider } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
-import {
-  Tree,
-  type NodeModel,
-  type DropOptions,
-  type TreeMethods,
-} from "@minoru/react-dnd-treeview";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { TreeNode } from "../lib/vaultApi";
@@ -38,7 +27,6 @@ import {
   INCOMING_FOLDER,
   isVaultDocumentPath,
   isVaultProjectFolder,
-  joinPath,
   parentPath,
   setProjectProperties,
   treeRevealTarget,
@@ -107,16 +95,9 @@ import {
 } from "react-icons/fc";
 import { MdChevronRight } from "react-icons/md";
 import {
-  beginDrawioTreeDrag,
-  DRAWIO_TREE_MIME,
-  endDrawioTreeDrag,
-} from "../editor/drawio/treeDrag";
-import {
-  beginVaultTreeDrag,
   endVaultTreeDrag,
   isVaultTreeDrag,
   vaultPathFromDrop,
-  VAULT_TREE_MIME,
 } from "../lib/vaultTreeDrag";
 import {
   clipboardHasOsFiles,
@@ -131,16 +112,12 @@ import {
   CourseTrackerIcon,
   IncomingSectionIcon,
   PdfIcon,
-  VaultSectionIcon,
 } from "./treeIcons";
 import type { TreeCreateKind } from "./TreeToolbar";
 import {
   SectionCollapseButton,
-  WorkspaceHeaderActions,
 } from "./TreeToolbar";
-
-const TREE_ROOT = "__tree_root__";
-const VAULT_ID = "__vault__";
+import { WorkspaceTree } from "./sidebar/WorkspaceTree";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -159,28 +136,6 @@ function selectRenameStem(input: HTMLInputElement, name: string) {
     input.select();
   }
 }
-
-/** Keeps module-level drawio drag path in sync with react-dnd isDragging. */
-function DrawioTreeDragBridge({
-  active,
-  path,
-}: {
-  active: boolean;
-  path: string;
-}) {
-  useEffect(() => {
-    if (!active) return;
-    beginDrawioTreeDrag(path);
-    return () => endDrawioTreeDrag();
-  }, [active, path]);
-  return null;
-}
-
-type NodeData = {
-  path: string;
-  isDir: boolean;
-  hasChildren: boolean;
-};
 
 export type PromptKind = TreeCreateKind | "skill";
 
@@ -287,15 +242,6 @@ function importParentFromRow(path: string, isDir: boolean): string {
   return isDir ? path : parentPath(path);
 }
 
-function toStorePath(id: string | number): string {
-  const s = String(id);
-  return s === VAULT_ID ? "" : s;
-}
-
-function toNodeId(path: string): string {
-  return path === "" ? VAULT_ID : path;
-}
-
 function isUnsupportedTreeFile(isDir: boolean, path: string): boolean {
   return !isDir && !isVaultDocumentPath(path);
 }
@@ -369,41 +315,6 @@ function scrollTreeRowIntoView(path: string) {
     `[data-vault-path="${CSS.escape(path)}"]`,
   ) as HTMLElement | null;
   el?.scrollIntoView({ block: "nearest" });
-}
-
-function flattenTree(root: TreeNode): NodeModel<NodeData>[] {
-  const nodes: NodeModel<NodeData>[] = [];
-
-  const walk = (node: TreeNode, parentId: string) => {
-    const id = toNodeId(node.path);
-    const children = node.children ?? [];
-    const isMdNote =
-      !node.isDir &&
-      node.name.toLowerCase().endsWith(".md") &&
-      !isSkillsFolder(parentPath(node.path), true);
-    nodes.push({
-      id,
-      parent: parentId,
-      text: node.name,
-      // Markdown notes accept drops: they are promoted to folders on nest.
-      droppable: node.isDir || isMdNote,
-      data: {
-        path: node.path,
-        isDir: node.isDir,
-        hasChildren: node.isDir && children.length > 0,
-      },
-    });
-    if (node.isDir) {
-      for (const child of children) {
-        if (isIncomingFolder(child.path, child.isDir)) continue;
-        if (isTasksFolder(child.path, child.isDir)) continue;
-        walk(child, id);
-      }
-    }
-  };
-
-  walk(root, TREE_ROOT);
-  return nodes;
 }
 
 function findTreeNode(root: TreeNode | null, path: string): TreeNode | null {
@@ -1024,8 +935,7 @@ function InlineRenameInput({
   const finish = (action: () => void) => {
     if (committed.current) return;
     committed.current = true;
-    // Blur before unmount so react-dnd-treeview releases its input drag-lock
-    // (focusout often does not fire when a focused input is removed).
+    // Blur before unmount so focusout fires and rename lock releases.
     inputRef.current?.blur();
     action();
   };
@@ -1071,237 +981,6 @@ function TreeCommentCount({ count }: { count: number }) {
     </span>
   );
 }
-
-/** Memoized DnD vault row — selection/expand should not reconcile every sibling. */
-const VaultDndTreeRow = memo(function VaultDndTreeRow({
-  path,
-  name,
-  isDir,
-  hasChildren,
-  depth,
-  isOpen,
-  isDropTarget,
-  isDragging,
-  isVault,
-  isProject,
-  isSkills,
-  unsupported,
-  selected,
-  active,
-  renaming,
-  treeDragging,
-  osDropHighlight,
-  openComments,
-  projectColor,
-  projectType,
-  learningLanguage,
-  isDrawio,
-  isMdlnks,
-  isMddict,
-  isMdhabit,
-  isMdcourse,
-  isPdf,
-  onToggle,
-  onRowClick,
-  onOpenPinned,
-  onContextMenu,
-  onRenameCommit,
-  onRenameCancel,
-  onCreate,
-  onLocateActive,
-  onCollapseAll,
-}: {
-  path: string;
-  name: string;
-  isDir: boolean;
-  hasChildren: boolean;
-  depth: number;
-  isOpen: boolean;
-  isDropTarget: boolean;
-  isDragging: boolean;
-  isVault: boolean;
-  isProject: boolean;
-  isSkills: boolean;
-  unsupported: boolean;
-  selected: boolean;
-  active: boolean;
-  renaming: boolean;
-  treeDragging: boolean;
-  osDropHighlight: boolean;
-  openComments: number;
-  projectColor: string;
-  projectType?: string | null;
-  learningLanguage?: string | null;
-  isDrawio: boolean;
-  isMdlnks: boolean;
-  isMddict: boolean;
-  isMdhabit: boolean;
-  isMdcourse: boolean;
-  isPdf: boolean;
-  onToggle: () => void;
-  onRowClick: (e: MouseEvent) => void;
-  onOpenPinned: () => void;
-  onContextMenu: (e: MouseEvent) => void;
-  onRenameCommit: (nextName: string) => void;
-  onRenameCancel: () => void;
-  onCreate: (kind: PromptKind) => void;
-  onLocateActive: () => void;
-  onCollapseAll: () => void;
-}) {
-  return (
-    <div
-      className={[
-        "tree-row",
-        isDir ? "tree-folder-row" : "tree-file",
-        isVault ? "is-vault-root" : "",
-        isProject ? "is-project" : "",
-        isSkills ? "is-skills" : "",
-        unsupported ? "is-unsupported" : "",
-        projectColor ? "has-project-color" : "",
-        selected || active ? "is-selected" : "",
-        isDropTarget && treeDragging ? "is-drop-target" : "",
-        osDropHighlight ? "is-drop-target" : "",
-        isDragging ? "is-dragging" : "",
-        renaming ? "is-renaming" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      style={{
-        paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
-        paddingRight: "var(--tree-pad-x)",
-        ...(projectColor
-          ? ({ ["--project-color"]: projectColor } as CSSProperties)
-          : null),
-      }}
-      data-vault-path={path}
-      data-vault-isdir={isDir ? "1" : undefined}
-      data-drawio-path={isDrawio ? path : undefined}
-      onClick={onRowClick}
-      onDoubleClick={() => {
-        if (isDir || renaming || unsupported) return;
-        onOpenPinned();
-      }}
-      onContextMenu={onContextMenu}
-    >
-      <DrawioTreeDragBridge active={isDragging && isDrawio} path={path} />
-      {isDir ? (
-        <span
-          role={hasChildren ? "button" : undefined}
-          tabIndex={hasChildren ? 0 : undefined}
-          className={
-            hasChildren ? "tree-chevron-btn" : "tree-chevron-btn is-empty"
-          }
-          aria-hidden={hasChildren ? undefined : true}
-          aria-label={
-            hasChildren ? (isOpen ? "Collapse" : "Expand") : undefined
-          }
-          aria-expanded={hasChildren ? isOpen : undefined}
-          onClick={
-            hasChildren
-              ? (e) => {
-                  e.stopPropagation();
-                  onToggle();
-                }
-              : undefined
-          }
-          onKeyDown={
-            hasChildren
-              ? (e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onToggle();
-                  }
-                }
-              : undefined
-          }
-        >
-          <ChevronIcon open={isOpen} />
-        </span>
-      ) : (
-        <span className="tree-file-spacer" />
-      )}
-
-      <span className="tree-node-icon" aria-hidden>
-        {isDir ? (
-          isVault ? (
-            <VaultSectionIcon />
-          ) : (
-            <FolderTreeIcon
-              path={path}
-              isOpen={isOpen}
-              projectType={projectType}
-              learningLanguage={learningLanguage}
-            />
-          )
-        ) : isDrawio ? (
-          <DiagramIcon size={20} />
-        ) : isMdlnks ? (
-          <FcLink size={20} />
-        ) : isMddict ? (
-          <FcReading size={20} />
-        ) : isMdhabit ? (
-          <FcCalendar size={20} />
-        ) : isMdcourse ? (
-          <CourseTrackerIcon size={20} />
-        ) : isPdf ? (
-          <span className="tree-pdf-icon">
-            <PdfIcon />
-          </span>
-        ) : (
-          <FcDocument size={20} />
-        )}
-      </span>
-
-      {renaming ? (
-        <InlineRenameInput
-          key={path}
-          initialValue={name}
-          onCancel={onRenameCancel}
-          onCommit={onRenameCommit}
-        />
-      ) : (
-        <TreeNodeLabel text={name} isDir={isDir} />
-      )}
-      <TreeCommentCount count={openComments} />
-      {isVault ? (
-        <WorkspaceHeaderActions
-          onCreate={onCreate}
-          onLocateActive={onLocateActive}
-          onCollapseAll={onCollapseAll}
-        />
-      ) : null}
-    </div>
-  );
-}, (a, b) =>
-  a.path === b.path &&
-  a.name === b.name &&
-  a.isDir === b.isDir &&
-  a.hasChildren === b.hasChildren &&
-  a.depth === b.depth &&
-  a.isOpen === b.isOpen &&
-  a.isDropTarget === b.isDropTarget &&
-  a.isDragging === b.isDragging &&
-  a.isVault === b.isVault &&
-  a.isProject === b.isProject &&
-  a.isSkills === b.isSkills &&
-  a.unsupported === b.unsupported &&
-  a.selected === b.selected &&
-  a.active === b.active &&
-  a.renaming === b.renaming &&
-  a.treeDragging === b.treeDragging &&
-  a.osDropHighlight === b.osDropHighlight &&
-  a.openComments === b.openComments &&
-  a.projectColor === b.projectColor &&
-  a.projectType === b.projectType &&
-  a.learningLanguage === b.learningLanguage &&
-  a.isDrawio === b.isDrawio &&
-  a.isMdlnks === b.isMdlnks &&
-  a.isMddict === b.isMddict &&
-  a.isMdhabit === b.isMdhabit &&
-  a.isMdcourse === b.isMdcourse &&
-  a.isPdf === b.isPdf,
-);
 
 function FavoritesTreeRows({
   nodes,
@@ -1591,7 +1270,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const createFolderInSelection = useVaultStore((s) => s.createFolderInSelection);
   const createSkill = useVaultStore((s) => s.createSkill);
   const moveTreeEntry = useVaultStore((s) => s.moveTreeEntry);
-  const nestTreeEntryUnderNote = useVaultStore((s) => s.nestTreeEntryUnderNote);
   const renameTreeEntry = useVaultStore((s) => s.renameTreeEntry);
   const removePath = useVaultStore((s) => s.removePath);
   const importIntoSelection = useVaultStore((s) => s.importIntoSelection);
@@ -1605,13 +1283,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const removeFromFavorites = useVaultStore((s) => s.removeFromFavorites);
   const allComments = useVaultStore((s) => s.allComments);
 
-  const treeRef = useRef<TreeMethods>(null);
   const treeFocusRef = useRef<HTMLDivElement | null>(null);
-  /** Destination path after rename/move; remount Tree once this id exists. */
-  const [pendingOpenRemapTo, setPendingOpenRemapTo] = useState<string | null>(
-    null,
-  );
-  const [treeOpenEpoch, setTreeOpenEpoch] = useState(0);
   const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
   const [promptKind, setPromptKind] = useState<PromptKind | null>(null);
   const [clipFolder, setClipFolder] = useState<string | null>(null);
@@ -1700,18 +1372,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     });
   }, []);
 
-  /**
-   * After rename/move, node ids change and react-dnd-treeview treats the folder
-   * as closed. Remount with remapped `initialOpen` before paint once the new id
-   * is in `tree` (`open()`/`close()` close over stale state).
-   */
-  useLayoutEffect(() => {
-    if (!pendingOpenRemapTo) return;
-    if (!findTreeNode(tree, pendingOpenRemapTo)) return;
-    setPendingOpenRemapTo(null);
-    setTreeOpenEpoch((n) => n + 1);
-  }, [tree, pendingOpenRemapTo]);
-
   const cancelInlineRename = useCallback(() => {
     setRenamingPath(null);
     focusTree();
@@ -1720,17 +1380,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const commitInlineRename = useCallback(
     (path: string, nextName: string) => {
       setRenamingPath(null);
-      const trimmed = nextName.trim().replace(/[\\/]/g, "");
-      if (trimmed) {
-        setPendingOpenRemapTo(joinPath(parentPath(path), trimmed));
-      }
       void (async () => {
-        const nextPath = await renameTreeEntry(path, nextName);
-        if (nextPath && nextPath !== path) {
-          setPendingOpenRemapTo((prev) => (prev == null ? null : nextPath));
-        } else {
-          setPendingOpenRemapTo(null);
-        }
+        await renameTreeEntry(path, nextName);
         focusTree();
       })();
     },
@@ -1750,9 +1401,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         useVaultStore.setState({ expandedPaths: next });
         if (vp) void saveExpandedPaths(vp, next);
       }
-
-      // One call: looped open() hits stale openIds (same as collapseAll).
-      treeRef.current?.open([VAULT_ID, ...toOpen.map(toNodeId)]);
 
       let attempts = 0;
       const scrollToRow = () => {
@@ -1792,7 +1440,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const { expandedPaths } = useVaultStore.getState();
     const toClose = expandedPaths.filter((p) => !isIncomingPath(p));
     if (toClose.length === 0) return;
-    treeRef.current?.close(toClose.map(toNodeId));
     const next = expandedPaths.filter((p) => isIncomingPath(p));
     useVaultStore.setState({ expandedPaths: next });
     if (useVaultStore.getState().vaultPath) {
@@ -1808,8 +1455,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       favoritePaths.some((fav) => p === fav || p.startsWith(`${fav}/`)),
     );
     if (toClose.length === 0) return;
-    const closeIds = toClose.map(toNodeId);
-    treeRef.current?.close(closeIds);
     const next = expandedPaths.filter((p) => !toClose.includes(p));
     useVaultStore.setState({ expandedPaths: next });
     if (vp) void saveExpandedPaths(vp, next);
@@ -1849,62 +1494,21 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     revealActive: revealActiveInTree,
   }));
 
-  // Scope HTML5Backend to the sidebar so it does not steal BlockNote block drag.
-  // Prefer HTML5Backend alone: MultiBackend+TouchBackend breaks mouse DnD on
-  // Windows WebView2 (especially with nested interactive controls).
-  const backendOptions = useMemo(
-    () => (dndRoot ? { rootElement: dndRoot } : null),
-    [dndRoot],
-  );
-
-  const [treeDragging, setTreeDragging] = useState(false);
-
-  // Mirror vault file drags into dataTransfer so panes outside the DnD root
-  // (chat composer, note editor for .drawio) can accept native drops.
-  // Also track drag lifetime so drop-target chrome cannot stick after dragend
-  // (HTML5Backend / WebView2 sometimes leave isOver true).
   useEffect(() => {
     if (!dndRoot) return;
-    const onDragStart = (event: DragEvent) => {
-      // dragstart target is the draggable <li>, not the inner row — look up and down.
-      const target = event.target as HTMLElement | null;
-      const el = (target?.closest?.("[data-vault-path]") ??
-        target?.querySelector?.("[data-vault-path]")) as HTMLElement | null;
-      const rawPath = el?.dataset.vaultPath;
-      if (!rawPath || !event.dataTransfer) return;
-      const isDir = el?.dataset.vaultIsdir === "1";
-      const path =
-        isDir && !rawPath.endsWith("/") ? `${rawPath}/` : rawPath;
-      event.dataTransfer.setData(VAULT_TREE_MIME, path);
-      event.dataTransfer.setData("text/plain", path);
-      event.dataTransfer.effectAllowed = "copyMove";
-      beginVaultTreeDrag(path);
-      setTreeDragging(true);
-      if (!isDir && path.toLowerCase().endsWith(".drawio")) {
-        event.dataTransfer.setData(DRAWIO_TREE_MIME, path);
-        beginDrawioTreeDrag(path);
-      }
-    };
     const endDragChrome = () => {
       endVaultTreeDrag();
-      endDrawioTreeDrag();
-      setTreeDragging(false);
       setOsDropRowPath(null);
     };
-    const onDragEnd = () => {
-      endDragChrome();
-    };
-
-    dndRoot.addEventListener("dragstart", onDragStart, true);
+    const onDragEnd = () => endDragChrome();
     dndRoot.addEventListener("dragend", onDragEnd, true);
-    // drop/dragend outside the tree (or cancelled) must clear sticky drop-target UI.
+    dndRoot.addEventListener("drop", onDragEnd, true);
     window.addEventListener("dragend", onDragEnd, true);
-    window.addEventListener("drop", onDragEnd, true);
     return () => {
-      dndRoot.removeEventListener("dragstart", onDragStart, true);
       dndRoot.removeEventListener("dragend", onDragEnd, true);
+      dndRoot.removeEventListener("drop", onDragEnd, true);
       window.removeEventListener("dragend", onDragEnd, true);
-      window.removeEventListener("drop", onDragEnd, true);
+      endDragChrome();
     };
   }, [dndRoot]);
 
@@ -2047,7 +1651,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           const node = findTreeNode(vaultTree, row.path);
           if (node?.children?.length) {
             store.toggleExpanded(row.path);
-            treeRef.current?.open(toNodeId(row.path));
           }
         } else if (store.isExpanded(row.path)) {
           const node = findTreeNode(vaultTree, row.path);
@@ -2065,7 +1668,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         e.preventDefault();
         if (store.isExpanded(row.path)) {
           store.toggleExpanded(row.path);
-          treeRef.current?.close(toNodeId(row.path));
         } else {
           const parent = parentPath(row.path);
           if (parent) {
@@ -2112,7 +1714,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     return beginOsImport(parent, data);
   };
 
-  const flatTree = useMemo(() => (tree ? flattenTree(tree) : []), [tree]);
 
   const favoriteSet = useMemo(() => new Set(favoritePaths), [favoritePaths]);
 
@@ -2196,46 +1797,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     });
   }, []);
 
-  const initialOpen = useMemo(
-    () => [VAULT_ID, ...expandedPaths.map(toNodeId)],
-    // Recomputed on remount after rename/move (`treeOpenEpoch`) and vault switch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [vaultPath, treeOpenEpoch],
-  );
-
   if (!tree || !vaultPath) return null;
-
-  const handleDrop = (
-    _newTree: NodeModel<NodeData>[],
-    options: DropOptions<NodeData>,
-  ) => {
-    const { dragSourceId, dropTargetId, relativeIndex, dropTarget } = options;
-    if (dragSourceId == null) return;
-    if (dropTargetId === TREE_ROOT) return;
-
-    const from = toStorePath(dragSourceId);
-    const targetPath = toStorePath(dropTargetId);
-    if (!from) return;
-    if (from === targetPath || targetPath.startsWith(`${from}/`)) return;
-
-    const nestOntoNote =
-      dropTarget &&
-      !dropTarget.data?.isDir &&
-      targetPath.toLowerCase().endsWith(".md");
-
-    if (nestOntoNote) {
-      void nestTreeEntryUnderNote(from, targetPath, relativeIndex ?? 0).then(
-        (next) => {
-          if (next && next !== from) setPendingOpenRemapTo(next);
-        },
-      );
-      return;
-    }
-
-    void moveTreeEntry(from, targetPath, relativeIndex ?? 0).then((next) => {
-      if (next && next !== from) setPendingOpenRemapTo(next);
-    });
-  };
 
   const submitCreate = (name: string) => {
     const kind = promptKind;
@@ -2610,7 +2172,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       <div
         className={[
           "tree-scroll",
-          treeDragging ? "is-tree-dragging" : "",
           osDropRowPath !== null ? "is-os-file-dragging" : "",
         ]
           .filter(Boolean)
@@ -2819,224 +2380,31 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         <CommentsInboxSection />
         {tasksSection}
         <div className="workspace-section">
-          {backendOptions ? (
-          <DndProvider backend={HTML5Backend} options={backendOptions}>
-            <Tree
-              ref={treeRef}
-              key={`${vaultPath}:${treeOpenEpoch}`}
-              tree={flatTree}
-              rootId={TREE_ROOT}
-              sort={false}
-              insertDroppableFirst={false}
-              /* Edges = sibling placeholder; middle = nest into folder.
-                 Keep the edge band small so closed folders are easy to hit. */
-              dropTargetOffset={4}
-              initialOpen={initialOpen}
-              classes={{
-                root: "dnd-tree-root",
-                draggingSource: "dnd-dragging",
-                dropTarget: "dnd-drop-target",
-                placeholder: "dnd-placeholder",
-              }}
-              canDrag={(node) => {
-                const path = node?.data?.path ?? "";
-                if (node?.id === VAULT_ID) return false;
-                if (path === renamingPath) return false;
-                return true;
-              }}
-              canDrop={(_current, { dropTargetId, dragSourceId, dropTarget }) => {
-                if (dragSourceId == null) return false;
-                if (dropTargetId === TREE_ROOT) return false;
-
-                const from = toStorePath(dragSourceId);
-                const targetPath = toStorePath(dropTargetId);
-
-                if (from === targetPath || targetPath.startsWith(`${from}/`)) {
-                  return false;
-                }
-
-                // Skills stays at vault root: reorder among root siblings only.
-                if (isSkillsFolder(from) && dropTargetId !== VAULT_ID) {
-                  return false;
-                }
-
-                if (dropTargetId === VAULT_ID) return true;
-                if (dropTarget?.data?.isDir) return true;
-
-                // Nest onto a markdown note (promoted to a folder on drop).
-                if (
-                  dropTarget &&
-                  !dropTarget.data?.isDir &&
-                  targetPath.toLowerCase().endsWith(".md") &&
-                  !isSkillsFolder(parentPath(targetPath), true)
-                ) {
-                  return true;
-                }
-
-                return false;
-              }}
-              onChangeOpen={(openIds) => {
-                const next = openIds
-                  .map(String)
-                  .filter((id) => id !== VAULT_ID)
-                  .map(toStorePath);
-                useVaultStore.setState({ expandedPaths: next });
-                void saveExpandedPaths(vaultPath, next);
-              }}
-              onDrop={handleDrop}
-              dragPreviewRender={(monitor) => {
-                const dragPath = String(monitor.item.data?.path ?? "");
-                const isDir = Boolean(monitor.item.data?.isDir);
-                const props = projectPropertiesByPath[dragPath];
-                return (
-                  <div className="dnd-preview">
-                    <span className="dnd-preview-icon" aria-hidden>
-                      {isDir ? (
-                        <FolderTreeIcon
-                          path={dragPath}
-                          isOpen={false}
-                          size={16}
-                          projectType={props?.projectType}
-                          learningLanguage={
-                            props?.projectType === "languageLearning"
-                              ? props.learningLanguage
-                              : null
-                          }
-                        />
-                      ) : (
-                        <FcDocument size={16} />
-                      )}
-                    </span>
-                    <span className="dnd-preview-label">{monitor.item.text}</span>
-                  </div>
-                );
-              }}
-              placeholderRender={() => <div className="dnd-placeholder-line" />}
-              render={(node, { depth, isOpen, onToggle, isDropTarget, isDragging }) => {
-                const path = node.data?.path ?? toStorePath(node.id);
-                const isDir = Boolean(node.data?.isDir);
-                const hasChildren = Boolean(node.data?.hasChildren);
-                const isVault = node.id === VAULT_ID;
-                const isProject = isVaultProjectFolder(path, isDir);
-                const isSkills = isSkillsFolder(path, isDir);
-                const isDrawio =
-                  !isDir && path.toLowerCase().endsWith(".drawio");
-                const isMdlnks =
-                  !isDir && path.toLowerCase().endsWith(".mdlnks");
-                const isMddict =
-                  !isDir && path.toLowerCase().endsWith(".mddict");
-                const isMdhabit =
-                  !isDir && path.toLowerCase().endsWith(".mdhabit");
-                const isMdcourse =
-                  !isDir && path.toLowerCase().endsWith(".mdcourse");
-                const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
-                const unsupported = isUnsupportedTreeFile(isDir, path);
-                const selected =
-                  treeSelectionVisible &&
-                  isDir &&
-                  selectedFolderExplicit &&
-                  selectedFolderPath === path;
-                const active =
-                  treeSelectionVisible &&
-                  !isDir &&
-                  !selectedFolderExplicit &&
-                  (treeSelectedFilePath ?? activePath) === path;
-                const renaming = renamingPath === path;
-                const openComments = unresolvedCounts.get(path) ?? 0;
-                const projectRoot = vaultProjectRootOf(path);
-                const projectColor =
-                  projectRoot && projectPropertiesByPath[projectRoot]?.color
-                    ? projectPropertiesByPath[projectRoot]!.color
-                    : "";
-                const rowProps = projectPropertiesByPath[path];
-
-                return (
-                  <VaultDndTreeRow
-                    path={path}
-                    name={node.text}
-                    isDir={isDir}
-                    hasChildren={hasChildren}
-                    depth={depth}
-                    isOpen={isOpen}
-                    isDropTarget={isDropTarget}
-                    isDragging={isDragging}
-                    isVault={isVault}
-                    isProject={isProject}
-                    isSkills={isSkills}
-                    unsupported={unsupported}
-                    selected={selected}
-                    active={active}
-                    renaming={renaming}
-                    treeDragging={treeDragging}
-                    osDropHighlight={
-                      osDropRowPath !== null && path === osDropRowPath
-                    }
-                    openComments={openComments}
-                    projectColor={projectColor}
-                    projectType={rowProps?.projectType}
-                    learningLanguage={
-                      rowProps?.projectType === "languageLearning"
-                        ? rowProps.learningLanguage
-                        : null
-                    }
-                    isDrawio={isDrawio}
-                    isMdlnks={isMdlnks}
-                    isMddict={isMddict}
-                    isMdhabit={isMdhabit}
-                    isMdcourse={isMdcourse}
-                    isPdf={isPdf}
-                    onToggle={onToggle}
-                    onRowClick={(e) => {
-                      treeFocusRef.current?.focus({ preventScroll: true });
-                      if (renaming) return;
-                      if (isDir) {
-                        if (isVault || !path) {
-                          selectFolder(path);
-                          return;
-                        }
-                        void openOrCreateFolderNote(path, {
-                          preview: !(e.ctrlKey || e.metaKey),
-                        });
-                        return;
-                      }
-                      if (unsupported) {
-                        selectInTree(path, false);
-                        return;
-                      }
-                      void openNote(path, {
-                        preview: !(e.ctrlKey || e.metaKey),
-                      });
-                    }}
-                    onOpenPinned={() => {
-                      void openNote(path, { preview: false });
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      treeFocusRef.current?.focus({ preventScroll: true });
-                      setContextMenu({
-                        x: e.clientX,
-                        y: e.clientY,
-                        path,
-                        name: node.text,
-                        isDir,
-                        isFavorite: path !== "" && favoriteSet.has(path),
-                      });
-                      selectInTree(path, isDir);
-                    }}
-                    onRenameCommit={(nextName) => {
-                      commitInlineRename(path, nextName);
-                    }}
-                    onRenameCancel={cancelInlineRename}
-                    onCreate={(kind) => setPromptKind(kind)}
-                    onLocateActive={revealActiveInTree}
-                    onCollapseAll={collapseAllInTree}
-                  />
-                );
-              }}
-            />
-          </DndProvider>
-        ) : null}
+          <WorkspaceTree
+            tree={tree}
+            expandedPaths={expandedPaths}
+            projectPropertiesByPath={projectPropertiesByPath}
+            unresolvedCounts={unresolvedCounts}
+            renamingPath={renamingPath}
+            osDropRowPath={osDropRowPath}
+            scrollParentRef={treeFocusRef}
+            onToggleExpanded={toggleExpanded}
+            onSelectFolder={selectFolder}
+            onOpenFolder={(path, options) => {
+              void openOrCreateFolderNote(path, options);
+            }}
+            onOpenNote={(path, options) => {
+              void openNote(path, options);
+            }}
+            onSelectInTree={selectInTree}
+            onContextMenu={(menu) => setContextMenu(menu)}
+            onRenameCommit={commitInlineRename}
+            onRenameCancel={cancelInlineRename}
+            onCreate={(kind) => setPromptKind(kind)}
+            onLocateActive={revealActiveInTree}
+            onCollapseAll={collapseAllInTree}
+            favoriteSet={favoriteSet}
+          />
         </div>
       </div>
     </div>
