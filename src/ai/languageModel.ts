@@ -293,13 +293,21 @@ function createOpenAiClient(keys: AiProviderCredentials) {
  * Official OpenAI defaults to the Responses API (`openai(id)`).
  * LiteLLM / OpenRouter / other OpenAI-compatible proxies usually only
  * implement Chat Completions — use `.chat()` there.
+ *
+ * Exception: OpenAI reasoning models reject `reasoning_effort` + function
+ * tools on `/v1/chat/completions` (LiteLLM: use `/v1/responses` or
+ * `reasoning_effort: none`). Prefer Responses when reasoning is enabled.
  */
 function createOpenAiCompatibleModel(
   keys: AiProviderCredentials,
   providerModelId: string,
+  opts?: { preferResponses?: boolean },
 ): LanguageModel {
   const openai = createOpenAiClient(keys);
-  if (isOfficialOpenAiEndpoint(keys.openaiBaseUrl)) {
+  if (
+    isOfficialOpenAiEndpoint(keys.openaiBaseUrl) ||
+    opts?.preferResponses
+  ) {
     return openai(providerModelId);
   }
   return openai.chat(providerModelId);
@@ -329,12 +337,19 @@ export function resolveLanguageModel(params: {
   const plan = planModelRoute(params.modelId, params.keys);
   const enableReasoning =
     params.enableReasoning ?? modelSupportsReasoning(plan.catalogModelId);
+  // Chat Completions + tools + reasoning_effort → 400 on gpt-5.x via LiteLLM.
+  const preferResponses =
+    plan.transport === "gateway" &&
+    plan.vendor === "openai" &&
+    Boolean(enableReasoning);
 
   let model: LanguageModel;
   if (plan.transport === "direct") {
     model = createDirectModel(plan.vendor, plan.providerModelId, params.keys);
   } else {
-    model = createOpenAiCompatibleModel(params.keys, plan.providerModelId);
+    model = createOpenAiCompatibleModel(params.keys, plan.providerModelId, {
+      preferResponses,
+    });
   }
 
   return {

@@ -9354,8 +9354,31 @@ button.status-bar-jobs-menu-item:hover {
   height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 12px 20px 72px;
+  /* Insets live on Header / List / Footer — Virtuoso scroller padding does not
+     push items inward (flush first row + content under the scrollbar). */
+  padding: 0;
   box-sizing: border-box;
+  scrollbar-gutter: stable;
+}
+
+.chat-messages-list {
+  padding-left: 20px;
+  /* Narrower than left: scrollbar-gutter already reserves the track. */
+  padding-right: 8px;
+  box-sizing: border-box;
+}
+
+.chat-messages-item {
+  padding-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.chat-messages-pad-top {
+  height: 12px;
+}
+
+.chat-messages-pad-bottom {
+  height: 72px;
 }
 
 .chat-messages-empty {
@@ -9363,12 +9386,10 @@ button.status-bar-jobs-menu-item:hover {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 12px 20px 72px;
+  box-sizing: border-box;
   color: var(--muted);
   font-size: var(--chat-font-size);
-}
-
-.chat-messages .chat-msg {
-  margin-bottom: 12px;
 }
 
 .chat-sticky-overlay {
@@ -9377,7 +9398,7 @@ button.status-bar-jobs-menu-item:hover {
   left: 0;
   right: 0;
   z-index: 4;
-  padding: 12px 20px 10px;
+  padding: 12px 8px 10px 20px;
   background: var(--editor-surface);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   pointer-events: auto;
@@ -9392,11 +9413,11 @@ button.status-bar-jobs-menu-item:hover {
 
 .chat-msg-user.is-sticky {
   position: sticky;
-  /* Cover .chat-messages top padding so scrolled messages don't show through */
-  top: -12px;
+  /* Stick under the tab chrome; top inset is a Virtuoso Header spacer now. */
+  top: 0;
   z-index: 3;
-  margin: 0 -20px;
-  padding: 12px 20px 10px;
+  margin: 0 -20px 0 -8px;
+  padding: 12px 8px 10px 20px;
   background: var(--editor-surface);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }
@@ -9468,13 +9489,17 @@ button.status-bar-jobs-menu-item:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
   font-size: var(--chat-font-size);
   line-height: 1.5;
   color: var(--text);
 }
 
 .chat-assistant-text {
+  min-width: 0;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chat-msg-actions {
@@ -9515,7 +9540,10 @@ button.status-bar-jobs-menu-item:hover {
   font-size: var(--chat-font-size);
   line-height: 1.5;
   color: var(--text);
+  min-width: 0;
+  max-width: 100%;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Plain text while tokens stream — avoids remark/GFM on every chunk. */
@@ -9548,6 +9576,8 @@ button.status-bar-jobs-menu-item:hover {
 
 .chat-md li {
   margin: 0.15em 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .chat-md li > p {
@@ -10123,6 +10153,7 @@ button.status-bar-jobs-menu-item:hover {
   align-items: center;
   gap: 0.28em;
   max-width: 100%;
+  min-width: 0;
   vertical-align: -0.12em;
   cursor: pointer;
 }
@@ -10134,7 +10165,9 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-note-link span {
+  min-width: 0;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chat-md blockquote {
@@ -12023,8 +12056,8 @@ button.status-bar-jobs-menu-item:hover {
 
 .chat-model-menu {
   z-index: 10000;
-  min-width: 220px;
-  max-width: min(280px, 70vw);
+  min-width: 260px;
+  max-width: min(300px, 70vw);
   overflow: auto;
   padding: 6px;
   border: 1px solid var(--line);
@@ -12115,6 +12148,23 @@ button.status-bar-jobs-menu-item:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-model-option-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.chat-model-option-price {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--sidebar-muted, var(--muted));
+  opacity: 0.9;
 }
 
 .chat-composer-spacer {

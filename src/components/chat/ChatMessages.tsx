@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   memo,
   useCallback,
   useEffect,
@@ -6,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type HTMLAttributes,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -81,6 +83,43 @@ type Props = {
 
 function isErrorText(text: string): boolean {
   return text.startsWith("Error:");
+}
+
+/**
+ * Virtuoso's scroller ignores CSS padding for item layout — first row sits flush
+ * and content can run under the native scrollbar. Put insets on Header/Footer/List
+ * instead (and use item padding, not margin — Virtuoso ResizeObserver rule).
+ */
+const ChatVirtuosoList = forwardRef<
+  HTMLDivElement,
+  HTMLAttributes<HTMLDivElement>
+>(function ChatVirtuosoList({ className, style, ...props }, ref) {
+  return (
+    <div
+      {...props}
+      ref={ref}
+      style={style}
+      className={["chat-messages-list", className].filter(Boolean).join(" ")}
+    />
+  );
+});
+
+const ChatVirtuosoItem = forwardRef<
+  HTMLDivElement,
+  HTMLAttributes<HTMLDivElement>
+>(function ChatVirtuosoItem({ className, style, ...props }, ref) {
+  return (
+    <div
+      {...props}
+      ref={ref}
+      style={style}
+      className={["chat-messages-item", className].filter(Boolean).join(" ")}
+    />
+  );
+});
+
+function ChatVirtuosoHeader() {
+  return <div className="chat-messages-pad-top" aria-hidden />;
 }
 
 function textFrom(message: UIMessage): string {
@@ -877,12 +916,19 @@ export function ChatMessages({ messages, streaming, compacting }: Props) {
 
   const virtuosoComponents = useMemo(
     () => ({
-      Footer: () =>
-        showWaiting ? (
-          <div className="chat-msg chat-msg-assistant">
-            <WaitingIndicator compacting={compacting} />
-          </div>
-        ) : null,
+      Header: ChatVirtuosoHeader,
+      List: ChatVirtuosoList,
+      Item: ChatVirtuosoItem,
+      Footer: () => (
+        <>
+          {showWaiting ? (
+            <div className="chat-msg chat-msg-assistant">
+              <WaitingIndicator compacting={compacting} />
+            </div>
+          ) : null}
+          <div className="chat-messages-pad-bottom" aria-hidden />
+        </>
+      ),
     }),
     [showWaiting, compacting],
   );

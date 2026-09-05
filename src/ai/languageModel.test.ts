@@ -7,6 +7,7 @@ import {
   modelRouteViaLabel,
   pickWorkerModelId,
   planModelRoute,
+  resolveLanguageModel,
   runWithModelFallback,
   stripVendorPrefix,
   toDirectProviderModelId,
@@ -140,6 +141,51 @@ describe("modelRouteViaLabel", () => {
         "https://api.openai.com/v1",
       ),
     ).toBe("Direct · Google");
+  });
+});
+
+describe("resolveLanguageModel gateway API selection", () => {
+  const gatewayKeys: AiProviderCredentials = {
+    ...emptyKeys,
+    openaiApiKey: "sk-proxy",
+    openaiBaseUrl: "https://litellm.example/v1",
+  };
+
+  it("uses Responses when OpenAI reasoning is enabled on a gateway", () => {
+    const resolved = resolveLanguageModel({
+      modelId: "openai/gpt-5.6-sol",
+      keys: gatewayKeys,
+      enableReasoning: true,
+    });
+    expect(resolved.transport).toBe("gateway");
+    expect(resolved.model.provider).toBe("openai.responses");
+    expect(resolved.providerOptions).toEqual({
+      openai: {
+        parallelToolCalls: true,
+        reasoningEffort: "medium",
+        reasoningSummary: "auto",
+      },
+    });
+  });
+
+  it("keeps Chat Completions when reasoning is off on a gateway", () => {
+    const resolved = resolveLanguageModel({
+      modelId: "openai/gpt-5.6-sol",
+      keys: gatewayKeys,
+      enableReasoning: false,
+    });
+    expect(resolved.model.provider).toBe("openai.chat");
+    expect(resolved.providerOptions).toBeUndefined();
+  });
+
+  it("uses Responses on the official OpenAI endpoint", () => {
+    const resolved = resolveLanguageModel({
+      modelId: "openai/gpt-5.6-sol",
+      keys: { ...emptyKeys, openaiApiKey: "sk-test" },
+      enableReasoning: true,
+    });
+    expect(resolved.transport).toBe("direct");
+    expect(resolved.model.provider).toBe("openai.responses");
   });
 });
 

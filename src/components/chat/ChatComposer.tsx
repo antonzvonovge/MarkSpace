@@ -608,8 +608,13 @@ export function ChatComposer() {
     pendingEditRef.current = { text: "", range: null };
   }, [streaming]);
 
+  const restoreFocusAfterTurnRef = useRef(false);
+  const wasBusyForFocusRef = useRef(false);
+
   const handleSend = () => {
     if (!canSend) return;
+    // Restore caret after the turn; contentEditable flips off while busy.
+    restoreFocusAfterTurnRef.current = true;
     void send();
     focusInput();
   };
@@ -654,6 +659,37 @@ export function ChatComposer() {
     }, 0);
     return () => window.clearTimeout(t);
   }, [activeThreadId, messages.length, streaming]);
+
+  // Sending sets contentEditable=false (blur). Put the caret back when idle
+  // unless the user moved focus into another editable field.
+  useEffect(() => {
+    if (streaming) {
+      wasBusyForFocusRef.current = true;
+      return;
+    }
+    if (!wasBusyForFocusRef.current) return;
+    wasBusyForFocusRef.current = false;
+    if (!restoreFocusAfterTurnRef.current) return;
+    restoreFocusAfterTurnRef.current = false;
+
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active !== document.body &&
+      !composerRef.current?.contains(active) &&
+      (active.isContentEditable ||
+        active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.closest('[role="textbox"]'))
+    ) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      const el = inputRef.current;
+      if (el) focusComposerEnd(el);
+    });
+  }, [streaming]);
 
   return (
     <div
@@ -1072,7 +1108,9 @@ export function ChatComposer() {
           <button
             type="button"
             className="chat-send-btn is-stop"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
+              restoreFocusAfterTurnRef.current = true;
               stop();
               focusInput();
             }}
@@ -1087,6 +1125,7 @@ export function ChatComposer() {
           <button
             type="button"
             className="chat-send-btn"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleSend}
             disabled={!canSend}
             title={

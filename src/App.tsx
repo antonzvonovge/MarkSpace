@@ -95,6 +95,7 @@ import { applyBackgroundJobPayload } from "./store/backgroundJobsStore";
 import { useChatUiStore } from "./store/chatUiStore";
 import { useDocumentFindStore } from "./store/documentFindStore";
 import { useFocusUiStore } from "./store/focusUiStore";
+import { useModelPricesStore } from "./store/modelPricesStore";
 import { usePrefsStore } from "./store/prefsStore";
 import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
@@ -644,6 +645,7 @@ function App() {
   const toggleSettings = usePrefsStore((s) => s.toggleSettings);
   const hydratePrefs = usePrefsStore((s) => s.hydrate);
   const hydrateAi = useAiSettingsStore((s) => s.hydrate);
+  const ensureModelPrices = useModelPricesStore((s) => s.ensureFresh);
   const hydrateMcp = useMcpStore((s) => s.hydrate);
   const hydrateMcpVault = useMcpStore((s) => s.hydrateForVault);
   const mcpHydrated = useMcpStore((s) => s.hydrated);
@@ -806,10 +808,11 @@ function App() {
   useEffect(() => {
     void hydratePrefs();
     void hydrateAi();
+    void ensureModelPrices();
     void hydrateMcp();
     void hydrateMcpHost();
     void loadRecentCommands().then(setRecentCommandIds);
-  }, [hydratePrefs, hydrateAi, hydrateMcp, hydrateMcpHost]);
+  }, [hydratePrefs, hydrateAi, ensureModelPrices, hydrateMcp, hydrateMcpHost]);
 
   useEffect(() => {
     if (!mcpHydrated) return;

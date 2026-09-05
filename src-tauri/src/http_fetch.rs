@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 
-const MAX_BODY_BYTES: usize = 2_000_000;
+const MAX_BODY_BYTES: usize = 5 * 1024 * 1024;
 const MAX_BINARY_BYTES: usize = 10 * 1024 * 1024;
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const DEFAULT_UA: &str = "Mozilla/5.0 (compatible; MarkSpace/1.0; +https://markspace.app)";
