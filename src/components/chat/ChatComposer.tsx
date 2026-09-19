@@ -307,7 +307,7 @@ export function ChatComposer() {
 
   const syncMentionMenus = () => {
     const el = inputRef.current;
-    if (!el || streaming) {
+    if (!el) {
       closeSkillMenus();
       return;
     }
@@ -401,7 +401,6 @@ export function ChatComposer() {
   );
 
   const openSkillPicker = () => {
-    if (streaming) return;
     const btn = plusBtnRef.current;
     if (!btn) return;
     slashRangeRef.current = null;
@@ -467,7 +466,6 @@ export function ChatComposer() {
 
   // dnd-kit tree drag has no HTML5 dataTransfer — hint + drop via bridge/events.
   useEffect(() => {
-    if (streaming) return;
     let stopMove: (() => void) | null = null;
     const unsub = subscribeVaultTreeDrag((path) => {
       stopMove?.();
@@ -491,10 +489,9 @@ export function ChatComposer() {
       stopMove?.();
       unsub();
     };
-  }, [streaming]);
+  }, []);
 
   useEffect(() => {
-    if (streaming) return;
     const onPointerDrop = (event: Event) => {
       const detail = (event as CustomEvent<VaultTreePointerDropDetail>).detail;
       if (!detail?.path) return;
@@ -527,7 +524,7 @@ export function ChatComposer() {
         onPointerDrop as EventListener,
       );
     };
-  }, [streaming]);
+  }, []);
 
   const clipboardImageInFlight = useRef(false);
   const [contextMenu, setContextMenu] = useState<EditContextMenuState | null>(
@@ -539,7 +536,7 @@ export function ChatComposer() {
     range: null,
   });
   const tryAttachClipboardImages = async () => {
-    if (streaming || clipboardImageInFlight.current) return;
+    if (clipboardImageInFlight.current) return;
     clipboardImageInFlight.current = true;
     try {
       const images = await readImagesFromSystemClipboard(2);
@@ -553,34 +550,30 @@ export function ChatComposer() {
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
-  const openComposerContextMenu = useCallback(
-    (e: ReactMouseEvent) => {
-      if (streaming) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const el = inputRef.current;
-      const selectedDraft = el ? serializeComposerSelection(el) : null;
-      const selected = selectedDraft ?? (el ? selectionTextIn(el) : "");
-      const sel = window.getSelection();
-      let range: Range | null = null;
-      if (el && sel && sel.rangeCount > 0) {
-        const live = sel.getRangeAt(0);
-        if (el.contains(live.commonAncestorContainer)) {
-          range = live.cloneRange();
-        }
+  const openComposerContextMenu = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = inputRef.current;
+    const selectedDraft = el ? serializeComposerSelection(el) : null;
+    const selected = selectedDraft ?? (el ? selectionTextIn(el) : "");
+    const sel = window.getSelection();
+    let range: Range | null = null;
+    if (el && sel && sel.rangeCount > 0) {
+      const live = sel.getRangeAt(0);
+      if (el.contains(live.commonAncestorContainer)) {
+        range = live.cloneRange();
       }
-      pendingEditRef.current = { text: selected, range };
-      setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
-        canCut: selected.length > 0,
-        canCopy: selected.length > 0,
-        canPaste: true,
-        showSelectAll: true,
-      });
-    },
-    [streaming],
-  );
+    }
+    pendingEditRef.current = { text: selected, range };
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      canCut: selected.length > 0,
+      canCopy: selected.length > 0,
+      canPaste: true,
+      showSelectAll: true,
+    });
+  }, []);
 
   const restorePendingRange = () => {
     const { range } = pendingEditRef.current;
@@ -593,7 +586,6 @@ export function ChatComposer() {
   };
 
   const cutComposerSelection = useCallback(async () => {
-    if (streaming) return;
     const { text, range } = pendingEditRef.current;
     if (!text) return;
     await writeClipboardHtml(composerDraftToHtml(text), text);
@@ -603,7 +595,7 @@ export function ChatComposer() {
       syncDraftFromDom();
     }
     pendingEditRef.current = { text: "", range: null };
-  }, [streaming]);
+  }, []);
 
   const copyComposerSelection = useCallback(async () => {
     const { text } = pendingEditRef.current;
@@ -612,7 +604,6 @@ export function ChatComposer() {
   }, []);
 
   const pasteIntoComposer = useCallback(async () => {
-    if (streaming) return;
     const el = inputRef.current;
     if (pendingEditRef.current.range) restorePendingRange();
     else el?.focus();
@@ -629,11 +620,11 @@ export function ChatComposer() {
       syncDraftFromDom();
     }
     pendingEditRef.current = { text: "", range: null };
-  }, [streaming]);
+  }, []);
 
   const selectAllComposer = useCallback(() => {
     const el = inputRef.current;
-    if (!el || streaming) return;
+    if (!el) return;
     el.focus();
     const range = document.createRange();
     range.selectNodeContents(el);
@@ -641,14 +632,14 @@ export function ChatComposer() {
     sel?.removeAllRanges();
     sel?.addRange(range);
     pendingEditRef.current = { text: "", range: null };
-  }, [streaming]);
+  }, []);
 
   const restoreFocusAfterTurnRef = useRef(false);
   const wasBusyForFocusRef = useRef(false);
 
   const handleSend = () => {
     if (!canSend) return;
-    // Restore caret after the turn; contentEditable flips off while busy.
+    // Keep caret after send so the user can draft the next message while streaming.
     restoreFocusAfterTurnRef.current = true;
     void send();
     focusInput();
@@ -680,9 +671,9 @@ export function ChatComposer() {
     const grew = selectionCount > prevSelectionCount.current;
     prevSelectionCount.current = selectionCount;
     const el = inputRef.current;
-    if (!grew || streaming || !el) return;
+    if (!grew || !el) return;
     focusComposerEnd(el);
-  }, [selectionCount, streaming]);
+  }, [selectionCount]);
 
   // New / empty chat (New chat, Gem, open empty tab): focus the composer.
   useEffect(() => {
@@ -695,7 +686,7 @@ export function ChatComposer() {
     return () => window.clearTimeout(t);
   }, [activeThreadId, messages.length, streaming]);
 
-  // Sending sets contentEditable=false (blur). Put the caret back when idle
+  // After Stop (or if focus was lost during the turn), put the caret back
   // unless the user moved focus into another editable field.
   useEffect(() => {
     if (streaming) {
@@ -735,14 +726,12 @@ export function ChatComposer() {
       onDragEnter={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (streaming) return;
         const kind = dragKindFrom(e.dataTransfer);
         if (kind) showDropHint(kind);
       }}
       onDragOver={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (streaming) return;
         if (composerChipDragSource()) {
           e.dataTransfer.dropEffect = e.ctrlKey || e.altKey ? "copy" : "move";
           return;
@@ -759,7 +748,6 @@ export function ChatComposer() {
         e.preventDefault();
         e.stopPropagation();
         hideDropHint();
-        if (streaming) return;
         const el = inputRef.current;
         const chipDraft = draftFromDataTransfer(e.dataTransfer);
         const sourceChip = composerChipDragSource();
@@ -859,7 +847,6 @@ export function ChatComposer() {
               <button
                 type="button"
                 className="chat-attach-remove"
-                disabled={streaming}
                 onClick={() => removeAttachment(att.id)}
                 title="Remove"
                 aria-label={`Remove ${att.name}`}
@@ -883,10 +870,10 @@ export function ChatComposer() {
         role="textbox"
         aria-multiline="true"
         aria-label="Message"
-        contentEditable={!streaming}
+        contentEditable
         spellCheck={false}
         suppressContentEditableWarning
-        data-placeholder={streaming ? "Streaming…" : "Message…"}
+        data-placeholder="Message…"
         onFocus={() => {
           if (activeThreadId) clearThreadAttention(activeThreadId);
         }}
@@ -918,7 +905,6 @@ export function ChatComposer() {
           writeComposerDraftToDataTransfer(e.clipboardData, draft);
         }}
         onCut={(e) => {
-          if (streaming) return;
           const el = inputRef.current;
           if (!el || !e.clipboardData) return;
           const draft = serializeComposerSelection(el);
@@ -934,7 +920,6 @@ export function ChatComposer() {
           syncMentionMenus();
         }}
         onPaste={(e) => {
-          if (streaming) return;
           const data = e.clipboardData;
           if (!data) return;
           const files = collectPasteFiles(data).filter(isUsefulAttachFile);
@@ -1097,7 +1082,6 @@ export function ChatComposer() {
           multiple
           className="chat-attach-input"
           accept="image/*,.pdf,.md,.txt,.json,.csv,.html,.xml,.css,.js,.ts,.tsx,.py,.rs,.yaml,.yml,.toml"
-          disabled={streaming}
           onChange={(e) => {
             const files = e.target.files;
             if (files) void ingestFiles(files);
@@ -1112,7 +1096,6 @@ export function ChatComposer() {
               ? "chat-attach-btn is-active"
               : "chat-attach-btn"
           }
-          disabled={streaming}
           onMouseDown={(e) => {
             // Keep the composer caret so the skill chip inserts in place.
             e.preventDefault();
@@ -1136,7 +1119,6 @@ export function ChatComposer() {
         <button
           type="button"
           className="chat-attach-btn"
-          disabled={streaming}
           onClick={() => fileInputRef.current?.click()}
           title="Attach files"
           aria-label="Attach files"
