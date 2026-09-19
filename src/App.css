@@ -629,7 +629,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 30px;
+  height: 34px;
   border: 0;
   border-radius: 8px;
   padding: 0;
@@ -648,11 +648,26 @@ select {
   line-height: 1;
 }
 
-.sidebar-calendar-day-marker {
+/* When a day has a marker, emoji is the primary cell content; date is secondary. */
+.sidebar-calendar-day.has-marker .sidebar-calendar-day-num {
   position: absolute;
-  top: 1px;
-  right: 1px;
-  font-size: 11px;
+  top: 2px;
+  right: 3px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.65;
+  z-index: 1;
+}
+
+.sidebar-calendar-day.has-marker.is-selected .sidebar-calendar-day-num,
+.sidebar-calendar-day.has-marker.is-today .sidebar-calendar-day-num {
+  opacity: 0.85;
+}
+
+.sidebar-calendar-day-marker {
+  display: block;
+  font-size: 1.2rem;
   line-height: 1;
   pointer-events: none;
 }
@@ -737,13 +752,19 @@ select {
 }
 
 :root[data-density="compact"] .sidebar-calendar-day {
-  height: 26px;
+  height: 30px;
   border-radius: 6px;
   font-size: 0.75rem;
 }
 
 :root[data-density="compact"] .sidebar-calendar-day-marker {
-  font-size: 10px;
+  font-size: 1.05rem;
+}
+
+:root[data-density="compact"] .sidebar-calendar-day.has-marker .sidebar-calendar-day-num {
+  font-size: 0.52rem;
+  top: 1px;
+  right: 2px;
 }
 
 :root[data-density="compact"] .sidebar-calendar-nav {

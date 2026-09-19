@@ -338,12 +338,12 @@ export function SidebarCalendar() {
                 openMarkerPicker(date, event.currentTarget);
               }}
             >
-              <span className="sidebar-calendar-day-num">{date.getDate()}</span>
               {marker ? (
                 <span className="sidebar-calendar-day-marker" aria-hidden>
                   {marker.emoji}
                 </span>
               ) : null}
+              <span className="sidebar-calendar-day-num">{date.getDate()}</span>
             </button>
           );
         })}
