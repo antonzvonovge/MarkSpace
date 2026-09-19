@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DayMarkerPicker } from "./DayMarkerPicker";
+import { useLocalToday } from "../hooks/useLocalToday";
 import { dayMarkerById } from "../lib/dayMarkers";
 import { getNoteDayMarker } from "../lib/noteFrontmatter";
 import {
@@ -113,10 +114,7 @@ export function CalendarCheckIcon() {
 }
 
 export function SidebarCalendar() {
-  const today = useMemo(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  }, []);
+  const today = useLocalToday();
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
   const cells = useMemo(() => buildMonthCells(viewMonth), [viewMonth]);
   const viewingCurrentMonth =

@@ -143,6 +143,7 @@ import { refreshDocumentFindIfOpen } from "./find/documentFindController";
 import { createFindDecorationExtension } from "./find/findDecorations";
 import { createHashtagDecorationExtension } from "./tag/tagDecorations";
 import { createCodeBlockCopyExtension } from "./codeBlockCopy";
+import { createNarrowNumberColumnExtension } from "./narrowNumberColumn";
 import { getTagMenuItems, shouldOpenTagMenu } from "./tag/tagSuggestion";
 import { TagSuggestionMenu } from "./tag/TagSuggestionMenu";
 import { focusLiveEditorFromEmptyClick } from "./focusLiveEditor";
@@ -505,6 +506,10 @@ export const NoteEditor = memo(function NoteEditor({
     [],
   );
   const codeBlockCopy = useMemo(() => createCodeBlockCopyExtension(), []);
+  const narrowNumberColumn = useMemo(
+    () => createNarrowNumberColumnExtension(),
+    [],
+  );
   const onAnchorsChangedRef = useRef<
     ((updates: import("../lib/commentAnchors").CommentAnchorUpdate[]) => void) | undefined
   >(undefined);
@@ -547,6 +552,7 @@ export const NoteEditor = memo(function NoteEditor({
           selectAtomAfterDrop,
           hashtagDecorations,
           codeBlockCopy,
+          narrowNumberColumn,
           commentDecorations,
           findDecorations,
         ],

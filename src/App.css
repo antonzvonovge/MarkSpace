@@ -5461,6 +5461,16 @@ button.status-bar-jobs-menu-item:hover {
   font-size: 0.875em;
 }
 
+/* Index / number first column (header like #, №, No.) — shrink to content. */
+.editor-canvas
+  [data-content-type="table"]
+  table[data-narrow-first-col]
+  :is(th, td):first-child {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
 /* Wide tables (4+ columns): break out of the ~760px reading measure to
    the full editor column, center, cap columns at 15vw. Narrower tables
    (≤3 columns) keep the default reading-column layout. */
@@ -9951,6 +9961,12 @@ button.status-bar-jobs-menu-item:hover {
   border: 1px solid var(--line);
   padding: 4px 8px;
   text-align: left;
+}
+
+.chat-md table[data-narrow-first-col] :is(th, td):first-child {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .chat-md hr {

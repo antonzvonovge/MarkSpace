@@ -15,6 +15,7 @@ import "katex/dist/katex.min.css";
 import { highlightCodeToHtml } from "../../lib/codeHighlight";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { normalizeDisplayMath } from "../../lib/mathMarkdown";
+import { isNumberColumnHeader } from "../../lib/tableColumnHeaders";
 import { ensureFolderNote, folderPathFromFolderNote, resolveWikiTarget } from "../../lib/vaultApi";
 import { healFakeHttpsVaultLinks } from "../../lib/wikiMarkdown";
 import { useVaultStore } from "../../store/vaultStore";
@@ -102,6 +103,41 @@ function languageFromClassName(className: unknown): string | undefined {
 
 function codeText(children: ReactNode): string {
   return String(children ?? "").replace(/\n$/, "");
+}
+
+/** Flatten React markdown children to plain text (for table header sniffing). */
+function plainTextFromChildren(children: ReactNode): string {
+  let out = "";
+  Children.forEach(children, (child) => {
+    if (typeof child === "string" || typeof child === "number") {
+      out += child;
+      return;
+    }
+    if (!isValidElement<{ children?: ReactNode }>(child)) return;
+    if (child.props.children != null) {
+      out += plainTextFromChildren(child.props.children);
+    }
+  });
+  return out;
+}
+
+/** True when the first `<th>` looks like a number / index column header. */
+function tableHasNumberFirstHeader(children: ReactNode): boolean {
+  let firstTh: string | null = null;
+  const visit = (nodes: ReactNode) => {
+    Children.forEach(nodes, (node) => {
+      if (firstTh !== null || !isValidElement<{ children?: ReactNode }>(node)) {
+        return;
+      }
+      if (node.type === "th") {
+        firstTh = plainTextFromChildren(node.props.children);
+        return;
+      }
+      if (node.props.children != null) visit(node.props.children);
+    });
+  };
+  visit(children);
+  return firstTh !== null && isNumberColumnHeader(firstTh);
 }
 
 function ChatCodeCopyButton({ code }: { code: string }) {
@@ -303,6 +339,15 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
           // Avoid huge nested margins from default browser styles
           p: ({ children }) => <p>{children}</p>,
           pre: ({ children }) => <ChatPre>{children}</ChatPre>,
+          table: ({ children }) => (
+            <table
+              data-narrow-first-col={
+                tableHasNumberFirstHeader(children) ? "" : undefined
+              }
+            >
+              {children}
+            </table>
+          ),
         }}
       >
         {normalizeDisplayMath(healFakeHttpsVaultLinks(text))}
