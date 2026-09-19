@@ -11,28 +11,13 @@ import {
   specialistLabel,
   type SpecialistKind,
 } from "../../ai/toolPacks";
+import { SpecialistStepView } from "./SpecialistStepView";
 
 type Props = {
   part: UIMessage["parts"][number];
 };
 
 const SUMMARY_CAP = 160;
-const STEP_CAP = 2_000;
-
-function formatPayload(value: unknown): string {
-  if (value === undefined) return "";
-  if (typeof value === "string") {
-    return value.length <= STEP_CAP
-      ? value
-      : `${value.slice(0, STEP_CAP)}…`;
-  }
-  try {
-    const raw = JSON.stringify(value, null, 2);
-    return raw.length <= STEP_CAP ? raw : `${raw.slice(0, STEP_CAP)}…`;
-  } catch {
-    return String(value);
-  }
-}
 
 function oneLine(text: string, max = SUMMARY_CAP): string {
   const t = text.replace(/\s+/g, " ").trim();
@@ -213,24 +198,10 @@ function ChatSpecialistCardInner({ part }: Props) {
           ) : (
             <ul className="chat-specialist-card-steps">
               {steps.map((step, i) => (
-                <li key={`${step.toolName}-${i}`}>
-                  <div className="chat-specialist-card-step-name">
-                    {step.toolName}
-                    {step.error ? (
-                      <span className="chat-specialist-card-step-err">
-                        {" "}
-                        error
-                      </span>
-                    ) : null}
-                  </div>
-                  {step.input !== undefined ? (
-                    <pre>{formatPayload(step.input)}</pre>
-                  ) : null}
-                  {step.output !== undefined ? (
-                    <pre>{formatPayload(step.output)}</pre>
-                  ) : null}
-                  {step.error ? <pre>{step.error}</pre> : null}
-                </li>
+                <SpecialistStepView
+                  key={`${step.toolName}-${i}`}
+                  step={step}
+                />
               ))}
             </ul>
           )}

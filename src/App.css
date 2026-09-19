@@ -10253,33 +10253,85 @@ button.status-bar-jobs-menu-item:hover {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .chat-specialist-card-step-name {
-  font-family: var(--font-mono);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
   font-size: 0.6875rem;
   font-weight: 450;
   color: var(--sidebar-muted, var(--muted));
 }
 
+.chat-specialist-card-step-tool {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--sidebar-fg, var(--fg));
+  opacity: 0.85;
+}
+
+.chat-specialist-card-step-summary {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--sidebar-muted, var(--muted));
+}
+
 .chat-specialist-card-step-err {
+  flex-shrink: 0;
   color: var(--danger, #c44);
   font-weight: 500;
 }
 
-.chat-specialist-card-body pre {
-  margin: 2px 0 0;
+.chat-specialist-card-step-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.chat-specialist-card-step-field {
+  min-width: 0;
+}
+
+.chat-specialist-card-step-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--sidebar-muted, var(--muted));
+  opacity: 0.75;
+  margin-bottom: 1px;
+}
+
+.chat-specialist-card-step-value {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--sidebar-fg, var(--fg));
+  opacity: 0.88;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chat-specialist-card-body pre,
+.chat-specialist-card-step-field pre {
+  margin: 0;
   padding: 0;
-  max-height: 160px;
+  max-height: 140px;
   overflow: auto;
   font-family: var(--font-mono);
   font-size: 0.625rem;
-  line-height: 1.35;
+  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--sidebar-muted, var(--muted));
-  opacity: 0.9;
+  color: var(--sidebar-fg, var(--fg));
+  opacity: 0.82;
 }
 
 .chat-ask-user {
