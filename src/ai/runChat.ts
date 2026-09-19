@@ -109,6 +109,10 @@ export type RunChatParams = {
   skills?: SkillMeta[] | null;
   forcedSkills?: LoadedSkill[] | null;
   forcedTools?: string[] | null;
+  /** Prefer chat model for `run_specialist` workers (thread sticky toggle). */
+  specialistsUseChatModel?: boolean;
+  /** Per-thread specialist model when not linked to chat. */
+  specialistModelId?: string | null;
   /** Model context window — sliding window + abort if the latest turn still cannot fit. */
   contextWindow?: number;
   /**
@@ -426,6 +430,8 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     projectType: params.projectType,
     projectLearningLanguage: params.projectLearningLanguage,
     modelId: params.modelId,
+    specialistsUseChatModel: params.specialistsUseChatModel,
+    specialistModelId: params.specialistModelId,
   });
 
   const contextWindow = params.contextWindow;

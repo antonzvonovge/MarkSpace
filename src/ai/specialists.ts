@@ -7,7 +7,7 @@ import {
 import { z } from "zod";
 import {
   credentialsFromSettings,
-  pickWorkerModelId,
+  resolveSpecialistModelId,
   resolveLanguageModel,
 } from "./languageModel";
 import {
@@ -304,8 +304,12 @@ export type RunSpecialistContext = {
   folderContext?: FolderAbout[] | null;
   projectType?: string | null;
   projectLearningLanguage?: string | null;
-  /** Override model id (defaults to settings). */
+  /** Thread chat model (used when `specialistsUseChatModel` is on). */
   modelId?: string | null;
+  /** Prefer chat model over `specialistModelId` for this specialist run. */
+  specialistsUseChatModel?: boolean;
+  /** Per-thread specialist model when not linked to chat. */
+  specialistModelId?: string | null;
 };
 
 export type RunSpecialistResult = {
@@ -427,9 +431,11 @@ export async function runSpecialist(params: {
     const settings = useAiSettingsStore.getState().settings;
     const helper = helperModelCallParams();
     const keys = credentialsFromSettings(settings);
-    const modelId = pickWorkerModelId({
+    const modelId = resolveSpecialistModelId({
       keys,
-      modelId: helper.modelId,
+      useChatModel: params.ctx.specialistsUseChatModel === true,
+      chatModelId: params.ctx.modelId,
+      specialistModelId: params.ctx.specialistModelId ?? helper.modelId,
       fallbackModelId: helper.fallbackModelId,
     });
     const resolved = resolveLanguageModel({

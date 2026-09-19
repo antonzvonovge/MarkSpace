@@ -55,6 +55,12 @@ pub struct ChatThreadFile {
     /// Skip per-command terminal approval for this thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_allow_for_chat: Option<bool>,
+    /// Specialists use this thread's chat model instead of specialist_model_id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specialists_use_chat_model: Option<bool>,
+    /// Per-thread specialist model when not linked to chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specialist_model_id: Option<String>,
     /// Measured context baseline (next prompt, empty draft).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_anchor_tokens: Option<i64>,

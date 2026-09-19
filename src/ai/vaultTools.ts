@@ -279,8 +279,12 @@ export type BuildVaultToolsOpts = {
   folderContext?: FolderAbout[] | null;
   projectType?: string | null;
   projectLearningLanguage?: string | null;
-  /** Model id for specialist workers (defaults to settings). */
+  /** Thread chat model for specialists when `specialistsUseChatModel` is on. */
   modelId?: string | null;
+  /** Prefer chat model over `specialistModelId` for `run_specialist`. */
+  specialistsUseChatModel?: boolean;
+  /** Per-thread specialist model when not linked to chat. */
+  specialistModelId?: string | null;
   /**
    * Restrict to these tool names. For Agent mode, omit to get the
    * orchestrator set (9 tools, or 10 when terminal is enabled). Pass an
@@ -1227,6 +1231,8 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
       projectType: opts?.projectType,
       projectLearningLanguage: opts?.projectLearningLanguage,
       modelId: opts?.modelId,
+      specialistsUseChatModel: opts?.specialistsUseChatModel,
+      specialistModelId: opts?.specialistModelId,
     }),
     run_terminal: buildRunTerminalTool({ projectPath }),
   };

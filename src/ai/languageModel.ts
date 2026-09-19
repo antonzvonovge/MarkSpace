@@ -203,6 +203,36 @@ export function pickWorkerModelId(params: {
   return primary;
 }
 
+/**
+ * Model for `run_specialist` workers.
+ * When `useChatModel` is on, prefer the thread chat model.
+ * Otherwise prefer the thread specialist model (vault Worker default).
+ */
+export function resolveSpecialistModelId(params: {
+  keys: AiProviderCredentials;
+  useChatModel: boolean;
+  chatModelId?: string | null;
+  specialistModelId?: string | null;
+  fallbackModelId: string;
+}): string {
+  if (params.useChatModel) {
+    const chat = params.chatModelId?.trim();
+    if (chat) {
+      return pickWorkerModelId({
+        keys: params.keys,
+        modelId: chat,
+        fallbackModelId:
+          params.specialistModelId?.trim() || params.fallbackModelId,
+      });
+    }
+  }
+  return pickWorkerModelId({
+    keys: params.keys,
+    modelId: params.specialistModelId?.trim() || undefined,
+    fallbackModelId: params.fallbackModelId,
+  });
+}
+
 export function assertHelperModelCredentials(params: {
   keys: AiProviderCredentials;
   modelId?: string;

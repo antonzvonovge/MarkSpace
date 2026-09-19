@@ -1,3 +1,4 @@
+/** @vitest-environment jsdom */
 import { describe, expect, it } from "vitest";
 import {
   chipLabelForPath,
@@ -11,6 +12,8 @@ import {
   htmlToComposerDraft,
   insertComposerDraft,
   formatVaultPathForModel,
+  focusComposerAfterNode,
+  insertPathChip,
   renderComposerFromDraft,
   replaceAtWithToolChip,
   replaceSlashWithSkillChip,
@@ -256,5 +259,27 @@ describe("composer clipboard / insert draft", () => {
     expect(serializeComposer(root)).toBe(
       `hello ${wrapVaultPathMarker("Notes/todo.md")}world`,
     );
+  });
+
+  it("focusComposerAfterNode keeps the caret after the inserted chip", () => {
+    document.body.replaceChildren();
+    const root = document.createElement("div");
+    root.contentEditable = "true";
+    document.body.appendChild(root);
+    const after = insertPathChip(root, "Notes/a.md");
+    // Simulate focus loss after DnD teardown, then restore.
+    window.getSelection()?.removeAllRanges();
+    focusComposerAfterNode(root, after);
+    const sel = window.getSelection();
+    expect(sel?.rangeCount).toBe(1);
+    const range = sel!.getRangeAt(0);
+    expect(range.collapsed).toBe(true);
+    expect(
+      range.startContainer === after ||
+        (after.nextSibling != null && range.startContainer === after.nextSibling) ||
+        (range.startContainer === after.parentNode &&
+          range.startOffset > 0),
+    ).toBe(true);
+    expect(serializeComposer(root)).toBe(`${wrapVaultPathMarker("Notes/a.md")} `);
   });
 });

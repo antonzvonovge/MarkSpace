@@ -11,6 +11,8 @@ export type EditContextMenuState = {
   canCut?: boolean;
   canCopy?: boolean;
   canPaste?: boolean;
+  /** When true, show Select All. */
+  showSelectAll?: boolean;
   /** When true, show Comment (needs non-empty selection). */
   showComment?: boolean;
   /** When true, show Send to Incoming (needs non-empty selection). */
@@ -23,6 +25,7 @@ type Props = {
   onCut?: () => void;
   onCopy: () => void;
   onPaste?: () => void;
+  onSelectAll?: () => void;
   onComment?: () => void;
   onCapture?: () => void;
 };
@@ -33,12 +36,14 @@ export function EditContextMenu({
   onCut,
   onCopy,
   onPaste,
+  onSelectAll,
   onComment,
   onCapture,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const showCut = menu.showCut !== false && onCut != null;
   const showPaste = menu.showPaste !== false && onPaste != null;
+  const showSelectAll = menu.showSelectAll === true && onSelectAll != null;
   const showComment = menu.showComment === true && onComment != null;
   const showCapture = menu.showCapture === true && onCapture != null;
   const canCut = menu.canCut !== false;
@@ -64,7 +69,7 @@ export function EditContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 180);
-  const top = Math.min(menu.y, window.innerHeight - 180);
+  const top = Math.min(menu.y, window.innerHeight - 220);
 
   return createPortal(
     <div
@@ -115,6 +120,22 @@ export function EditContextMenu({
         >
           Paste
         </button>
+      ) : null}
+      {showSelectAll ? (
+        <>
+          <div className="tree-context-sep" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-context-item"
+            onClick={() => {
+              onClose();
+              onSelectAll();
+            }}
+          >
+            Select All
+          </button>
+        </>
       ) : null}
       {showComment ? (
         <>

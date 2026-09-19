@@ -11825,6 +11825,109 @@ button.status-bar-jobs-menu-item:hover {
   animation: tree-create-in 0.14s ease;
 }
 
+.chat-model-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: -6px -6px 6px;
+  padding: 0 4px 0 6px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: -6px;
+  background: var(--editor-surface);
+  z-index: 1;
+}
+
+.chat-model-tab {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chat-model-tab:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+.chat-model-tab.is-active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  background: transparent;
+}
+
+.chat-model-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  margin: 0 2px 0 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chat-model-link:hover {
+  background: var(--menu-item-hover, var(--sidebar-hover));
+  color: var(--text);
+}
+
+.chat-model-link.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.chat-model-link.is-active:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.chat-model-link svg {
+  display: block;
+}
+
+.chat-model-linked-hint {
+  padding: 4px 8px 6px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.chat-model-option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.chat-model-trigger-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.chat-model-trigger-link svg {
+  display: block;
+  width: 11px;
+  height: 11px;
+}
+
 .chat-model-menu.is-field {
   max-width: none;
 }
@@ -11870,10 +11973,10 @@ button.status-bar-jobs-menu-item:hover {
 }
 
 .chat-model-option {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem 16px;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  column-gap: 6px;
   width: 100%;
   border: 0;
   border-radius: 7px;
@@ -11908,6 +12011,22 @@ button.status-bar-jobs-menu-item:hover {
   white-space: nowrap;
 }
 
+.chat-model-option-price-col {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  min-width: 0;
+}
+
+.chat-model-option-kind-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+}
+
 .chat-model-option-meta {
   display: inline-flex;
   align-items: center;
@@ -11923,6 +12042,7 @@ button.status-bar-jobs-menu-item:hover {
   white-space: nowrap;
   color: var(--sidebar-muted, var(--muted));
   opacity: 0.9;
+  text-align: right;
 }
 
 .chat-composer-spacer {

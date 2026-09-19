@@ -1,6 +1,8 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,6 +15,7 @@ import {
 } from "../../components/AppDialog";
 import { TagChipsInput } from "../../components/TagChipsInput";
 import { useListReorder } from "../../hooks/useListReorder";
+import { writeClipboardText } from "../../lib/clipboardText";
 import {
   collectMdlnksTags,
   parseMdlnks,
@@ -94,8 +97,30 @@ export function LinksEditor({ path, content, onChange }: Props) {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const copiedClearRef = useRef<number | null>(null);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   usePersistedEditorScroll(scrollEl, path, "live");
+
+  const copyLinkUrl = useCallback(async (url: string, absIndex: number) => {
+    await writeClipboardText(url);
+    if (copiedClearRef.current != null) {
+      window.clearTimeout(copiedClearRef.current);
+    }
+    setCopiedIndex(absIndex);
+    copiedClearRef.current = window.setTimeout(() => {
+      setCopiedIndex((i) => (i === absIndex ? null : i));
+      copiedClearRef.current = null;
+    }, 1500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copiedClearRef.current != null) {
+        window.clearTimeout(copiedClearRef.current);
+      }
+    };
+  }, []);
 
   const emit = useCallback(
     (next: MdlnksDoc) => {
@@ -315,6 +340,19 @@ export function LinksEditor({ path, content, onChange }: Props) {
                         {highlightMatches(item.url, searchQuery)}
                       </a>
                       <div className="links-editor-row-actions">
+                        <button
+                          type="button"
+                          className="links-editor-icon-btn"
+                          title={
+                            copiedIndex === absIndex ? "Copied" : "Copy link"
+                          }
+                          aria-label={
+                            copiedIndex === absIndex ? "Copied" : "Copy link"
+                          }
+                          onClick={() => void copyLinkUrl(item.url, absIndex)}
+                        >
+                          {copiedIndex === absIndex ? "Copied" : "Copy link"}
+                        </button>
                         <button
                           type="button"
                           className="links-editor-icon-btn"

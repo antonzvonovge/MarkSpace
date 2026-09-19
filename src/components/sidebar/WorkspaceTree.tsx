@@ -280,6 +280,30 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     }),
   );
 
+  /**
+   * Only edge-auto-scroll while the pointer is over the tree scroller.
+   * Otherwise dragging toward a top-docked chat composer keeps scrolling the
+   * sidebar up even though the drop target is outside the list.
+   */
+  const autoScroll = useMemo(
+    () => ({
+      canScroll: (element: Element) => {
+        const parent = scrollParentRef.current;
+        if (!parent || element !== parent) return false;
+        const rect = parent.getBoundingClientRect();
+        const x = pointerXRef.current;
+        const y = pointerYRef.current;
+        return (
+          x >= rect.left &&
+          x <= rect.right &&
+          y >= rect.top &&
+          y <= rect.bottom
+        );
+      },
+    }),
+    [scrollParentRef],
+  );
+
   const stopPointerTracking = useCallback(() => {
     stopPointerTrackingRef.current?.();
     stopPointerTrackingRef.current = null;
@@ -720,6 +744,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       sensors={sensors}
       collisionDetection={listCollision}
       measuring={measuring}
+      autoScroll={autoScroll}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragMove={onDragMove}

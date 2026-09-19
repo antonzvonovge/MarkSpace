@@ -15,6 +15,8 @@ import { useModelPricesStore } from "../../store/modelPricesStore";
 const VENDOR_ORDER: AiModelVendor[] = ["openai", "google"];
 const MENU_MIN_WIDTH = 260;
 
+type ModelTab = "chat" | "specialists";
+
 type Props = {
   models: AiModelOption[];
   value: string;
@@ -22,6 +24,14 @@ type Props = {
   /** "compact" is the composer toolbar button, "field" is a settings-width input. */
   variant?: "compact" | "field";
   onChange: (modelId: string) => void;
+  /**
+   * Composer dual picker: Chat / Specialists tabs + link.
+   * When set with `onSpecialistChange`, the menu shows both tabs.
+   */
+  specialistValue?: string;
+  specialistsLinked?: boolean;
+  onSpecialistChange?: (modelId: string) => void;
+  onSpecialistsLinkedChange?: (linked: boolean) => void;
 };
 
 function modelDisplayName(model: AiModelOption | null, fallback: string) {
@@ -67,6 +77,17 @@ function ModelTierDot({ model }: { model: AiModelOption | null }) {
   );
 }
 
+function LinkIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M7.775 3.275a.75.75 0 0 0 1.06 1.06l1.25-1.25a2 2 0 1 1 2.83 2.83l-2.5 2.5a2 2 0 0 1-2.83 0 .75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 0 4.95 0l2.5-2.5a3.5 3.5 0 0 0-4.95-4.95l-1.25 1.25zm-4.69 9.64a2 2 0 0 1 0-2.83l2.5-2.5a2 2 0 0 1 2.83 0 .75.75 0 0 0 1.06-1.06 3.5 3.5 0 0 0-4.95 0l-2.5 2.5a3.5 3.5 0 0 0 4.95 4.95l1.25-1.25a.75.75 0 0 0-1.06-1.06l-1.25 1.25a2 2 0 0 1-2.83 0z"
+      />
+    </svg>
+  );
+}
+
 function modelsForVendor(models: AiModelOption[], vendor: AiModelVendor) {
   return models
     .filter((m) => m.vendor === vendor)
@@ -95,8 +116,18 @@ export function ChatModelPicker({
   disabled,
   variant = "compact",
   onChange,
+  specialistValue,
+  specialistsLinked = false,
+  onSpecialistChange,
+  onSpecialistsLinkedChange,
 }: Props) {
+  const dual =
+    typeof specialistValue === "string" &&
+    typeof onSpecialistChange === "function" &&
+    typeof onSpecialistsLinkedChange === "function";
+
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<ModelTab>("chat");
   const [pos, setPos] = useState<MenuPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -108,6 +139,11 @@ export function ChatModelPicker({
     () => models.find((m) => m.id === value) ?? null,
     [models, value],
   );
+
+  const activeValue =
+    dual && tab === "specialists" && !specialistsLinked
+      ? specialistValue!
+      : value;
 
   const updatePos = () => {
     const el = triggerRef.current;
@@ -170,6 +206,19 @@ export function ChatModelPicker({
     if (disabled) setOpen(false);
   }, [disabled]);
 
+  useEffect(() => {
+    if (!open) setTab("chat");
+  }, [open]);
+
+  const pickModel = (modelId: string) => {
+    if (dual && tab === "specialists" && !specialistsLinked) {
+      onSpecialistChange!(modelId);
+    } else {
+      onChange(modelId);
+    }
+    setOpen(false);
+  };
+
   const menu =
     open && pos
       ? createPortal(
@@ -192,9 +241,68 @@ export function ChatModelPicker({
               zIndex: 10000,
             }}
           >
+            {dual ? (
+              <div className="chat-model-tabs" role="tablist" aria-label="Model target">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "chat"}
+                  className={
+                    tab === "chat"
+                      ? "chat-model-tab is-active"
+                      : "chat-model-tab"
+                  }
+                  onClick={() => setTab("chat")}
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "specialists"}
+                  className={
+                    tab === "specialists"
+                      ? "chat-model-tab is-active"
+                      : "chat-model-tab"
+                  }
+                  onClick={() => setTab("specialists")}
+                >
+                  Specialists
+                </button>
+                <button
+                  type="button"
+                  className={
+                    specialistsLinked
+                      ? "chat-model-link is-active"
+                      : "chat-model-link"
+                  }
+                  aria-pressed={specialistsLinked}
+                  title={
+                    specialistsLinked
+                      ? "Specialists use chat model — click to pick separately"
+                      : "Link specialists to chat model"
+                  }
+                  aria-label={
+                    specialistsLinked
+                      ? "Specialists linked to chat. Click to unlink."
+                      : "Link specialists to chat model"
+                  }
+                  onClick={() => onSpecialistsLinkedChange!(!specialistsLinked)}
+                >
+                  <LinkIcon />
+                </button>
+              </div>
+            ) : null}
+            {dual && tab === "specialists" && specialistsLinked ? (
+              <div className="chat-model-linked-hint">
+                Using chat model
+              </div>
+            ) : null}
             {VENDOR_ORDER.map((vendor) => {
               const group = modelsForVendor(models, vendor);
               if (!group.length) return null;
+              const listDisabled =
+                dual && tab === "specialists" && specialistsLinked;
               return (
                 <div key={vendor} className="chat-model-group">
                   <div className="chat-model-group-label">
@@ -202,21 +310,20 @@ export function ChatModelPicker({
                   </div>
                   {group.map((m) => {
                     const price = lookupModelPrice(m.id, prices);
+                    const isActive = m.id === activeValue;
                     return (
                       <button
                         key={m.id}
                         type="button"
                         role="option"
-                        aria-selected={m.id === value}
+                        aria-selected={isActive}
+                        disabled={listDisabled}
                         className={
-                          m.id === value
+                          isActive
                             ? "chat-model-option is-active"
                             : "chat-model-option"
                         }
-                        onClick={() => {
-                          onChange(m.id);
-                          setOpen(false);
-                        }}
+                        onClick={() => pickModel(m.id)}
                       >
                         <span className="chat-model-option-main">
                           <ModelTierDot model={m} />
@@ -224,8 +331,10 @@ export function ChatModelPicker({
                             {modelDisplayName(m, m.id)}
                           </span>
                         </span>
-                        <span className="chat-model-option-meta">
+                        <span className="chat-model-option-price-col">
                           {price ? <ModelPriceMeta price={price} /> : null}
+                        </span>
+                        <span className="chat-model-option-kind-col">
                           <ModelKindBadge kind={m.kind} />
                         </span>
                       </button>
@@ -260,6 +369,8 @@ export function ChatModelPicker({
                 selected.kind === "reasoning"
                   ? ` · ${KIND_LABEL.reasoning}`
                   : ""
+              }${
+                dual && specialistsLinked ? " · specialists linked" : ""
               }`
             : value
         }
@@ -269,6 +380,11 @@ export function ChatModelPicker({
         <span className="chat-model-trigger-label">
           {modelDisplayName(selected, value)}
         </span>
+        {dual && specialistsLinked ? (
+          <span className="chat-model-trigger-link" aria-hidden="true">
+            <LinkIcon />
+          </span>
+        ) : null}
         {isField ? (
           <span className="chat-model-trigger-caret" aria-hidden="true">
             ▾

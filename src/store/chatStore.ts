@@ -44,6 +44,7 @@ import {
   type ChatMode,
   type ReasoningMode,
 } from "../ai/types";
+import { DEFAULT_WORKER_MODEL_ID } from "../lib/vaultAiSettings";
 import {
   deleteChatThread,
   getChatThread,
@@ -82,6 +83,7 @@ import { useAiSettingsStore } from "./aiSettingsStore";
 import {
   helperModelCallParams,
   vaultChatModelId,
+  vaultWorkerModelId,
 } from "./vaultAiSettingsStore";
 import { useVaultStore } from "./vaultStore";
 
@@ -180,6 +182,13 @@ type ChatStore = {
    * Settings → Allow agent terminal is on.
    */
   terminalAllowForChat: boolean;
+  /**
+   * When true, specialists use this thread's chat model instead of
+   * `specialistModelId`.
+   */
+  specialistsUseChatModel: boolean;
+  /** Per-thread specialist model when not linked to chat. */
+  specialistModelId: string;
   projectPath: string | null;
   /** Cached "about" text for `projectPath` (for prompt + context meter). */
   projectAbout: string;
@@ -240,6 +249,8 @@ type ChatStore = {
   setModelId: (modelId: string) => void;
   setReasoningMode: (mode: ReasoningMode) => void;
   setTerminalAllowForChat: (allow: boolean) => void;
+  setSpecialistsUseChatModel: (use: boolean) => void;
+  setSpecialistModelId: (modelId: string) => void;
   setProjectPath: (projectPath: string | null) => Promise<void>;
   /** When the composer is empty, set project from a vault file/folder path. */
   adoptProjectFromVaultPathIfComposerEmpty: (vaultPath: string) => Promise<void>;
@@ -325,6 +336,8 @@ function emptySession(vaultBound: string | null = null) {
     contextAnchorMessageCount: null as number | null,
     totalCostUsd: null as number | null,
     terminalAllowForChat: false,
+    specialistsUseChatModel: false,
+    specialistModelId: vaultWorkerModelId(),
     ...defaultsFromSettings(),
   };
 }
@@ -389,6 +402,8 @@ async function writeActiveThread(get: () => ChatStore): Promise<void> {
     gemId,
     reasoningMode,
     terminalAllowForChat,
+    specialistsUseChatModel,
+    specialistModelId,
     contextAnchorTokens,
     contextAnchorMessageCount,
     totalCostUsd,
@@ -420,6 +435,8 @@ async function writeActiveThread(get: () => ChatStore): Promise<void> {
     enableReasoning: reasoningMode !== "off",
     reasoningMode,
     terminalAllowForChat,
+    specialistsUseChatModel,
+    specialistModelId,
     contextAnchorTokens,
     contextAnchorMessageCount,
     ...(totalCostUsd != null && totalCostUsd > 0 ? { totalCostUsd } : {}),
@@ -592,6 +609,7 @@ async function createNewThread(
   const defaults = defaultsFromSettings();
   const mode = opts?.mode ?? defaults.mode;
   const defaultModelId = defaults.modelId;
+  const defaultSpecialistModelId = vaultWorkerModelId();
   const now = Date.now();
   const id = crypto.randomUUID();
   const inheritedProject =
@@ -622,6 +640,8 @@ async function createNewThread(
     enableReasoning: reasoningMode !== "off",
     reasoningMode,
     terminalAllowForChat: false,
+    specialistsUseChatModel: false,
+    specialistModelId: defaultSpecialistModelId,
     messages: [] as UIMessage[],
   };
   setTerminalThreadAutoAllow(false);
@@ -639,6 +659,8 @@ async function createNewThread(
     modelId: meta.modelId || modelId,
     reasoningMode,
     terminalAllowForChat: false,
+    specialistsUseChatModel: false,
+    specialistModelId: defaultSpecialistModelId,
     projectPath: inheritedProject,
     projectAbout: project.about,
     projectType: project.projectType,
@@ -691,6 +713,11 @@ async function loadThreadIntoState(
   });
   const terminalAllowForChat = thread.terminalAllowForChat === true;
   setTerminalThreadAutoAllow(terminalAllowForChat);
+  const specialistsUseChatModel = thread.specialistsUseChatModel === true;
+  const specialistModelId = resolveModelId(
+    baseUrl,
+    thread.specialistModelId?.trim() || vaultWorkerModelId(),
+  );
   const rawMessages = Array.isArray(thread.messages) ? thread.messages : [];
   const messages = settleIncompleteToolCalls(rawMessages);
   if (messages !== rawMessages) {
@@ -708,6 +735,8 @@ async function loadThreadIntoState(
     modelId: resolvedModelId,
     reasoningMode,
     terminalAllowForChat,
+    specialistsUseChatModel,
+    specialistModelId,
     projectPath,
     projectAbout: project.about,
     projectType: project.projectType,
@@ -1108,6 +1137,8 @@ async function runAssistantTurn(params: {
       skills,
       forcedSkills,
       forcedTools,
+      specialistsUseChatModel: get().specialistsUseChatModel,
+      specialistModelId: get().specialistModelId,
       contextWindow: limit,
       maxSteps: settings.agentMaxSteps,
       abortSignal: controller.signal,
@@ -1292,6 +1323,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     ? "auto"
     : "off",
   terminalAllowForChat: false,
+  specialistsUseChatModel: false,
+  specialistModelId: DEFAULT_WORKER_MODEL_ID,
   projectPath: null,
   projectAbout: "",
   projectType: "",
@@ -1510,6 +1543,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const next = Boolean(allow);
     setTerminalThreadAutoAllow(next);
     set({ terminalAllowForChat: next });
+    void get().persistActive();
+  },
+
+  setSpecialistsUseChatModel: (use) => {
+    set({ specialistsUseChatModel: Boolean(use) });
+    void get().persistActive();
+  },
+
+  setSpecialistModelId: (modelId) => {
+    const settings = useAiSettingsStore.getState().settings;
+    const resolved = resolveModelId(settings.baseUrl, modelId);
+    set({ specialistModelId: resolved });
     void get().persistActive();
   },
 

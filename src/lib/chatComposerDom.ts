@@ -573,7 +573,7 @@ function insertChipNodes(
   clientX?: number,
   clientY?: number,
   alwaysSpaceAfter = false,
-): void {
+): Node {
   root.focus();
   const range = rangeAtPoint(root, clientX, clientY, clientX != null);
   if (clientX == null) range.deleteContents();
@@ -600,6 +600,7 @@ function insertChipNodes(
   for (const n of nodes) frag.appendChild(n);
   range.insertNode(frag);
   placeCaretAfter(afterNode);
+  return afterNode;
 }
 
 /** Insert a draft fragment (text + chips) at the caret or drop point. */
@@ -609,8 +610,8 @@ export function insertComposerDraft(
   clientX?: number,
   clientY?: number,
   resolveSelectionText?: SelectionTextResolver,
-): void {
-  if (!draft) return;
+): Node | null {
+  if (!draft) return null;
   root.focus();
   const range = rangeAtPoint(root, clientX, clientY, clientX != null);
   if (clientX == null) range.deleteContents();
@@ -619,6 +620,7 @@ export function insertComposerDraft(
   const last = frag.lastChild;
   range.insertNode(frag);
   if (last) placeCaretAfter(last);
+  return last;
 }
 
 /** Insert a vault path chip at the caret (or drop point), always followed by a space. */
@@ -627,8 +629,8 @@ export function insertPathChip(
   path: string,
   clientX?: number,
   clientY?: number,
-): void {
-  insertChipNodes(
+): Node {
+  return insertChipNodes(
     root,
     createPathChipElement(path),
     clientX,
@@ -643,8 +645,14 @@ export function insertSkillChip(
   skillId: string,
   clientX?: number,
   clientY?: number,
-): void {
-  insertChipNodes(root, createSkillChipElement(skillId), clientX, clientY, true);
+): Node {
+  return insertChipNodes(
+    root,
+    createSkillChipElement(skillId),
+    clientX,
+    clientY,
+    true,
+  );
 }
 
 /** Insert a tool chip at the caret, always followed by a space to type after. */
@@ -653,8 +661,14 @@ export function insertToolChip(
   toolId: string,
   clientX?: number,
   clientY?: number,
-): void {
-  insertChipNodes(root, createToolChipElement(toolId), clientX, clientY, true);
+): Node {
+  return insertChipNodes(
+    root,
+    createToolChipElement(toolId),
+    clientX,
+    clientY,
+    true,
+  );
 }
 
 export type ComposerSlashQuery = {
@@ -814,6 +828,22 @@ export function focusComposerEnd(root: HTMLElement): void {
   range.collapse(false);
   sel.removeAllRanges();
   sel.addRange(range);
+}
+
+/**
+ * Focus the composer and put the caret after `node` when it is still in the
+ * DOM (e.g. after a chip insert). Falls back to the end of the composer.
+ */
+export function focusComposerAfterNode(
+  root: HTMLElement,
+  node: Node | null | undefined,
+): void {
+  root.focus();
+  if (node && root.contains(node)) {
+    placeCaretAfter(node);
+    return;
+  }
+  focusComposerEnd(root);
 }
 
 export function isComposerVisuallyEmpty(root: HTMLElement): boolean {

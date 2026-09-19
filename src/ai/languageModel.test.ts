@@ -9,6 +9,7 @@ import {
   pickWorkerModelId,
   planModelRoute,
   resolveLanguageModel,
+  resolveSpecialistModelId,
   runWithModelFallback,
   stripVendorPrefix,
   toDirectProviderModelId,
@@ -259,6 +260,37 @@ describe("credential helpers", () => {
         fallbackModelId: "openai/gpt-5.6-sol",
       }),
     ).toBe("openai/gpt-5.6-sol");
+  });
+
+  it("resolves specialist model from worker or chat sticky toggle", () => {
+    const openaiOnly = { ...emptyKeys, openaiApiKey: "sk" };
+    expect(
+      resolveSpecialistModelId({
+        keys: openaiOnly,
+        useChatModel: false,
+        chatModelId: "openai/gpt-5.6-sol",
+        specialistModelId: "openai/gpt-4.1-mini",
+        fallbackModelId: "openai/gpt-5.6-sol",
+      }),
+    ).toBe("openai/gpt-4.1-mini");
+    expect(
+      resolveSpecialistModelId({
+        keys: openaiOnly,
+        useChatModel: true,
+        chatModelId: "openai/gpt-5.6-sol",
+        specialistModelId: "openai/gpt-4.1-mini",
+        fallbackModelId: "openai/gpt-5.6-sol",
+      }),
+    ).toBe("openai/gpt-5.6-sol");
+    expect(
+      resolveSpecialistModelId({
+        keys: openaiOnly,
+        useChatModel: true,
+        chatModelId: "google/gemini-3.5-flash-lite",
+        specialistModelId: "openai/gpt-4.1-mini",
+        fallbackModelId: "openai/gpt-5.6-sol",
+      }),
+    ).toBe("openai/gpt-4.1-mini");
   });
 
   it("runs the fallback model when the primary call fails", async () => {

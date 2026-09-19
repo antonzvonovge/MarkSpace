@@ -26,6 +26,7 @@ import {
   composerDraftToHtml,
   draftFromDataTransfer,
   endComposerChipDrag,
+  focusComposerAfterNode,
   focusComposerEnd,
   getComposerAtQuery,
   getComposerSlashQuery,
@@ -184,6 +185,12 @@ export function ChatComposer() {
   const setEnableReasoning = useChatStore((s) => s.setReasoningMode);
   const terminalAllowForChat = useChatStore((s) => s.terminalAllowForChat);
   const setTerminalAllowForChat = useChatStore((s) => s.setTerminalAllowForChat);
+  const specialistsUseChatModel = useChatStore((s) => s.specialistsUseChatModel);
+  const setSpecialistsUseChatModel = useChatStore(
+    (s) => s.setSpecialistsUseChatModel,
+  );
+  const specialistModelId = useChatStore((s) => s.specialistModelId);
+  const setSpecialistModelId = useChatStore((s) => s.setSpecialistModelId);
   const status = useChatStore((s) => s.status);
   const messages = useChatStore((s) => s.messages);
   const send = useChatStore((s) => s.send);
@@ -281,6 +288,15 @@ export function ChatComposer() {
     queueMicrotask(() => inputRef.current?.focus());
   };
 
+  /** Re-apply caret after chip insert once React/dnd-kit teardown settles. */
+  const focusAfterChip = (afterNode: Node | null | undefined) => {
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      focusComposerAfterNode(el, afterNode);
+    });
+  };
+
   const closeSkillMenus = () => {
     slashRangeRef.current = null;
     atRangeRef.current = null;
@@ -332,16 +348,16 @@ export function ChatComposer() {
     replaceSlashWithSkillChip(el, id, slashRangeRef.current);
     closeSkillMenus();
     syncDraftFromDom();
-    focusInput();
+    focusAfterChip(null);
   };
 
   const applySkillChipInsert = (id: string) => {
     const el = inputRef.current;
     if (!el) return;
-    insertSkillChip(el, id);
+    const after = insertSkillChip(el, id);
     closeSkillMenus();
     syncDraftFromDom();
-    focusInput();
+    focusAfterChip(after);
   };
 
   const applyToolChipFromAt = (id: string) => {
@@ -350,7 +366,7 @@ export function ChatComposer() {
     replaceAtWithToolChip(el, id, atRangeRef.current);
     closeSkillMenus();
     syncDraftFromDom();
-    focusInput();
+    focusAfterChip(null);
   };
 
   const applyActiveFileChip = () => {
@@ -360,10 +376,10 @@ export function ChatComposer() {
     const tab = useVaultStore.getState().tabs.find((t) => t.path === path);
     if (!tab || !isFileTab(tab)) return;
     void useChatStore.getState().adoptProjectFromVaultPathIfComposerEmpty(path);
-    insertPathChip(el, path);
+    const after = insertPathChip(el, path);
     closeSkillMenus();
     syncDraftFromDom();
-    focusInput();
+    focusAfterChip(after);
   };
 
   const plusFooterActions = useMemo(
@@ -492,9 +508,14 @@ export function ChatComposer() {
       void useChatStore
         .getState()
         .adoptProjectFromVaultPathIfComposerEmpty(detail.path);
-      insertPathChip(el, detail.path, detail.clientX, detail.clientY);
+      const after = insertPathChip(
+        el,
+        detail.path,
+        detail.clientX,
+        detail.clientY,
+      );
       syncDraftFromDom();
-      focusInput();
+      focusAfterChip(after);
     };
     window.addEventListener(
       VAULT_TREE_POINTER_DROP_EVENT,
@@ -541,19 +562,21 @@ export function ChatComposer() {
       const selectedDraft = el ? serializeComposerSelection(el) : null;
       const selected = selectedDraft ?? (el ? selectionTextIn(el) : "");
       const sel = window.getSelection();
-      pendingEditRef.current = {
-        text: selected,
-        range:
-          selected && sel && sel.rangeCount > 0
-            ? sel.getRangeAt(0).cloneRange()
-            : null,
-      };
+      let range: Range | null = null;
+      if (el && sel && sel.rangeCount > 0) {
+        const live = sel.getRangeAt(0);
+        if (el.contains(live.commonAncestorContainer)) {
+          range = live.cloneRange();
+        }
+      }
+      pendingEditRef.current = { text: selected, range };
       setContextMenu({
         x: e.clientX,
         y: e.clientY,
         canCut: selected.length > 0,
         canCopy: selected.length > 0,
         canPaste: true,
+        showSelectAll: true,
       });
     },
     [streaming],
@@ -590,9 +613,9 @@ export function ChatComposer() {
 
   const pasteIntoComposer = useCallback(async () => {
     if (streaming) return;
-    restorePendingRange();
     const el = inputRef.current;
-    if (!pendingEditRef.current.range) el?.focus();
+    if (pendingEditRef.current.range) restorePendingRange();
+    else el?.focus();
     const images = await readImagesFromSystemClipboard(2);
     if (images.length) {
       await ingestFiles(images);
@@ -605,6 +628,18 @@ export function ChatComposer() {
       else document.execCommand("insertText", false, text);
       syncDraftFromDom();
     }
+    pendingEditRef.current = { text: "", range: null };
+  }, [streaming]);
+
+  const selectAllComposer = useCallback(() => {
+    const el = inputRef.current;
+    if (!el || streaming) return;
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
     pendingEditRef.current = { text: "", range: null };
   }, [streaming]);
 
@@ -736,7 +771,7 @@ export function ChatComposer() {
             !e.ctrlKey &&
             !e.altKey;
           if (moving) sourceChip.remove();
-          insertComposerDraft(
+          const after = insertComposerDraft(
             el,
             chipDraft,
             e.clientX,
@@ -744,7 +779,7 @@ export function ChatComposer() {
             (id) => useChatStore.getState().draftSelections[id],
           );
           syncDraftFromDom();
-          focusInput();
+          focusAfterChip(after);
           endComposerChipDrag();
           clearVaultTreeDrag();
           return;
@@ -756,17 +791,22 @@ export function ChatComposer() {
             void useChatStore
               .getState()
               .adoptProjectFromVaultPathIfComposerEmpty(vaultPath);
-            insertPathChip(el, vaultPath, e.clientX, e.clientY);
+            const after = insertPathChip(
+              el,
+              vaultPath,
+              e.clientX,
+              e.clientY,
+            );
             syncDraftFromDom();
-            focusInput();
+            focusAfterChip(after);
           }
           return;
         }
         const plain = e.dataTransfer.getData("text/plain");
         if (el && plain && !e.dataTransfer.files?.length) {
-          insertComposerDraft(el, plain, e.clientX, e.clientY);
+          const after = insertComposerDraft(el, plain, e.clientX, e.clientY);
           syncDraftFromDom();
-          focusInput();
+          focusAfterChip(after);
           return;
         }
         if (e.dataTransfer.files?.length) {
@@ -995,6 +1035,7 @@ export function ChatComposer() {
           onCut={() => void cutComposerSelection()}
           onCopy={() => void copyComposerSelection()}
           onPaste={() => void pasteIntoComposer()}
+          onSelectAll={selectAllComposer}
         />
       ) : null}
       <div className="chat-composer-toolbar">
@@ -1017,6 +1058,10 @@ export function ChatComposer() {
           value={modelId}
           disabled={streaming}
           onChange={setModelId}
+          specialistValue={specialistModelId}
+          specialistsLinked={specialistsUseChatModel}
+          onSpecialistChange={setSpecialistModelId}
+          onSpecialistsLinkedChange={setSpecialistsUseChatModel}
         />
 
         <ReasoningToggle

@@ -90,3 +90,7 @@ export function vaultChatModelId(): string {
     appModelId,
   );
 }
+
+export function vaultWorkerModelId(): string {
+  return effectiveWorkerModelId(useVaultAiSettingsStore.getState().doc);
+}

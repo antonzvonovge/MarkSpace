@@ -48,6 +48,15 @@ export type ChatThreadFile = {
    * Settings → Allow agent terminal). Omit on older threads.
    */
   terminalAllowForChat?: boolean | null;
+  /**
+   * When true, `run_specialist` workers use this thread's chat model instead
+   * of `specialistModelId`. Omit on older threads.
+   */
+  specialistsUseChatModel?: boolean | null;
+  /**
+   * Model for specialists when not linked to chat. Omit → vault Worker default.
+   */
+  specialistModelId?: string | null;
   messages: UIMessage[];
 };
 
