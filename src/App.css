@@ -16215,6 +16215,15 @@ button.status-bar-jobs-menu-item:hover {
   font-weight: 500;
 }
 
+.tasks-row-due.is-overdue {
+  color: #dc2626;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 600;
+}
+
 .tasks-row-label {
   display: inline-flex;
   align-items: center;
@@ -16263,6 +16272,12 @@ button.status-bar-jobs-menu-item:hover {
 
 :root[data-theme="dark"] .tasks-row-due {
   color: #e0a060;
+}
+
+:root[data-theme="dark"] .tasks-row-due.is-overdue {
+  color: #f87171;
+  background: #451a1a;
+  border-color: #7f1d1d;
 }
 
 .tasks-row-actions {
@@ -17663,6 +17678,25 @@ button.status-bar-jobs-menu-item:hover {
   color: var(--muted);
 }
 
+.tasks-date-trigger.has-value.is-overdue {
+  color: #dc2626;
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+
+.tasks-date-trigger.is-chip.has-value.is-overdue {
+  color: #dc2626;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  padding: 0 6px;
+}
+
+.tasks-date-trigger.is-icon.has-value.is-overdue {
+  color: #dc2626;
+  background: #fee2e2;
+  border-radius: 4px;
+}
+
 .tasks-date-trigger:hover {
   border-color: #c8c8c8;
 }
@@ -17671,6 +17705,12 @@ button.status-bar-jobs-menu-item:hover {
   border: none;
   background: var(--sidebar-hover);
   color: var(--text);
+}
+
+.tasks-date-trigger.is-chip.has-value.is-overdue:hover {
+  border: 1px solid #fecaca;
+  background: #fecaca;
+  color: #dc2626;
 }
 
 .tasks-date-trigger-icon {
@@ -17712,6 +17752,14 @@ button.status-bar-jobs-menu-item:hover {
 
 :root[data-theme="dark"] .tasks-date-trigger.is-chip.has-value {
   color: var(--muted);
+}
+
+:root[data-theme="dark"] .tasks-date-trigger.has-value.is-overdue,
+:root[data-theme="dark"] .tasks-date-trigger.is-chip.has-value.is-overdue,
+:root[data-theme="dark"] .tasks-date-trigger.is-icon.has-value.is-overdue {
+  color: #f87171;
+  background: #451a1a;
+  border-color: #7f1d1d;
 }
 
 .tasks-date-panel {

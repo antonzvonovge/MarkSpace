@@ -1,6 +1,7 @@
 import { memo, type CSSProperties } from "react";
 import {
   formatTaskDueLabel,
+  isTaskDueOverdue,
   localDateYmd,
 } from "../../lib/taskNotes";
 import { pastelChipForName } from "../../lib/pastelChipColors";
@@ -22,6 +23,8 @@ type Props = {
   hideSubtasks?: boolean;
   /** Caller-supplied today (YYYY-MM-DD) — avoids per-row date work. */
   todayYmd?: string;
+  /** Done tasks keep the date label but skip overdue styling. */
+  done?: boolean;
   /** Task list / project folder name (shown when showList is true). */
   list?: string;
   listColor?: string;
@@ -37,11 +40,14 @@ export const TaskMetaLine = memo(function TaskMetaLine({
   commentCount = 0,
   hideSubtasks = false,
   todayYmd,
+  done = false,
   list,
   listColor,
   showList = false,
 }: Props) {
-  const dueLabel = formatTaskDueLabel(due, todayYmd ?? localDateYmd());
+  const today = todayYmd ?? localDateYmd();
+  const dueLabel = formatTaskDueLabel(due, today);
+  const overdue = !done && isTaskDueOverdue(due, today);
   const labelList = (labels ?? []).map((l) => l.trim()).filter(Boolean);
   const listName = list?.trim() || "Inbox";
   const showProgress = !hideSubtasks && subtaskTotal > 0;
@@ -88,7 +94,10 @@ export const TaskMetaLine = memo(function TaskMetaLine({
         </span>
       ) : null}
       {dueLabel ? (
-        <span className="tasks-row-due">
+        <span
+          className={overdue ? "tasks-row-due is-overdue" : "tasks-row-due"}
+          title={overdue ? "Overdue" : undefined}
+        >
           <TasksIconSchedule size={12} className="tasks-row-meta-icon" />
           {dueLabel}
         </span>

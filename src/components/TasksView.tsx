@@ -32,6 +32,8 @@ import {
 } from "../lib/taskNotes";
 import {
   collectImageFilesFromPaste,
+  markPasteGestureHandled,
+  pasteGestureAlreadyHandled,
   readImagesFromSystemClipboard,
 } from "../editor/pasteImages";
 import { absolutePath, joinPath, parentPath, writeAsset } from "../lib/vaultApi";
@@ -340,7 +342,7 @@ function TaskCommentComposer({
   );
 
   const tryPasteClipboardImages = useCallback(async () => {
-    if (clipboardPasteInFlight.current) return;
+    if (clipboardPasteInFlight.current || pasteGestureAlreadyHandled()) return;
     clipboardPasteInFlight.current = true;
     try {
       const fromSystem = await readImagesFromSystemClipboard(2);
@@ -391,6 +393,8 @@ function TaskCommentComposer({
               const pasted = collectImageFilesFromPaste(data);
               if (pasted.length > 0) {
                 e.preventDefault();
+                // Block the Ctrl+V keydown fallback from attaching again.
+                markPasteGestureHandled();
                 void ingestPastedImages(pasted);
                 return;
               }
@@ -398,16 +402,24 @@ function TaskCommentComposer({
               if (!clipboardLooksLikeImage(data)) return;
 
               e.preventDefault();
+              markPasteGestureHandled();
+              clipboardPasteInFlight.current = true;
               const textSnapshot = data.getData("text/plain");
               void (async () => {
-                const fromSystem = await readImagesFromSystemClipboard(2);
-                if (fromSystem.length > 0) {
-                  await ingestPastedImages(fromSystem);
-                  return;
-                }
-                const el = textRef.current;
-                if (textSnapshot && el) {
-                  insertTextIntoTextarea(el, textSnapshot, onDraftChange);
+                try {
+                  const fromSystem = await readImagesFromSystemClipboard(2);
+                  if (fromSystem.length > 0) {
+                    await ingestPastedImages(fromSystem);
+                    return;
+                  }
+                  const el = textRef.current;
+                  if (textSnapshot && el) {
+                    insertTextIntoTextarea(el, textSnapshot, onDraftChange);
+                  }
+                } finally {
+                  window.setTimeout(() => {
+                    clipboardPasteInFlight.current = false;
+                  }, 400);
                 }
               })();
             }}
@@ -418,7 +430,10 @@ function TaskCommentComposer({
                 !e.shiftKey &&
                 !e.altKey
               ) {
+                // Fallback when paste has no image files; skip if onPaste
+                // already handled this gesture.
                 window.setTimeout(() => {
+                  if (pasteGestureAlreadyHandled()) return;
                   void tryPasteClipboardImages();
                 }, 0);
               }
@@ -1069,6 +1084,7 @@ function TaskDetailPanel({
                                 labels={child.labels}
                                 commentCount={child.commentCount}
                                 hideSubtasks
+                                done={child.status === "done"}
                               />
                             </div>
                             <div className="tasks-row-actions">

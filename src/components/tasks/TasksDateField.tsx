@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DayPicker } from "react-day-picker";
 import { placeAnchoredMenu } from "../../lib/menuPlacement";
-import { localDateYmd } from "../../lib/taskNotes";
+import { isTaskDueOverdue, localDateYmd } from "../../lib/taskNotes";
 import { TasksIconSchedule } from "./tasksIcons";
 import "react-day-picker/style.css";
 
@@ -287,6 +287,7 @@ export function TasksDateField({
   };
 
   const today = new Date();
+  const overdue = isTaskDueOverdue(value);
   const presets: { label: string; date: Date | null }[] = [
     { label: "Today", date: today },
     { label: "Tomorrow", date: addDays(today, 1) },
@@ -349,28 +350,39 @@ export function TasksDateField({
         )
       : null;
 
+  const triggerClass =
+    variant === "icon"
+      ? value
+        ? overdue
+          ? "tasks-date-trigger is-icon has-value is-overdue"
+          : "tasks-date-trigger is-icon has-value"
+        : "tasks-date-trigger is-icon"
+      : variant === "chip"
+        ? value
+          ? overdue
+            ? "tasks-composer-ctrl tasks-date-trigger is-chip has-value is-overdue"
+            : "tasks-composer-ctrl tasks-date-trigger is-chip has-value"
+          : "tasks-composer-ctrl tasks-date-trigger is-chip"
+        : value
+          ? overdue
+            ? "tasks-date-trigger is-field has-value is-overdue"
+            : "tasks-date-trigger is-field has-value"
+          : "tasks-date-trigger is-field";
+
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
-        className={
-          variant === "icon"
-            ? value
-              ? "tasks-date-trigger is-icon has-value"
-              : "tasks-date-trigger is-icon"
-            : variant === "chip"
-              ? value
-                ? "tasks-composer-ctrl tasks-date-trigger is-chip has-value"
-                : "tasks-composer-ctrl tasks-date-trigger is-chip"
-              : value
-                ? "tasks-date-trigger is-field has-value"
-                : "tasks-date-trigger is-field"
-        }
+        className={triggerClass}
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="dialog"
-        title={formatDisplay(value, emptyLabel)}
+        title={
+          overdue
+            ? `Overdue · ${formatDisplay(value, emptyLabel)}`
+            : formatDisplay(value, emptyLabel)
+        }
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);

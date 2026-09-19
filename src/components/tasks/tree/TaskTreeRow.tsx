@@ -225,6 +225,7 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
               subtaskTotal={item.subtaskTotal}
               commentCount={item.commentCount}
               todayYmd={todayYmd}
+              done={checked}
               list={listName}
               listColor={listColor}
               showList={showListChip}

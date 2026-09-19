@@ -207,6 +207,15 @@ export function formatTaskDueLabel(
   });
 }
 
+/** True when due is a calendar day strictly before today (YYYY-MM-DD). */
+export function isTaskDueOverdue(
+  ymd: string | null | undefined,
+  today: string = localDateYmd(),
+): boolean {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  return ymd < today;
+}
+
 export function localDateTimeHm(d: Date = new Date()): string {
   const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   return `${localDateYmd(d)} ${hm}`;

@@ -91,9 +91,13 @@ function collectImageFiles(data: DataTransfer): File[] {
   const push = (file: File | null) => {
     if (!file || file.size <= 0) return;
     if (file.type && !file.type.startsWith("image/")) return;
+    // Windows often exposes the same clipboard image in both `files` and
+    // `items` with different names / lastModified — dedupe by size+type too.
     const key = `${file.name}:${file.size}:${file.lastModified}`;
-    if (seen.has(key)) return;
+    const contentKey = `${file.size}:${file.type || "image"}`;
+    if (seen.has(key) || seen.has(contentKey)) return;
     seen.add(key);
+    seen.add(contentKey);
     files.push(file);
   };
 
@@ -102,6 +106,10 @@ function collectImageFiles(data: DataTransfer): File[] {
       push(data.files[i]);
     }
   }
+
+  // Prefer `files` when present; only scan `items` if nothing usable yet
+  // (Windows sometimes fills items only).
+  if (files.length > 0) return files;
 
   const items = data.items;
   if (items) {
@@ -318,7 +326,7 @@ export function markPasteGestureHandled() {
   pasteGestureAt = Date.now();
 }
 
-function pasteGestureAlreadyHandled(): boolean {
+export function pasteGestureAlreadyHandled(): boolean {
   return Date.now() - pasteGestureAt < PASTE_GESTURE_TTL_MS;
 }
 
