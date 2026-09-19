@@ -18,7 +18,6 @@ import {
 import {
   PlusIcon,
   TasksFiltersIcon,
-  TasksInboxIcon,
   TasksListIcon,
   TasksSectionIcon,
   TasksTodayIcon,
@@ -55,7 +54,6 @@ const SMART_VIEWS: {
   label: string;
   icon: ReactNode;
 }[] = [
-  { id: "inbox", label: "Inbox", icon: <TasksInboxIcon /> },
   { id: "today", label: "Today", icon: <TasksTodayIcon /> },
   { id: "filters", label: "Filters", icon: <TasksFiltersIcon /> },
 ];
@@ -315,33 +313,25 @@ const SmartViewRow = memo(function SmartViewRow({
   label,
   icon,
   selected,
-  dropTarget,
   onOpen,
 }: {
   id: TasksViewId;
   label: string;
   icon: ReactNode;
   selected: boolean;
-  dropTarget?: boolean;
   onOpen: (view: TasksViewId) => void;
 }) {
-  const dropList = id === "inbox" ? "Inbox" : undefined;
   return (
     <li>
       <button
         type="button"
-        data-task-list-drop={dropList}
         className={[
           "tasks-section-row",
           selected ? "is-selected" : "",
-          dropTarget ? "is-task-drop-target" : "",
         ]
           .filter(Boolean)
           .join(" ")}
-        onClick={() => {
-          if (dropList && Date.now() < suppressListOpenUntil) return;
-          onOpen(id);
-        }}
+        onClick={() => onOpen(id)}
       >
         <span className="tasks-section-row-icon" aria-hidden="true">
           {icon}
@@ -518,37 +508,82 @@ export const TasksSection = memo(function TasksSection() {
     [setSidebarHighlight],
   );
 
+  const headerSelected =
+    effectiveHighlight?.kind === "view" &&
+    effectiveHighlight.view === "inbox";
+  const headerDropTarget = taskListDropTarget === "Inbox";
+
+  const openInbox = useCallback(() => {
+    if (Date.now() < suppressListOpenUntil) return;
+    openSmartView("inbox");
+  }, [openSmartView]);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      saveTasksSectionCollapsed(next);
+      return next;
+    });
+  }, []);
+
   return (
     <div className="tasks-section">
-      <div className="tasks-section-header">
+      <div
+        className={[
+          "tasks-section-header",
+          headerSelected ? "is-selected" : "",
+          headerDropTarget ? "is-task-drop-target" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        data-task-list-drop="Inbox"
+        onClick={openInbox}
+      >
+        <span
+          role="button"
+          tabIndex={0}
+          className="tree-chevron-btn"
+          aria-label={collapsed ? "Expand Tasks" : "Collapse Tasks"}
+          aria-expanded={!collapsed}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleCollapsed();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleCollapsed();
+            }
+          }}
+        >
+          <InboxChevron open={!collapsed} />
+        </span>
+        <span className="tasks-section-header-icon" aria-hidden="true">
+          <TasksSectionIcon />
+        </span>
         <button
           type="button"
           className="tasks-section-title-btn"
-          aria-expanded={!collapsed}
-          onClick={() => {
-            const next = !collapsed;
-            setCollapsed(next);
-            saveTasksSectionCollapsed(next);
+          aria-pressed={headerSelected}
+          onClick={(e) => {
+            e.stopPropagation();
+            openInbox();
           }}
         >
-          <span className="tasks-section-chevron-slot" aria-hidden="true">
-            <InboxChevron open={!collapsed} />
-          </span>
-          <span className="tasks-section-header-icon" aria-hidden="true">
-            <TasksSectionIcon />
-          </span>
           <span className="tasks-section-title">Tasks</span>
         </button>
-        <div className="section-header-actions">
+        <div
+          className="section-header-actions"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             className="tree-toolbar-btn"
             title="New list"
             aria-label="New list"
-            onClick={(e) => {
-              e.stopPropagation();
-              setCreateOpen(true);
-            }}
+            onClick={() => setCreateOpen(true)}
           >
             <PlusIcon />
           </button>
@@ -565,9 +600,6 @@ export const TasksSection = memo(function TasksSection() {
               selected={
                 effectiveHighlight?.kind === "view" &&
                 effectiveHighlight.view === v.id
-              }
-              dropTarget={
-                v.id === "inbox" && taskListDropTarget === "Inbox"
               }
               onOpen={openSmartView}
             />

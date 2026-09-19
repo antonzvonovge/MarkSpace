@@ -902,7 +902,7 @@ select {
 
 .incoming-section {
   flex-shrink: 0;
-  padding-bottom: 4px;
+  padding-bottom: 8px;
   margin-bottom: 4px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
@@ -911,53 +911,22 @@ select {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
-.incoming-section-row {
-  font-weight: 600;
-  /* Same horizontal inset as Favorites / Comments headers and vault root. */
-  padding: 2px var(--tree-pad-x);
-  cursor: pointer;
+.incoming-section-header:hover {
+  background: #ececec;
 }
 
-.incoming-section-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: var(--tree-icon-size);
-  height: var(--tree-icon-size);
-  color: inherit;
+.incoming-section-header.is-selected,
+.incoming-section-header.is-selected:hover {
+  background: #e8ebfa;
 }
 
-.incoming-section-icon svg {
-  display: block;
-  width: var(--tree-icon-size);
-  height: var(--tree-icon-size);
+:root[data-theme="dark"] .incoming-section-header:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.incoming-section-header {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  min-height: var(--tree-row-height);
-  padding: 2px var(--tree-pad-x);
-}
-
-.incoming-section-title-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-  font-size: var(--tree-label-size);
-  text-align: left;
-  cursor: pointer;
+:root[data-theme="dark"] .incoming-section-header.is-selected,
+:root[data-theme="dark"] .incoming-section-header.is-selected:hover {
+  background: rgba(120, 140, 220, 0.22);
 }
 
 .incoming-section-count,
@@ -1262,7 +1231,8 @@ select {
 }
 
 .favorites-header,
-.comments-inbox-header {
+.comments-inbox-header,
+.incoming-section-header {
   display: flex;
   align-items: center;
   gap: var(--tree-row-gap);
@@ -1276,8 +1246,13 @@ select {
   user-select: none;
 }
 
+.incoming-section-header {
+  cursor: pointer;
+}
+
 .favorites-title-btn,
-.comments-inbox-title-btn {
+.comments-inbox-title-btn,
+.incoming-section-title-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1296,7 +1271,8 @@ select {
 }
 
 .favorites-header-icon,
-.comments-inbox-header-icon {
+.comments-inbox-header-icon,
+.incoming-section-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1307,7 +1283,8 @@ select {
 }
 
 .favorites-header-icon svg,
-.comments-inbox-header-icon svg {
+.comments-inbox-header-icon svg,
+.incoming-section-icon svg {
   display: block;
   width: var(--tree-icon-size);
   height: var(--tree-icon-size);
@@ -1326,6 +1303,7 @@ select {
 .favorites-header:hover .section-header-actions,
 .comments-inbox-header:hover .section-header-actions,
 .tasks-section-header:hover .section-header-actions,
+.incoming-section-header:hover .section-header-actions,
 .section-header-actions:focus-within,
 .section-header-actions:has(.tree-create-menu) {
   opacity: 1;
@@ -1417,13 +1395,40 @@ select {
   color: var(--sidebar-text);
   font-size: var(--tree-label-size);
   font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
   user-select: none;
+}
+
+.tasks-section-header:hover {
+  background: #ececec;
+}
+
+.tasks-section-header.is-selected,
+.tasks-section-header.is-selected:hover {
+  background: #e8ebfa;
+}
+
+:root[data-theme="dark"] .tasks-section-header:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .tasks-section-header.is-selected,
+:root[data-theme="dark"] .tasks-section-header.is-selected:hover {
+  background: rgba(120, 140, 220, 0.22);
+}
+
+.tasks-section-header.is-task-drop-target {
+  background: rgba(var(--accent-rgb), 0.14);
+  outline: 1px solid rgba(var(--accent-rgb), 0.45);
+  outline-offset: -1px;
 }
 
 .tasks-section-title-btn {
   display: inline-flex;
   align-items: center;
-  gap: var(--tree-row-gap);
+  gap: 6px;
   min-width: 0;
   flex: 1;
   margin: 0;
@@ -1432,16 +1437,12 @@ select {
   background: transparent;
   color: inherit;
   font: inherit;
-  font-weight: 600;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
   text-align: left;
   cursor: pointer;
-}
-
-.tasks-section-chevron-slot {
-  display: inline-flex;
-  width: var(--tree-chevron-size);
-  height: var(--tree-chevron-size);
-  flex-shrink: 0;
 }
 
 .tasks-section-chevron {
@@ -2015,7 +2016,7 @@ select {
 :root[data-density="compact"] .favorites-header,
 :root[data-density="compact"] .comments-inbox-header,
 :root[data-density="compact"] .tasks-section-header,
-:root[data-density="compact"] .incoming-section-btn {
+:root[data-density="compact"] .incoming-section-header {
   --tree-row-height: 28px;
   --tree-row-gap: 6px;
   --tree-icon-size: 20px;

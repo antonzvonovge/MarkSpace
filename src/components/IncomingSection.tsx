@@ -39,24 +39,47 @@ export function IncomingSection({
         ]
           .filter(Boolean)
           .join(" ")}
+        onClick={onOpenIncoming}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e.clientX, e.clientY);
+        }}
       >
         <span
-          role="button"
-          tabIndex={0}
-          className="tree-chevron-btn"
-          aria-label={expanded ? "Collapse Incoming" : "Expand Incoming"}
-          aria-expanded={expanded}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              e.stopPropagation();
-              onToggle();
-            }
-          }}
+          role={hasChildren ? "button" : undefined}
+          tabIndex={hasChildren ? 0 : undefined}
+          className={
+            hasChildren ? "tree-chevron-btn" : "tree-chevron-btn is-empty"
+          }
+          aria-hidden={hasChildren ? undefined : true}
+          aria-label={
+            hasChildren
+              ? expanded
+                ? "Collapse Incoming"
+                : "Expand Incoming"
+              : undefined
+          }
+          aria-expanded={hasChildren ? expanded : undefined}
+          onClick={
+            hasChildren
+              ? (e) => {
+                  e.stopPropagation();
+                  onToggle();
+                }
+              : undefined
+          }
+          onKeyDown={
+            hasChildren
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggle();
+                  }
+                }
+              : undefined
+          }
         >
           <ChevronIcon open={expanded} />
         </span>
@@ -66,11 +89,10 @@ export function IncomingSection({
         <button
           type="button"
           className="incoming-section-title-btn"
-          onClick={onOpenIncoming}
-          onContextMenu={(e) => {
-            e.preventDefault();
+          aria-pressed={selected}
+          onClick={(e) => {
             e.stopPropagation();
-            onContextMenu(e.clientX, e.clientY);
+            onOpenIncoming();
           }}
         >
           <span>{INCOMING_FOLDER}</span>
@@ -78,7 +100,11 @@ export function IncomingSection({
             <span className="incoming-section-count">{captureCount}</span>
           ) : null}
         </button>
-        <div className="section-header-actions">
+        <div
+          className="section-header-actions"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <CommentsListSticky
             active={listMode}
             onToggle={() => onListModeChange(!listMode)}
