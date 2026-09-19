@@ -179,4 +179,20 @@ describe("ChatMarkdown note references", () => {
     expect(container.querySelector(".katex-error")).toBeNull();
     expect(container.textContent).toMatch(/base_delay/);
   });
+
+  it("while streaming, renders completed blocks as markdown and keeps the tail plain", () => {
+    const { container } = render(
+      <ChatMarkdown
+        streaming
+        text={"**Done** paragraph.\n\nNext **par"}
+      />,
+    );
+    expect(container.querySelector("strong")?.textContent).toBe("Done");
+    expect(container.querySelector(".chat-md-plain")?.textContent).toBe(
+      "Next **par",
+    );
+    expect(container.querySelector(".chat-md-plain")?.textContent).toContain(
+      "**par",
+    );
+  });
 });

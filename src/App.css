@@ -9298,10 +9298,18 @@ button.status-bar-jobs-menu-item:hover {
   overflow-wrap: anywhere;
 }
 
-/* Plain text while tokens stream — avoids remark/GFM on every chunk. */
+/* Incomplete trailing block while tokens stream (stable blocks render as MD). */
 .chat-md-plain {
   white-space: pre-wrap;
   margin: 0;
+}
+
+.chat-md.is-streaming > .chat-md-plain {
+  margin-top: 0.35em;
+}
+
+.chat-md.is-streaming > .chat-md-plain:first-child {
+  margin-top: 0;
 }
 
 .chat-md > :first-child {

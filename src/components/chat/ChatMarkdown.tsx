@@ -15,6 +15,7 @@ import "katex/dist/katex.min.css";
 import { highlightCodeToHtml } from "../../lib/codeHighlight";
 import { writeClipboardText } from "../../lib/clipboardText";
 import { normalizeDisplayMath } from "../../lib/mathMarkdown";
+import { splitStreamingMarkdown } from "../../lib/streamingMarkdown";
 import { isNumberColumnHeader } from "../../lib/tableColumnHeaders";
 import { ensureFolderNote, folderPathFromFolderNote, resolveWikiTarget } from "../../lib/vaultApi";
 import { healFakeHttpsVaultLinks } from "../../lib/wikiMarkdown";
@@ -28,8 +29,8 @@ type Props = {
   /** Trailing caret while streaming */
   caret?: boolean;
   /**
-   * While streaming, render plain text instead of full markdown parse.
-   * Avoids main-thread freezes from remark/GFM on every token.
+   * While streaming, render completed markdown blocks immediately and keep
+   * only the incomplete trailing block as plain text (see splitStreamingMarkdown).
    */
   streaming?: boolean;
 };
@@ -294,13 +295,71 @@ function ChatNoteLink({
   );
 }
 
+const remarkPlugins = [remarkGfm, remarkMath, remarkChatNoteLinks];
+const rehypePlugins = [rehypeKatex];
+
+function ChatMarkdownBody({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
+      urlTransform={(url) =>
+        url.startsWith(CHAT_NOTE_SCHEME) ? url : defaultUrlTransform(url)
+      }
+      components={{
+        a: ({ href, children }) => {
+          if (href?.startsWith(CHAT_NOTE_SCHEME)) {
+            const encodedPath = href.slice(CHAT_NOTE_SCHEME.length);
+            let path: string;
+            try {
+              path = decodeURIComponent(encodedPath);
+            } catch {
+              return <span>{children}</span>;
+            }
+            return (
+              <ChatNoteLink path={path} href={href}>
+                {children}
+              </ChatNoteLink>
+            );
+          }
+          return (
+            <a href={href} target="_blank" rel="noreferrer noopener">
+              {children}
+            </a>
+          );
+        },
+        // Avoid huge nested margins from default browser styles
+        p: ({ children }) => <p>{children}</p>,
+        pre: ({ children }) => <ChatPre>{children}</ChatPre>,
+        table: ({ children }) => (
+          <table
+            data-narrow-first-col={
+              tableHasNumberFirstHeader(children) ? "" : undefined
+            }
+          >
+            {children}
+          </table>
+        ),
+      }}
+    >
+      {normalizeDisplayMath(healFakeHttpsVaultLinks(text))}
+    </ReactMarkdown>
+  );
+}
+
+const MemoChatMarkdownBody = memo(ChatMarkdownBody);
+
 function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
   const rootClass = ["chat-md", className].filter(Boolean).join(" ");
 
   if (streaming) {
+    // Parse only completed blocks; incomplete trailing text stays plain so
+    // remark/GFM does not run on every token.
+    const { stable, tail } = splitStreamingMarkdown(text);
     return (
-      <div className={`${rootClass} is-streaming-plain`}>
-        <div className="chat-md-plain">{text}</div>
+      <div className={`${rootClass} is-streaming`}>
+        {stable ? <MemoChatMarkdownBody text={stable} /> : null}
+        {tail ? <div className="chat-md-plain">{tail}</div> : null}
         {caret ? <span className="chat-caret" aria-hidden="true" /> : null}
       </div>
     );
@@ -308,50 +367,7 @@ function ChatMarkdownInner({ text, className, caret, streaming }: Props) {
 
   return (
     <div className={rootClass}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkChatNoteLinks]}
-        rehypePlugins={[rehypeKatex]}
-        urlTransform={(url) =>
-          url.startsWith(CHAT_NOTE_SCHEME) ? url : defaultUrlTransform(url)
-        }
-        components={{
-          a: ({ href, children }) => {
-            if (href?.startsWith(CHAT_NOTE_SCHEME)) {
-              const encodedPath = href.slice(CHAT_NOTE_SCHEME.length);
-              let path: string;
-              try {
-                path = decodeURIComponent(encodedPath);
-              } catch {
-                return <span>{children}</span>;
-              }
-              return (
-                <ChatNoteLink path={path} href={href}>
-                  {children}
-                </ChatNoteLink>
-              );
-            }
-            return (
-              <a href={href} target="_blank" rel="noreferrer noopener">
-                {children}
-              </a>
-            );
-          },
-          // Avoid huge nested margins from default browser styles
-          p: ({ children }) => <p>{children}</p>,
-          pre: ({ children }) => <ChatPre>{children}</ChatPre>,
-          table: ({ children }) => (
-            <table
-              data-narrow-first-col={
-                tableHasNumberFirstHeader(children) ? "" : undefined
-              }
-            >
-              {children}
-            </table>
-          ),
-        }}
-      >
-        {normalizeDisplayMath(healFakeHttpsVaultLinks(text))}
-      </ReactMarkdown>
+      <MemoChatMarkdownBody text={text} />
       {caret ? <span className="chat-caret" aria-hidden="true" /> : null}
     </div>
   );
