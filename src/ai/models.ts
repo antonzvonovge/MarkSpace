@@ -50,6 +50,14 @@ export const OPENROUTER_MODELS: AiModelOption[] = [
     contextWindow: 1_048_576,
   },
   {
+    id: "google/gemini-3.8-flash",
+    label: "Gemini 3.8 Flash",
+    vendor: "google",
+    kind: "reasoning",
+    tier: "flagship",
+    contextWindow: 1_048_576,
+  },
+  {
     id: "google/gemini-3.7-flash",
     label: "Gemini 3.7 Flash",
     vendor: "google",

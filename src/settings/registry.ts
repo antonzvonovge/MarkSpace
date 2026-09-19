@@ -10,6 +10,7 @@ export type SettingCategory =
   | "appearance"
   | "editor"
   | "keys"
+  | "models"
   | "ai"
   | "mcp"
   | "mcpHost"
@@ -63,7 +64,8 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "appearance", label: "Appearance", scope: "app" },
   { id: "editor", label: "Editor", scope: "app" },
   { id: "keys", label: "API keys", scope: "app", separatorBefore: true },
-  { id: "ai", label: "AI", scope: "app" },
+  { id: "models", label: "Models", scope: "app" },
+  { id: "ai", label: "Chat & agent", scope: "app" },
   { id: "mcp", label: "MCP", scope: "app" },
   { id: "mcpHost", label: "MCP host", scope: "app" },
   { id: "memory", label: "Memory", scope: "vault" },

@@ -113,7 +113,7 @@ export function IndexingSettingsPanel() {
         </label>
         <p className="sync-block-desc">
           When off, MarkSpace will not embed notes for this vault. Exact search
-          still works. Download the local model in Settings → AI if you have not
+          still works. Download the local model in Settings → Chat & agent if you have not
           already.
         </p>
       </section>

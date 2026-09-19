@@ -1,11 +1,5 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import {
-  MenuCommentIcon,
-  MenuCopyIcon,
-  MenuCutIcon,
-  MenuPasteIcon,
-} from "./menuIcons";
 
 export type EditContextMenuState = {
   x: number;
@@ -75,7 +69,7 @@ export function EditContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="tree-context-menu"
+      className="tree-context-menu is-plaintext"
       role="menu"
       style={{ left, top }}
     >
@@ -91,8 +85,7 @@ export function EditContextMenu({
             onCut();
           }}
         >
-          <MenuCutIcon />
-          <span>Cut</span>
+          Cut
         </button>
       ) : null}
       <button
@@ -106,8 +99,7 @@ export function EditContextMenu({
           onCopy();
         }}
       >
-        <MenuCopyIcon />
-        <span>Copy</span>
+        Copy
       </button>
       {showPaste ? (
         <button
@@ -121,8 +113,7 @@ export function EditContextMenu({
             onPaste();
           }}
         >
-          <MenuPasteIcon />
-          <span>Paste</span>
+          Paste
         </button>
       ) : null}
       {showComment ? (
@@ -137,8 +128,7 @@ export function EditContextMenu({
               onComment();
             }}
           >
-            <MenuCommentIcon />
-            <span>Comment</span>
+            Comment
           </button>
         </>
       ) : null}
@@ -152,31 +142,10 @@ export function EditContextMenu({
             onCapture();
           }}
         >
-          <MenuInboxIcon />
-          <span>Send to Incoming</span>
+          Send to Incoming
         </button>
       ) : null}
     </div>,
     document.body,
-  );
-}
-
-function MenuInboxIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M2.5 4.25h11v7.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7.5Z"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M2.5 4.25 8 8.25l5.5-4"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

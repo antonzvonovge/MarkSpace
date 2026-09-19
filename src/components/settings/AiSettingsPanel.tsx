@@ -100,8 +100,8 @@ export function AiSettingsPanel() {
   return (
     <div className="sync-panel">
       <p className="sync-panel-lead">
-        Choose models and agent behaviour. API keys live in Settings → API
-        keys and stay on this machine.
+        Choose chat/worker defaults and agent behaviour. The model catalog
+        lives in Settings → Models; API keys in Settings → API keys.
       </p>
 
       <section className="sync-block">
@@ -157,7 +157,8 @@ export function AiSettingsPanel() {
         <p className="sync-block-desc">
           Used for new chats. Stored in this vault (
           <code>.markspace/ai.json</code>
-          ). You can still change the model per chat.
+          ). You can still change the model per chat. Options come from
+          Settings → Models.
         </p>
         <ChatModelPicker
           models={settings.models}

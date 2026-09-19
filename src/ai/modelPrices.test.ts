@@ -3,8 +3,10 @@ import {
   formatPerMillionAmount,
   formatPerMillionPair,
   formatPerMillionTitle,
+  lookupModelMeta,
   lookupModelPrice,
   modelPriceLookupKeys,
+  parseLiteLlmCatalog,
   parseLiteLlmPriceMap,
   perTokenToPerMillion,
 } from "./modelPrices";
@@ -39,6 +41,53 @@ describe("parseLiteLlmPriceMap", () => {
   it("returns empty for invalid root", () => {
     expect(parseLiteLlmPriceMap(null)).toEqual({});
     expect(parseLiteLlmPriceMap([])).toEqual({});
+  });
+});
+
+describe("parseLiteLlmCatalog", () => {
+  it("parses prices and meta together", () => {
+    const catalog = parseLiteLlmCatalog({
+      sample_spec: { supports_reasoning: true },
+      "gemini-3.8-flash": {
+        input_cost_per_token: 7.5e-7,
+        output_cost_per_token: 3.75e-6,
+        supports_reasoning: true,
+        max_input_tokens: 1_048_576,
+      },
+      "meta-only": {
+        supports_reasoning: false,
+        max_tokens: 8192,
+      },
+    });
+    expect(catalog.prices["gemini-3.8-flash"]).toEqual({
+      inPerM: 0.75,
+      outPerM: 3.75,
+    });
+    expect(catalog.meta["gemini-3.8-flash"]).toEqual({
+      supportsReasoning: true,
+      maxInputTokens: 1_048_576,
+    });
+    expect(catalog.meta["meta-only"]).toEqual({
+      supportsReasoning: false,
+      maxInputTokens: 8192,
+    });
+    expect(catalog.prices["meta-only"]).toBeUndefined();
+  });
+});
+
+describe("lookupModelMeta", () => {
+  it("resolves catalog ids via bare / gemini keys", () => {
+    const catalog = parseLiteLlmCatalog({
+      "gemini-3.8-flash": {
+        supports_reasoning: true,
+        max_input_tokens: 1000,
+      },
+    });
+    expect(lookupModelMeta("google/gemini-3.8-flash", catalog.meta)).toEqual({
+      supportsReasoning: true,
+      maxInputTokens: 1000,
+    });
+    expect(lookupModelMeta("openai/nope", catalog.meta)).toBeNull();
   });
 });
 

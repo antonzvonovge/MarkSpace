@@ -490,7 +490,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
             count: 0,
             hits: [],
             error:
-              "Local semantic search model is not installed. It can be downloaded in Settings → AI.",
+              "Local semantic search model is not installed. It can be downloaded in Settings → Chat & agent.",
           };
         }
         try {
@@ -1102,7 +1102,7 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
             count: 0,
             hits: [],
             error:
-              "Local semantic search model is not installed. It can be downloaded in Settings → AI.",
+              "Local semantic search model is not installed. It can be downloaded in Settings → Chat & agent.",
           };
         }
         try {

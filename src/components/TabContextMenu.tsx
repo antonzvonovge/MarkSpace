@@ -1,14 +1,5 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import {
-  MenuCloseIcon,
-  MenuCloseOthersIcon,
-  MenuCloseRemainingIcon,
-  MenuCloseToRightIcon,
-  MenuCopyPathIcon,
-  MenuPinIcon,
-  MenuRenameIcon,
-} from "./menuIcons";
 
 export type TabContextMenuState = {
   x: number;
@@ -83,7 +74,7 @@ export function TabContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="tree-context-menu"
+      className="tree-context-menu is-plaintext"
       role="menu"
       style={{ left, top }}
     >
@@ -97,8 +88,7 @@ export function TabContextMenu({
             onRename();
           }}
         >
-          <MenuRenameIcon />
-          <span>Rename…</span>
+          Rename…
         </button>
       ) : null}
       {onCopyPath ? (
@@ -111,8 +101,7 @@ export function TabContextMenu({
             onCopyPath();
           }}
         >
-          <MenuCopyPathIcon />
-          <span>Copy path</span>
+          Copy path
         </button>
       ) : null}
       {onRename || onCopyPath ? (
@@ -127,8 +116,7 @@ export function TabContextMenu({
           onCloseTab();
         }}
       >
-        <MenuCloseIcon />
-        <span>Close</span>
+        Close
       </button>
       <button
         type="button"
@@ -141,8 +129,7 @@ export function TabContextMenu({
           onCloseOthers();
         }}
       >
-        <MenuCloseOthersIcon />
-        <span>Close Others</span>
+        Close Others
       </button>
       <button
         type="button"
@@ -155,8 +142,7 @@ export function TabContextMenu({
           onCloseRemaining();
         }}
       >
-        <MenuCloseRemainingIcon />
-        <span>Close Remaining</span>
+        Close Remaining
       </button>
       <button
         type="button"
@@ -169,8 +155,7 @@ export function TabContextMenu({
           onCloseToTheRight();
         }}
       >
-        <MenuCloseToRightIcon />
-        <span>Close to the Right</span>
+        Close to the Right
       </button>
       {showPin ? (
         <>
@@ -184,8 +169,7 @@ export function TabContextMenu({
               onTogglePinned?.(!menu.pinned);
             }}
           >
-            <MenuPinIcon />
-            <span>{menu.pinned ? "Unpin Tab" : "Pin Tab"}</span>
+            {menu.pinned ? "Unpin Tab" : "Pin Tab"}
           </button>
         </>
       ) : null}

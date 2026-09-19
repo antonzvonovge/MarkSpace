@@ -2,7 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import {
   LITELLM_MODEL_PRICES_URL,
-  parseLiteLlmPriceMap,
+  parseLiteLlmCatalog,
+  type ModelMetaMap,
   type ModelPriceMap,
 } from "../ai/modelPrices";
 import {
@@ -20,11 +21,14 @@ type HttpFetchResponse = {
 
 type ModelPricesStore = {
   prices: ModelPriceMap;
+  meta: ModelMetaMap;
   fetchedAt: number | null;
   hydrated: boolean;
   refreshing: boolean;
   /** Load disk cache; if missing/stale, fetch in background. */
   ensureFresh: () => Promise<void>;
+  /** Always re-fetch LiteLLM JSON (used by Settings → Refresh metadata). */
+  forceRefresh: () => Promise<void>;
 };
 
 let ensureInFlight: Promise<void> | null = null;
@@ -54,14 +58,15 @@ async function fetchAndPersist(): Promise<void> {
   } catch {
     throw new Error("LiteLLM prices JSON parse failed");
   }
-  const prices = parseLiteLlmPriceMap(parsed);
+  const { prices, meta } = parseLiteLlmCatalog(parsed);
   if (Object.keys(prices).length === 0) {
     throw new Error("LiteLLM prices map empty");
   }
   const fetchedAt = Date.now();
-  await saveModelPricesCache({ fetchedAt, prices });
+  await saveModelPricesCache({ fetchedAt, prices, meta });
   useModelPricesStore.setState({
     prices,
+    meta,
     fetchedAt,
     hydrated: true,
     refreshing: false,
@@ -87,6 +92,7 @@ async function refreshInBackground(): Promise<void> {
 
 export const useModelPricesStore = create<ModelPricesStore>((set, get) => ({
   prices: {},
+  meta: {},
   fetchedAt: null,
   hydrated: false,
   refreshing: false,
@@ -101,6 +107,7 @@ export const useModelPricesStore = create<ModelPricesStore>((set, get) => ({
           if (cached) {
             set({
               prices: cached.prices,
+              meta: cached.meta,
               fetchedAt: cached.fetchedAt,
               hydrated: true,
             });
@@ -108,9 +115,11 @@ export const useModelPricesStore = create<ModelPricesStore>((set, get) => ({
             set({ hydrated: true });
           }
         }
-        if (isStale(get().fetchedAt)) {
-          const empty = Object.keys(get().prices).length === 0;
-          // Empty cache: wait so the model picker can show prices on first open.
+        if (isStale(get().fetchedAt) || Object.keys(get().meta).length === 0) {
+          const empty =
+            Object.keys(get().prices).length === 0 ||
+            Object.keys(get().meta).length === 0;
+          // Empty / pre-meta cache: wait so UI can show prices + enrich on first open.
           if (empty) await refreshInBackground();
           else void refreshInBackground();
         }
@@ -120,6 +129,10 @@ export const useModelPricesStore = create<ModelPricesStore>((set, get) => ({
     })();
     return ensureInFlight;
   },
+
+  forceRefresh: async () => {
+    await refreshInBackground();
+  },
 }));
 
 /** Test helper — reset module locks + store. */
@@ -128,6 +141,7 @@ export function _resetModelPricesStoreForTests() {
   fetchInFlight = null;
   useModelPricesStore.setState({
     prices: {},
+    meta: {},
     fetchedAt: null,
     hydrated: false,
     refreshing: false,

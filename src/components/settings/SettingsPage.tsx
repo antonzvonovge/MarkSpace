@@ -19,6 +19,7 @@ import { MediaLibrarySettingsPanel } from "./MediaLibrarySettingsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 import { McpHostSettingsPanel } from "./McpHostSettingsPanel";
+import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
 import { SettingRow } from "./SettingRow";
 import { SyncSettingsPanel } from "./SyncSettingsPanel";
 
@@ -29,6 +30,7 @@ type Props = {
 const PANEL_CATEGORIES = new Set([
   "sync",
   "keys",
+  "models",
   "ai",
   "mcp",
   "mcpHost",
@@ -77,24 +79,36 @@ function queryMatchesKeys(query: string): boolean {
   );
 }
 
+function queryMatchesModels(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    "models".includes(q) ||
+    q.includes("model") ||
+    q.includes("catalog") ||
+    q.includes("litellm") ||
+    q.includes("gemini") ||
+    q.includes("gpt") ||
+    q.includes("flagship") ||
+    q.includes("price") ||
+    q.includes("metadata")
+  );
+}
+
 function queryMatchesAi(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
   return (
     "ai".includes(q) ||
     q.includes("ai") ||
-    q.includes("model") ||
-    q.includes("openai") ||
-    q.includes("google") ||
-    q.includes("gemini") ||
-    q.includes("llm") ||
     q.includes("chat") ||
     q.includes("agent") ||
     q.includes("reasoning") ||
     q.includes("context") ||
     q.includes("embedding") ||
     q.includes("worker") ||
-    q.includes("flagship")
+    q.includes("terminal") ||
+    q.includes("semantic")
   );
 }
 
@@ -230,6 +244,7 @@ export function SettingsPage({ onClose }: Props) {
   const searching = query.trim().length > 0;
   const showSyncInSearch = searching && queryMatchesSync(query);
   const showKeysInSearch = searching && queryMatchesKeys(query);
+  const showModelsInSearch = searching && queryMatchesModels(query);
   const showAiInSearch = searching && queryMatchesAi(query);
   const showMcpInSearch = searching && queryMatchesMcp(query);
   const showMcpHostInSearch = searching && queryMatchesMcpHost(query);
@@ -261,6 +276,8 @@ export function SettingsPage({ onClose }: Props) {
 
   const showSyncPanel = (!searching && category === "sync") || showSyncInSearch;
   const showKeysPanel = (!searching && category === "keys") || showKeysInSearch;
+  const showModelsPanel =
+    (!searching && category === "models") || showModelsInSearch;
   const showAiPanel = (!searching && category === "ai") || showAiInSearch;
   const showMcpPanel = (!searching && category === "mcp") || showMcpInSearch;
   const showMcpHostPanel =
@@ -335,6 +352,7 @@ export function SettingsPage({ onClose }: Props) {
             rows.length === 0 &&
             !showSyncInSearch &&
             !showKeysInSearch &&
+            !showModelsInSearch &&
             !showAiInSearch &&
             !showMcpInSearch &&
             !showMcpHostInSearch &&
@@ -382,9 +400,18 @@ export function SettingsPage({ onClose }: Props) {
             </section>
           )}
 
+          {showModelsPanel && (
+            <section className="settings-section">
+              {searching && <h2 className="settings-section-title">Models</h2>}
+              <ModelsSettingsPanel />
+            </section>
+          )}
+
           {showAiPanel && (
             <section className="settings-section">
-              {searching && <h2 className="settings-section-title">AI</h2>}
+              {searching && (
+                <h2 className="settings-section-title">Chat & agent</h2>
+              )}
               <AiSettingsPanel />
             </section>
           )}

@@ -43,9 +43,11 @@ describe("normalizeAiSettings", () => {
     // Incomplete catalog row as persisted on disk (missing vendor/kind/tier).
     const raw = {
       ...DEFAULT_AI_SETTINGS,
+      modelId: "openai/custom",
       models: [{ id: "openai/custom", label: "Custom" }],
     } as Partial<typeof DEFAULT_AI_SETTINGS>;
     const merged = normalizeAiSettings(raw);
+    expect(merged.modelId).toBe("openai/custom");
     expect(aiSettingsNeedPersistRewrite(raw, merged)).toBe(false);
     expect(aiSettingsNeedPersistRewrite(null, merged)).toBe(true);
   });
@@ -105,10 +107,27 @@ describe("normalizeAiSettings", () => {
     });
     const custom = merged.models.find((m) => m.id === "openai/custom-mini");
     expect(custom?.tier).toBe("worker");
+    expect(merged.models.map((m) => m.id)).toEqual(["openai/custom-mini"]);
     expect(
       merged.models.some((m) => m.id.startsWith("anthropic/")),
     ).toBe(false);
-    const sol = merged.models.find((m) => m.id === "openai/gpt-5.6-sol");
-    expect(sol?.tier).toBe("flagship");
+  });
+
+  it("does not re-add curated models the user removed", () => {
+    const merged = normalizeAiSettings({
+      models: [
+        {
+          id: "google/gemini-3.8-flash",
+          label: "Gemini 3.8 Flash",
+          vendor: "google",
+          kind: "reasoning",
+          tier: "flagship",
+        },
+      ],
+    });
+    expect(merged.models.map((m) => m.id)).toEqual([
+      "google/gemini-3.8-flash",
+    ]);
+    expect(merged.modelId).toBe("google/gemini-3.8-flash");
   });
 });

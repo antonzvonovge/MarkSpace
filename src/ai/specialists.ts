@@ -796,7 +796,7 @@ export function buildRunSpecialistTool(ctx: RunSpecialistContext) {
           specialistFailResult(
             kind,
             cardTitle || SPECIALIST_PRESETS[kind].label,
-            "Terminal is disabled. The user can enable it in Settings → AI → Allow agent terminal.",
+            "Terminal is disabled. The user can enable it in Settings → Chat & agent → Allow agent terminal.",
           ),
         );
       }

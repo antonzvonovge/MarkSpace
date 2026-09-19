@@ -209,7 +209,7 @@ export function buildRunTerminalTool(opts?: BuildRunTerminalToolOpts) {
         return {
           ok: false as const,
           error:
-            "Terminal is disabled. The user can enable it in Settings → AI → Allow agent terminal.",
+            "Terminal is disabled. The user can enable it in Settings → Chat & agent → Allow agent terminal.",
         };
       }
 
@@ -251,7 +251,7 @@ export function buildRunTerminalTool(opts?: BuildRunTerminalToolOpts) {
         return {
           ok: false as const,
           error:
-            "Terminal is disabled. The user can enable it in Settings → AI → Allow agent terminal.",
+            "Terminal is disabled. The user can enable it in Settings → Chat & agent → Allow agent terminal.",
         };
       }
 

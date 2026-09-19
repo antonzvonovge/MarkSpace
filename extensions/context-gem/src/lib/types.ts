@@ -17,6 +17,7 @@ export const DEFAULT_MODEL = "gemini-3.6-flash";
 export const MODEL_OPTIONS = [
   { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
   { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
+  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
 ] as const;
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
