@@ -18,6 +18,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Diary daily notes may set YAML `marker:` to a catalog id from Settings → Diary (defaults include `holiday`, `important`, `sad`, …) so the sidebar calendar shows that day's emoji; omit the key (or leave it empty) to clear.
+- Any `.md` note may set YAML `fileMarker:` to a catalog id from Settings → File markers (defaults: `done`, `skipped`, `needs-work`) so the sidebar shows that emoji beside the file icon; folders use the same key on `{folder}/.folder.md`; omit the key (or leave it empty) to clear.
 - Language-learning projects may keep a **Lexicon** tree at `{project}/Lexicon/…` (at most two folders under `Lexicon/`, then a lemma `.md`). Quick Translate writes a full dictionary article in the background (status bar); keep YAML `lemma` / `lang` / `aliases` and the `## Notes` heading. Do not delete `## Notes` or the user’s text below it. After several **new** lemmas, the app may review and move files inside `Lexicon/`.
 - Media library projects: one `.md` per title under a genre shelf folder (existing child matching any genre, else `{FirstGenre}`; no genres → project root). Front-matter `title` (localized), optional `original_title`, `kind` (`film`|`series`|`animation`), `genres` (list), `countries` (list), `year`, `rating` (`legend`|`quality`|`watchable`|`fine`), `director`, optional `imdb_id`, `kinopoisk_id`, optional `poster` (note-relative `.assets/…` path — canonical for the card chrome), optional `watched` (list of `YYYY-MM-DD` view days; duplicates = rewatches). Genres ≠ page `tags:`. Auto-created file name: `{year}-{title}` (localized `title` if set, else `original_title`). Poster file: write into `.assets/` then set `poster:` and leading `![|240](.assets/…)` — never invent paths. Body after the poster is free-form personal notes (no required section headings).
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
@@ -37,6 +38,7 @@ tags:
   - inbox
   - project/markspace
 marker: holiday
+fileMarker: done
 ---
 
 # Note title
@@ -48,6 +50,7 @@ marker: holiday
 - Each item must be a scalar. Mapping items (`  - name: work`) are a mistake: they are tolerated on read (the `name` / `tag` value is used) but rewritten as plain strings on the next tag edit.
 - Tag names: no leading `#`, trimmed, case preserved, deduplicated case-insensitively. Nesting is just a `/` inside the name (`area/topic`).
 - Diary **daily notes** may include `marker:` — a single catalog id, not a free emoji. The catalog lives in this vault at `.markspace/diary.json` and is edited in Settings → Diary. Built-in defaults: `important` (⭐), `holiday` (🎉), `birthday` (🎂), `travel` (✈️), `work` (💼), `happy` (😊), `sad` (😢), `grief` (🖤), `love` (❤️), `deadline` (⚠️), `health` (🏥), `rest` (😴). Ids that are not in the catalog are ignored in the calendar (treated as unset) but kept in YAML until changed. Right-click a day in the sidebar calendar, or use the marker control next to page tags, to set or clear it. Clearing removes the key.
+- Any `.md` note may include `fileMarker:` — a single catalog id for sidebar progress (Done / Skipped / Needs work, or custom). Folders use the same key on their hidden overview note `{folder}/.folder.md`. The catalog lives at `.markspace/file-markers.json` and is edited in Settings → File markers. Built-in defaults: `done` (✅), `skipped` (⏭️), `needs-work` (🔧). Ids not in the catalog are ignored in the tree (treated as unset) but kept in YAML until changed. Right-click a note or folder in the sidebar → **Set marker**. Clearing removes the key. Distinct from diary `marker:` and task `status`.
 - Other keys (e.g. `aliases`, Media library `kind` / `genres` / `year`) are preserved when tags change; when the last key is removed the whole block is dropped.
 - Front-matter tags are edited from the tag overlay; the live editor loads only the markdown after the closing `---` and reattaches front-matter on save.
 - You may also use **inline tags** in the body (below); they are separate from front-matter and are not copied into `tags:` automatically.

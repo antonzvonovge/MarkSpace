@@ -2260,6 +2260,21 @@ select {
   height: var(--tree-icon-size);
 }
 
+.tree-file-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: -2px;
+  margin-right: 2px;
+  font-size: 12px;
+  line-height: 1;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  user-select: none;
+}
+
 .tree-project-flag,
 .chat-project-flag {
   display: block;
@@ -2531,6 +2546,20 @@ body.is-vault-tree-dragging * {
   margin-left: auto;
   flex-shrink: 0;
   opacity: 0.5;
+}
+
+.tree-context-marker-emoji {
+  flex-shrink: 0;
+  width: 1.1em;
+  text-align: center;
+  line-height: 1;
+}
+
+.tree-context-check {
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.7;
+  font-size: 0.75rem;
 }
 
 .tree-context-submenu {
@@ -7120,7 +7149,37 @@ button.status-bar-jobs-menu-item:hover {
   gap: 8px;
   padding: 4px 0;
   position: relative;
+}
+
+/* Whole-row drag (Diary settings) — File markers use .diary-marker-drag-handle instead. */
+.diary-marker-settings-row[draggable="true"] {
   cursor: grab;
+}
+
+.diary-marker-drag-handle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  border-radius: 4px;
+  color: var(--muted, #7c828d);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+}
+
+.diary-marker-drag-handle:hover {
+  background: var(--menu-item-hover, rgba(0, 0, 0, 0.06));
+  color: var(--text);
+}
+
+.diary-marker-settings-row.is-dragging .diary-marker-drag-handle,
+.diary-marker-drag-handle:active {
+  cursor: grabbing;
 }
 
 .diary-marker-settings-row.is-dragging {

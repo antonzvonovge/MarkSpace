@@ -4,6 +4,7 @@ import { useAgentMemoryStore } from "../../store/agentMemoryStore";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { useDiarySettingsStore } from "../../store/diarySettingsStore";
+import { useFileMarkerSettingsStore } from "../../store/fileMarkerSettingsStore";
 import { useIndexingSettingsStore } from "../../store/indexingSettingsStore";
 import { useVaultAiSettingsStore } from "../../store/vaultAiSettingsStore";
 import { useVaultAppearanceStore } from "../../store/vaultAppearanceStore";
@@ -20,6 +21,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
   const hydrateForVault = useChatStore((s) => s.hydrateForVault);
   const hydrateMemory = useAgentMemoryStore((s) => s.hydrateForVault);
   const hydrateDiary = useDiarySettingsStore((s) => s.hydrateForVault);
+  const hydrateFileMarkers = useFileMarkerSettingsStore((s) => s.hydrateForVault);
   const hydrateIndexing = useIndexingSettingsStore((s) => s.hydrateForVault);
   const hydrateVaultAi = useVaultAiSettingsStore((s) => s.hydrateForVault);
   const hydrateAppearance = useVaultAppearanceStore((s) => s.hydrateForVault);
@@ -37,6 +39,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
     void hydrateForVault(vaultPath);
     void hydrateMemory(vaultPath);
     void hydrateDiary(vaultPath);
+    void hydrateFileMarkers(vaultPath);
     void hydrateIndexing(vaultPath);
     void hydrateVaultAi(vaultPath);
     void hydrateAppearance(vaultPath);
@@ -45,6 +48,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
     hydrateForVault,
     hydrateMemory,
     hydrateDiary,
+    hydrateFileMarkers,
     hydrateIndexing,
     hydrateVaultAi,
     hydrateAppearance,

@@ -16,6 +16,7 @@ export type SettingCategory =
   | "mcpHost"
   | "memory"
   | "diary"
+  | "fileMarkers"
   | "mediaLibrary"
   | "indexing"
   | "sync"
@@ -63,6 +64,7 @@ export const CATEGORIES: CategoryDescriptor[] = [
   { id: "profile", label: "Profile", scope: "app" },
   { id: "appearance", label: "Appearance", scope: "app" },
   { id: "editor", label: "Editor", scope: "app" },
+  { id: "fileMarkers", label: "File markers", scope: "vault" },
   { id: "keys", label: "API keys", scope: "app", separatorBefore: true },
   { id: "models", label: "Models", scope: "app" },
   { id: "ai", label: "Chat & agent", scope: "app" },

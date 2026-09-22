@@ -244,6 +244,9 @@ export type VaultTreeRowProps = {
   renaming: boolean;
   osDropHighlight: boolean;
   openComments: number;
+  /** Sidebar file-marker emoji (from YAML `fileMarker:`), when set. */
+  fileMarkerEmoji?: string;
+  fileMarkerLabel?: string;
   projectColor: string;
   projectType?: string | null;
   learningLanguage?: string | null;
@@ -293,6 +296,8 @@ function VaultTreeRowView({
   renaming,
   osDropHighlight,
   openComments,
+  fileMarkerEmoji,
+  fileMarkerLabel,
   projectColor,
   projectType,
   learningLanguage,
@@ -450,6 +455,15 @@ function VaultTreeRowView({
           <FcDocument size={20} />
         )}
       </span>
+      {fileMarkerEmoji ? (
+        <span
+          className="tree-file-marker"
+          title={fileMarkerLabel || undefined}
+          aria-label={fileMarkerLabel || undefined}
+        >
+          {fileMarkerEmoji}
+        </span>
+      ) : null}
 
       {renaming ? (
         <InlineRenameInput
@@ -500,6 +514,8 @@ export const VaultTreeRow = memo(
     a.renaming === b.renaming &&
     a.osDropHighlight === b.osDropHighlight &&
     a.openComments === b.openComments &&
+    a.fileMarkerEmoji === b.fileMarkerEmoji &&
+    a.fileMarkerLabel === b.fileMarkerLabel &&
     a.projectColor === b.projectColor &&
     a.projectType === b.projectType &&
     a.learningLanguage === b.learningLanguage &&

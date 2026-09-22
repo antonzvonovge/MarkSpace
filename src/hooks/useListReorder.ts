@@ -52,7 +52,8 @@ export function useListReorder(
         draggable: true,
         className: classes,
         onDragStart: (e) => {
-          if ((e.target as HTMLElement).closest("button, a, input")) {
+          const t = e.target as HTMLElement;
+          if (t.closest("button, a, input, textarea, select, [contenteditable]")) {
             e.preventDefault();
             return;
           }

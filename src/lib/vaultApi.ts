@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { DayMarker } from "./dayMarkers";
+import type { FileMarker } from "./fileMarkers";
 import { normalizeMarkdown } from "./normalizeMarkdown";
 import { stampNoteTimestamps } from "./noteFrontmatter";
 import { normalizeProjectColor } from "./projectColors";
@@ -842,6 +843,34 @@ export async function setDiarySettings(
   return invoke<DiarySettings>("set_diary_settings", {
     args: { markers },
   });
+}
+
+export type FileMarkerSettings = {
+  version: number;
+  /** `null`/`undefined` = use built-in defaults. */
+  markers?: FileMarker[] | null;
+};
+
+export async function getFileMarkerSettings(): Promise<FileMarkerSettings> {
+  return invoke<FileMarkerSettings>("get_file_marker_settings");
+}
+
+export async function setFileMarkerSettings(
+  markers: FileMarker[],
+): Promise<FileMarkerSettings> {
+  return invoke<FileMarkerSettings>("set_file_marker_settings", {
+    args: { markers },
+  });
+}
+
+export type NoteFileMarker = {
+  path: string;
+  markerId: string;
+};
+
+/** Vault-relative `.md` paths that have YAML `fileMarker:` set. */
+export async function listFileMarkers(): Promise<NoteFileMarker[]> {
+  return invoke<NoteFileMarker[]>("list_file_markers");
 }
 
 /** How much of the machine background indexing may take. */

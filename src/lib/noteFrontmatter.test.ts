@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   getNoteDayMarker,
+  getNoteFileMarker,
   getNoteTags,
   mergeFrontmatter,
   noteBody,
   setNoteDayMarker,
+  setNoteFileMarker,
   setNoteTags,
   splitFrontmatter,
   stampNoteTimestamps,
@@ -189,5 +191,34 @@ tags:
   it("leaves unparseable fence untouched on setNoteDayMarker", () => {
     const md = "---\n: bad: [yaml\n---\n\nBody\n";
     expect(setNoteDayMarker(md, "sad")).toBe(md);
+  });
+
+  it("reads and writes file markers", () => {
+    const md = `---
+tags:
+  - work
+---
+
+# Note
+`;
+    expect(getNoteFileMarker(md)).toBe("");
+    const next = setNoteFileMarker(md, "done");
+    expect(getNoteFileMarker(next)).toBe("done");
+    expect(getNoteTags(next)).toEqual(["work"]);
+    expect(noteBody(next)).toBe("\n# Note\n");
+    expect(getNoteFileMarker(setNoteFileMarker(next, ""))).toBe("");
+    expect(getNoteFileMarker(setNoteFileMarker(next, "✅"))).toBe("");
+  });
+
+  it("adds fileMarker frontmatter when none existed", () => {
+    const next = setNoteFileMarker("# Hi\n", "needs-work");
+    expect(next.startsWith("---\n")).toBe(true);
+    expect(getNoteFileMarker(next)).toBe("needs-work");
+    expect(noteBody(next)).toBe("# Hi\n");
+  });
+
+  it("leaves unparseable fence untouched on setNoteFileMarker", () => {
+    const md = "---\n: bad: [yaml\n---\n\nBody\n";
+    expect(setNoteFileMarker(md, "done")).toBe(md);
   });
 });

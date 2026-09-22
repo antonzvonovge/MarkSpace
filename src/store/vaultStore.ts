@@ -43,6 +43,7 @@ import {
   listDiaryDayMarkers,
   listDictionaryTags,
   listFavorites,
+  listFileMarkers,
   listNoteComments,
   listProjectProperties,
   listTree,
@@ -111,6 +112,7 @@ import {
   preferredDiaryProjectRoot,
 } from "../lib/diaryNotes";
 import { normalizeDayMarkerId } from "../lib/dayMarkers";
+import { normalizeFileMarkerId } from "../lib/fileMarkers";
 import {
   buildFilmNoteMarkdown,
   filmNoteFileStem,
@@ -120,8 +122,10 @@ import {
 import {
   getMovieAttrs,
   getNoteDayMarker,
+  getNoteFileMarker,
   setMovieAttrs,
   setNoteDayMarker,
+  setNoteFileMarker,
   setNoteTags,
   type MovieAttrs,
 } from "../lib/noteFrontmatter";
@@ -290,6 +294,8 @@ type VaultStore = {
   diaryDayMarkers: Record<string, string>;
   /** Diary project whose markers are currently cached. */
   diaryDayMarkersProject: string | null;
+  /** Vault-relative `.md` path → `fileMarker` catalog id. */
+  fileMarkersByPath: Record<string, string>;
   content: string;
   viewMode: ViewMode;
   dirty: boolean;
@@ -307,6 +313,8 @@ type VaultStore = {
   refreshDictionaryTags: () => Promise<void>;
   /** Load YAML day markers for a diary project into `diaryDayMarkers`. */
   loadDiaryDayMarkers: (project: string) => Promise<void>;
+  /** Reload in-memory `fileMarkersByPath` from the Rust index. */
+  refreshFileMarkers: () => Promise<void>;
   /** Patch the in-memory calendar marker map from a daily-note path + markdown. */
   rememberDiaryDayMarker: (path: string, markdown: string) => void;
   /**
@@ -318,6 +326,12 @@ type VaultStore = {
     date: Date,
     markerId: string,
   ) => Promise<void>;
+  /**
+   * Set or clear a file marker on a `.md` note or folder (YAML `fileMarker:`
+   * on the note or on `{folder}/.folder.md`). Optimistic UI; rolls back on
+   * write failure.
+   */
+  setFileMarker: (path: string, markerId: string) => Promise<void>;
   /** Reload `.markspace/projects` markers into `projectPropertiesByPath`. */
   refreshProjectProperties: () => Promise<void>;
   /** Upsert one project's properties in the in-memory map (after dialog save). */
@@ -1505,6 +1519,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   dictionaryTags: [],
   diaryDayMarkers: {},
   diaryDayMarkersProject: null,
+  fileMarkersByPath: {},
   content: "",
   viewMode: "live",
   showOutline: false,
@@ -1556,6 +1571,20 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       });
     } catch {
       set({ diaryDayMarkers: {}, diaryDayMarkersProject: root });
+    }
+  },
+
+  refreshFileMarkers: async () => {
+    try {
+      const rows = await listFileMarkers();
+      const next: Record<string, string> = {};
+      for (const row of rows) {
+        const id = normalizeFileMarkerId(row.markerId);
+        if (id) next[row.path] = id;
+      }
+      set({ fileMarkersByPath: next });
+    } catch {
+      set({ fileMarkersByPath: {} });
     }
   },
 
@@ -1650,6 +1679,88 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       remember(next);
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  setFileMarker: async (path, markerId) => {
+    const treePath = path.trim().replace(/^\/+|\/+$/g, "");
+    if (!treePath) return;
+    if (
+      isSkillsFolder(treePath, true) ||
+      isIncomingFolder(treePath, true) ||
+      isTasksFolder(treePath, true)
+    ) {
+      return;
+    }
+
+    const normalized = normalizeFileMarkerId(markerId);
+    let notePath: string;
+    let mapKey: string;
+    if (treePath.toLowerCase().endsWith(".md")) {
+      if (isFolderNotePath(treePath)) {
+        const folder = folderPathFromFolderNote(treePath);
+        if (!folder) return;
+        notePath = treePath;
+        mapKey = folder;
+      } else {
+        notePath = treePath;
+        mapKey = treePath;
+      }
+    } else {
+      // Folder row — store on `{folder}/.folder.md`, index under folder path.
+      try {
+        notePath = await ensureFolderNote(treePath);
+      } catch (e) {
+        set({ error: e instanceof Error ? e.message : String(e) });
+        return;
+      }
+      mapKey = treePath;
+    }
+
+    const prev = get().fileMarkersByPath[mapKey] ?? "";
+    const patchMap = (id: string) => {
+      const next = { ...get().fileMarkersByPath };
+      if (!id) delete next[mapKey];
+      else next[mapKey] = id;
+      return next;
+    };
+    set({ fileMarkersByPath: patchMap(normalized) });
+
+    try {
+      if (get().activePath === notePath) {
+        flushActiveEditorBuffer(get);
+      }
+      const buf = tabBuffer(get(), notePath);
+      if (buf) {
+        const next = setNoteFileMarker(buf.body, normalized);
+        if (get().activePath === notePath) {
+          get().setContent(next);
+        } else {
+          set({ tabs: withTabBody(get().tabs, notePath, next, true) });
+          void persistDirtyTab(set, get, notePath);
+        }
+        const applied = getNoteFileMarker(next);
+        if (applied !== normalized) {
+          set({ fileMarkersByPath: patchMap(applied) });
+        }
+        return;
+      }
+
+      const markdown = await readNote(notePath);
+      const next = setNoteFileMarker(markdown, normalized);
+      if (next !== markdown) {
+        set({ suppressWatchUntil: Date.now() + 6_000 });
+        await writeNote(notePath, next);
+      }
+      const applied = getNoteFileMarker(next);
+      if (applied !== (get().fileMarkersByPath[mapKey] ?? "")) {
+        set({ fileMarkersByPath: patchMap(applied) });
+      }
+    } catch (e) {
+      set({
+        fileMarkersByPath: patchMap(prev),
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   },
 
@@ -1748,6 +1859,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         dictionaryTags: [],
         diaryDayMarkers: {},
         diaryDayMarkersProject: null,
+        fileMarkersByPath: {},
         allComments: [],
         activeNoteComments: [],
         pendingCommentFocusId: null,
@@ -1757,6 +1869,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       await useTasksPanelStore.getState().hydrateExpandedForVault(path);
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
+      void get().refreshFileMarkers();
       void get().refreshAllComments();
 
       if (restoredTabs.length > 0) {
@@ -1850,6 +1963,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           void get().loadActiveNoteComments();
           const markerProject = get().diaryDayMarkersProject;
           if (markerProject) void get().loadDiaryDayMarkers(markerProject);
+          void get().refreshFileMarkers();
         } catch (e) {
           if (pending) continue;
           set({ error: e instanceof Error ? e.message : String(e) });

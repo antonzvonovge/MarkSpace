@@ -1,5 +1,6 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { normalizeDayMarkerId } from "./dayMarkers";
+import { normalizeFileMarkerId } from "./fileMarkers";
 import {
   isMovieKindId,
   isMovieRatingId,
@@ -142,6 +143,40 @@ export function setNoteDayMarker(markdown: string, markerId: string): string {
     delete data.marker;
   } else {
     data.marker = next;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return split.body;
+  }
+  return mergeFrontmatter(data, split.body);
+}
+
+/** File-marker catalog id from YAML `fileMarker:`, or empty when unset/invalid. */
+export function getNoteFileMarker(markdown: string): string {
+  const { data } = splitFrontmatter(markdown);
+  if (!data) return "";
+  return normalizeFileMarkerId(data.fileMarker);
+}
+
+/**
+ * Return markdown with an updated `fileMarker` id.
+ * Preserves other frontmatter keys. Removes the fence when nothing remains.
+ * When the existing fence has unparseable YAML, returns the original markdown
+ * unchanged (UI cannot safely rewrite it).
+ */
+export function setNoteFileMarker(markdown: string, markerId: string): string {
+  const split = splitFrontmatter(markdown);
+  const next = normalizeFileMarkerId(markerId);
+
+  if (split.hasFence && split.data === null) {
+    return markdown;
+  }
+
+  const data: FrontmatterData = { ...(split.data ?? {}) };
+  if (!next) {
+    delete data.fileMarker;
+  } else {
+    data.fileMarker = next;
   }
 
   if (Object.keys(data).length === 0) {

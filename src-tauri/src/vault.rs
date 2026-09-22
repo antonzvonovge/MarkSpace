@@ -28,12 +28,16 @@ pub struct VaultChange {
 type OrderMap = HashMap<String, Vec<String>>;
 /// Vault-relative `.md` path → tags (frontmatter ∪ inline body hashtags).
 type TagIndex = HashMap<String, Vec<String>>;
+/// Vault-relative `.md` path → `fileMarker` catalog id.
+type FileMarkerIndex = HashMap<String, String>;
 
 pub struct VaultState {
     pub root: Mutex<Option<PathBuf>>,
     pub watcher: Mutex<Option<RecommendedWatcher>>,
     /// In-memory tag catalog; rebuilt on vault open, patched on write/rename/delete.
     pub tag_index: Mutex<TagIndex>,
+    /// In-memory file-marker map; rebuilt on vault open, patched on write/rename/delete.
+    pub file_marker_index: Mutex<FileMarkerIndex>,
 }
 
 impl Default for VaultState {
@@ -42,6 +46,7 @@ impl Default for VaultState {
             root: Mutex::new(None),
             watcher: Mutex::new(None),
             tag_index: Mutex::new(HashMap::new()),
+            file_marker_index: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -1101,6 +1106,7 @@ pub fn open_vault(
     }
 
     replace_tag_index(&state, rebuild_tag_index(&root));
+    replace_file_marker_index(&state, rebuild_file_marker_index(&root));
     start_watcher(app.clone(), &state, &root)?;
     crate::embeddings::notify_vault_opened(&app, &root);
     let order = read_order(&root);
@@ -1193,6 +1199,7 @@ pub fn write_note(path: String, content: String, state: State<VaultState>) -> Re
     let rel = relative_to_root(&root, &full);
     if is_markdown(&rel) {
         set_tag_index_path(&state, &rel, tags_from_note_content(&content));
+        set_file_marker_index_path(&state, &rel, file_marker_from_note_content(&content));
         crate::embeddings::notify_file_changed(&rel);
     }
     Ok(())
@@ -1221,6 +1228,7 @@ pub fn create_note(path: String, state: State<VaultState>) -> Result<String, Str
 
     let created = relative_to_root(&root, &full);
     set_tag_index_path(&state, &created, Vec::new());
+    set_file_marker_index_path(&state, &created, None);
     crate::embeddings::notify_file_changed(&created);
     let parent = parent_rel(&created);
     let name = entry_name(&created);
@@ -1513,6 +1521,11 @@ pub fn import_paths(
             let full = root.join(rel);
             if let Ok(text) = fs::read_to_string(&full) {
                 set_tag_index_path(&state, rel, tags_from_note_content(&text));
+                set_file_marker_index_path(
+                    &state,
+                    rel,
+                    file_marker_from_note_content(&text),
+                );
             }
             crate::embeddings::notify_file_changed(rel);
         } else if is_pdf(rel) {
@@ -1680,6 +1693,11 @@ pub fn import_document_bytes(
     if is_markdown(&created) {
         if let Ok(text) = fs::read_to_string(&dest) {
             set_tag_index_path(&state, &created, tags_from_note_content(&text));
+            set_file_marker_index_path(
+                &state,
+                &created,
+                file_marker_from_note_content(&text),
+            );
         }
         crate::embeddings::notify_file_changed(&created);
     } else if is_pdf(&created) {
@@ -1797,6 +1815,7 @@ pub fn ensure_folder_note(folder: String, state: State<VaultState>) -> Result<St
         let content = format!("# {title}\n\n\n");
         fs::write(&full, &content).map_err(|e| format!("Cannot create folder note: {e}"))?;
         set_tag_index_path(&state, &note_rel, Vec::new());
+        set_file_marker_index_path(&state, &note_rel, None);
         crate::embeddings::notify_file_changed(&note_rel);
     }
     Ok(note_rel)
@@ -1946,6 +1965,7 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     let _ = crate::comments::remap_comments(&root, &from_rel, Some(&to_rel));
     let _ = crate::dict_progress::remap_dict_progress(&root, &from_rel, Some(&to_rel));
     remap_tag_index_path(&state, &from_rel, Some(&to_rel));
+    remap_file_marker_index_path(&state, &from_rel, Some(&to_rel));
     crate::embeddings::notify_file_renamed(&from_rel, &to_rel);
 
     Ok(to_rel)
@@ -2040,6 +2060,7 @@ pub fn move_entry(
         let _ = crate::comments::remap_comments(&root, &from, Some(&new_rel));
         let _ = crate::dict_progress::remap_dict_progress(&root, &from, Some(&new_rel));
         remap_tag_index_path(&state, &from, Some(&new_rel));
+        remap_file_marker_index_path(&state, &from, Some(&new_rel));
         crate::embeddings::notify_file_renamed(&from, &new_rel);
     }
 
@@ -2130,6 +2151,9 @@ fn promote_note_to_folder_inner(
     write_order(root, &order)?;
 
     remap_tag_index_path(state, &note, Some(&folder_note_path));
+    // File markers for notes are keyed by the note path; after promotion the
+    // marker lives on the folder row (folder path), not on `.folder.md`.
+    remap_file_marker_index_path(state, &note, Some(&folder_rel));
     crate::embeddings::notify_file_renamed(&note, &folder_note_path);
     let _ = crate::favorites::remap_favorites(root, &note, Some(&folder_note_path));
     let _ = crate::filemeta::remap_filemeta(root, &note, Some(&folder_note_path));
@@ -2250,6 +2274,7 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     let _ = crate::comments::remap_comments(&root, &rel, None);
     let _ = crate::dict_progress::remap_dict_progress(&root, &rel, None);
     remove_tag_index_path(&state, &rel);
+    remove_file_marker_index_path(&state, &rel);
     crate::embeddings::notify_file_removed(&rel);
     Ok(())
 }
@@ -2908,6 +2933,54 @@ fn rebuild_tag_index(root: &Path) -> TagIndex {
     index
 }
 
+fn rebuild_file_marker_index(root: &Path) -> FileMarkerIndex {
+    let mut index = FileMarkerIndex::new();
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            e.file_name()
+                .to_str()
+                .map(walk_entry_allowed)
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy();
+        if !is_markdown(&name) {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        let Some(marker) = file_marker_from_note_content(&text) else {
+            continue;
+        };
+        let rel = relative_to_root(root, entry.path());
+        // Folder notes (`.folder.md`) are keyed by the folder path so the tree
+        // can show markers on folder rows without exposing the hidden note.
+        index.insert(file_marker_index_key(&rel), marker);
+    }
+    index
+}
+
+/// Index key for a note path: folder notes map to their parent folder.
+fn file_marker_index_key(rel: &str) -> String {
+    let name = entry_name(rel);
+    if is_folder_note_name(&name) {
+        let parent = parent_rel(rel);
+        if !parent.is_empty() {
+            return parent;
+        }
+    }
+    rel.to_string()
+}
+
 pub(crate) fn set_tag_index_path(state: &VaultState, rel: &str, tags: Vec<String>) {
     let Ok(mut guard) = state.tag_index.lock() else {
         return;
@@ -2919,8 +2992,32 @@ pub(crate) fn set_tag_index_path(state: &VaultState, rel: &str, tags: Vec<String
     }
 }
 
+fn set_file_marker_index_path(state: &VaultState, rel: &str, marker: Option<String>) {
+    let Ok(mut guard) = state.file_marker_index.lock() else {
+        return;
+    };
+    let key = file_marker_index_key(rel);
+    match marker {
+        Some(id) if !id.is_empty() => {
+            guard.insert(key, id);
+        }
+        _ => {
+            guard.remove(&key);
+        }
+    }
+}
+
 fn remove_tag_index_path(state: &VaultState, rel: &str) {
     let Ok(mut guard) = state.tag_index.lock() else {
+        return;
+    };
+    guard.remove(rel);
+    let prefix = format!("{rel}/");
+    guard.retain(|path, _| !path.starts_with(&prefix));
+}
+
+fn remove_file_marker_index_path(state: &VaultState, rel: &str) {
+    let Ok(mut guard) = state.file_marker_index.lock() else {
         return;
     };
     guard.remove(rel);
@@ -2951,8 +3048,37 @@ fn remap_tag_index_path(state: &VaultState, from: &str, to: Option<&str>) {
     *guard = next;
 }
 
+fn remap_file_marker_index_path(state: &VaultState, from: &str, to: Option<&str>) {
+    let Ok(mut guard) = state.file_marker_index.lock() else {
+        return;
+    };
+    let mut next = FileMarkerIndex::new();
+    for (path, marker) in guard.drain() {
+        if path == from {
+            if let Some(to) = to {
+                next.insert(to.to_string(), marker);
+            }
+            continue;
+        }
+        if let Some(rest) = path.strip_prefix(&format!("{from}/")) {
+            if let Some(to) = to {
+                next.insert(format!("{to}/{rest}"), marker);
+            }
+            continue;
+        }
+        next.insert(path, marker);
+    }
+    *guard = next;
+}
+
 fn replace_tag_index(state: &VaultState, index: TagIndex) {
     if let Ok(mut guard) = state.tag_index.lock() {
+        *guard = index;
+    }
+}
+
+fn replace_file_marker_index(state: &VaultState, index: FileMarkerIndex) {
+    if let Ok(mut guard) = state.file_marker_index.lock() {
         *guard = index;
     }
 }
@@ -3051,6 +3177,52 @@ fn marker_from_frontmatter_yaml(yaml: &str) -> Option<String> {
         return Some(value.to_string());
     }
     None
+}
+
+/// Normalize a file-marker catalog id (lowercase slug), or None if invalid.
+fn normalize_file_marker_id(raw: &str) -> Option<String> {
+    let id = raw.trim().to_ascii_lowercase();
+    if id.is_empty() || id.len() > 48 {
+        return None;
+    }
+    let b = id.as_bytes();
+    if !b[0].is_ascii_lowercase() {
+        return None;
+    }
+    if !b
+        .iter()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
+    {
+        return None;
+    }
+    Some(id)
+}
+
+/// Top-level YAML `fileMarker:` scalar, if present and a valid catalog id.
+fn file_marker_from_frontmatter_yaml(yaml: &str) -> Option<String> {
+    for raw_line in yaml.lines() {
+        if raw_line.starts_with(' ') || raw_line.starts_with('\t') {
+            continue;
+        }
+        let trimmed = raw_line.trim();
+        let Some(rest) = trimmed.strip_prefix("fileMarker:") else {
+            continue;
+        };
+        let mut value = rest.trim();
+        if value.len() >= 2
+            && ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+        {
+            value = &value[1..value.len() - 1];
+        }
+        return normalize_file_marker_id(value);
+    }
+    None
+}
+
+fn file_marker_from_note_content(content: &str) -> Option<String> {
+    let yaml = frontmatter_yaml(content)?;
+    file_marker_from_frontmatter_yaml(yaml)
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -3203,6 +3375,31 @@ fn tags_from_mddict_content(content: &str) -> Vec<String> {
 pub struct NoteTags {
     pub path: String,
     pub tags: Vec<String>,
+}
+
+/// Full path → fileMarker id map for the sidebar tree.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteFileMarker {
+    pub path: String,
+    pub marker_id: String,
+}
+
+#[tauri::command(async)]
+pub fn list_file_markers(state: State<VaultState>) -> Result<Vec<NoteFileMarker>, String> {
+    let guard = state
+        .file_marker_index
+        .lock()
+        .map_err(|_| "File marker index lock poisoned")?;
+    let mut out: Vec<NoteFileMarker> = guard
+        .iter()
+        .map(|(path, marker_id)| NoteFileMarker {
+            path: path.clone(),
+            marker_id: marker_id.clone(),
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    Ok(out)
 }
 
 /// Full path → tags map for the tag graph view (only notes that have at least one tag).
@@ -3546,10 +3743,12 @@ pub fn reindex_note_tags(path: String, state: State<VaultState>) -> Result<Vec<S
         let full = ensure_inside(&root, Path::new(&rel))?;
         if !full.is_file() {
             remove_tag_index_path(&state, &rel);
+            remove_file_marker_index_path(&state, &rel);
         } else {
             let text = fs::read_to_string(&full).map_err(|e| format!("Cannot read note: {e}"))?;
             let tags = tags_from_note_content(&text);
             set_tag_index_path(&state, &rel, tags);
+            set_file_marker_index_path(&state, &rel, file_marker_from_note_content(&text));
         }
     } else if lower.ends_with(".pdf") {
         let full = ensure_inside(&root, Path::new(&rel))?;

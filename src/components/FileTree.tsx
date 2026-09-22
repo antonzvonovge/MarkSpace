@@ -39,11 +39,13 @@ import {
   vaultProjectRootOf,
 } from "../lib/diaryNotes";
 import { isVaultLexiconFolder, isVaultLexiconMdNote } from "../lib/lexiconNotes";
+import { fileMarkerById } from "../lib/fileMarkers";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
+import { useFileMarkerSettingsStore } from "../store/fileMarkerSettingsStore";
 import { startClipArticleJob } from "../ai/clipArticle";
 import {
   startTranslateNote,
@@ -397,6 +399,7 @@ function TreeContextMenu({
   onCopyPath,
   onCopyAbsolutePath,
   onToggleFavorite,
+  onSetFileMarker,
   onProjectProperties,
   onIeltsTrainer,
   translateLabel,
@@ -404,6 +407,8 @@ function TreeContextMenu({
   diaryProjectRoot,
   moviesProjectRoot,
   languageLearningProject,
+  fileMarkerCatalog,
+  currentFileMarkerId,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
@@ -428,6 +433,7 @@ function TreeContextMenu({
   onCopyPath: () => void;
   onCopyAbsolutePath: () => void;
   onToggleFavorite: () => void;
+  onSetFileMarker: (markerId: string) => void;
   onProjectProperties: () => void;
   onIeltsTrainer: (skill: IeltsSkill) => void;
   translateLabel: string;
@@ -436,20 +442,32 @@ function TreeContextMenu({
   diaryProjectRoot: string | null;
   moviesProjectRoot: string | null;
   languageLearningProject: boolean;
+  fileMarkerCatalog: readonly { id: string; emoji: string; label: string }[];
+  currentFileMarkerId: string;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [ieltsOpen, setIeltsOpen] = useState(false);
   const [newItemOpen, setNewItemOpen] = useState(false);
+  const [markerOpen, setMarkerOpen] = useState(false);
   const isSkills = isSkillsFolder(menu.path, menu.isDir);
   const isDiary = diaryProjectRoot !== null;
   const isMovies = moviesProjectRoot !== null;
   const unsupportedFile = isUnsupportedTreeFile(menu.isDir, menu.path);
   const isIncomingRoot = isIncomingFolder(menu.path, menu.isDir);
+  const isTasksRoot = isTasksFolder(menu.path, menu.isDir);
   const showEditActions =
     !menu.createOnly && menu.path !== "" && !isSkills && !isIncomingRoot;
   const showCopyPath = !menu.createOnly && menu.path !== "";
   const showFavorite =
     !menu.createOnly && menu.path !== "" && !unsupportedFile;
+  const showFileMarker =
+    !menu.createOnly &&
+    !isSkills &&
+    menu.path !== "" &&
+    !isIncomingRoot &&
+    !isTasksRoot &&
+    fileMarkerCatalog.length > 0 &&
+    (menu.isDir || menu.path.toLowerCase().endsWith(".md"));
   const showFolderProperties =
     !menu.createOnly && menu.isDir && menu.path !== "";
   const showProjectProperties = showFolderProperties && isVaultProjectFolder(menu.path, true);
@@ -514,6 +532,73 @@ function TreeContextMenu({
       >
         {menu.isFavorite ? "Remove from favorites" : "Add to favorites"}
       </button>,
+    );
+  }
+
+  if (showFileMarker) {
+    sections.push(
+      <div
+        key="file-marker"
+        className="tree-context-submenu-wrap"
+        onMouseEnter={() => setMarkerOpen(true)}
+        onMouseLeave={() => setMarkerOpen(false)}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={(e) => {
+            e.preventDefault();
+            setMarkerOpen((v) => !v);
+          }}
+        >
+          Set marker
+          <MdChevronRight size={16} className="tree-context-chevron" />
+        </button>
+        {markerOpen ? (
+          <div className="tree-context-submenu" role="menu">
+            {fileMarkerCatalog.map((marker) => (
+              <button
+                key={marker.id}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={currentFileMarkerId === marker.id}
+                className="tree-context-item"
+                onClick={() => {
+                  onClose();
+                  onSetFileMarker(marker.id);
+                }}
+              >
+                <span className="tree-context-marker-emoji" aria-hidden>
+                  {marker.emoji}
+                </span>
+                {marker.label}
+                {currentFileMarkerId === marker.id ? (
+                  <span className="tree-context-check" aria-hidden>
+                    ✓
+                  </span>
+                ) : null}
+              </button>
+            ))}
+            {currentFileMarkerId ? (
+              <>
+                <div className="tree-context-sep" role="separator" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="tree-context-item"
+                  onClick={() => {
+                    onClose();
+                    onSetFileMarker("");
+                  }}
+                >
+                  Clear marker
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>,
     );
   }
 
@@ -995,6 +1080,8 @@ function FavoritesTreeRows({
   favoriteSet,
   projectPropertiesByPath,
   unresolvedCounts,
+  fileMarkersByPath,
+  fileMarkerCatalog,
   onOpenContextMenu,
   onSelectInTree,
   onOpenFolder,
@@ -1015,6 +1102,8 @@ function FavoritesTreeRows({
   favoriteSet: Set<string>;
   projectPropertiesByPath: Record<string, ProjectProperties>;
   unresolvedCounts: Map<string, number>;
+  fileMarkersByPath: Record<string, string>;
+  fileMarkerCatalog: readonly { id: string; emoji: string; label: string }[];
   onOpenContextMenu: (menu: ContextMenuState) => void;
   onSelectInTree: (path: string, isDir: boolean) => void;
   onOpenFolder: (
@@ -1055,6 +1144,10 @@ function FavoritesTreeRows({
           (treeSelectedFilePath ?? activePath) === path;
         const renaming = renamingPath === path;
         const openComments = unresolvedCounts.get(path) ?? 0;
+        const fileMarker = fileMarkerById(
+          fileMarkersByPath[path] ?? "",
+          fileMarkerCatalog,
+        );
         const projectRoot = vaultProjectRootOf(path);
         const projectColor =
           projectRoot && projectPropertiesByPath[projectRoot]?.color
@@ -1197,6 +1290,15 @@ function FavoritesTreeRows({
                   <FcDocument size={20} />
                 )}
               </span>
+              {fileMarker ? (
+                <span
+                  className="tree-file-marker"
+                  title={fileMarker.label}
+                  aria-label={fileMarker.label}
+                >
+                  {fileMarker.emoji}
+                </span>
+              ) : null}
 
               {renaming ? (
                 <InlineRenameInput
@@ -1225,6 +1327,8 @@ function FavoritesTreeRows({
                 favoriteSet={favoriteSet}
                 projectPropertiesByPath={projectPropertiesByPath}
                 unresolvedCounts={unresolvedCounts}
+                fileMarkersByPath={fileMarkersByPath}
+                fileMarkerCatalog={fileMarkerCatalog}
                 onOpenContextMenu={onOpenContextMenu}
                 onSelectInTree={onSelectInTree}
                 onOpenFolder={onOpenFolder}
@@ -1282,6 +1386,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const addToFavorites = useVaultStore((s) => s.addToFavorites);
   const removeFromFavorites = useVaultStore((s) => s.removeFromFavorites);
   const allComments = useVaultStore((s) => s.allComments);
+  const fileMarkersByPath = useVaultStore((s) => s.fileMarkersByPath);
+  const fileMarkerCatalog = useFileMarkerSettingsStore((s) => s.markers);
 
   const treeFocusRef = useRef<HTMLDivElement | null>(null);
   const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
@@ -2102,6 +2208,17 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
               void addToFavorites(contextMenu.path);
             }
           }}
+          onSetFileMarker={(markerId) => {
+            void useVaultStore
+              .getState()
+              .setFileMarker(contextMenu.path, markerId);
+          }}
+          fileMarkerCatalog={fileMarkerCatalog}
+          currentFileMarkerId={
+            contextMenu.path
+              ? (fileMarkersByPath[contextMenu.path] ?? "")
+              : ""
+          }
           onProjectProperties={() => {
             void openProjectProperties(contextMenu.path);
           }}
@@ -2324,6 +2441,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             favoriteSet={favoriteSet}
             projectPropertiesByPath={projectPropertiesByPath}
             unresolvedCounts={unresolvedCounts}
+            fileMarkersByPath={fileMarkersByPath}
+            fileMarkerCatalog={fileMarkerCatalog}
             onOpenContextMenu={setContextMenu}
             onSelectInTree={selectInTree}
             onOpenFolder={(path, options) => {
@@ -2394,6 +2513,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
                 favoriteSet={favoriteSet}
                 projectPropertiesByPath={projectPropertiesByPath}
                 unresolvedCounts={unresolvedCounts}
+                fileMarkersByPath={fileMarkersByPath}
+                fileMarkerCatalog={fileMarkerCatalog}
                 onOpenContextMenu={setContextMenu}
                 onSelectInTree={selectInTree}
                 onOpenFolder={(path, options) => {
@@ -2417,6 +2538,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             expandedPaths={expandedPaths}
             projectPropertiesByPath={projectPropertiesByPath}
             unresolvedCounts={unresolvedCounts}
+            fileMarkersByPath={fileMarkersByPath}
+            fileMarkerCatalog={fileMarkerCatalog}
             renamingPath={renamingPath}
             osDropRowPath={osDropRowPath}
             scrollParentRef={treeFocusRef}

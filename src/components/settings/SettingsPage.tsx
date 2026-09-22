@@ -13,6 +13,7 @@ import { AboutSettingsPanel } from "./AboutSettingsPanel";
 import { AccentColorRow } from "./AccentColorRow";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DiarySettingsPanel } from "./DiarySettingsPanel";
+import { FileMarkersSettingsPanel } from "./FileMarkersSettingsPanel";
 import { IndexingSettingsPanel } from "./IndexingSettingsPanel";
 import { KeysSettingsPanel } from "./KeysSettingsPanel";
 import { MediaLibrarySettingsPanel } from "./MediaLibrarySettingsPanel";
@@ -36,6 +37,7 @@ const PANEL_CATEGORIES = new Set([
   "mcpHost",
   "memory",
   "diary",
+  "fileMarkers",
   "mediaLibrary",
   "indexing",
   "about",
@@ -131,9 +133,22 @@ function queryMatchesDiary(query: string): boolean {
     "diary".includes(q) ||
     q.includes("diary") ||
     q.includes("calendar") ||
-    q.includes("marker") ||
-    q.includes("emoji") ||
     q.includes("day marker")
+  );
+}
+
+function queryMatchesFileMarkers(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    "file markers".includes(q) ||
+    q.includes("file marker") ||
+    q.includes("filemarker") ||
+    q.includes("done") ||
+    q.includes("skipped") ||
+    q.includes("needs work") ||
+    (q.includes("marker") && !q.includes("day")) ||
+    (q.includes("emoji") && q.includes("file"))
   );
 }
 
@@ -250,6 +265,8 @@ export function SettingsPage({ onClose }: Props) {
   const showMcpHostInSearch = searching && queryMatchesMcpHost(query);
   const showMemoryInSearch = searching && queryMatchesMemory(query);
   const showDiaryInSearch = searching && queryMatchesDiary(query);
+  const showFileMarkersInSearch =
+    searching && queryMatchesFileMarkers(query);
   const showMediaLibraryInSearch =
     searching && queryMatchesMediaLibrary(query);
   const showIndexingInSearch = searching && queryMatchesIndexing(query);
@@ -286,6 +303,8 @@ export function SettingsPage({ onClose }: Props) {
     (!searching && category === "memory") || showMemoryInSearch;
   const showDiaryPanel =
     (!searching && category === "diary") || showDiaryInSearch;
+  const showFileMarkersPanel =
+    (!searching && category === "fileMarkers") || showFileMarkersInSearch;
   const showMediaLibraryPanel =
     (!searching && category === "mediaLibrary") || showMediaLibraryInSearch;
   const showIndexingPanel =
@@ -358,6 +377,7 @@ export function SettingsPage({ onClose }: Props) {
             !showMcpHostInSearch &&
             !showMemoryInSearch &&
             !showDiaryInSearch &&
+            !showFileMarkersInSearch &&
             !showMediaLibraryInSearch &&
             !showIndexingInSearch &&
             !showAboutInSearch &&
@@ -443,6 +463,15 @@ export function SettingsPage({ onClose }: Props) {
             <section className="settings-section">
               {searching && <h2 className="settings-section-title">Diary</h2>}
               <DiarySettingsPanel />
+            </section>
+          )}
+
+          {showFileMarkersPanel && (
+            <section className="settings-section">
+              {searching && (
+                <h2 className="settings-section-title">File markers</h2>
+              )}
+              <FileMarkersSettingsPanel />
             </section>
           )}
 

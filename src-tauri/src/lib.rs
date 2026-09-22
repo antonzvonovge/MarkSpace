@@ -5,6 +5,7 @@ mod diary;
 mod dict_progress;
 pub mod embeddings;
 mod favorites;
+mod file_markers;
 mod filemeta;
 mod gems;
 mod git_sync;
@@ -196,6 +197,7 @@ pub fn run() {
             vault::list_vault_tags,
             vault::list_diary_day_markers,
             vault::list_dictionary_tags,
+            vault::list_file_markers,
             vault::list_note_tags,
             vault::list_note_wikilinks,
             vault::reindex_note_tags,
@@ -241,6 +243,8 @@ pub fn run() {
             agent_memory::clear_agent_memory,
             diary::get_diary_settings,
             diary::set_diary_settings,
+            file_markers::get_file_marker_settings,
+            file_markers::set_file_marker_settings,
             vault_ai::get_vault_ai_settings,
             vault_ai::set_vault_ai_settings,
             vault_appearance::get_vault_appearance,

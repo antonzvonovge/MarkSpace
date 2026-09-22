@@ -33,6 +33,7 @@ import type { TreeNode } from "../../lib/vaultApi";
 import { isVaultDocumentPath } from "../../lib/vaultApi";
 import { vaultProjectRootOf } from "../../lib/diaryNotes";
 import { isVaultProjectFolder } from "../../lib/vaultApi";
+import { fileMarkerById, type FileMarker } from "../../lib/fileMarkers";
 import { useVaultStore } from "../../store/vaultStore";
 import {
   flattenVisibleWorkspace,
@@ -108,6 +109,8 @@ export type WorkspaceTreeProps = {
   expandedPaths: string[];
   projectPropertiesByPath: ProjectPropsMap;
   unresolvedCounts: Map<string, number>;
+  fileMarkersByPath: Record<string, string>;
+  fileMarkerCatalog: readonly FileMarker[];
   renamingPath: string | null;
   osDropRowPath: string | null;
   scrollParentRef: React.RefObject<HTMLElement | null>;
@@ -220,6 +223,8 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   expandedPaths,
   projectPropertiesByPath,
   unresolvedCounts,
+  fileMarkersByPath,
+  fileMarkerCatalog,
   renamingPath,
   osDropRowPath,
   scrollParentRef,
@@ -654,6 +659,10 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     // While dragging, only the active row keeps useDraggable so other rows
     // unsubscribe from dnd-kit context and skip pointer-move re-renders.
     const staticRow = activeIdStr != null && activeIdStr !== path;
+    const fileMarker = fileMarkerById(
+      fileMarkersByPath[path] ?? "",
+      fileMarkerCatalog,
+    );
 
     return (
       <VaultTreeRow
@@ -674,6 +683,8 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         renaming={renamingPath === path}
         osDropHighlight={osDropRowPath !== null && path === osDropRowPath}
         openComments={unresolvedCounts.get(path) ?? 0}
+        fileMarkerEmoji={fileMarker?.emoji}
+        fileMarkerLabel={fileMarker?.label}
         projectColor={projectColor}
         projectType={
           isVaultProjectFolder(path, isDir)
