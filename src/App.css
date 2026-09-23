@@ -911,6 +911,8 @@ select {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
+.favorites-header:hover,
+.comments-inbox-header:hover,
 .incoming-section-header:hover {
   background: #ececec;
 }
@@ -920,6 +922,8 @@ select {
   background: #e8ebfa;
 }
 
+:root[data-theme="dark"] .favorites-header:hover,
+:root[data-theme="dark"] .comments-inbox-header:hover,
 :root[data-theme="dark"] .incoming-section-header:hover {
   background: rgba(255, 255, 255, 0.06);
 }

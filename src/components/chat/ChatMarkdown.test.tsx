@@ -180,6 +180,24 @@ describe("ChatMarkdown note references", () => {
     expect(container.textContent).toMatch(/base_delay/);
   });
 
+  it("does not swallow following text when one-line $$…$$ is indented in a list", () => {
+    const text = [
+      "1. **Salience Scoring:**",
+      "   * Formula:",
+      "     $$S(n, q, t) = \\mathbb{I}_{\\text{pinned}}(n) \\cdot \\infty$$",
+      "   * Decay ($Half\\text{-}Life$) and more prose here.",
+      "",
+      "2. **Next section** stays markdown.",
+    ].join("\n");
+    const { container } = render(<ChatMarkdown text={text} />);
+    expect(container.querySelector(".katex-display")).not.toBeNull();
+    expect(container.querySelector(".katex-error")).toBeNull();
+    expect(container.textContent).toContain("Next section");
+    expect(container.textContent).toContain("more prose here");
+    const strongs = [...container.querySelectorAll("strong")].map((el) => el.textContent);
+    expect(strongs).toContain("Next section");
+  });
+
   it("while streaming, renders completed blocks as markdown and keeps the tail plain", () => {
     const { container } = render(
       <ChatMarkdown

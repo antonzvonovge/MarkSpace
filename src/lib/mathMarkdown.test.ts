@@ -103,4 +103,13 @@ describe("mathMarkdown", () => {
     expect(normalizeDisplayMath("keep $inline$")).toBe("keep $inline$");
     expect(normalizeDisplayMath("```\n$$not$$\n```")).toBe("```\n$$not$$\n```");
   });
+
+  it("strips list indent before expanding one-line $$…$$", () => {
+    const indented =
+      "   * before:\n     $$S(n) = \\infty$$\n   * after ($Half\\text{-}Life$)";
+    const normalized = normalizeDisplayMath(indented);
+    expect(normalized).toContain("\n$$\nS(n) = \\infty\n$$\n");
+    expect(normalized).not.toMatch(/[ \t]+\$\$\nS\(n\)/);
+    expect(normalized).toContain("($Half\\text{-}Life$)");
+  });
 });

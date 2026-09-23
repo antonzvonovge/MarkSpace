@@ -306,6 +306,11 @@ function expandOneLineDisplayMath(text: string): string {
       i += 2;
       continue;
     }
+    // Flush-left the display fence. Leaving list/indent spaces before `$$`
+    // makes micromark treat the opener as indented code / mis-pair dollars,
+    // so everything after becomes one giant math node (red KaTeX errors).
+    out = out.replace(/[ \t]+$/, "");
+    if (out.length > 0 && !out.endsWith("\n")) out += "\n";
     out += `$$\n${latex}\n$$`;
     i = closed + 2;
   }
