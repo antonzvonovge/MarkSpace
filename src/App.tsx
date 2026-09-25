@@ -1185,16 +1185,32 @@ function App() {
     document.addEventListener("visibilitychange", onVisibility);
 
     let unlistenClose: (() => void) | undefined;
-    void getCurrentWindow()
-      .onCloseRequested(async () => {
-        await flush();
-      })
-      .then((fn) => {
-        unlistenClose = fn;
-      })
-      .catch(() => {
-        /* non-Tauri / missing window permission — visibility flush remains */
-      });
+    // getCurrentWindow() reads window.__TAURI_INTERNALS__.metadata synchronously —
+    // throws (not a rejected promise) when metadata is missing (vite-only /
+    // HMR / early mount). Guard before chaining onCloseRequested.
+    try {
+      const hasTauriWindow = Boolean(
+        (
+          window as Window & {
+            __TAURI_INTERNALS__?: { metadata?: { currentWindow?: unknown } };
+          }
+        ).__TAURI_INTERNALS__?.metadata?.currentWindow,
+      );
+      if (hasTauriWindow) {
+        void getCurrentWindow()
+          .onCloseRequested(async () => {
+            await flush();
+          })
+          .then((fn) => {
+            unlistenClose = fn;
+          })
+          .catch(() => {
+            /* missing window permission — visibility flush remains */
+          });
+      }
+    } catch {
+      /* non-Tauri */
+    }
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);

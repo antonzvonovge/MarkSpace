@@ -203,16 +203,22 @@ function ChatHighlightedPre({
 
   return (
     <div className="chat-md-code">
-      {lang ? <span className="chat-md-code__lang">{lang}</span> : null}
-      <ChatCodeCopyButton code={code} />
+      {/*
+        Chrome stays outside the scrollport so we never nest overflow:auto
+        under Virtuoso transforms — that combo ghosts glyphs on WebKitGTK.
+      */}
+      <div className="chat-md-code__chrome">
+        {lang ? <span className="chat-md-code__lang">{lang}</span> : null}
+        <ChatCodeCopyButton code={code} />
+      </div>
       {html ? (
         <div
-          className="chat-md-code__body"
+          className="chat-md-code__scroll"
           // Shiki returns a trusted <pre class="shiki"> tree from our own highlighter.
           dangerouslySetInnerHTML={{ __html: html }}
         />
       ) : (
-        <pre className="chat-md-code__body is-pending">
+        <pre className="chat-md-code__scroll is-pending">
           <code className={lang ? `language-${lang}` : undefined}>{code}</code>
         </pre>
       )}

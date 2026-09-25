@@ -128,7 +128,7 @@ async function renderMermaidUncached(
   renderId: string,
 ): Promise<string> {
   const { default: mermaid } = await loadMermaid();
-  const configKey = `${skin}:${dark ? "1" : "0"}:compact9`;
+  const configKey = `${skin}:${dark ? "1" : "0"}:compact10`;
   if (lastConfigKey !== configKey) {
     if (skin === "neutral") {
       mermaid.initialize({
@@ -142,7 +142,8 @@ async function renderMermaidUncached(
         // useMaxWidth:false — keep intrinsic px size; chat CSS only shrinks if needed.
         // Stretching to 100% was making boxes/fonts look huge in the chat column.
         flowchart: {
-          htmlLabels: true,
+          // foreignObject/htmlLabels double-paint text on WebKitGTK in chat.
+          htmlLabels: false,
           curve: "basis",
           padding: 12,
           nodeSpacing: 24,

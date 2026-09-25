@@ -649,11 +649,14 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         ? projectPropertiesByPath[projectRoot]!.color
         : meta.projectColor;
 
+    // before/after stick is a list-level overlay (see below); rows only
+    // paint the nest-into outline so neighbors cannot cover the line.
     const dropLine: VaultDropLine =
       dropIndicator != null &&
       dropIndicator.path === path &&
-      activeIdStr !== path
-        ? dropIndicator.placement
+      activeIdStr !== path &&
+      dropIndicator.placement === "inside"
+        ? "inside"
         : null;
 
     // While dragging, only the active row keeps useDraggable so other rows
@@ -750,6 +753,35 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   const virtualItems = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
 
+  let dropLineOverlay: ReactNode = null;
+  if (
+    dropIndicator != null &&
+    (dropIndicator.placement === "before" ||
+      dropIndicator.placement === "after") &&
+    activeIdStr !== dropIndicator.path
+  ) {
+    const vItem = virtualItems.find(
+      (v) => rows[v.index]?.path === dropIndicator.path,
+    );
+    const row = vItem ? rows[vItem.index] : undefined;
+    if (vItem && row) {
+      const edgeY =
+        dropIndicator.placement === "before"
+          ? vItem.start - scrollMargin - 4
+          : vItem.start - scrollMargin + vItem.size - 4;
+      dropLineOverlay = (
+        <div
+          className="workspace-tree-drop-line"
+          aria-hidden
+          style={{
+            transform: `translateY(${edgeY}px)`,
+            ["--tree-drop-depth" as string]: String(row.depth),
+          }}
+        />
+      );
+    }
+  }
+
   return (
     <DndContext
       sensors={sensors}
@@ -778,21 +810,11 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         {virtualItems.map((vItem) => {
           const row = rows[vItem.index];
           if (!row) return null;
-          const lineHost =
-            dropIndicator != null &&
-            dropIndicator.path === row.path &&
-            (dropIndicator.placement === "before" ||
-              dropIndicator.placement === "after") &&
-            activeIdStr !== row.path;
           return (
             <div
               key={row.path}
               data-index={vItem.index}
-              className={
-                lineHost
-                  ? "workspace-virtual-row is-drop-line-host"
-                  : "workspace-virtual-row"
-              }
+              className="workspace-virtual-row"
               style={{
                 position: "absolute",
                 top: 0,
@@ -805,6 +827,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
             </div>
           );
         })}
+        {dropLineOverlay}
       </WorkspaceListHost>
       <DragOverlay dropAnimation={null} modifiers={[placeChipByCursor]}>
         {activeRow && activeChipMeta ? (
