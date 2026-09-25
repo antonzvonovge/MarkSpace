@@ -10,9 +10,9 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
-  DragOverlay,
   MeasuringStrategy,
   PointerSensor,
   pointerWithin,
@@ -24,10 +24,8 @@ import {
   type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
-  type Modifier,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
-import { getEventCoordinates } from "@dnd-kit/utilities";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TreeNode } from "../../lib/vaultApi";
 import { isVaultDocumentPath } from "../../lib/vaultApi";
@@ -69,26 +67,14 @@ const OVERSCAN = 12;
 const CHIP_CURSOR_GAP_X = 12;
 const CHIP_CURSOR_GAP_Y = 16;
 
-const placeChipByCursor: Modifier = ({
-  activatorEvent,
-  draggingNodeRect,
-  transform,
-}) => {
-  if (!draggingNodeRect || !activatorEvent) return transform;
-  const cursor = getEventCoordinates(activatorEvent);
-  if (!cursor) return transform;
-  return {
-    ...transform,
-    x:
-      transform.x +
-      (cursor.x - draggingNodeRect.left) +
-      CHIP_CURSOR_GAP_X,
-    y:
-      transform.y +
-      (cursor.y - draggingNodeRect.top) +
-      CHIP_CURSOR_GAP_Y,
-  };
-};
+function positionDragChip(
+  el: HTMLElement | null,
+  clientX: number,
+  clientY: number,
+): void {
+  if (!el) return;
+  el.style.transform = `translate3d(${clientX + CHIP_CURSOR_GAP_X}px, ${clientY + CHIP_CURSOR_GAP_Y}px, 0)`;
+}
 
 const measuring = {
   droppable: {
@@ -273,6 +259,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   const dropIndicatorRef = useRef<VaultDropIndicator | null>(null);
   const pointerXRef = useRef(0);
   const pointerYRef = useRef(0);
+  const dragChipRef = useRef<HTMLDivElement | null>(null);
   const stopPointerTrackingRef = useRef<(() => void) | null>(null);
   const scrollMarginRef = useRef(scrollMargin);
   scrollMarginRef.current = scrollMargin;
@@ -319,9 +306,11 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       stopPointerTrackingRef.current?.();
       pointerXRef.current = clientX;
       pointerYRef.current = clientY;
+      positionDragChip(dragChipRef.current, clientX, clientY);
       const onMove = (ev: PointerEvent) => {
         pointerXRef.current = ev.clientX;
         pointerYRef.current = ev.clientY;
+        positionDragChip(dragChipRef.current, ev.clientX, ev.clientY);
       };
       window.addEventListener("pointermove", onMove, { passive: true });
       stopPointerTrackingRef.current = () => {
@@ -624,6 +613,16 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       })()
     : null;
 
+  // Chip mounts one frame after drag start — pin it to the current pointer.
+  useLayoutEffect(() => {
+    if (!activeRow) return;
+    positionDragChip(
+      dragChipRef.current,
+      pointerXRef.current,
+      pointerYRef.current,
+    );
+  }, [activeRow]);
+
   const renderRow = (
     row: FlattenedVaultRow,
     opts?: { style?: CSSProperties },
@@ -829,17 +828,24 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         })}
         {dropLineOverlay}
       </WorkspaceListHost>
-      <DragOverlay dropAnimation={null} modifiers={[placeChipByCursor]}>
-        {activeRow && activeChipMeta ? (
-          <VaultTreeDragChip
-            path={activeRow.path}
-            name={activeRow.name}
-            isDir={activeRow.isDir}
-            projectType={activeChipMeta.projectType}
-            learningLanguage={activeChipMeta.learningLanguage}
-          />
-        ) : null}
-      </DragOverlay>
+      {activeRow &&
+        activeChipMeta &&
+        createPortal(
+          <div
+            ref={dragChipRef}
+            className="vault-tree-drag-chip-host"
+            aria-hidden
+          >
+            <VaultTreeDragChip
+              path={activeRow.path}
+              name={activeRow.name}
+              isDir={activeRow.isDir}
+              projectType={activeChipMeta.projectType}
+              learningLanguage={activeChipMeta.learningLanguage}
+            />
+          </div>,
+          document.body,
+        )}
     </DndContext>
   );
 });

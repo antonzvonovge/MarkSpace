@@ -2415,6 +2415,15 @@ select {
 }
 
 /* Workspace tree drag ghost — compact chip offset from the pointer. */
+.vault-tree-drag-chip-host {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 999;
+  pointer-events: none;
+  will-change: transform;
+}
+
 .vault-tree-drag-chip {
   display: inline-flex;
   align-items: center;
