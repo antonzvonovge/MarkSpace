@@ -291,6 +291,49 @@ describe("filterTaskIndex", () => {
     ]);
   });
 
+  it("filters overdue open tasks before today", () => {
+    const rowsWithPast: TaskIndexEntry[] = [
+      ...rows,
+      entry({
+        path: "Tasks/Work/late.md",
+        title: "Late high",
+        list: "Work",
+        due: "2026-08-01",
+        priority: 1,
+      }),
+      entry({
+        path: "Tasks/Inbox/older.md",
+        title: "Older low",
+        list: "Inbox",
+        due: "2026-07-15",
+        priority: 3,
+      }),
+      entry({
+        path: "Tasks/Inbox/done-late.md",
+        title: "Already done",
+        list: "Inbox",
+        status: "done",
+        due: "2026-08-01",
+      }),
+    ];
+    const out = filterTaskIndex(
+      rowsWithPast,
+      "overdue",
+      {
+        query: "late",
+        list: "Work",
+        priority: 1,
+        label: "work",
+        status: "open",
+      },
+      today,
+    );
+    expect(out.map((e) => e.path)).toEqual([
+      "Tasks/Work/late.md",
+      "Tasks/Inbox/older.md",
+    ]);
+  });
+
   it("ignores sticky priority filter on Inbox", () => {
     const out = filterTaskIndex(
       rows,

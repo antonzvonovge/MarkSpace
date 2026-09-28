@@ -9,7 +9,7 @@ const VIEW_KEY = "markspace-tasks-view-v1";
 const FILTERS_KEY = "markspace-tasks-filters-v1";
 const EXPANDED_KEY = "markspace-tasks-expanded-v1";
 
-const VIEWS: TasksViewId[] = ["inbox", "today", "all", "filters"];
+const VIEWS: TasksViewId[] = ["inbox", "today", "overdue", "all", "filters"];
 
 export function loadTasksSectionCollapsed(): boolean {
   try {
@@ -111,6 +111,7 @@ export function tasksListContextKey(
 ): string {
   if (view === "inbox") return "inbox";
   if (view === "today") return "today";
+  if (view === "overdue") return "overdue";
   if (view === "filters") return "filters";
   const named = list.trim();
   if (view === "all" && named) return `list:${named}`;

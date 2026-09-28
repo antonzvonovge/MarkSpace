@@ -18015,6 +18015,26 @@ button.status-bar-jobs-menu-item:hover {
   color: var(--muted);
 }
 
+/* Week starts Monday: columns 6–7 are Saturday and Sunday. */
+.tasks-daypicker .rdp-weekday:nth-child(6),
+.tasks-daypicker .rdp-weekday:nth-child(7),
+.tasks-daypicker .rdp-week > :nth-child(6),
+.tasks-daypicker .rdp-week > :nth-child(7) {
+  background: #e7f3dc;
+}
+
+.tasks-daypicker .rdp-weekday:nth-child(6),
+.tasks-daypicker .rdp-weekday:nth-child(7) {
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .tasks-daypicker .rdp-weekday:nth-child(6),
+:root[data-theme="dark"] .tasks-daypicker .rdp-weekday:nth-child(7),
+:root[data-theme="dark"] .tasks-daypicker .rdp-week > :nth-child(6),
+:root[data-theme="dark"] .tasks-daypicker .rdp-week > :nth-child(7) {
+  background: #243028;
+}
+
 .tasks-daypicker .rdp-today:not(.rdp-selected) .rdp-day_button {
   font-weight: 700;
   color: var(--accent);

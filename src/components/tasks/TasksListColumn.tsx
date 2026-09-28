@@ -101,7 +101,9 @@ export const TasksListColumn = memo(function TasksListColumn({
   onStartAddSubtask?: (parentPath: string) => void;
 }): ReactNode {
   const showListChip =
-    view === "today" || (view === "filters" && !filters.list.trim());
+    view === "today" ||
+    view === "overdue" ||
+    (view === "filters" && !filters.list.trim());
 
   return (
     <div className="tasks-list-column">

@@ -358,6 +358,36 @@ export function TasksTodayIcon() {
   return <TodayCheckIcon />;
 }
 
+/** Overdue — calendar with an alert mark. */
+export function TasksOverdueIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="3.25"
+        width="11"
+        height="10.25"
+        rx="1.4"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M5.25 2.5v1.8M10.75 2.5v1.8M2.75 6.4h10.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      <path
+        d="M8 8.2v2.15"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="11.85" r="0.7" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** All tasks — stacked checklist. */
 export function TasksAllIcon() {
   return (

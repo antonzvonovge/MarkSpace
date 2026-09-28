@@ -21,6 +21,7 @@ import {
   loadTaskNote,
   localDateTimeHm,
   localDateYmd,
+  shiftYmd,
   moveTaskToList,
   newTaskId,
   refreshTaskIndexEntries,
@@ -1634,6 +1635,7 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
 
   const viewTitle = useMemo(() => {
     if (view === "today") return "Today";
+    if (view === "overdue") return "Overdue";
     if (view === "inbox") return "Inbox";
     if (view === "filters") return "Filters";
     if (filters.list) return filters.list;
@@ -1649,6 +1651,9 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
         return `No tasks due today. ${openElsewhere} open elsewhere — try Inbox.`;
       }
       return "No tasks due today.";
+    }
+    if (view === "overdue") {
+      return "No overdue tasks.";
     }
     if (view === "all" && filters.list) {
       return `No tasks in ${filters.list}.`;
@@ -1742,7 +1747,13 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     }
     // Prefer explicit composer List; fall back to the open sidebar list.
     const list = quickDraft.list.trim() || contextList;
-    const due = quickDraft.due || (view === "today" ? today : null);
+    const due =
+      quickDraft.due ||
+      (view === "today"
+        ? today
+        : view === "overdue"
+          ? shiftYmd(today, -1)
+          : null);
     const priority = quickDraft.priority === "" ? null : quickDraft.priority;
     const labelList = quickDraft.labels;
     const id = newTaskId();
@@ -1822,7 +1833,7 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     });
   }, []);
 
-  const treeSortable = view !== "today";
+  const treeSortable = view !== "today" && view !== "overdue";
 
   const onToggleStatus = useCallback(
     async (item: FlattenedTaskItem) => {
@@ -1955,7 +1966,8 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     cancelEdit();
     setQuickDraft({
       title: "",
-      due: view === "today" ? today : "",
+      due:
+        view === "today" ? today : view === "overdue" ? shiftYmd(today, -1) : "",
       priority: "",
       labels: [],
       list: contextList,

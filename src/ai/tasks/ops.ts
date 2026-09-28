@@ -110,7 +110,7 @@ const pathOrIdSchema = z.object({
 
 const listTasksSchema = z.object({
   view: z
-    .enum(["inbox", "today", "all", "filters"])
+    .enum(["inbox", "today", "overdue", "all", "filters"])
     .optional()
     .describe("Default filters (open tasks across lists when list empty)"),
   list: z.string().optional().describe("List/project name, e.g. Inbox or Work"),
@@ -763,7 +763,7 @@ export const TASK_MCP_TOOL_DEFS: McpToolDef[] = [
   {
     name: "list_tasks",
     description:
-      "List active tasks (skips Tasks/<list>/completed/). Filter like the Tasks UI: view inbox|today|all|filters plus list/status/priority/label/query.",
+      "List active tasks (skips Tasks/<list>/completed/). Filter like the Tasks UI: view inbox|today|overdue|all|filters plus list/status/priority/label/query. overdue = open tasks with due before today.",
     inputSchema: schemaJson(listTasksSchema),
   },
   {

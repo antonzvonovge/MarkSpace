@@ -19,6 +19,7 @@ import {
   PlusIcon,
   TasksFiltersIcon,
   TasksListIcon,
+  TasksOverdueIcon,
   TasksSectionIcon,
   TasksTodayIcon,
 } from "./treeIcons";
@@ -55,6 +56,7 @@ const SMART_VIEWS: {
   icon: ReactNode;
 }[] = [
   { id: "today", label: "Today", icon: <TasksTodayIcon /> },
+  { id: "overdue", label: "Overdue", icon: <TasksOverdueIcon /> },
   { id: "filters", label: "Filters", icon: <TasksFiltersIcon /> },
 ];
 

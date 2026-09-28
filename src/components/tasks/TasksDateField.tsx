@@ -38,6 +38,22 @@ function addDays(base: Date, days: number): Date {
   return d;
 }
 
+/** Monday that starts the week after the one containing `base` (weeks start Monday). */
+function nextWeekMonday(base: Date): Date {
+  const day = base.getDay();
+  const backToMonday = day === 0 ? 6 : day - 1;
+  return addDays(base, 7 - backToMonday);
+}
+
+function dueDatePresets(today: Date): { label: string; date: Date | null }[] {
+  return [
+    { label: "Today", date: today },
+    { label: "Tomorrow", date: addDays(today, 1) },
+    { label: "Next week", date: nextWeekMonday(today) },
+    { label: "Clear", date: null },
+  ];
+}
+
 function placeFromPoint(x: number, y: number): Pos {
   const placed = placeAnchoredMenu(
     {
@@ -135,13 +151,7 @@ export function TasksDuePickerPopup({
     onClose();
   };
 
-  const today = new Date();
-  const presets: { label: string; date: Date | null }[] = [
-    { label: "Today", date: today },
-    { label: "Tomorrow", date: addDays(today, 1) },
-    { label: "Next week", date: addDays(today, 7) },
-    { label: "Clear", date: null },
-  ];
+  const presets = dueDatePresets(new Date());
 
   return createPortal(
     <div
@@ -162,6 +172,7 @@ export function TasksDuePickerPopup({
         className="tasks-daypicker"
         mode="single"
         animate
+        weekStartsOn={1}
         month={month}
         onMonthChange={setMonth}
         selected={selected}
@@ -286,14 +297,8 @@ export function TasksDateField({
     setOpen(false);
   };
 
-  const today = new Date();
   const overdue = isTaskDueOverdue(value);
-  const presets: { label: string; date: Date | null }[] = [
-    { label: "Today", date: today },
-    { label: "Tomorrow", date: addDays(today, 1) },
-    { label: "Next week", date: addDays(today, 7) },
-    { label: "Clear", date: null },
-  ];
+  const presets = dueDatePresets(new Date());
 
   const panel =
     open && pos
@@ -316,6 +321,7 @@ export function TasksDateField({
               className="tasks-daypicker"
               mode="single"
               animate
+              weekStartsOn={1}
               month={month}
               onMonthChange={setMonth}
               selected={selected}

@@ -96,7 +96,7 @@ export type TaskIndexEntry = {
   description: string;
 };
 
-export type TasksViewId = "inbox" | "today" | "all" | "filters";
+export type TasksViewId = "inbox" | "today" | "overdue" | "all" | "filters";
 
 export type TasksFilters = {
   query: string;
@@ -186,6 +186,14 @@ export function localDateYmd(d: Date = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** Shift a `YYYY-MM-DD` by whole local calendar days. */
+export function shiftYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const date = new Date(y!, (m ?? 1) - 1, d ?? 1);
+  date.setDate(date.getDate() + days);
+  return localDateYmd(date);
 }
 
 /** Short due label for task rows: Today / Tomorrow / localized date. */
@@ -805,6 +813,9 @@ export function filterTaskIndex(
     } else if (view === "today") {
       if (e.status === "done") return false;
       if (e.due !== today) return false;
+    } else if (view === "overdue") {
+      if (e.status === "done") return false;
+      if (!isTaskDueOverdue(e.due, today)) return false;
     }
 
     if (view === "filters" || view === "all") {
@@ -845,9 +856,9 @@ export function filterTaskIndex(
     return true;
   });
 
-  // Today: smart sort. Inbox / lists / All / Filters: keep vault
+  // Today / Overdue: smart sort. Inbox / lists / All / Filters: keep vault
   // tree order so drag-reorder (order.json) is visible.
-  if (view === "today") {
+  if (view === "today" || view === "overdue") {
     list_ = [...list_].sort(compareTasks);
   }
   return list_;
