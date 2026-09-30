@@ -7,6 +7,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 
 <!-- core-rules:start -->
 - Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported). A wiki target that names an existing **folder** resolves to that folder’s hidden overview note `{folder}/.folder.md` (created on open if missing). Never write `[label](https://Note.md)`, a bare `https://file.md`, or a hybrid nested form `[[folder/[Note.md](https://Note.md)]]` for a vault note — that is an external URL / broken wiki-link, not a vault link.
+- In the note body, never wrap a wiki-link in backticks. Backticks in these rules only quote a pattern; they are not part of the link. A backtick immediately before `[[` or after `]]` makes the link inert code that does not open.
 - In **chat replies**, reference vault files with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — also `.mddict`, `.mdlnks`, `.mdhabit`, `.mdcourse`, `.drawio`, and `.pdf` paths. All render as a clickable file link that opens the document. Mention a file this way whenever you create, open, or cite one. Never nest `[Name.md](https://Name.md)` inside `[[…]]`.
 - Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Embed audio as `![[clip.wav]]` or `![[folder/clip.mp3]]` (also `.m4a` / `.ogg` / `.aac`; a bare filename is next to the note). Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
@@ -178,7 +179,7 @@ In the note body, hashtags are styled inline tags (editable text in Live mode):
 | `[[projects/ideas\|Ideas]]` | Wiki-link with display alias |
 | `[Site](https://example.com)` | External URL (system browser) |
 
-Internal links are **only** `[[…]]`. Do not use Markdown file hrefs (`[Local](./Welcome.md)`, `[Note](Note.md)`), fake hosts (`[20.08.2010.md](https://20.08.2010.md)`), or hybrids that nest those inside wiki brackets (`[[folder/[Note.md](https://Note.md)]]`, `[[folder/[Note.md](https://Note.md)|Label]]`). Write `[[folder/Note.md]]` / `[[folder/Note.md|Label]]` instead. `http:` / `https:` / `mailto:` always open in the system browser.
+Internal links are **only** `[[…]]`. Do not use Markdown file hrefs (`[Local](./Welcome.md)`, `[Note](Note.md)`), fake hosts (`[20.08.2010.md](https://20.08.2010.md)`), or hybrids that nest those inside wiki brackets (`[[folder/[Note.md](https://Note.md)]]`, `[[folder/[Note.md](https://Note.md)|Label]]`). Write `[[folder/Note.md]]` / `[[folder/Note.md|Label]]` instead. In the note body those brackets stand alone: do not wrap the link in backticks. Backticks in this guide only quote a pattern; a backtick-wrapped link is inert code and does not open. `http:` / `https:` / `mailto:` always open in the system browser.
 
 Wiki targets must not contain `|` inside the target segment. A literal `#` in a path (e.g. folder `#5 …`) is allowed. Heading anchors like `[[Note#Section]]` are **not** supported — the `#…` part is treated as part of the path, not a jump to a heading.
 

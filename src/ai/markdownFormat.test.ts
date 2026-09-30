@@ -56,6 +56,13 @@ describe("markdownFormat", () => {
     expect(rules).toMatch(/\[\[folder\/\[Note\.md\]/);
   });
 
+  it("forbids backtick-wrapped wiki-links in note bodies", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/never wrap a wiki-link in backticks/i);
+    expect(rules).toMatch(/does not open/);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/do not wrap the link in backticks/i);
+  });
+
   it("documents diary day markers in core rules", () => {
     const rules = markdownCoreRules().join("\n");
     expect(rules).toMatch(/marker:/);
