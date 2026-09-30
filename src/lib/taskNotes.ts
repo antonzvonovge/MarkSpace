@@ -224,6 +224,102 @@ export function isTaskDueOverdue(
   return ymd < today;
 }
 
+export type TaskListCount = {
+  total: number;
+  overdue: number;
+};
+
+/** Open-task totals for sidebar list rows. Not persisted. */
+export type TaskListCounts = {
+  byList: Record<string, TaskListCount>;
+  inbox: TaskListCount;
+  today: TaskListCount;
+  overdue: TaskListCount;
+  filters: TaskListCount;
+};
+
+function emptyTaskListCount(): TaskListCount {
+  return { total: 0, overdue: 0 };
+}
+
+function taskMatchesFiltersRow(
+  entry: TaskIndexEntry,
+  filters: TasksFilters,
+  view: TasksViewId,
+): boolean {
+  if (view !== "filters") return entry.status === "open";
+  if (filters.status === "open" && entry.status !== "open") return false;
+  if (filters.status === "done" && entry.status !== "done") return false;
+  const list = filters.list.trim();
+  if (list && entry.list !== list) return false;
+  if (filters.priority !== "" && entry.priority !== filters.priority) return false;
+  const label = filters.label.trim().toLowerCase();
+  if (label && !entry.labels.some((g) => g.toLowerCase() === label)) return false;
+  const q = filters.query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [entry.title, entry.list, ...entry.labels, entry.due ?? ""]
+    .join("\n")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
+/**
+ * One pass over an in-memory task index.
+ * Named lists, Inbox, Today, and Overdue count `status === "open"` only.
+ * The Filters row uses Filters-view criteria; a named-list `filters.list`
+ * is ignored unless `view` is `"filters"`.
+ */
+export function summarizeTaskListCounts(
+  entries: readonly TaskIndexEntry[],
+  today: string,
+  filters: TasksFilters,
+  view: TasksViewId,
+): TaskListCounts {
+  const byList = new Map<string, TaskListCount>();
+  const inbox = emptyTaskListCount();
+  const todayCount = emptyTaskListCount();
+  const overdueCount = emptyTaskListCount();
+  const filtersCount = emptyTaskListCount();
+
+  for (const entry of entries) {
+    const open = entry.status === "open";
+    const overdue = open && isTaskDueOverdue(entry.due, today);
+
+    if (open) {
+      if (entry.list) {
+        let row = byList.get(entry.list);
+        if (!row) {
+          row = emptyTaskListCount();
+          byList.set(entry.list, row);
+        }
+        row.total += 1;
+        if (overdue) row.overdue += 1;
+      }
+      if (entry.list === "Inbox") {
+        inbox.total += 1;
+        if (overdue) inbox.overdue += 1;
+      }
+      if (entry.due === today) todayCount.total += 1;
+      if (overdue) {
+        overdueCount.total += 1;
+        overdueCount.overdue += 1;
+      }
+    }
+
+    if (!taskMatchesFiltersRow(entry, filters, view)) continue;
+    filtersCount.total += 1;
+    if (overdue) filtersCount.overdue += 1;
+  }
+
+  return {
+    byList: Object.fromEntries(byList),
+    inbox,
+    today: todayCount,
+    overdue: overdueCount,
+    filters: filtersCount,
+  };
+}
+
 export function localDateTimeHm(d: Date = new Date()): string {
   const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   return `${localDateYmd(d)} ${hm}`;
@@ -762,6 +858,37 @@ export async function loadTaskIndex(
   }
 
   return enrichTaskIndexChildren(await readTaskIndexEntries(paths));
+}
+
+/**
+ * Bring a cached open-task index in line with the vault tree.
+ * Same path set returns `prev` (no disk read). Removals drop entries
+ * without reading. New paths go through `loadTaskIndex`, which reads
+ * only those files when `prev` is non-empty.
+ */
+export async function reconcileTaskIndexCache(
+  tree: TreeNode | null | undefined,
+  prev: readonly TaskIndexEntry[],
+): Promise<readonly TaskIndexEntry[]> {
+  const paths = collectTaskNotePaths(tree);
+  const prevByPath = new Map(prev.map((e) => [e.path, e]));
+  if (paths.length === prev.length && paths.every((p) => prevByPath.has(p))) {
+    return prev;
+  }
+
+  const pathSet = new Set(paths);
+  const newPaths = paths.filter((p) => !prevByPath.has(p));
+  if (newPaths.length === 0) {
+    const kept = new Map(
+      prev.filter((e) => pathSet.has(e.path)).map((e) => [e.path, e] as const),
+    );
+    const merged = paths
+      .map((p) => kept.get(p))
+      .filter((e): e is TaskIndexEntry => e != null);
+    return enrichTaskIndexChildren(merged);
+  }
+
+  return loadTaskIndex(tree, prev.length > 0 ? prev : undefined);
 }
 
 /** List folder names directly under Tasks/ (for filter dropdown). */

@@ -39,8 +39,13 @@ import {
   saveTasksSectionCollapsed,
 } from "../lib/tasksUiState";
 import { TASKS_FOLDER, joinPath } from "../lib/vaultApi";
+import {
+  EMPTY_TASK_LIST_COUNT,
+  useTaskListCountsStore,
+} from "../store/taskListCountsStore";
 import { useTaskListMetaStore } from "../store/taskListMetaStore";
 import { useTasksPanelStore } from "../store/tasksPanelStore";
+import type { TaskListCount } from "../lib/taskNotes";
 import { TASKS_TAB_PATH, useVaultStore } from "../store/vaultStore";
 
 /** Ignore list-open clicks briefly after a task is dropped onto a sidebar list. */
@@ -265,6 +270,33 @@ function TaskGroupContextMenu({
   );
 }
 
+function TaskListCountBadges({
+  total,
+  overdue,
+}: {
+  total: number;
+  overdue: number;
+}) {
+  if (total <= 0 && overdue <= 0) return null;
+  return (
+    <span className="tasks-list-counts">
+      {overdue > 0 ? (
+        <span
+          className="tasks-row-due is-overdue tasks-list-count-overdue"
+          title="Overdue"
+        >
+          {overdue}
+        </span>
+      ) : null}
+      {total > 0 ? (
+        <span className="tasks-list-count-total" title="Open tasks">
+          {total}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 const ListRow = memo(function ListRow({
   entry,
   selected,
@@ -278,6 +310,9 @@ const ListRow = memo(function ListRow({
   onOpenList: (listName: string) => void;
   onContextMenu: (listName: string, x: number, y: number) => void;
 }) {
+  const counts = useTaskListCountsStore(
+    (s) => s.counts.byList[entry.name] ?? EMPTY_TASK_LIST_COUNT,
+  );
   return (
     <li>
       <button
@@ -305,6 +340,7 @@ const ListRow = memo(function ListRow({
       >
         <ListIcon color={entry.color} />
         <span className="tasks-section-row-label">{entry.name}</span>
+        <TaskListCountBadges total={counts.total} overdue={counts.overdue} />
       </button>
     </li>
   );
@@ -323,6 +359,13 @@ const SmartViewRow = memo(function SmartViewRow({
   selected: boolean;
   onOpen: (view: TasksViewId) => void;
 }) {
+  const counts = useTaskListCountsStore((s): TaskListCount =>
+    id === "today"
+      ? s.counts.today
+      : id === "overdue"
+        ? s.counts.overdue
+        : EMPTY_TASK_LIST_COUNT,
+  );
   return (
     <li>
       <button
@@ -339,6 +382,12 @@ const SmartViewRow = memo(function SmartViewRow({
           {icon}
         </span>
         <span className="tasks-section-row-label">{label}</span>
+        {id === "filters" ? null : (
+          <TaskListCountBadges
+            total={id === "overdue" ? 0 : counts.total}
+            overdue={counts.overdue}
+          />
+        )}
       </button>
     </li>
   );
@@ -370,7 +419,9 @@ export const TasksSection = memo(function TasksSection() {
   const openTasksTab = useVaultStore((s) => s.openTasksTab);
   const activePath = useVaultStore((s) => s.activePath);
   const view = useTasksPanelStore((s) => s.view);
-  const filterList = useTasksPanelStore((s) => s.filters.list);
+  const filters = useTasksPanelStore((s) => s.filters);
+  const filterList = filters.list;
+  const inboxCounts = useTaskListCountsStore((s) => s.counts.inbox);
   const sidebarHighlight = useTasksPanelStore((s) => s.sidebarHighlight);
   const setSidebarHighlight = useTasksPanelStore((s) => s.setSidebarHighlight);
   const setView = useTasksPanelStore((s) => s.setView);
@@ -421,6 +472,15 @@ export const TasksSection = memo(function TasksSection() {
   useEffect(() => {
     void refreshMeta();
   }, [refreshMeta, tree]);
+
+  useEffect(() => {
+    if (tasksTabActive) return;
+    void useTaskListCountsStore.getState().syncFromTree(tree);
+  }, [tree, tasksTabActive]);
+
+  useEffect(() => {
+    useTaskListCountsStore.getState().recompute();
+  }, [view, filters]);
 
   const openSmartView = useCallback(
     (next: TasksViewId) => {
@@ -575,6 +635,10 @@ export const TasksSection = memo(function TasksSection() {
         >
           <span className="tasks-section-title">Tasks</span>
         </button>
+        <TaskListCountBadges
+          total={inboxCounts.total}
+          overdue={inboxCounts.overdue}
+        />
         <div
           className="section-header-actions"
           onClick={(e) => e.stopPropagation()}

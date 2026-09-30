@@ -39,6 +39,7 @@ import {
 } from "../editor/pasteImages";
 import { absolutePath, joinPath, parentPath, writeAsset } from "../lib/vaultApi";
 import { taskListColor } from "../lib/taskListMeta";
+import { useTaskListCountsStore } from "../store/taskListCountsStore";
 import { useTaskListMetaStore } from "../store/taskListMetaStore";
 import { useTasksPanelStore } from "../store/tasksPanelStore";
 import { useVaultStore } from "../store/vaultStore";
@@ -1522,6 +1523,11 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
   useEffect(() => {
     void reloadIndex();
   }, [tree, reloadIndex]);
+
+  useEffect(() => {
+    if (loading) return;
+    useTaskListCountsStore.getState().publish(entries);
+  }, [entries, loading]);
 
   useEffect(() => {
     if (entries.length === 0) return;

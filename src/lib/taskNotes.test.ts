@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   collectTaskLists,
   collectTaskNotePaths,
+  emptyTasksFilters,
   filterTaskIndex,
   getTaskAttrs,
   isTaskInCompleted,
   parseTaskNote,
   parseTaskIndexLight,
+  reconcileTaskIndexCache,
   serializeTaskNote,
   setTaskAttrs,
+  summarizeTaskListCounts,
   taskCompletedFolder,
   taskIndexEntryFromNote,
   taskListFromPath,
@@ -465,5 +468,141 @@ status: open
     expect(out).toContain("## Comments");
     expect(out).toContain("### 2026-08-30 12:00");
     expect(out).toContain("Hi");
+  });
+});
+
+describe("summarizeTaskListCounts", () => {
+  const today = "2026-08-28";
+
+  it("counts open tasks per list, inbox, today, overdue, and subtasks", () => {
+    const rows: TaskIndexEntry[] = [
+      entry({
+        path: "Tasks/Inbox/a.md",
+        title: "Inbox open",
+        list: "Inbox",
+        due: "2026-08-27",
+      }),
+      entry({
+        path: "Tasks/Inbox/b.md",
+        title: "Inbox today",
+        list: "Inbox",
+        due: today,
+      }),
+      entry({
+        path: "Tasks/Work/parent.md",
+        title: "Parent",
+        list: "Work",
+        due: "2026-08-01",
+        id: "parent",
+      }),
+      entry({
+        path: "Tasks/Work/child.md",
+        title: "Child",
+        list: "Work",
+        parent: "parent",
+        due: null,
+      }),
+      entry({
+        path: "Tasks/Work/done.md",
+        title: "Done",
+        list: "Work",
+        status: "done",
+        due: "2026-08-01",
+      }),
+    ];
+
+    const counts = summarizeTaskListCounts(
+      rows,
+      today,
+      emptyTasksFilters(),
+      "all",
+    );
+
+    expect(counts.byList.Inbox).toEqual({ total: 2, overdue: 1 });
+    expect(counts.byList.Work).toEqual({ total: 2, overdue: 1 });
+    expect(counts.inbox).toEqual({ total: 2, overdue: 1 });
+    expect(counts.today).toEqual({ total: 1, overdue: 0 });
+    expect(counts.overdue).toEqual({ total: 2, overdue: 2 });
+    expect(counts.filters).toEqual({ total: 4, overdue: 2 });
+  });
+
+  it("does not treat a due date of today as overdue", () => {
+    const counts = summarizeTaskListCounts(
+      [
+        entry({
+          path: "Tasks/Inbox/today.md",
+          title: "Today",
+          list: "Inbox",
+          due: today,
+        }),
+      ],
+      today,
+      emptyTasksFilters(),
+      "today",
+    );
+    expect(counts.today).toEqual({ total: 1, overdue: 0 });
+    expect(counts.overdue).toEqual({ total: 0, overdue: 0 });
+    expect(counts.inbox.overdue).toBe(0);
+  });
+
+  it("filters row ignores a sticky named-list filter until the Filters view", () => {
+    const rows: TaskIndexEntry[] = [
+      entry({ path: "Tasks/Work/a.md", title: "Work", list: "Work", labels: ["red"] }),
+      entry({ path: "Tasks/Inbox/b.md", title: "Inbox", list: "Inbox" }),
+    ];
+    const sticky = {
+      ...emptyTasksFilters(),
+      list: "Work",
+      label: "red",
+    };
+    const offView = summarizeTaskListCounts(rows, today, sticky, "all");
+    expect(offView.filters).toEqual({ total: 2, overdue: 0 });
+
+    const onView = summarizeTaskListCounts(rows, today, sticky, "filters");
+    expect(onView.filters).toEqual({ total: 1, overdue: 0 });
+  });
+});
+
+describe("reconcileTaskIndexCache", () => {
+  const tree: TreeNode = {
+    name: "",
+    path: "",
+    isDir: true,
+    children: [
+      {
+        name: "Tasks",
+        path: "Tasks",
+        isDir: true,
+        children: [
+          {
+            name: "Inbox",
+            path: "Tasks/Inbox",
+            isDir: true,
+            children: [
+              {
+                name: "keep.md",
+                path: "Tasks/Inbox/keep.md",
+                isDir: false,
+                children: [],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  it("returns the same array when task paths are unchanged", async () => {
+    const prev = [entry({ path: "Tasks/Inbox/keep.md", title: "Keep", list: "Inbox" })];
+    await expect(reconcileTaskIndexCache(tree, prev)).resolves.toBe(prev);
+  });
+
+  it("drops removed tasks without reading files", async () => {
+    const prev = [
+      entry({ path: "Tasks/Inbox/keep.md", title: "Keep", list: "Inbox" }),
+      entry({ path: "Tasks/Inbox/gone.md", title: "Gone", list: "Inbox" }),
+    ];
+    const next = await reconcileTaskIndexCache(tree, prev);
+    expect(next.map((e) => e.path)).toEqual(["Tasks/Inbox/keep.md"]);
   });
 });
