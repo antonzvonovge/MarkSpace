@@ -14,13 +14,16 @@ import {
 } from "./toolPacks";
 
 describe("toolPacks", () => {
-  it("defines 9 orchestrator tools; terminal is opt-in", () => {
-    expect(ORCHESTRATOR_TOOL_NAMES).toHaveLength(9);
+  it("defines orchestrator authoring tools; terminal is opt-in", () => {
+    expect(ORCHESTRATOR_TOOL_NAMES).toHaveLength(23);
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("run_specialist");
+    expect(ORCHESTRATOR_TOOL_NAMES).toContain("edit_note");
+    expect(ORCHESTRATOR_TOOL_NAMES).toContain("create_diagram");
+    expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("move_path");
     expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("ielts_practice");
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("pick_vault_folder");
     expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("run_terminal");
-    expect(orchestratorToolNames(false)).toHaveLength(9);
+    expect(orchestratorToolNames(false)).toHaveLength(23);
     expect(orchestratorToolNames(true)).toEqual([
       ...ORCHESTRATOR_TOOL_NAMES,
       "run_terminal",
@@ -38,16 +41,27 @@ describe("toolPacks", () => {
     expect(names).not.toContain("add_diagram_node");
     expect(names).not.toContain("update_diagram_element");
     expect(SPECIALIST_PRESETS.diagram.system).toContain(
-      "do not assume another diagram specialist will continue",
+      "Do not invent the diagram's content",
     );
     expect(SPECIALIST_PRESETS.diagram.system).toContain(
       "Never create an empty file and fill it with mutate_diagram",
     );
   });
 
+  it("research returns facts and does not write the conclusion", () => {
+    expect(SPECIALIST_PRESETS.research.system).toContain("paths and short quotes");
+    expect(SPECIALIST_PRESETS.research.system).toContain(
+      "Do not write the conclusion",
+    );
+    expect(SPECIALIST_PRESETS.courses.system).toContain(".mdcourse");
+  });
+
   it("edit_notes can auto-tag from the vault catalog", () => {
     expect(SPECIALIST_PRESETS.edit_notes.toolNames).toContain("auto_tag_note");
     expect(SPECIALIST_PRESETS.edit_notes.system).toContain("auto_tag_note");
+    expect(SPECIALIST_PRESETS.edit_notes.system).toContain(
+      "Do not invent prose",
+    );
   });
 
   it("edit_notes can rename paths in place", () => {

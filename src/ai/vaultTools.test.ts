@@ -21,7 +21,7 @@ function file(name: string, path: string): TreeNode {
 }
 
 describe("vault agent tools", () => {
-  it("Ask keeps read tools; Agent orchestrator is a small tool set", () => {
+  it("Ask keeps read tools; Agent orchestrator authors notes and diagrams", () => {
     const askTools = buildVaultTools("ask");
     const agentTools = buildVaultTools("agent");
 
@@ -47,17 +47,32 @@ describe("vault agent tools", () => {
     const agentIds = Object.keys(agentTools).sort();
     expect(agentIds).toEqual([
       "ask_user",
+      "create_diagram",
+      "create_folder",
+      "create_note",
+      "edit_note",
+      "get_page",
       "list_folder",
+      "list_pages",
       "memory",
+      "mutate_diagram",
       "open_note",
+      "open_or_create_daily_note",
       "pick_vault_folder",
+      "read_diagram",
+      "read_drawio_format",
+      "read_format_guide",
       "read_note",
       "read_skill",
       "run_specialist",
       "search",
+      "search_shapes",
+      "set_page",
+      "write_note",
     ]);
-    expect(agentTools).not.toHaveProperty("edit_note");
-    expect(agentTools).not.toHaveProperty("mutate_diagram");
+    expect(agentTools).toHaveProperty("edit_note");
+    expect(agentTools).toHaveProperty("create_diagram");
+    expect(agentTools).not.toHaveProperty("move_path");
     expect(agentTools).not.toHaveProperty("list_notes");
     expect(agentTools).not.toHaveProperty("run_terminal");
   });
@@ -73,7 +88,7 @@ describe("vault agent tools", () => {
     try {
       const agentTools = buildVaultTools("agent");
       expect(agentTools).toHaveProperty("run_terminal");
-      expect(Object.keys(agentTools)).toHaveLength(10);
+      expect(Object.keys(agentTools)).toHaveLength(24);
       const prompt = buildSystemPrompt({
         mode: "agent",
         vaultPath: null,
@@ -202,10 +217,13 @@ describe("vault agent tools", () => {
     expect(agentPrompt).toMatch(/kind=tasks/);
     expect(agentPrompt).toContain("parallel specialists");
     expect(agentPrompt).toContain("depends_on");
-    expect(agentPrompt).toContain("single kind=diagram specialist");
+    expect(agentPrompt).toContain("prefer edit_note");
+    expect(agentPrompt).toContain("create_diagram");
+    expect(agentPrompt).toContain("courses (.mdcourse)");
+    expect(agentPrompt).toContain("fetch the listed facts");
+    expect(agentPrompt).not.toContain("single kind=diagram specialist");
     expect(agentPrompt).toContain("list_folder");
-    expect(agentPrompt).not.toContain("prefer edit_note");
-    expect(agentPrompt).not.toContain("move_path");
+    expect(agentPrompt).toContain("move, rename, delete, tag");
     expect(agentPrompt).not.toContain("run_terminal");
   });
 

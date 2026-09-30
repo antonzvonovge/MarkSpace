@@ -25,7 +25,8 @@ describe("listChatTools", () => {
     expect(ids).toContain("run_specialist");
     expect(ids).toContain("search");
     expect(ids).toContain("memory");
-    expect(ids).not.toContain("edit_note");
+    expect(ids).toContain("edit_note");
+    expect(ids).toContain("create_diagram");
     expect(ids).not.toContain("web_search");
   });
 });

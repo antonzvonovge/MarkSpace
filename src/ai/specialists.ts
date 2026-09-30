@@ -641,13 +641,16 @@ export async function runSpecialist(params: {
 
 function runSpecialistDescription(terminalOn: boolean): string {
   const kinds = terminalOn
-    ? "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, Media library film cards, Tasks/ task notes (create/import/update/complete — never raw markdown under Tasks/), or a terminal command sequence"
-    : "research (vault/web), note editing, Draw.io diagrams, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, Media library film cards, or Tasks/ task notes (create/import/update/complete — never raw markdown under Tasks/)";
+    ? "fact retrieval, mechanical note/file ops, applying a ready diagram, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, Media library film cards, Tasks/ task notes (create/import/update/complete — never raw markdown under Tasks/), or a terminal command sequence"
+    : "fact retrieval, mechanical note/file ops, applying a ready diagram, .mdlnks links files, .mddict dictionaries, .mdhabit habit trackers, .mdcourse courses, Media library film cards, or Tasks/ task notes (create/import/update/complete — never raw markdown under Tasks/)";
   return [
     `Delegate a focused subtask to a specialist worker with a limited tool set. Use for ${kinds}.`,
+    "You author substantive notes and diagrams yourself (create_note, edit_note, write_note, create_diagram, mutate_diagram). Do not delegate prose, structure, conclusions, or diagram design.",
+    "research: the brief lists exact facts or questions to fetch. The worker returns facts, paths, and quotes. You write the conclusion.",
+    "edit_notes: only a mechanical file operation (move, rename, delete, tag, assets) or a verbatim paste of text you already wrote.",
+    "diagram: only when the task already contains the mermaid or xml to apply. Otherwise call create_diagram or mutate_diagram yourself.",
     "Independent workstreams: emit multiple run_specialist calls in ONE response.",
     "Dependent workstreams: one specialist, or the same response with id + depends_on (the later worker waits and receives the earlier summary).",
-    "Never split create and edits of one .drawio across diagram specialists — one kind=diagram does create_diagram (with mermaid or xml) and any later mutate_diagram.",
     "Vault Tasks/ (Inbox lists, due, priority, labels, subtasks, comments, Todoist→vault import): always kind=tasks with a self-contained brief — do not probe format with list_folder/read_note first.",
     "Give each a short title for the UI. Pass a self-contained task brief (do not rely on chat history). For write specialists, pass paths you will touch when known.",
   ].join(" ");
