@@ -900,6 +900,31 @@ fn write_run_file(dir: &Path, at: DateTime<Local>, trigger: RunTrigger) -> Resul
     fs::write(dir.join(name), body).map_err(|err| err.to_string())
 }
 
+fn delete_run_file(root: &Path, folder: &str, path: &str) -> Result<(), String> {
+    if !routines_child(folder) {
+        return Err("Routine folder must stay inside Routines/".into());
+    }
+    let rel = path.trim().trim_start_matches('/');
+    let prefix = format!("{folder}/");
+    let Some(file_name) = rel
+        .strip_prefix(&prefix)
+        .filter(|name| !name.is_empty() && !name.contains('/') && !name.contains('\\'))
+    else {
+        return Err("Run is not in this routine".into());
+    };
+    let Some(stem) = file_name.strip_suffix(".md") else {
+        return Err("Not a run log".into());
+    };
+    if parse_run_stem(stem).is_none() {
+        return Err("Not a run log".into());
+    }
+    let full = root.join(rel);
+    if full.is_file() {
+        fs::remove_file(&full).map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
 fn list_run_files(root: &Path, folder: &str) -> Result<Vec<RoutineRunFile>, String> {
     if !routines_child(folder) {
         return Ok(Vec::new());
@@ -1054,6 +1079,19 @@ pub fn list_routine_runs(
     let _io = runtime().io.lock();
     let doc = read_routine(&root, &id)?;
     list_run_files(&root, &doc.folder)
+}
+
+#[tauri::command]
+pub fn delete_routine_run(
+    state: State<VaultState>,
+    id: String,
+    path: String,
+) -> Result<(), String> {
+    let root = get_root(&state)?;
+    validate_id(&id)?;
+    let _io = runtime().io.lock();
+    let doc = read_routine(&root, &id)?;
+    delete_run_file(&root, &doc.folder, &path)
 }
 
 #[tauri::command]
@@ -1272,6 +1310,18 @@ mod tests {
         assert!(files[0].path.ends_with("2026-10-01 16-32-00 schedule.md"));
         let body = fs::read_to_string(root.join(&files[0].path)).unwrap();
         assert!(body.contains("Status: ok"));
+        delete_run_file(&root, &saved.folder, &files[0].path).unwrap();
+        assert!(list_run_files(&root, &saved.folder).unwrap().is_empty());
+        assert!(!root.join(&files[0].path).exists());
+        fs::write(root.join(&saved.folder).join("notes.md"), "keep").unwrap();
+        assert!(delete_run_file(&root, &saved.folder, "Routines/Morning/notes.md").is_err());
+        assert!(root.join(&saved.folder).join("notes.md").is_file());
+        assert!(delete_run_file(
+            &root,
+            &saved.folder,
+            "Routines/Other/2026-10-01 16-32-00 schedule.md"
+        )
+        .is_err());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { formatSchedule } from "../lib/routineSchedule";
 import {
+  deleteRoutineRun,
   listRoutineRuns,
   type RoutineRunFile,
   type RoutineTrigger,
@@ -14,6 +15,18 @@ function errorText(err: unknown): string {
   if (typeof err === "string") return err;
   if (err instanceof Error && err.message) return err.message;
   return "Could not save routine";
+}
+
+function formatNextFire(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function triggerLabel(trigger: RoutineTrigger): string {
@@ -59,6 +72,26 @@ function JobSpinner() {
         />
       </svg>
     </span>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M13.25 8A5.25 5.25 0 0 1 4.4 11.6M2.75 8A5.25 5.25 0 0 1 11.6 4.4"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+      />
+      <path
+        d="M13.25 3.1v2.7h-2.7M2.75 12.9V10.2h2.7"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -108,6 +141,8 @@ function RoutineJob({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<"run" | "delete" | null>(null);
+  const [deleteRun, setDeleteRun] = useState<RoutineRunFile | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const [holdRun, setHoldRun] = useState(false);
   const nameFocused = useRef(false);
   const listSeq = useRef(0);
@@ -143,7 +178,7 @@ function RoutineJob({ id }: { id: string }) {
         }
         setError(errorText(err));
       });
-  }, [id, journalEpoch]);
+  }, [id, journalEpoch, reloadTick]);
 
   const persist = async (nextName: string, nextCron: string) => {
     const trimmed = nextName.trim();
@@ -168,6 +203,7 @@ function RoutineJob({ id }: { id: string }) {
   }
 
   const running = runningId === id || holdRun;
+  const nextFire = formatNextFire(routine.nextRunAt);
 
   return (
     <div className="routine-job">
@@ -249,13 +285,27 @@ function RoutineJob({ id }: { id: string }) {
         </div>
         {error ? <p className="routine-job-error">{error}</p> : null}
       </div>
-      <div className="routine-job-label routine-job-runs-label">Runs</div>
+      <div className="routine-job-label routine-job-runs-label">
+        <span>
+          Runs
+          {nextFire ? <span className="routine-job-next"> (next run {nextFire})</span> : null}
+        </span>
+        <button
+          type="button"
+          className="routine-job-refresh"
+          title="Refresh runs"
+          aria-label="Refresh runs"
+          onClick={() => setReloadTick((tick) => tick + 1)}
+        >
+          <RefreshIcon />
+        </button>
+      </div>
       {runs.length === 0 ? (
         <p className="routine-job-empty">No runs yet</p>
       ) : (
         <ul className="routine-job-runs">
           {runs.map((run) => (
-            <li key={run.path}>
+            <li key={run.path} className="routine-job-run-line">
               <button
                 type="button"
                 className="routine-job-run"
@@ -266,10 +316,48 @@ function RoutineJob({ id }: { id: string }) {
                 <span className="routine-job-run-when">{run.at}</span>
                 <span className="routine-job-run-trigger">{triggerLabel(run.trigger)}</span>
               </button>
+              <button
+                type="button"
+                className="routine-job-run-delete"
+                title="Delete run"
+                aria-label={`Delete run ${run.at}`}
+                onClick={() => setDeleteRun(run)}
+              >
+                <TrashIcon />
+              </button>
             </li>
           ))}
         </ul>
       )}
+      <ConfirmDialog
+        open={deleteRun !== null}
+        title="Delete run"
+        description={
+          deleteRun
+            ? `Delete the run from ${deleteRun.at}? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        onCancel={() => setDeleteRun(null)}
+        onConfirm={() => {
+          const run = deleteRun;
+          setDeleteRun(null);
+          if (!run) return;
+          listSeq.current += 1;
+          setRuns((rows) => rows.filter((row) => row.path !== run.path));
+          const { tabs, closeTab } = useVaultStore.getState();
+          if (tabs.some((tab) => tab.path === run.path)) {
+            void closeTab(run.path);
+          }
+          void deleteRoutineRun(id, run.path).catch((err: unknown) => {
+            setError(errorText(err));
+            const seq = ++listSeq.current;
+            void listRoutineRuns(id).then((rows) => {
+              if (seq === listSeq.current) setRuns(rows);
+            });
+          });
+        }}
+      />
       <ConfirmDialog
         open={confirm !== null}
         title={confirm === "delete" ? "Delete routine" : "Run now"}

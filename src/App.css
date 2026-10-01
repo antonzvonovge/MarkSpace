@@ -1785,7 +1785,39 @@ select {
 }
 
 .routine-job-runs-label {
-  padding: 10px 16px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px 0 16px;
+}
+
+.routine-job-next {
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.routine-job-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.routine-job-refresh:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
 }
 
 .routine-job-input {
@@ -1819,16 +1851,27 @@ select {
   overflow: auto;
 }
 
+.routine-job-run-line {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  border-bottom: 1px solid var(--line);
+}
+
+.routine-job-run-line:hover {
+  background: var(--sidebar-hover);
+}
+
 .routine-job-run {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  width: 100%;
-  height: 32px;
-  padding: 0 16px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px 0 16px;
   border: 0;
-  border-bottom: 1px solid var(--line);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -1837,8 +1880,33 @@ select {
   cursor: pointer;
 }
 
-.routine-job-run:hover {
-  background: var(--sidebar-hover);
+.routine-job-run-delete svg {
+  width: 14px;
+  height: 14px;
+}
+
+.routine-job-run-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.4;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.routine-job-run-line:hover .routine-job-run-delete,
+.routine-job-run-delete:hover,
+.routine-job-run-delete:focus-visible {
+  opacity: 1;
+  color: var(--text);
 }
 
 .routine-job-run-trigger {

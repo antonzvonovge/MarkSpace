@@ -229,6 +229,7 @@ pub fn run() {
             routines::set_routine_enabled,
             routines::delete_routine,
             routines::list_routine_runs,
+            routines::delete_routine_run,
             routines::run_routine_now,
             task_lists::list_task_list_groups,
             task_lists::upsert_task_list_group,

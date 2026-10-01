@@ -57,6 +57,10 @@ export async function listRoutineRuns(id: string): Promise<RoutineRunFile[]> {
   return invoke<RoutineRunFile[]>("list_routine_runs", { id });
 }
 
+export async function deleteRoutineRun(id: string, path: string): Promise<void> {
+  await invoke("delete_routine_run", { id, path });
+}
+
 export async function deleteRoutine(id: string): Promise<void> {
   await invoke("delete_routine", { id });
 }
