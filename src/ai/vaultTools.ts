@@ -863,15 +863,6 @@ export function buildVaultTools(mode: ChatMode, opts?: BuildVaultToolsOpts) {
       },
     }),
 
-    read_format_guide: tool({
-      description:
-        "Return the full MarkSpace Markdown dialect specification (wiki-links, Draw.io embeds, image widths, tables, diagrams, unsupported syntax). Call when unsure how to write or edit note markdown, or before non-trivial markdown edits.",
-      inputSchema: z.object({}),
-      execute: async () => ({
-        guide: MARKDOWN_FORMAT_GUIDE,
-      }),
-    }),
-
     read_skill: tool({
       description:
         "Load a vault skill by id (filename stem under Skills/). Call when a listed skill matches the user's task, before following its instructions.",
@@ -2286,7 +2277,7 @@ export function buildSystemPrompt(opts: {
   const lines = [
     "You are MarkSpace, an AI assistant embedded in a local Markdown vault app.",
     "You mostly work with Markdown (.md) notes — a dialect of standard Markdown.",
-    "Internal vault links are only `[[Note]]` or `[[folder/note|Alias]]`. Never `[label](https://file.md)` or hybrid `[[folder/[Note.md](https://Note.md)]]` for a note.",
+    "Internal vault links are only [[Note]] or [[folder/note|Alias]]. Never `[label](https://file.md)` or hybrid [[folder/[Note.md](https://Note.md)]] for a note. Do not wrap a wiki-link in backticks.",
     `Mode: ${opts.mode === "ask" ? "Ask (read-only tools only — do not attempt to modify notes)" : "Agent (you author notes and .drawio diagrams; delegate fact retrieval and mechanical or structured work via run_specialist)"}.`,
     hostOsSystemPromptLine(undefined, {
       terminalEnabled: opts.mode === "agent" && isAgentTerminalEnabled(),
@@ -2313,8 +2304,8 @@ export function buildSystemPrompt(opts: {
       "CRITICAL — authorship: write substantive markdown yourself with create_note, edit_note, or write_note (prefer edit_note). Do not ask kind=edit_notes to invent prose, structure, or what a note should say. Author .drawio yourself: first paint is create_diagram with mermaid or xml (call read_drawio_format first), then mutate_diagram for edits. Never create an empty file and fill it with mutate_diagram. To embed a diagram in a note, edit the note yourself after create_diagram. kind=diagram only when the brief already contains the mermaid or xml.",
       "CRITICAL — parallel specialists: when workstreams are independent, emit several run_specialist calls in ONE response (each with a short title, optional id, and self-contained task). Do not serialize unrelated work. When workstreams depend on each other, either put them in ONE specialist or emit them in the same response with id / depends_on so the later worker waits and receives the earlier summary — do not wait for the next model round if the pipeline is already known. Avoid parallel write specialists on overlapping paths unless they use depends_on. Never re-call run_specialist for work that already succeeded this turn — use the tool result and reply to the user.",
       "CRITICAL — Tasks/: create, update, complete, move, nest, comment, or import vault task notes under Tasks/ ONLY via run_specialist kind=tasks. Never write_note/edit_note/create_note under Tasks/, and do not reverse-engineer the format by reading sample notes. For Todoist or other MCP → vault: gather source data with MCP yourself, then delegate ONE kind=tasks specialist with a self-contained brief (worker has create_tasks for batches). Do not ask the user how to format vault tasks.",
-      "Cite vault files in chat with wiki-links, including dictionaries: `[[English/Dictionary.mddict|Dictionary.mddict]]` (also .mdlnks / .mdhabit / .mdcourse / .drawio / .pdf).",
-      "CRITICAL — vault notes use only `[[path/Note]]` / `[[path/Note|Label]]`. Never `[label](https://Note.md)`, `https://file.md`, or hybrid `[[folder/[Note.md](https://Note.md)]]` / `[[folder/[Note.md](https://Note.md)|Label]]` (breaks the chat link). `[text](https://…)` is for real websites only. In the note body do not wrap a wiki-link in backticks: backticks in these instructions only quote the pattern, and a backtick-wrapped link does not open.",
+      "Cite vault files in chat with wiki-links, including dictionaries: [[English/Dictionary.mddict|Dictionary.mddict]] (also .mdlnks / .mdhabit / .mdcourse / .drawio / .pdf). Do not wrap these in backticks.",
+      "CRITICAL — vault notes use only [[path/Note]] or [[path/Note|Label]]. Never `[label](https://Note.md)`, `https://file.md`, or hybrid [[folder/[Note.md](https://Note.md)]] or [[folder/[Note.md](https://Note.md)|Label]] (breaks the chat link). `[text](https://…)` is for real websites only. Do not put a backtick character on either side of a wiki-link; that makes it inert code and it does not open.",
       "Diary daily notes: `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` — call open_or_create_daily_note yourself, then write the entry with edit_note.",
       `Web API keys configured: Tavily=${tavilyConfigured ? "yes" : "no"}, Firecrawl=${firecrawlConfigured ? "yes" : "no"}.`,
     );
@@ -2355,8 +2346,15 @@ export function buildSystemPrompt(opts: {
     "Folder notes: every vault folder (except the vault root and Incoming) has a special hidden overview note at `{folder}/.folder.md` (not listed in the tree). When the user pastes/drops a folder into chat, the message names both the folder and its folder note path separately. If they ask to read/edit/open the folder note / overview for a mentioned folder, they mean that exact `{folder}/.folder.md` — not some other note inside the folder. Pass a folder path or `{folder}/.folder.md` to open_note (created if missing); use read_note / edit_note on `{folder}/.folder.md` for contents. If a note was converted into a folder, the old `{name}.md` path is no longer a file — tools remap it to `{name}/.folder.md`; prefer that path in later calls.",
     "Incoming: reserved inbox folder `Incoming/` at the vault root. It is hidden from the workspace tree and shown only in the Incoming sidebar section. Opening Incoming selects that folder (for create/import) and opens today’s diary daily note `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` when a Diary project exists — not Incoming/.folder.md and not a note inside Incoming. Users capture fleeting notes via Capture to Incoming (Ctrl+Shift+N) or Send to Incoming from the editor; each capture is a separate `.md` in `Incoming/` tagged `inbox`. Users also drop other files into Incoming to sort later.",
     "When the user asks to open/show a file, call open_note.",
-    "MarkSpace Markdown dialect — follow these rules; call read_format_guide when unsure:",
-    ...markdownCoreRules(),
+    ...(opts.mode === "ask"
+      ? [
+          "MarkSpace Markdown dialect — follow these rules in chat replies:",
+          ...markdownCoreRules(),
+        ]
+      : [
+          "MarkSpace Markdown dialect — follow this guide when writing or editing notes:",
+          MARKDOWN_FORMAT_GUIDE,
+        ]),
     opts.mode === "agent"
       ? "In chat replies you may include diagrams as fenced ```d2 (preferred), ```mermaid, ```plantuml / ```puml, ```dot / ```graphviz, or ```markmap. For freeform vault graphics, author a .drawio yourself with create_diagram."
       : "In chat replies you may include diagrams as fenced ```d2 (preferred), ```mermaid, ```plantuml / ```puml, ```dot / ```graphviz, or ```markmap. For freeform vault graphics use .drawio tools.",

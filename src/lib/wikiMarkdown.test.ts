@@ -5,6 +5,7 @@ import {
   wikiTargetFromHref,
   extractWikiLinkTargets,
   healFakeHttpsVaultLinks,
+  normalizeVaultLinks,
 } from "./wikiMarkdown";
 
 describe("healFakeHttpsVaultLinks", () => {
@@ -34,6 +35,29 @@ describe("healFakeHttpsVaultLinks", () => {
   it("leaves real website .md URLs alone", () => {
     const src = "[docs](https://example.com/guide.md)";
     expect(healFakeHttpsVaultLinks(src)).toBe(src);
+  });
+
+  it("unwraps a backtick-wrapped wiki-link and heals fake https links", () => {
+    expect(
+      normalizeVaultLinks(
+        "Все данные в файле `[[Дневник/Динамика отношений.md]]`.",
+      ),
+    ).toBe("Все данные в файле [[Дневник/Динамика отношений.md]].");
+    expect(
+      normalizeVaultLinks("Теория: `[[folder/Note.md|Подпись]]`"),
+    ).toBe("Теория: [[folder/Note.md|Подпись]]");
+    expect(normalizeVaultLinks("`[Speaking.md](https://Speaking.md)`")).toBe(
+      "[[Speaking.md]]",
+    );
+  });
+
+  it("leaves fenced examples and prose inside code spans", () => {
+    const fenced = ["```", "`[[Note]]`", "```", "see `not [[only]] a link`"].join(
+      "\n",
+    );
+    expect(normalizeVaultLinks(fenced)).toBe(fenced);
+    const site = "[docs](https://example.com/guide.md)";
+    expect(normalizeVaultLinks(site)).toBe(site);
   });
 
   it("is applied by wikiToMarkdown before conversion", () => {

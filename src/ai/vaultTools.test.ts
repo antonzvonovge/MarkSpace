@@ -61,7 +61,6 @@ describe("vault agent tools", () => {
       "pick_vault_folder",
       "read_diagram",
       "read_drawio_format",
-      "read_format_guide",
       "read_note",
       "read_skill",
       "run_specialist",
@@ -88,7 +87,7 @@ describe("vault agent tools", () => {
     try {
       const agentTools = buildVaultTools("agent");
       expect(agentTools).toHaveProperty("run_terminal");
-      expect(Object.keys(agentTools)).toHaveLength(24);
+      expect(Object.keys(agentTools)).toHaveLength(23);
       const prompt = buildSystemPrompt({
         mode: "agent",
         vaultPath: null,
@@ -199,7 +198,7 @@ describe("vault agent tools", () => {
     expect(askPrompt).toContain("not some other note inside the folder");
     expect(askPrompt).toContain("remap it to `{name}/.folder.md`");
     expect(askPrompt).toContain(
-      "In **chat replies**, reference vault files with `[[vault/path/Note.md]]`",
+      "In **chat replies**, reference vault files with [[vault/path/Note.md]]",
     );
     expect(askPrompt).toContain(".mddict");
     expect(askPrompt).toMatch(/Web API keys configured: Tavily=(yes|no), Firecrawl=(yes|no)/);
@@ -222,6 +221,11 @@ describe("vault agent tools", () => {
     expect(agentPrompt).toContain("courses (.mdcourse)");
     expect(agentPrompt).toContain("fetch the listed facts");
     expect(agentPrompt).not.toContain("single kind=diagram specialist");
+    expect(agentPrompt).toContain("## Links");
+    expect(agentPrompt).toContain("## Not supported");
+    expect(agentPrompt).not.toContain("read_format_guide");
+    expect(askPrompt).not.toContain("## Not supported");
+    expect(askPrompt).not.toContain("read_format_guide");
     expect(agentPrompt).toContain("list_folder");
     expect(agentPrompt).toContain("move, rename, delete, tag");
     expect(agentPrompt).not.toContain("run_terminal");

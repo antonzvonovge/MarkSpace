@@ -3,19 +3,19 @@
 MarkSpace notes are Markdown with a small set of vault-specific extensions.
 On disk the source is plain text; the live editor (BlockNote) round-trips through
 these conventions. Agents that create or edit `.md` files **must** follow this
-guide. Call `read_format_guide` for the full text when unsure.
+guide.
 
 <!-- core-rules:start -->
-- Prefer wiki-links for notes: `[[Note]]` or `[[folder/note|Alias]]`. Do not use `[[Note#heading]]` (unsupported). A wiki target that names an existing **folder** resolves to that folder’s hidden overview note `{folder}/.folder.md` (created on open if missing). Never write `[label](https://Note.md)`, a bare `https://file.md`, or a hybrid nested form `[[folder/[Note.md](https://Note.md)]]` for a vault note — that is an external URL / broken wiki-link, not a vault link.
-- In the note body, never wrap a wiki-link in backticks. Backticks in these rules only quote a pattern; they are not part of the link. A backtick immediately before `[[` or after `]]` makes the link inert code that does not open.
-- In **chat replies**, reference vault files with `[[vault/path/Note.md]]`, `[[Note|Label]]`, or `![[vault/path/Note.md]]` — also `.mddict`, `.mdlnks`, `.mdhabit`, `.mdcourse`, `.drawio`, and `.pdf` paths. All render as a clickable file link that opens the document. Mention a file this way whenever you create, open, or cite one. Never nest `[Name.md](https://Name.md)` inside `[[…]]`.
-- Embed Draw.io only as `![[path/diagram.drawio]]` or `![[path/diagram.drawio|480]]`. Embed audio as `![[clip.wav]]` or `![[folder/clip.mp3]]` (also `.m4a` / `.ogg` / `.aac`; a bare filename is next to the note). Outside the chat-only `.md` reference above, do not use `![[OtherNote]]` for notes.
+- Prefer wiki-links for notes: [[Note]] or [[folder/note|Alias]]. Do not use [[Note#heading]] (unsupported). A wiki target that names an existing **folder** resolves to that folder’s hidden overview note `{folder}/.folder.md` (created on open if missing). Never write `[label](https://Note.md)`, a bare `https://file.md`, or a hybrid nested form [[folder/[Note.md](https://Note.md)]] for a vault note — that is an external URL / broken wiki-link, not a vault link.
+- In the note body and in chat, write a wiki-link with the bracket characters alone. Do not put a backtick character on either side of it. A backtick-wrapped link is inert code and does not open.
+- In **chat replies**, reference vault files with [[vault/path/Note.md]], [[Note|Label]], or ![[vault/path/Note.md]] — also `.mddict`, `.mdlnks`, `.mdhabit`, `.mdcourse`, `.drawio`, and `.pdf` paths. All render as a clickable file link that opens the document. Mention a file this way whenever you create, open, or cite one. Never nest `[Name.md](https://Name.md)` inside [[…]].
+- Embed Draw.io only as ![[path/diagram.drawio]] or ![[path/diagram.drawio|480]]. Embed audio as ![[clip.wav]] or ![[folder/clip.mp3]] (also `.m4a` / `.ogg` / `.aac`; a bare filename is next to the note). Outside the chat-only `.md` reference above, do not use ![[OtherNote]] for notes.
 - Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
 - Tables: use GFM pipe tables (`| col |`). Never draw ASCII / box-drawing tables (`+---`, `│`, monospace grids) and never put a table inside a plain-text / untitled code fence — those stay unrendered junk. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
 - Blockquotes: each line is `>` then **exactly one** space then the text (`> **Goal:** …`). Never `>  ` (two spaces after `>`) — CommonMark treats the extra space as content, so Live shows the quote shifted right of the bar. Blank quoted lines are a lone `>`. Nested quotes use `> > ` (one space after each `>`). Quoted lists: `> * item`, not `>  * item`.
 - Nested lists: use `*` bullets (preferred over `-`). Indent is **relative to the parent item’s text column and compounds at every depth**: take the parent’s own indent and add **2 spaces** for a `*` parent, **3 spaces** for a `1. ` parent (`10. ` → 4). So a bullet under `1. ` sits at 3, its own child at 5, a numbered child of that at 8 — never reset to 2/3 just because you are deeper. Never put a blank line between a parent item and its nested children — that breaks nesting. Bold labels (`* **Label:** …`): put a **short** body on the same line; for a longer explanation after the label, put it in an **indented** continuation paragraph at that item’s text column so it stays inside the item — never a flush-left (or under-indented) paragraph, which ends the list and restarts numbering at `1.`. The same indent applies to anything else inside an item: extra paragraphs, code fences, tables, images. When editing, preserve the note’s existing list markers and indent depth.
-- Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. Prefer fenced ` ```d2 ` for richer architecture text-diagrams; also ` ```mermaid `, ` ```plantuml ` / ` ```puml `, ` ```dot ` / ` ```graphviz `, ` ```markmap `. For freeform rich graphics create/edit a `.drawio` and embed `![[path/diagram.drawio]]`. In Mermaid, quote subgraph/node labels that contain `(…)`, `<br/>`, or other special chars: `subgraph id ["Title (detail)"]`, `A["Label<br/>line2"]` — unquoted parentheses inside `[…]` cause parse errors.
+- Diagrams: never ASCII / box-drawing flowcharts in plain-text fences. Prefer fenced ` ```d2 ` for richer architecture text-diagrams; also ` ```mermaid `, ` ```plantuml ` / ` ```puml `, ` ```dot ` / ` ```graphviz `, ` ```markmap `. For freeform rich graphics create/edit a `.drawio` and embed ![[path/diagram.drawio]]. In Mermaid, quote subgraph/node labels that contain `(…)`, `<br/>`, or other special chars: `subgraph id ["Title (detail)"]`, `A["Label<br/>line2"]` — unquoted parentheses inside `[…]` cause parse errors.
 - Math: inline `$Cl^-$` and display `$$E = mc^2$$` (KaTeX). Same in chat replies. Prefer TeX for formulas; do not invent unsupported callouts/highlights.
 - Page metadata lives in YAML front-matter at the very top. MarkSpace manages `created` and `updated` ISO timestamps on save plus `tags:`, written as a block list of plain strings (`  - work`) — never `  - name: work` or any other mapping; keep any other keys intact and never duplicate the block.
 - Diary daily notes may set YAML `marker:` to a catalog id from Settings → Diary (defaults include `holiday`, `important`, `sad`, …) so the sidebar calendar shows that day's emoji; omit the key (or leave it empty) to clear.
@@ -23,7 +23,7 @@ guide. Call `read_format_guide` for the full text when unsure.
 - Language-learning projects may keep a **Lexicon** tree at `{project}/Lexicon/…` (at most two folders under `Lexicon/`, then a lemma `.md`). Quick Translate writes a full dictionary article in the background (status bar); keep YAML `lemma` / `lang` / `aliases` and the `## Notes` heading. Do not delete `## Notes` or the user’s text below it. After several **new** lemmas, the app may review and move files inside `Lexicon/`.
 - Media library projects: one `.md` per title under a genre shelf folder (existing child matching any genre, else `{FirstGenre}`; no genres → project root). Front-matter `title` (localized), optional `original_title`, `kind` (`film`|`series`|`animation`), `genres` (list), `countries` (list), `year`, `rating` (`legend`|`quality`|`watchable`|`fine`), `director`, optional `imdb_id`, `kinopoisk_id`, optional `poster` (note-relative `.assets/…` path — canonical for the card chrome), optional `watched` (list of `YYYY-MM-DD` view days; duplicates = rewatches). Genres ≠ page `tags:`. Auto-created file name: `{year}-{title}` (localized `title` if set, else `original_title`). Poster file: write into `.assets/` then set `poster:` and leading `![|240](.assets/…)` — never invent paths. Body after the poster is free-form personal notes (no required section headings).
 - Inline tags in the body: `#multi-agent`, `#project/markspace` (letters, digits, `_`, `-`, `/`). Pure digits (`#5`, `#42`) are not tags. Not ATX headings (`# Title`), not inside code/fences/URLs. Inline tags do **not** auto-write front-matter; both feed the vault tag catalog.
-- Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). Full list: call `read_format_guide`.
+- Do **not** emit unsupported syntax (callouts, `==highlight==`, `%%comments%%`, footnotes, block ids, note embeds in note bodies). The full list is the Not supported section of this guide.
 <!-- core-rules:end -->
 
 ## Front-matter, timestamps, and page tags
@@ -107,7 +107,7 @@ Short personal note about the title.
 
 Foreign-language **projects** (top-level folders with project type language learning) may contain `{project}/Lexicon/`. Quick Translate (Ctrl+Shift+T) caches a compact JSON card, then **in the background** (status bar) writes a full dictionary article into the lemma note. After every **8 new lemmas** in that project (any entry point that creates a lemma note), a separate background job may **move** files under `Lexicon/` (at most two category folders, then the `.md` file). Regenerating an existing article does not count. Do not open the note just to generate it.
 
-The generated article is a **study note** in MarkSpace markdown (not lookup JSON): GFM tables, nested `*` lists, `[[project/Lexicon/lemma|lemma]]` wiki-links, one blank line between blocks. Typical sections: Pronunciation, Grammar, Meanings, Collocations, Idioms, Related words, Usage, Common mistakes. Omit empty sections. Explanations in the user’s native language; examples in the learning language. Do not invent `.assets/` or Draw.io paths.
+The generated article is a **study note** in MarkSpace markdown (not lookup JSON): GFM tables, nested `*` lists, [[project/Lexicon/lemma|lemma]] wiki-links, one blank line between blocks. Typical sections: Pronunciation, Grammar, Meanings, Collocations, Idioms, Related words, Usage, Common mistakes. Omit empty sections. Explanations in the user’s native language; examples in the learning language. Do not invent `.assets/` or Draw.io paths.
 
 ```md
 ---
@@ -165,59 +165,53 @@ In the note body, hashtags are styled inline tags (editable text in Live mode):
 
 - Valid name after `#`: Unicode letters/digits, then letters/digits/`_`/`-`/`/`. Pure digit names (`#5`, `#42`) are **not** tags.
 - Must be bounded (start of text or after whitespace/punctuation). `word#tag` is not a tag.
-- Not tags: ATX headings (`# Title`, `## H2`), content inside inline/fenced code, URL fragments (`https://ex.com/a#frag`). Heading-style wiki anchors (`[[Note#heading]]`) are unsupported as jumps (the `#…` is part of the path).
+- Not tags: ATX headings (`# Title`, `## H2`), content inside inline/fenced code, URL fragments (`https://ex.com/a#frag`). Heading-style wiki anchors ([[Note#heading]]) are unsupported as jumps (the `#…` is part of the path).
 - Trailing punctuation (`.`, `,`, `!`, `)`) stays outside the tag: `#work.` → tag `work` + `.`.
 - Inline tags remain ordinary markdown text — you can place the caret inside and edit them. Live mode only highlights matching `#tags`.
 - Inline tags and front-matter `tags` share one vault catalog for suggestions; writing `#work` does **not** add `work` to YAML front-matter.
 
 ## Links
 
-| On disk | Meaning |
-|---|---|
-| `[[Welcome]]` | Wiki-link to note by path/name (opens or creates) |
-| `[[projects]]` | Wiki-link to a **folder** → hidden overview `{folder}/.folder.md` |
-| `[[projects/ideas\|Ideas]]` | Wiki-link with display alias |
-| `[Site](https://example.com)` | External URL (system browser) |
+- [[Welcome]] — wiki-link to a note by path or name (opens or creates).
+- [[projects]] — wiki-link to a **folder**, which opens the hidden overview `{folder}/.folder.md`.
+- [[projects/ideas|Ideas]] — wiki-link with a display alias.
+- `[Site](https://example.com)` — external URL (system browser).
 
-Internal links are **only** `[[…]]`. Do not use Markdown file hrefs (`[Local](./Welcome.md)`, `[Note](Note.md)`), fake hosts (`[20.08.2010.md](https://20.08.2010.md)`), or hybrids that nest those inside wiki brackets (`[[folder/[Note.md](https://Note.md)]]`, `[[folder/[Note.md](https://Note.md)|Label]]`). Write `[[folder/Note.md]]` / `[[folder/Note.md|Label]]` instead. In the note body those brackets stand alone: do not wrap the link in backticks. Backticks in this guide only quote a pattern; a backtick-wrapped link is inert code and does not open. `http:` / `https:` / `mailto:` always open in the system browser.
+Internal links are only [[Note]] or [[folder/Note|Label]]. Do not use Markdown file hrefs (`[Local](./Welcome.md)`, `[Note](Note.md)`), fake hosts (`[20.08.2010.md](https://20.08.2010.md)`), or hybrids that nest those inside wiki brackets ([[folder/[Note.md](https://Note.md)]], [[folder/[Note.md](https://Note.md)|Label]]). Write [[folder/Note.md]] or [[folder/Note.md|Label]]. In the note body and in chat the brackets stand alone: do not put a backtick character on either side. A backtick-wrapped link is inert code and does not open. `http:` / `https:` / `mailto:` always open in the system browser.
 
-Wiki targets must not contain `|` inside the target segment. A literal `#` in a path (e.g. folder `#5 …`) is allowed. Heading anchors like `[[Note#Section]]` are **not** supported — the `#…` part is treated as part of the path, not a jump to a heading.
+Wiki targets must not contain `|` inside the target segment. A literal `#` in a path (e.g. folder `#5 …`) is allowed. Heading anchors like [[Note#Section]] are **not** supported — the `#…` part is treated as part of the path, not a jump to a heading.
 
 Each vault folder may have a hidden **folder note** at `{folder}/.folder.md` (not shown in the sidebar tree). Clicking the folder creates it if missing and opens it. A wiki target that matches an existing folder resolves to that path; the note is created on open when absent.
 
-Internally the editor may temporarily rewrite wiki-links to `[text](wiki:…)` and back; on disk always prefer `[[…]]`.
+Internally the editor may temporarily rewrite wiki-links to `[text](wiki:…)` and back; on disk always prefer [[Note]] or [[folder/Note|Label]].
 
 ### Note references in chat replies
 
 Chat replies render wiki-links as clickable note references — a file icon plus
 link text. Clicking opens the note or activates its existing editor tab.
 
-| In a chat reply | Result |
-|---|---|
-| `[[vault/path/Note.md]]` | Link labelled with the path |
-| `[[vault/path/Note]]` | Same; the target is resolved without the extension |
-| `[[vault/path/Note\|Display label]]` | Link labelled `Display label` |
-| `![[vault/path/Note.md]]` | Same as the plain `[[…]]` form (not an embed) |
-| `[[vault/path/Dict.mddict\|Dictionary]]` | Opens a `.mddict` dictionary |
-| `[[vault/path/Links.mdlnks]]` | Opens a `.mdlnks` links collection |
-| `[[vault/path/Habits.mdhabit]]` | Opens a `.mdhabit` yearly habit tracker |
-| `[[vault/path/Skin.mdcourse]]` | Opens a `.mdcourse` course tracker |
+- [[vault/path/Note.md]] — link labelled with the path.
+- [[vault/path/Note]] — same; the target is resolved without the extension.
+- [[vault/path/Note|Display label]] — link labelled Display label.
+- ![[vault/path/Note.md]] — same as [[vault/path/Note.md]] (not an embed).
+- [[vault/path/Dict.mddict|Dictionary]] — opens a `.mddict` dictionary.
+- [[vault/path/Links.mdlnks]] — opens a `.mdlnks` links collection.
+- [[vault/path/Habits.mdhabit]] — opens a `.mdhabit` yearly habit tracker.
+- [[vault/path/Skin.mdcourse]] — opens a `.mdcourse` course tracker.
 
 Use this whenever you create, open, or cite a note, so the user can jump to it.
 Targets are vault-relative and must not contain `|` in the path segment. A literal `#` in a folder or file name is allowed.
 
 ## Embeds (Draw.io and audio)
 
-| On disk | Meaning |
-|---|---|
-| `![[diagram.drawio]]` | Embed a `.drawio` file (default preview width 480) |
-| `![[folder/diagram.drawio\|480]]` | Embed with explicit preview width (pixels) |
-| `![[listening.wav]]` | Embed an audio player (file next to the note, or vault-relative if the path has `/`) |
-| `![[folder/clip.mp3]]` | Same for `.mp3` / `.m4a` / `.ogg` / `.aac` |
+- ![[diagram.drawio]] — embed a `.drawio` file (default preview width 480).
+- ![[folder/diagram.drawio|480]] — embed with an explicit preview width in pixels.
+- ![[listening.wav]] — embed an audio player (file next to the note, or vault-relative if the path has `/`).
+- ![[folder/clip.mp3]] — same for `.mp3`, `.m4a`, `.ogg`, and `.aac`.
 
-Only paths ending in `.drawio` or those audio extensions are embeds. General note embeds `![[SomeNote]]` are **not** supported.
+Only paths ending in `.drawio` or those audio extensions are embeds. General note embeds ![[SomeNote]] are **not** supported.
 
-Legacy HTML `<div data-drawio-src="…">` may still round-trip to `![[…]]`; prefer the wiki embed form when writing new content.
+Legacy HTML `<div data-drawio-src="…">` may still round-trip to ![[diagram.drawio]]; prefer the wiki embed form when writing new content.
 
 ## Images and assets
 
@@ -279,7 +273,7 @@ Language tags: `mermaid`, `plantuml` / `puml`, `d2`, `dot` / `graphviz` (saved a
 - Mermaid / PlantUML — quick flowcharts, sequences, sketches.
 - **DOT / Graphviz** — dense branching graphs.
 - **Markmap** — mind maps from a Markdown outline.
-- For **freeform** rich graphics (colors, swimlanes, ArchiMate, hand layout) use a vault **Draw.io** file (`.drawio`) via diagram tools, then embed `![[path/diagram.drawio]]` (optional width `|480`).
+- For **freeform** rich graphics (colors, swimlanes, ArchiMate, hand layout) use a vault **Draw.io** file (`.drawio`) via diagram tools, then embed ![[path/diagram.drawio]] (optional width `|480`).
 - Do **not** draw diagrams with ASCII / box-drawing characters in a plain / untitled code fence — same problem as ASCII tables: they stay a “Plain Text” card.
 
 ### Mermaid pitfalls (common parse errors)
@@ -458,6 +452,6 @@ Do **not** generate any of the following — the editor will treat them as plain
 - Comments (`%%…%%`)
 - Footnotes (`[^1]`)
 - Block IDs (`^block-id`)
-- Wiki heading anchors (`[[Note#heading]]`)
-- Note embeds in note bodies (`![[OtherNote]]` — only `.drawio` and audio `.wav`/`.mp3`/`.m4a`/`.ogg`/`.aac` embeds work). Chat replies may use `![[path/Note.md]]` as a clickable note reference (see above); that is not an embed.
+- Wiki heading anchors ([[Note#heading]])
+- Note embeds in note bodies (![[OtherNote]] — only `.drawio` and audio `.wav`/`.mp3`/`.m4a`/`.ogg`/`.aac` embeds work). Chat replies may use ![[path/Note.md]] as a clickable note reference (see above); that is not an embed.
 - MDX / custom directives

@@ -1,3 +1,5 @@
+import { normalizeVaultLinks } from "./wikiMarkdown";
+
 /**
  * Normalize note markdown for cross-platform editing.
  *
@@ -13,7 +15,9 @@
  */
 export function normalizeMarkdown(content: string): string {
   const text = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  return healListContinuations(healFenceHardBreaks(text));
+  return healListContinuations(
+    normalizeVaultLinks(healFenceHardBreaks(text)),
+  );
 }
 
 /** Strip trailing `\` that CRLF corruption injected onto fence / code lines. */

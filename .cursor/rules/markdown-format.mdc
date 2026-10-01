@@ -10,8 +10,8 @@ MarkSpace notes use a **dialect** of Markdown (wiki-links, Draw.io embeds, image
 ## Single source of truth
 
 - Spec: `docs/markdown-format.md`
-- Core rules (always in the agent system prompt) live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
-- Full guide is exposed to the agent via the `read_format_guide` tool (`src/ai/markdownFormat.ts`).
+- Core rules (Ask system prompt, plus IELTS and lexicon writers) live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
+- The full guide is inlined into the Agent system prompt and into the `edit_notes` and `media` specialist prompts (`MARKDOWN_FORMAT_GUIDE` in `src/ai/markdownFormat.ts`).
 
 ## When you change the format
 

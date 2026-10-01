@@ -15,15 +15,25 @@ import {
 
 describe("toolPacks", () => {
   it("defines orchestrator authoring tools; terminal is opt-in", () => {
-    expect(ORCHESTRATOR_TOOL_NAMES).toHaveLength(23);
+    expect(ORCHESTRATOR_TOOL_NAMES).toHaveLength(22);
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("run_specialist");
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("edit_note");
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("create_diagram");
     expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("move_path");
     expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("ielts_practice");
     expect(ORCHESTRATOR_TOOL_NAMES).toContain("pick_vault_folder");
+    expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("read_format_guide");
     expect(ORCHESTRATOR_TOOL_NAMES).not.toContain("run_terminal");
-    expect(orchestratorToolNames(false)).toHaveLength(23);
+    expect(SPECIALIST_PRESETS.edit_notes.toolNames).not.toContain(
+      "read_format_guide",
+    );
+    expect(SPECIALIST_PRESETS.media.toolNames).not.toContain(
+      "read_format_guide",
+    );
+    expect(SPECIALIST_PRESETS.research.toolNames).not.toContain(
+      "read_format_guide",
+    );
+    expect(orchestratorToolNames(false)).toHaveLength(22);
     expect(orchestratorToolNames(true)).toEqual([
       ...ORCHESTRATOR_TOOL_NAMES,
       "run_terminal",

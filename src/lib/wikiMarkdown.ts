@@ -55,6 +55,65 @@ export function healFakeHttpsVaultLinks(text: string): string {
   return next;
 }
 
+const BARE_WIKI_LINK = /^\[\[[^\]|\r\n]+(?:\|[^\]]+)?\]\]$/;
+
+/**
+ * Enforce vault links outside fenced code:
+ * unwrap an inline code span that is only a wiki-link, then heal fake
+ * `https://Note.md` links. Fenced blocks stay literal.
+ */
+export function normalizeVaultLinks(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let fenceChar: "`" | "~" | null = null;
+  let fenceLen = 0;
+  let buf: string[] = [];
+
+  const flush = () => {
+    if (buf.length === 0) return;
+    const segment = buf.join("\n");
+    out.push(unwrapBacktickWikiLinks(healFakeHttpsVaultLinks(segment)));
+    buf = [];
+  };
+
+  for (const line of lines) {
+    if (fenceChar !== null) {
+      flush();
+      out.push(line);
+      if (isFenceClose(line, fenceChar, fenceLen)) {
+        fenceChar = null;
+        fenceLen = 0;
+      }
+      continue;
+    }
+    const open = line.match(/^[ \t]{0,3}(`{3,}|~{3,})/);
+    if (open) {
+      flush();
+      fenceChar = open[1][0] as "`" | "~";
+      fenceLen = open[1].length;
+      out.push(line);
+      continue;
+    }
+    buf.push(line);
+  }
+  flush();
+  return out.join("\n");
+}
+
+function unwrapBacktickWikiLinks(segment: string): string {
+  return segment.replace(/`([^`\n]+)`/g, (full, inner: string) => {
+    const trimmed = inner.trim();
+    return BARE_WIKI_LINK.test(trimmed) ? trimmed : full;
+  });
+}
+
+function isFenceClose(line: string, fenceChar: "`" | "~", fenceLen: number): boolean {
+  const m = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+  if (!m) return false;
+  if (m[1][0] !== fenceChar || m[1].length < fenceLen) return false;
+  return m[2].trim() === "";
+}
+
 export function wikiToMarkdown(source: string): string {
   // Audio file embeds → fenced code (same trick as Draw.io).
   let next = healFakeHttpsVaultLinks(source).replace(

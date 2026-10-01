@@ -58,9 +58,9 @@ describe("markdownFormat", () => {
 
   it("forbids backtick-wrapped wiki-links in note bodies", () => {
     const rules = markdownCoreRules().join("\n");
-    expect(rules).toMatch(/never wrap a wiki-link in backticks/i);
+    expect(rules).toMatch(/do not put a backtick character on either side/i);
     expect(rules).toMatch(/does not open/);
-    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/do not wrap the link in backticks/i);
+    expect(MARKDOWN_FORMAT_GUIDE).toMatch(/do not put a backtick character on either side/i);
   });
 
   it("documents diary day markers in core rules", () => {

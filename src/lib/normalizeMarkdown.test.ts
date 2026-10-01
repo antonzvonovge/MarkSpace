@@ -175,4 +175,10 @@ describe("normalizeMarkdown list continuations", () => {
     ].join("\n");
     expect(normalizeMarkdown(input)).toBe(input);
   });
+
+  it("unwraps backtick wiki-links on the note write path", () => {
+    expect(
+      normalizeMarkdown("Файл `[[Дневник/Динамика отношений.md]]`."),
+    ).toBe("Файл [[Дневник/Динамика отношений.md]].");
+  });
 });

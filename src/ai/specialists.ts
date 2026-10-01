@@ -20,6 +20,7 @@ import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { helperModelCallParams } from "../store/vaultAiSettingsStore";
 import { hostOsSystemPromptLine } from "../lib/hostOs";
 import { formatMcpWorkerPromptLines } from "./mcpTools";
+import { MARKDOWN_FORMAT_GUIDE } from "./markdownFormat";
 import { isAgentTerminalEnabled } from "./terminalTool";
 import {
   collectFolderAbouts,
@@ -445,6 +446,12 @@ export async function runSpecialist(params: {
     });
 
     const contextLines: string[] = [preset.system];
+    if (params.kind === "edit_notes" || params.kind === "media") {
+      contextLines.push(
+        "MarkSpace Markdown dialect — follow this guide when writing or editing notes:",
+        MARKDOWN_FORMAT_GUIDE,
+      );
+    }
     if (params.kind === "terminal") {
       contextLines.push(hostOsSystemPromptLine(undefined, { terminalEnabled: true }));
     }
