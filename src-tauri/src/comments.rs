@@ -97,7 +97,10 @@ fn normalize_rel(path: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Path required".into());
     }
-    if trimmed.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
+    if trimmed
+        .split('/')
+        .any(|p| p.is_empty() || p == "." || p == "..")
+    {
         return Err("Invalid path".into());
     }
     for component in Path::new(&trimmed).components() {
@@ -353,8 +356,7 @@ pub fn remap_comments(root: &Path, from: &str, to: Option<&str>) -> Result<(), S
         let next = if old == from {
             to.clone()
         } else if old.starts_with(&format!("{from}/")) {
-            to.as_ref()
-                .map(|t| format!("{t}{}", &old[from.len()..]))
+            to.as_ref().map(|t| format!("{t}{}", &old[from.len()..]))
         } else {
             continue;
         };
@@ -588,7 +590,9 @@ mod tests {
         assert!(load_comments_for_path(&root, "Proj/a.md").unwrap()[0].resolved);
 
         save_comments_for_path(&root, "Proj/a.md", Vec::new()).unwrap();
-        assert!(load_comments_for_path(&root, "Proj/a.md").unwrap().is_empty());
+        assert!(load_comments_for_path(&root, "Proj/a.md")
+            .unwrap()
+            .is_empty());
         assert!(!comments_file_path(&root, "Proj/a.md").exists());
         let _ = fs::remove_dir_all(&root);
     }

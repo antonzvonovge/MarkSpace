@@ -6,6 +6,7 @@ import {
   isGraphTab,
   isSettingsTab,
   isTasksTab,
+  isRoutineTab,
   isVirtualTab,
   type EditorTab,
 } from "../store/vaultStore";
@@ -13,6 +14,7 @@ import { canGoBack, canGoForward } from "../lib/navHistory";
 import { documentKind } from "../lib/vaultApi";
 import { isUnderDiaryProject, vaultProjectRootOf } from "../lib/diaryNotes";
 import { useChatUiStore } from "../store/chatUiStore";
+import { useRoutinesStore } from "../store/routinesStore";
 import { useFocusUiStore } from "../store/focusUiStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useTabReorder } from "../hooks/useTabReorder";
@@ -78,6 +80,13 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
       </span>
     );
   }
+  if (isRoutineTab(tab)) {
+    return (
+      <span className="editor-tab-icon" aria-hidden>
+        <RoutineTabIcon />
+      </span>
+    );
+  }
   if (isUnderDiaryProject(tab.path, projectPropertiesByPath)) {
     return (
       <span className="editor-tab-icon" aria-hidden>
@@ -108,6 +117,21 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
   );
 }
 
+function RoutineTabIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.25" stroke="currentColor" strokeWidth="1.35" />
+      <path
+        d="M8 4.75V8l2.1 1.4"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function TabItem({
   tab,
   index,
@@ -135,6 +159,10 @@ function TabItem({
   const projectPropertiesByPath = useVaultStore(
     (s) => s.projectPropertiesByPath,
   );
+  const routineId = isRoutineTab(tab) ? tab.path.slice("markspace:routine:".length) : "";
+  const routineName = useRoutinesStore((s) =>
+    routineId ? (s.routines.find((routine) => routine.id === routineId)?.name ?? "") : "",
+  );
   const reorder = bindReorder(index);
 
   const active = activePath === tab.path;
@@ -150,8 +178,10 @@ function TabItem({
       ? "Settings"
       : isTasksTab(tab)
         ? "Tasks"
-        : tab.path;
-  const label = tabLabel(tab.path, tab.kind);
+        : isRoutineTab(tab)
+          ? routineName || "Routine"
+          : tab.path;
+  const label = isRoutineTab(tab) ? routineName || "Routine" : tabLabel(tab.path, tab.kind);
 
   return (
     <div

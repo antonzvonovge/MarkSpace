@@ -51,7 +51,10 @@ fn normalize_rel(path: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Path required".into());
     }
-    if trimmed.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
+    if trimmed
+        .split('/')
+        .any(|p| p.is_empty() || p == "." || p == "..")
+    {
         return Err("Invalid path".into());
     }
     for component in Path::new(&trimmed).components() {
@@ -140,10 +143,7 @@ fn write_doc(root: &Path, doc: &DictProgressDoc) -> Result<(), String> {
     for (dict_path, words) in &doc.entries {
         let mut word_obj = Map::new();
         for (word, prog) in words {
-            word_obj.insert(
-                word.clone(),
-                json!({ "correctCount": prog.correct_count }),
-            );
+            word_obj.insert(word.clone(), json!({ "correctCount": prog.correct_count }));
         }
         if !word_obj.is_empty() {
             entries_obj.insert(dict_path.clone(), Value::Object(word_obj));
@@ -152,7 +152,8 @@ fn write_doc(root: &Path, doc: &DictProgressDoc) -> Result<(), String> {
 
     if entries_obj.is_empty() {
         if file.exists() {
-            fs::remove_file(&file).map_err(|e| format!("Cannot remove empty progress file: {e}"))?;
+            fs::remove_file(&file)
+                .map_err(|e| format!("Cannot remove empty progress file: {e}"))?;
         }
         return Ok(());
     }
@@ -277,20 +278,10 @@ pub fn set_dict_entry_progress(
             if correct_count == 0 {
                 words.remove(&existing_key);
             } else {
-                words.insert(
-                    existing_key,
-                    DictEntryProgress {
-                        correct_count,
-                    },
-                );
+                words.insert(existing_key, DictEntryProgress { correct_count });
             }
         } else if correct_count > 0 {
-            words.insert(
-                word_trim.clone(),
-                DictEntryProgress {
-                    correct_count,
-                },
-            );
+            words.insert(word_trim.clone(), DictEntryProgress { correct_count });
         }
     }
     if doc
@@ -302,9 +293,7 @@ pub fn set_dict_entry_progress(
         doc.entries.remove(&dict_key);
     }
     write_doc(&root, &doc)?;
-    Ok(DictEntryProgress {
-        correct_count,
-    })
+    Ok(DictEntryProgress { correct_count })
 }
 
 #[cfg(test)]
@@ -332,10 +321,7 @@ mod tests {
         let mut doc = empty_doc("German");
         doc.entries.insert(
             "German/verbs.mddict".into(),
-            HashMap::from([(
-                "sprechen".into(),
-                DictEntryProgress { correct_count: 3 },
-            )]),
+            HashMap::from([("sprechen".into(), DictEntryProgress { correct_count: 3 })]),
         );
         write_doc(&root, &doc).unwrap();
         let loaded = read_doc(&root, "German");
@@ -352,19 +338,13 @@ mod tests {
         let mut doc = empty_doc("German");
         doc.entries.insert(
             "German/old.mddict".into(),
-            HashMap::from([(
-                "Haus".into(),
-                DictEntryProgress { correct_count: 2 },
-            )]),
+            HashMap::from([("Haus".into(), DictEntryProgress { correct_count: 2 })]),
         );
         write_doc(&root, &doc).unwrap();
         remap_dict_progress(&root, "German/old.mddict", Some("German/new.mddict")).unwrap();
         let loaded = read_doc(&root, "German");
         assert!(loaded.entries.get("German/old.mddict").is_none());
-        assert_eq!(
-            loaded.entries["German/new.mddict"]["Haus"].correct_count,
-            2
-        );
+        assert_eq!(loaded.entries["German/new.mddict"]["Haus"].correct_count, 2);
         let _ = fs::remove_dir_all(&root);
     }
 }

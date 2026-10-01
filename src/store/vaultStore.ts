@@ -35,6 +35,7 @@ import {
   isVaultDocumentPath,
   isSkillsFolder,
   isIncomingFolder,
+  isRoutinesFolder,
   isTasksFolder,
   INCOMING_FOLDER,
   isValidSkillId,
@@ -176,7 +177,7 @@ function scheduleTagCatalogRefresh(refresh: () => Promise<void>) {
   }, TAG_CATALOG_REFRESH_MS);
 }
 
-export type TabKind = "file" | "graph" | "settings" | "tasks";
+export type TabKind = "file" | "graph" | "settings" | "tasks" | "routine";
 
 export type ViewMode = "live" | "source";
 
@@ -188,6 +189,19 @@ export const SETTINGS_TAB_PATH = "markspace:settings";
 
 /** Singleton virtual path for the Tasks panel. */
 export const TASKS_TAB_PATH = "markspace:tasks";
+
+/** One settings tab per routine: `markspace:routine:<id>`. */
+export const ROUTINE_TAB_PREFIX = "markspace:routine:";
+
+export function routineTabPath(id: string): string {
+  return `${ROUTINE_TAB_PREFIX}${id}`;
+}
+
+export function routineIdFromTab(path: string): string | null {
+  if (!path.startsWith(ROUTINE_TAB_PREFIX)) return null;
+  const id = path.slice(ROUTINE_TAB_PREFIX.length);
+  return id.length > 0 ? id : null;
+}
 
 /** Legacy virtual Incoming tab; migrated to today's Incoming note. */
 export const INCOMING_TAB_PATH = "markspace:incoming";
@@ -356,6 +370,10 @@ type VaultStore = {
     syncTreeSelection?: boolean;
     skipNavHistory?: boolean;
   }) => Promise<void>;
+  /** Open (or focus) the settings tab for one routine. */
+  openRoutineTab: (id: string) => Promise<void>;
+  /** Keep open notes inside a renamed routine folder. */
+  remapRoutineNotePaths: (from: string, to: string) => void;
   /** Select Incoming and open today's diary daily note (if a diary project exists). */
   openIncomingTab: (options?: {
     syncTreeSelection?: boolean;
@@ -512,9 +530,13 @@ export function isTasksTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
   return tab.kind === "tasks" || tab.path === TASKS_TAB_PATH;
 }
 
-/** Tabs backed by app UI instead of a vault file (graph, settings, tasks). */
+export function isRoutineTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
+  return tab.kind === "routine" || tab.path.startsWith(ROUTINE_TAB_PREFIX);
+}
+
+/** Tabs backed by app UI instead of a vault file (graph, settings, tasks, routines). */
 export function isVirtualTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
-  return isGraphTab(tab) || isSettingsTab(tab) || isTasksTab(tab);
+  return isGraphTab(tab) || isSettingsTab(tab) || isTasksTab(tab) || isRoutineTab(tab);
 }
 
 export function isFileTab(tab: Pick<EditorTab, "kind" | "path">): boolean {
@@ -769,6 +791,7 @@ function tabLabel(path: string, kind?: TabKind): string {
   if (kind === "graph" || path === GRAPH_TAB_PATH) return "Graph";
   if (kind === "settings" || path === SETTINGS_TAB_PATH) return "Settings";
   if (kind === "tasks" || path === TASKS_TAB_PATH) return "Tasks";
+  if (kind === "routine" || path.startsWith(ROUTINE_TAB_PREFIX)) return "Routine";
   if (isFolderNotePath(path)) {
     const folder = parentPath(path);
     return folder.split("/").pop() || folder || "Folder";
@@ -1688,7 +1711,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     if (
       isSkillsFolder(treePath, true) ||
       isIncomingFolder(treePath, true) ||
-      isTasksFolder(treePath, true)
+      isTasksFolder(treePath, true) ||
+      isRoutinesFolder(treePath, true)
     ) {
       return;
     }
@@ -1831,7 +1855,9 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
                 ? "settings"
                 : isTasksTab({ kind: t.kind ?? "file", path: t.path })
                   ? "tasks"
-                  : "file",
+                  : isRoutineTab({ kind: t.kind ?? "file", path: t.path })
+                    ? "routine"
+                    : "file",
             pinned: Boolean(t.pinned),
             viewMode: t.viewMode === "source" ? ("source" as const) : undefined,
           })),
@@ -1997,6 +2023,18 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         syncTreeSelection: options?.syncTreeSelection,
         skipNavHistory: options?.skipNavHistory,
       });
+      return;
+    }
+    const routineId = routineIdFromTab(path);
+    if (routineId) {
+      await openSingletonTab(
+        set,
+        get,
+        path,
+        "routine",
+        false,
+        options?.skipNavHistory === true,
+      );
       return;
     }
     if (path === INCOMING_TAB_PATH) {
@@ -2262,6 +2300,23 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       options?.syncTreeSelection !== false,
       options?.skipNavHistory === true,
     );
+  },
+
+  openRoutineTab: async (id) => {
+    await openSingletonTab(set, get, routineTabPath(id), "routine", false, false);
+  },
+
+  remapRoutineNotePaths: (from, to) => {
+    if (!from || from === to) return;
+    const mapPath = (path: string | null) => remapStoredPath(path, from, to);
+    set({
+      tabs: get().tabs.map((tab) => {
+        const path = mapPath(tab.path);
+        return path && path !== tab.path ? { ...tab, path } : tab;
+      }),
+      activePath: mapPath(get().activePath),
+    });
+    persistSession(get());
   },
 
   openIncomingTab: async (options) => {
@@ -3090,6 +3145,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot move the Tasks folder" });
       return null;
     }
+    if (isRoutinesFolder(from)) {
+      set({ error: "Cannot move the Routines folder" });
+      return null;
+    }
     if (isSkillsFolder(from) && toParent !== "") {
       set({ error: "Cannot move the Skills folder into another folder" });
       return null;
@@ -3270,7 +3329,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   nestTreeEntryUnderNote: async (from, notePath, toIndex = 0) => {
-    if (isIncomingFolder(from) || isSkillsFolder(from) || isTasksFolder(from)) {
+    if (isIncomingFolder(from) || isSkillsFolder(from) || isTasksFolder(from) || isRoutinesFolder(from)) {
       set({ error: "Cannot move the reserved folder" });
       return null;
     }
@@ -3550,6 +3609,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot rename the Tasks folder" });
       return null;
     }
+    if (isRoutinesFolder(from)) {
+      set({ error: "Cannot rename the Routines folder" });
+      return null;
+    }
     const trimmed = nextName.trim().replace(/[\\/]/g, "");
     if (!trimmed || !from) return null;
 
@@ -3564,6 +3627,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     if (isTasksFolder(to)) {
       set({ error: "Cannot rename to the reserved Tasks folder" });
+      return null;
+    }
+    if (isRoutinesFolder(to)) {
+      set({ error: "Cannot rename to the reserved Routines folder" });
       return null;
     }
     const fromKind = documentKind(from);
@@ -3791,6 +3858,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     if (isTasksFolder(path)) {
       set({ error: "Cannot delete the Tasks folder" });
+      return false;
+    }
+    if (isRoutinesFolder(path)) {
+      set({ error: "Cannot delete the Routines folder" });
       return false;
     }
     const {

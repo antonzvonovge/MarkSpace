@@ -1035,6 +1035,9 @@ export const INCOMING_FOLDER = "Incoming";
 /** Reserved tasks project: hidden from the workspace tree, shown in the Tasks section. */
 export const TASKS_FOLDER = "Tasks";
 
+/** Reserved job-log folder: hidden from the workspace tree, shown in the Routines section. */
+export const ROUTINES_FOLDER = "Routines";
+
 /** True for the protected root-level Skills/ folder. */
 export function isSkillsFolder(path: string, isDir = true): boolean {
   return isDir && path === SKILLS_FOLDER;
@@ -1060,6 +1063,16 @@ export function isTasksFolder(path: string, isDir = true): boolean {
 /** Tasks folder or any path inside it. */
 export function isTasksPath(path: string): boolean {
   return path === TASKS_FOLDER || path.startsWith(`${TASKS_FOLDER}/`);
+}
+
+/** True for the reserved root-level Routines/ folder. */
+export function isRoutinesFolder(path: string, isDir = true): boolean {
+  return isDir && path === ROUTINES_FOLDER;
+}
+
+/** Routines folder or any path inside it. */
+export function isRoutinesPath(path: string): boolean {
+  return path === ROUTINES_FOLDER || path.startsWith(`${ROUTINES_FOLDER}/`);
 }
 
 /** Skill id = filename stem under Skills/ (lowercase letters, digits, hyphens). */
@@ -1088,7 +1101,7 @@ export function skillPathForId(id: string): string {
 /**
  * A MarkSpace "project" is a first-level folder under the vault root
  * (path has no `/`). Nested folders are ordinary folders, not projects.
- * The reserved Skills/, Incoming/, and Tasks/ folders are not projects.
+ * The reserved Skills/, Incoming/, Tasks/, and Routines/ folders are not projects.
  */
 export function isVaultProjectFolder(path: string, isDir: boolean): boolean {
   return (
@@ -1097,7 +1110,8 @@ export function isVaultProjectFolder(path: string, isDir: boolean): boolean {
     !path.includes("/") &&
     !isSkillsFolder(path, true) &&
     !isIncomingFolder(path, true) &&
-    !isTasksFolder(path, true)
+    !isTasksFolder(path, true) &&
+    !isRoutinesFolder(path, true)
   );
 }
 

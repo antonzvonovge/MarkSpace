@@ -86,7 +86,11 @@ fn validate_recent_user_turns(value: Option<i32>) -> Result<Option<i32>, String>
     }
 }
 
-fn validate_fields(name: &str, instructions: &str, model_id: &str) -> Result<(String, String, String), String> {
+fn validate_fields(
+    name: &str,
+    instructions: &str,
+    model_id: &str,
+) -> Result<(String, String, String), String> {
     let name = name.trim().to_string();
     let instructions = instructions.trim().to_string();
     let model_id = model_id.trim().to_string();
@@ -136,10 +140,7 @@ fn read_gem_file(path: &Path) -> Option<Gem> {
     if name.is_empty() || instructions.is_empty() || model_id.is_empty() {
         return None;
     }
-    let created_at = value
-        .get("createdAt")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
+    let created_at = value.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
     let updated_at = value
         .get("updatedAt")
         .and_then(|v| v.as_i64())
@@ -240,21 +241,14 @@ pub fn get_gem(id: String, state: State<'_, VaultState>) -> Result<Gem, String> 
 }
 
 #[tauri::command(async)]
-pub fn upsert_gem(
-    gem: UpsertGemInput,
-    state: State<'_, VaultState>,
-) -> Result<Gem, String> {
+pub fn upsert_gem(gem: UpsertGemInput, state: State<'_, VaultState>) -> Result<Gem, String> {
     let root = get_root(&state)?;
     let (name, instructions, model_id) =
         validate_fields(&gem.name, &gem.instructions, &gem.model_id)?;
     let recent_user_turns = validate_recent_user_turns(gem.recent_user_turns)?;
 
     let now = now_ms();
-    let existing_id = gem
-        .id
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let existing_id = gem.id.as_deref().map(str::trim).filter(|s| !s.is_empty());
 
     let saved = if let Some(id) = existing_id {
         if !is_safe_gem_id(id) {

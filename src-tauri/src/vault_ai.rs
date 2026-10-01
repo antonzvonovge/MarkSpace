@@ -153,10 +153,7 @@ mod tests {
         };
         save_settings(&root, &normalize_doc(doc)).unwrap();
         let loaded = load_settings(&root).unwrap();
-        assert_eq!(
-            loaded.chat_model_id.as_deref(),
-            Some("openai/gpt-5.6-sol")
-        );
+        assert_eq!(loaded.chat_model_id.as_deref(), Some("openai/gpt-5.6-sol"));
         assert_eq!(
             loaded.worker_model_id.as_deref(),
             Some("openai/gpt-4.1-mini")

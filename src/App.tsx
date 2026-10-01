@@ -31,6 +31,7 @@ import {
   mediaCatalogFolderForPath,
 } from "./components/MediaCatalogView";
 import { TasksView } from "./components/TasksView";
+import { RoutineDocumentTab } from "./components/RoutineDocumentTab";
 import { TagGraphView } from "./components/graph/TagGraphView";
 import { MarkdownSourceEditor } from "./editor/MarkdownSourceEditor";
 import { PlainSourceEditor } from "./editor/PlainSourceEditor";
@@ -57,8 +58,9 @@ import { CourseTrackerEditor } from "./editor/mdcourse/CourseTrackerEditor";
 import { DictPracticeDialog } from "./editor/mddict/DictPracticeDialog";
 import { PdfViewer } from "./editor/pdf/PdfViewer";
 import type { VaultChange } from "./lib/vaultApi";
+import type { RoutineRunEvent } from "./lib/routinesApi";
 import { treeHasPath } from "./lib/optimisticVaultTree";
-import { documentKind, readNote } from "./lib/vaultApi";
+import { documentKind, isRoutinesPath, readNote } from "./lib/vaultApi";
 import {
   loadShellLayout,
   saveShellLayout,
@@ -74,6 +76,7 @@ import { useAiSettingsStore } from "./store/aiSettingsStore";
 import { useMcpStore } from "./store/mcpStore";
 import { useMcpHostStore } from "./store/mcpHostStore";
 import { applyBackgroundJobPayload } from "./store/backgroundJobsStore";
+import { useRoutinesStore } from "./store/routinesStore";
 import { useChatUiStore } from "./store/chatUiStore";
 import { useDocumentFindStore } from "./store/documentFindStore";
 import { useFocusUiStore } from "./store/focusUiStore";
@@ -82,7 +85,7 @@ import { usePrefsStore } from "./store/prefsStore";
 import { useSidebarUiStore } from "./store/sidebarUiStore";
 import { useSyncStore } from "./store/syncStore";
 import { useChatStore } from "./store/chatStore";
-import { isFileTab, isGraphTab, isSettingsTab, isTasksTab, useVaultStore } from "./store/vaultStore";
+import { isFileTab, isGraphTab, isRoutineTab, isSettingsTab, isTasksTab, useVaultStore } from "./store/vaultStore";
 import { openCaptureDialog } from "./store/captureStore";
 import { useAutoSync } from "./hooks/useAutoSync";
 import { useWarmLiveMarkdownPaths } from "./hooks/useWarmLiveMarkdownPaths";
@@ -481,6 +484,15 @@ const MainPane = memo(function MainPane({
                       return (
                         <TasksDocumentTab
                           key={tab.path}
+                          isActive={isActive}
+                        />
+                      );
+                    }
+                    if (isRoutineTab(tab)) {
+                      return (
+                        <RoutineDocumentTab
+                          key={tab.path}
+                          path={tab.path}
                           isActive={isActive}
                         />
                       );
@@ -1041,6 +1053,18 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let unlistenRuns: (() => void) | undefined;
+    void listen<RoutineRunEvent>("routine-run", (event) => {
+      useRoutinesStore.getState().applyRunEvent(event.payload);
+    }).then((fn) => {
+      unlistenRuns = fn;
+    });
+    return () => {
+      unlistenRuns?.();
+    };
+  }, []);
+
   // One place to notice the user working, so background indexing can step
   // aside. Passive + capture so nothing here can delay or swallow input.
   useEffect(() => {
@@ -1092,6 +1116,7 @@ function App() {
 
       const tree = useVaultStore.getState().tree;
       const needsTreeRefresh = events.some((e) => {
+        if (isRoutinesPath(e.path)) return false;
         if (isStructuralVaultChange(e.kind)) return true;
         // Modify on a path not in the tree may be a create we mis-classified —
         // still refresh. Folder notes / assets omitted from the tree are OK to skip.
@@ -1106,6 +1131,7 @@ function App() {
       void refreshSyncStatus();
 
       const tagPaths = paths.filter((p) => {
+        if (isRoutinesPath(p)) return false;
         const lower = p.toLowerCase();
         return lower.endsWith(".md") || lower.endsWith(".pdf");
       });

@@ -17,9 +17,9 @@ const COMPLETED_DIR: &str = "completed";
 
 /// Material Design 500 swatches (lowercase `#rrggbb`). Empty = unset.
 const LIST_COLORS: &[&str] = &[
-    "#f44336", "#e91e63", "#9c27b0", "#673ab7", "#3f51b5", "#2196f3", "#03a9f4",
-    "#00bcd4", "#009688", "#4caf50", "#8bc34a", "#cddc39", "#ffc107", "#ff9800",
-    "#ff5722", "#795548", "#607d8b",
+    "#f44336", "#e91e63", "#9c27b0", "#673ab7", "#3f51b5", "#2196f3", "#03a9f4", "#00bcd4",
+    "#009688", "#4caf50", "#8bc34a", "#cddc39", "#ffc107", "#ff9800", "#ff5722", "#795548",
+    "#607d8b",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -148,7 +148,8 @@ fn read_groups_doc(root: &Path) -> Result<GroupsDoc, String> {
             groups: Vec::new(),
         });
     }
-    let raw = fs::read_to_string(&file).map_err(|e| format!("Cannot read task list groups: {e}"))?;
+    let raw =
+        fs::read_to_string(&file).map_err(|e| format!("Cannot read task list groups: {e}"))?;
     let doc: GroupsDoc =
         serde_json::from_str(&raw).map_err(|e| format!("Invalid task list groups file: {e}"))?;
     Ok(GroupsDoc {
@@ -225,8 +226,7 @@ fn write_list_file(root: &Path, meta: &TaskListMeta) -> Result<(), String> {
         "order": meta.order,
     }))
     .map_err(|e| format!("Cannot serialize task list meta: {e}"))?;
-    fs::write(&file, format!("{body}\n"))
-        .map_err(|e| format!("Cannot write task list meta: {e}"))
+    fs::write(&file, format!("{body}\n")).map_err(|e| format!("Cannot write task list meta: {e}"))
 }
 
 fn remove_list_file(root: &Path, path: &str) -> Result<(), String> {
@@ -509,10 +509,7 @@ mod tests {
 
     #[test]
     fn list_name_from_path_works() {
-        assert_eq!(
-            list_name_from_path("Tasks/Work"),
-            Some("Work".to_string())
-        );
+        assert_eq!(list_name_from_path("Tasks/Work"), Some("Work".to_string()));
         assert!(list_name_from_path("Tasks/Work/nested").is_none());
     }
 }

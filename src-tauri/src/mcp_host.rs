@@ -11,8 +11,9 @@ use axum::{
 use rmcp::{
     handler::server::ServerHandler,
     model::{
-        CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ErrorData as McpError,
-        JsonObject, ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
+        CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
+        ErrorData as McpError, JsonObject, ListToolsResult, PaginatedRequestParams,
+        ServerCapabilities, ServerInfo, Tool,
     },
     service::RequestContext,
     transport::streamable_http_server::{
@@ -228,11 +229,13 @@ impl ServerHandler for TasksMcpServer {
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
-        self.runtime
-            .inner
-            .try_lock()
-            .ok()
-            .and_then(|inner| inner.tools.iter().find(|t| t.name.as_ref() == name).cloned())
+        self.runtime.inner.try_lock().ok().and_then(|inner| {
+            inner
+                .tools
+                .iter()
+                .find(|t| t.name.as_ref() == name)
+                .cloned()
+        })
     }
 
     async fn call_tool(

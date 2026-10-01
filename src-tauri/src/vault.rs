@@ -223,11 +223,7 @@ fn assets_dir_rel(note_parent: &str) -> String {
 }
 
 fn sanitize_asset_filename(name: &str) -> String {
-    let base = name
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(name)
-        .trim();
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name).trim();
     if base.is_empty() || base == "." || base == ".." {
         return "image.png".into();
     }
@@ -396,9 +392,8 @@ fn migrate_note_assets(
         if still_needed {
             fs::copy(&src, &dest).map_err(|e| format!("Cannot copy asset: {e}"))?;
         } else if let Err(e) = fs::rename(&src, &dest) {
-            fs::copy(&src, &dest).map_err(|copy_e| {
-                format!("Cannot move asset ({e}); copy also failed: {copy_e}")
-            })?;
+            fs::copy(&src, &dest)
+                .map_err(|copy_e| format!("Cannot move asset ({e}); copy also failed: {copy_e}"))?;
             let _ = fs::remove_file(&src);
         }
 
@@ -556,7 +551,8 @@ fn rewrite_drawio_fences(content: &str, from: &str, to: &str) -> String {
         let body = &after_open[body_start..];
         if let Some(end) = body.find("```") {
             let fence_body = &body[..end];
-            let rewritten = fence_body.lines()
+            let rewritten = fence_body
+                .lines()
                 .map(|line| {
                     let trimmed = line.trim();
                     if trimmed == from || trimmed.starts_with(&format!("{from}|")) {
@@ -1109,6 +1105,7 @@ pub fn open_vault(
     replace_file_marker_index(&state, rebuild_file_marker_index(&root));
     start_watcher(app.clone(), &state, &root)?;
     crate::embeddings::notify_vault_opened(&app, &root);
+    crate::routines::on_vault_opened(app.clone(), root.clone());
     let order = read_order(&root);
     make_root_node(&root, &order)
 }
@@ -1126,13 +1123,15 @@ fn start_watcher(app: AppHandle, state: &VaultState, root: &Path) -> Result<(), 
                         continue;
                     }
                     let rel = relative_to_root(&root_for_cb, &path);
-                    if rel.ends_with(".md")
-                        || rel.ends_with(".pdf")
-                        || path.is_dir()
-                        || matches!(
-                            event.kind,
-                            notify::EventKind::Remove(_) | notify::EventKind::Modify(_)
-                        )
+                    let routine_log = rel == "Routines" || rel.starts_with("Routines/");
+                    if !routine_log
+                        && (rel.ends_with(".md")
+                            || rel.ends_with(".pdf")
+                            || path.is_dir()
+                            || matches!(
+                                event.kind,
+                                notify::EventKind::Remove(_) | notify::EventKind::Modify(_)
+                            ))
                     {
                         if rel.ends_with(".md") || rel.ends_with(".pdf") {
                             crate::embeddings::notify_file_changed(&rel);
@@ -1521,11 +1520,7 @@ pub fn import_paths(
             let full = root.join(rel);
             if let Ok(text) = fs::read_to_string(&full) {
                 set_tag_index_path(&state, rel, tags_from_note_content(&text));
-                set_file_marker_index_path(
-                    &state,
-                    rel,
-                    file_marker_from_note_content(&text),
-                );
+                set_file_marker_index_path(&state, rel, file_marker_from_note_content(&text));
             }
             crate::embeddings::notify_file_changed(rel);
         } else if is_pdf(rel) {
@@ -1693,11 +1688,7 @@ pub fn import_document_bytes(
     if is_markdown(&created) {
         if let Ok(text) = fs::read_to_string(&dest) {
             set_tag_index_path(&state, &created, tags_from_note_content(&text));
-            set_file_marker_index_path(
-                &state,
-                &created,
-                file_marker_from_note_content(&text),
-            );
+            set_file_marker_index_path(&state, &created, file_marker_from_note_content(&text));
         }
         crate::embeddings::notify_file_changed(&created);
     } else if is_pdf(&created) {
@@ -1746,12 +1737,13 @@ pub struct EnsureFolderResult {
 
 /// Create a folder (and parents) if missing. `created=false` when it already existed.
 #[tauri::command(async)]
-pub fn ensure_folder(
-    path: String,
-    state: State<VaultState>,
-) -> Result<EnsureFolderResult, String> {
+pub fn ensure_folder(path: String, state: State<VaultState>) -> Result<EnsureFolderResult, String> {
     let root = get_root(&state)?;
-    let rel = path.trim().trim_start_matches('/').trim_end_matches('/').to_string();
+    let rel = path
+        .trim()
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+        .to_string();
     if rel.is_empty() {
         return Err("Folder name required".into());
     }
@@ -1837,7 +1829,11 @@ pub fn delete_folder_if_empty(
     state: State<VaultState>,
 ) -> Result<DeleteFolderIfEmptyResult, String> {
     let root = get_root(&state)?;
-    let rel_in = path.trim().trim_start_matches('/').trim_end_matches('/').to_string();
+    let rel_in = path
+        .trim()
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+        .to_string();
     if rel_in.is_empty() {
         return Err("Cannot delete vault root".into());
     }
@@ -2143,7 +2139,10 @@ fn promote_note_to_folder_inner(
     let mut order = read_order(root);
     materialize_parent_order(root, &mut order, &note_parent)?;
     let list = order.entry(note_parent.clone()).or_default();
-    let insert_at = list.iter().position(|n| n == &note_name).unwrap_or(list.len());
+    let insert_at = list
+        .iter()
+        .position(|n| n == &note_name)
+        .unwrap_or(list.len());
     list.retain(|n| n != &note_name);
     let idx = insert_at.min(list.len());
     list.insert(idx, stem.clone());
@@ -2469,10 +2468,7 @@ pub struct SearchHit {
 }
 
 #[tauri::command(async)]
-pub fn search_notes(
-    query: String,
-    state: State<VaultState>,
-) -> Result<Vec<SearchHit>, String> {
+pub fn search_notes(query: String, state: State<VaultState>) -> Result<Vec<SearchHit>, String> {
     let q = query.trim();
     if q.is_empty() {
         return Ok(vec![]);
@@ -2658,12 +2654,11 @@ fn tags_from_frontmatter_yaml(yaml: &str) -> Vec<String> {
                 in_tags_list = true;
                 continue;
             }
-            if let Some(inner) = value
-                .strip_prefix('[')
-                .and_then(|s| s.strip_suffix(']'))
-            {
+            if let Some(inner) = value.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
                 for part in inner.split(',') {
-                    let part = unwrap_tag_mapping(part).trim_matches('"').trim_matches('\'');
+                    let part = unwrap_tag_mapping(part)
+                        .trim_matches('"')
+                        .trim_matches('\'');
                     if let Some(name) = normalize_tag_name(part) {
                         tags.push(name);
                     }
@@ -2738,7 +2733,10 @@ fn body_after_frontmatter(content: &str) -> &str {
         if let Some(stripped) = tail.strip_prefix('\n') {
             return stripped;
         }
-        if tail.is_empty() || tail.starts_with('\r') || tail.starts_with(' ') || tail.starts_with('\t')
+        if tail.is_empty()
+            || tail.starts_with('\r')
+            || tail.starts_with(' ')
+            || tail.starts_with('\t')
         {
             // `---\n` or `---\r` or trailing spaces before EOL already handled; tolerate EOF.
             return tail.trim_start_matches(['\r', '\n', ' ', '\t']);
@@ -3479,7 +3477,9 @@ fn build_wiki_resolve_index(root: &Path) -> WikiResolveIndex {
         let rel = relative_to_root(root, path);
         if path.is_dir() {
             let lc = rel.to_lowercase();
-            folder_rel_lc.entry(lc.clone()).or_insert_with(|| rel.clone());
+            folder_rel_lc
+                .entry(lc.clone())
+                .or_insert_with(|| rel.clone());
             let name = path
                 .file_name()
                 .map(|s| s.to_string_lossy().to_lowercase())
@@ -3557,8 +3557,7 @@ fn resolve_wiki_with_index(index: &WikiResolveIndex, target: &str) -> Option<Str
     };
     if let Some(folder_candidate) = folder_candidate {
         if !folder_candidate.is_empty() {
-            if let Some(folder_rel) = index.folder_rel_lc.get(&folder_candidate.to_lowercase())
-            {
+            if let Some(folder_rel) = index.folder_rel_lc.get(&folder_candidate.to_lowercase()) {
                 let note = folder_note_rel(folder_rel);
                 if index.files_lc.contains_key(&note.to_lowercase()) {
                     return Some(
@@ -3723,10 +3722,7 @@ pub fn list_note_wikilinks(state: State<VaultState>) -> Result<Vec<NoteWikilinks
         if targets.is_empty() {
             continue;
         }
-        out.push(NoteWikilinks {
-            path: rel,
-            targets,
-        });
+        out.push(NoteWikilinks { path: rel, targets });
     }
 
     out.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
@@ -3817,7 +3813,10 @@ pub struct FileBytesResponse {
 
 /// Read any vault file as base64 (images, pdfs, etc.).
 #[tauri::command(async)]
-pub fn read_file_bytes(path: String, state: State<VaultState>) -> Result<FileBytesResponse, String> {
+pub fn read_file_bytes(
+    path: String,
+    state: State<VaultState>,
+) -> Result<FileBytesResponse, String> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
     let root = get_root(&state)?;
@@ -3919,9 +3918,15 @@ mod diary_marker_tests {
             parse_daily_note_date("Journal/2026/01/09.Jan.2026.md"),
             Some((2026, 1, 9))
         );
-        assert_eq!(parse_daily_note_date("Journal/2026/08/15.Aug.2025.md"), None);
+        assert_eq!(
+            parse_daily_note_date("Journal/2026/08/15.Aug.2025.md"),
+            None
+        );
         assert_eq!(parse_daily_note_date("Journal/2026/08/note.md"), None);
-        assert_eq!(parse_daily_note_date("Journal/2026/02/31.Feb.2026.md"), None);
+        assert_eq!(
+            parse_daily_note_date("Journal/2026/02/31.Feb.2026.md"),
+            None
+        );
     }
 
     #[test]
@@ -3941,4 +3946,3 @@ mod diary_marker_tests {
         );
     }
 }
-

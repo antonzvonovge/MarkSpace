@@ -239,7 +239,10 @@ mod tests {
         let base = s(&["a", "c"]);
         let ours = s(&["a", "b", "c"]);
         let theirs = s(&["a", "c"]);
-        assert_eq!(merge_sibling_lists(&base, &ours, &theirs), s(&["a", "b", "c"]));
+        assert_eq!(
+            merge_sibling_lists(&base, &ours, &theirs),
+            s(&["a", "b", "c"])
+        );
     }
 
     #[test]

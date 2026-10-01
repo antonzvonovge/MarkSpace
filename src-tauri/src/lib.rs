@@ -17,6 +17,7 @@ mod md_merge;
 mod order_merge;
 mod pdf_text;
 mod projects;
+mod routines;
 mod task_lists;
 mod terminal;
 mod vault;
@@ -57,8 +58,8 @@ pub fn run() {
             // taskbar/dock picks up updates even when only icons/ changed.
             {
                 use tauri::{image::Image, Manager};
-                let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
-                    .expect("app icon");
+                let icon =
+                    Image::from_bytes(include_bytes!("../icons/icon.png")).expect("app icon");
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_icon(icon);
                 }
@@ -223,6 +224,12 @@ pub fn run() {
             projects::get_project_properties,
             projects::set_project_properties,
             projects::list_project_properties,
+            routines::list_routines,
+            routines::upsert_routine,
+            routines::set_routine_enabled,
+            routines::delete_routine,
+            routines::list_routine_runs,
+            routines::run_routine_now,
             task_lists::list_task_list_groups,
             task_lists::upsert_task_list_group,
             task_lists::delete_task_list_group,

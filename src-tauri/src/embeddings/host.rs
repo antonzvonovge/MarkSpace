@@ -265,9 +265,12 @@ fn start_child_io(
         }
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn embeddings process ({}): {e}", path.display()))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        format!(
+            "Failed to spawn embeddings process ({}): {e}",
+            path.display()
+        )
+    })?;
     let stdin = child
         .stdin
         .take()
@@ -564,9 +567,13 @@ fn host_loop(rx: Receiver<HostMsg>) {
             }
             HostMsg::ModelAvailable { model_dir } => {
                 cache.model_dir = Some(model_dir.clone());
-                if let Err(e) =
-                    ensure_session(&mut session, &mut reader, &pending, &app_slot, cache.priority)
-                {
+                if let Err(e) = ensure_session(
+                    &mut session,
+                    &mut reader,
+                    &pending,
+                    &app_slot,
+                    cache.priority,
+                ) {
                     eprintln!("[embeddings-host] {e}");
                     continue;
                 }
@@ -645,15 +652,20 @@ fn host_loop(rx: Receiver<HostMsg>) {
                     let _ = reply.send(());
                     continue;
                 }
-                let respawned =
-                    match ensure_session(&mut session, &mut reader, &pending, &app_slot, priority) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("[embeddings-host] {e}");
-                            let _ = reply.send(());
-                            continue;
-                        }
-                    };
+                let respawned = match ensure_session(
+                    &mut session,
+                    &mut reader,
+                    &pending,
+                    &app_slot,
+                    priority,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("[embeddings-host] {e}");
+                        let _ = reply.send(());
+                        continue;
+                    }
+                };
                 let s = session.as_mut().unwrap();
                 if respawned {
                     // A fresh child needs the vault back; the OpenVault it gets
@@ -899,11 +911,7 @@ pub fn notify_model_available(model_dir: PathBuf) {
     runtime().send(HostMsg::ModelAvailable { model_dir });
 }
 
-pub fn notify_indexing_policy(
-    enabled: bool,
-    delay_seconds: u32,
-    priority: BackgroundPriority,
-) {
+pub fn notify_indexing_policy(enabled: bool, delay_seconds: u32, priority: BackgroundPriority) {
     let (reply_tx, reply_rx) = mpsc::channel();
     runtime().send(HostMsg::SetPolicy {
         enabled,

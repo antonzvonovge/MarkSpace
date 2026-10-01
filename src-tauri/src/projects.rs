@@ -312,9 +312,7 @@ pub fn get_project_properties(
 
 /// List all stored project property markers for the open vault.
 #[tauri::command(async)]
-pub fn list_project_properties(
-    state: State<VaultState>,
-) -> Result<Vec<ProjectProperties>, String> {
+pub fn list_project_properties(state: State<VaultState>) -> Result<Vec<ProjectProperties>, String> {
     let root = get_root(&state)?;
     let mut out: Vec<ProjectProperties> = Vec::new();
     for (marker, props) in scan_project_markers(&root)? {
@@ -548,10 +546,7 @@ mod tests {
 
     #[test]
     fn accepts_nested_folder_path() {
-        assert_eq!(
-            normalize_folder_path("nested/deep").unwrap(),
-            "nested/deep"
-        );
+        assert_eq!(normalize_folder_path("nested/deep").unwrap(), "nested/deep");
         assert!(normalize_folder_path("").is_err());
         assert!(normalize_folder_path("..").is_err());
     }

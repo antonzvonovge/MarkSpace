@@ -57,7 +57,9 @@ pub fn model_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 pub fn model_is_installed(dir: &Path) -> bool {
-    MODEL_FILES.iter().all(|name| model_file_is_valid(dir, name))
+    MODEL_FILES
+        .iter()
+        .all(|name| model_file_is_valid(dir, name))
 }
 
 fn model_file_is_valid(dir: &Path, name: &str) -> bool {

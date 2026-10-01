@@ -310,7 +310,7 @@ export async function saveGraphUiSettings(
   await store.save();
 }
 
-export type SavedTabKind = "file" | "graph" | "settings" | "tasks";
+export type SavedTabKind = "file" | "graph" | "settings" | "tasks" | "routine";
 
 export type SavedEditorTab = {
   path: string;
@@ -333,6 +333,7 @@ function normalizeSavedTabKind(kind: unknown, path: string): SavedTabKind {
   if (kind === "graph" || path === "markspace:graph") return "graph";
   if (kind === "settings" || path === "markspace:settings") return "settings";
   if (kind === "tasks" || path === "markspace:tasks") return "tasks";
+  if (kind === "routine" || path.startsWith("markspace:routine:")) return "routine";
   return "file";
 }
 

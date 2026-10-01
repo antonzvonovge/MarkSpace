@@ -114,9 +114,7 @@ fn build_client_request(
     Ok(builder)
 }
 
-fn http_post_multipart_inner(
-    req: HttpMultipartRequest,
-) -> Result<HttpFetchResponse, String> {
+fn http_post_multipart_inner(req: HttpMultipartRequest) -> Result<HttpFetchResponse, String> {
     let url = req.url.trim();
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
@@ -133,8 +131,14 @@ fn http_post_multipart_inner(
         ));
     }
 
-    let mut part = reqwest::blocking::multipart::Part::bytes(bytes).file_name(req.file_name.clone());
-    if let Some(mime) = req.file_mime.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let mut part =
+        reqwest::blocking::multipart::Part::bytes(bytes).file_name(req.file_name.clone());
+    if let Some(mime) = req
+        .file_mime
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         part = part
             .mime_str(mime)
             .map_err(|e| format!("Invalid file mime: {e}"))?;
@@ -187,9 +191,7 @@ fn http_post_multipart_inner(
 
 fn http_fetch_inner(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> {
     let builder = build_client_request(&req)?;
-    let res = builder
-        .send()
-        .map_err(|e| format!("Request failed: {e}"))?;
+    let res = builder.send().map_err(|e| format!("Request failed: {e}"))?;
     let status = res.status().as_u16();
     let bytes = res
         .bytes()
@@ -206,9 +208,7 @@ fn http_fetch_inner(req: HttpFetchRequest) -> Result<HttpFetchResponse, String> 
 
 fn http_fetch_bytes_inner(req: HttpFetchRequest) -> Result<HttpFetchBytesResponse, String> {
     let builder = build_client_request(&req)?;
-    let res = builder
-        .send()
-        .map_err(|e| format!("Request failed: {e}"))?;
+    let res = builder.send().map_err(|e| format!("Request failed: {e}"))?;
     let status = res.status().as_u16();
     let content_type = res
         .headers()

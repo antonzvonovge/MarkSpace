@@ -381,11 +381,7 @@ mod tests {
         remap_agent_memory(&root, "Alpha", Some("Beta")).unwrap();
         let loaded = load_doc(&root).unwrap();
         assert_eq!(loaded.entries.len(), 2);
-        let alphaish = loaded
-            .entries
-            .iter()
-            .find(|e| e.id == "m2")
-            .unwrap();
+        let alphaish = loaded.entries.iter().find(|e| e.id == "m2").unwrap();
         assert_eq!(alphaish.project_path.as_deref(), Some("Beta"));
 
         remap_agent_memory(&root, "Beta", None).unwrap();

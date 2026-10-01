@@ -188,7 +188,9 @@ fn reconcile_index(dir: &Path, mut index: ChatIndex) -> (ChatIndex, bool) {
         }
         index.threads.push(meta_from_thread(&thread));
     }
-    index.threads.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    index
+        .threads
+        .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     sanitize_open_tabs(&mut index);
     (index, true)
 }
@@ -239,7 +241,8 @@ fn read_index(dir: &PathBuf) -> Result<ChatIndex, String> {
 fn write_index(dir: &PathBuf, index: &ChatIndex) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|e| format!("Cannot create chats dir: {e}"))?;
     let path = index_path(dir);
-    let raw = serde_json::to_string_pretty(index).map_err(|e| format!("Cannot serialize index: {e}"))?;
+    let raw =
+        serde_json::to_string_pretty(index).map_err(|e| format!("Cannot serialize index: {e}"))?;
     atomic_write(&path, &raw)
 }
 
@@ -374,8 +377,8 @@ pub fn upsert_chat_thread(
     fs::create_dir_all(&dir).map_err(|e| format!("Cannot create chats dir: {e}"))?;
 
     let path = thread_path(&dir, &thread.id);
-    let raw =
-        serde_json::to_string_pretty(&thread).map_err(|e| format!("Cannot serialize thread: {e}"))?;
+    let raw = serde_json::to_string_pretty(&thread)
+        .map_err(|e| format!("Cannot serialize thread: {e}"))?;
     atomic_write(&path, &raw)?;
 
     let meta = meta_from_thread(&thread);
@@ -386,7 +389,9 @@ pub fn upsert_chat_thread(
     } else {
         index.threads.insert(0, meta.clone());
     }
-    index.threads.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    index
+        .threads
+        .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     write_index(&dir, &index)?;
     Ok(meta)
 }

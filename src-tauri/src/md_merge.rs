@@ -153,10 +153,7 @@ fn value_to_tag_list(value: Option<&Value>) -> Vec<String> {
         return Vec::new();
     };
     match value {
-        Value::Sequence(items) => items
-            .iter()
-            .filter_map(|item| tag_scalar(item))
-            .collect(),
+        Value::Sequence(items) => items.iter().filter_map(|item| tag_scalar(item)).collect(),
         Value::String(s) => s
             .split(',')
             .filter_map(|part| tag_scalar(&Value::String(part.trim().to_string())))
@@ -224,7 +221,11 @@ fn pick_timestamp(ours: Option<&Value>, theirs: Option<&Value>, earliest: bool) 
     best.map(|(_, v)| v)
 }
 
-fn merge_generic_field(base: Option<&Value>, ours: Option<&Value>, theirs: Option<&Value>) -> Option<Value> {
+fn merge_generic_field(
+    base: Option<&Value>,
+    ours: Option<&Value>,
+    theirs: Option<&Value>,
+) -> Option<Value> {
     if ours == theirs {
         return ours.cloned();
     }
@@ -318,7 +319,10 @@ fn strip_duplicate_heading(block: &str, heading_key: Option<&str>) -> String {
     let line = rest.trim_start().lines().next().unwrap_or("").trim();
     if line.to_ascii_lowercase() == heading_key {
         let after = rest.trim_start();
-        let after_line = after.find('\n').map(|i| after[i + 1..].trim_start()).unwrap_or("");
+        let after_line = after
+            .find('\n')
+            .map(|i| after[i + 1..].trim_start())
+            .unwrap_or("");
         return after_line.to_string();
     }
     block.to_string()

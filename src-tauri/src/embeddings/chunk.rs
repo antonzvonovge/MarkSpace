@@ -128,10 +128,7 @@ fn split_oversized(heading: Option<String>, start_line: u32, text: &str) -> Vec<
         if end < chars.len() {
             // Prefer break on paragraph/newline near the end.
             let window_start = offset + TARGET_CHARS.saturating_sub(200);
-            if let Some(rel) = chars[window_start..end]
-                .iter()
-                .rposition(|c| *c == '\n')
-            {
+            if let Some(rel) = chars[window_start..end].iter().rposition(|c| *c == '\n') {
                 take = window_start + rel + 1;
             }
         }

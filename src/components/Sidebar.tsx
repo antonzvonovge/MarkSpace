@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { memo, useEffect, useMemo, useRef } from "react";
 import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
+import { RoutinesSection } from "./RoutinesSection";
 import { TasksSection } from "./TasksSection";
 import {
   CalendarCheckIcon,
@@ -44,6 +45,7 @@ export const Sidebar = memo(function Sidebar() {
   const toggleCalendar = useSidebarUiStore((s) => s.toggleCalendar);
   const fileTreeRef = useRef<FileTreeHandle>(null);
   const tasksSection = useMemo(() => <TasksSection />, []);
+  const routinesSection = useMemo(() => <RoutinesSection />, []);
 
   useEffect(() => {
     if (!calendarOpen) return;
@@ -88,7 +90,11 @@ export const Sidebar = memo(function Sidebar() {
           </div>
         </div>
 
-        <FileTree ref={fileTreeRef} tasksSection={tasksSection} />
+        <FileTree
+          ref={fileTreeRef}
+          tasksSection={tasksSection}
+          routinesSection={routinesSection}
+        />
       </div>
 
       {calendarOpen && <SidebarCalendar />}

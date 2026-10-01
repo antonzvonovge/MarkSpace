@@ -1,6 +1,7 @@
 import type { TreeNode } from "../../lib/vaultApi";
 import {
   isIncomingFolder,
+  isRoutinesFolder,
   isSkillsFolder,
   isTasksFolder,
   parentPath,
@@ -28,7 +29,7 @@ function isMdNestTarget(path: string, isDir: boolean): boolean {
 }
 
 /**
- * Visible workspace rows only (Incoming / Tasks omitted).
+ * Visible workspace rows only (Incoming / Tasks / Routines omitted).
  * Vault root (`path === ""`) is always expanded.
  */
 export function flattenVisibleWorkspace(
@@ -49,7 +50,8 @@ export function flattenVisibleWorkspace(
       ? children.filter(
           (c) =>
             !isIncomingFolder(c.path, c.isDir) &&
-            !isTasksFolder(c.path, c.isDir),
+            !isTasksFolder(c.path, c.isDir) &&
+            !isRoutinesFolder(c.path, c.isDir),
         )
       : [];
     const hasChildren = node.isDir && workspaceChildren.length > 0;
@@ -90,7 +92,8 @@ export function flattenAllWorkspace(root: TreeNode): FlattenedVaultRow[] {
       ? children.filter(
           (c) =>
             !isIncomingFolder(c.path, c.isDir) &&
-            !isTasksFolder(c.path, c.isDir),
+            !isTasksFolder(c.path, c.isDir) &&
+            !isRoutinesFolder(c.path, c.isDir),
         )
       : [];
     out.push({
@@ -120,7 +123,7 @@ export function canDropVaultPath(
   if (!from) return false;
   if (from === targetPath) return false;
   if (targetPath.startsWith(`${from}/`)) return false;
-  if (isIncomingFolder(from) || isTasksFolder(from)) return false;
+  if (isIncomingFolder(from) || isTasksFolder(from) || isRoutinesFolder(from)) return false;
   // Skills stays at vault root: only drop onto vault root.
   if (isSkillsFolder(from) && targetPath !== VAULT_PATH) return false;
   if (targetPath === VAULT_PATH) return true;

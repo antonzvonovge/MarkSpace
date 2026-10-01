@@ -25,7 +25,10 @@ fn normalize_rel(path: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Path required".into());
     }
-    if trimmed.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
+    if trimmed
+        .split('/')
+        .any(|p| p.is_empty() || p == "." || p == "..")
+    {
         return Err("Invalid path".into());
     }
     for component in Path::new(&trimmed).components() {
@@ -221,8 +224,7 @@ pub fn remap_filemeta(root: &Path, from: &str, to: Option<&str>) -> Result<(), S
         let next = if old == from {
             to.clone()
         } else if old.starts_with(&format!("{from}/")) {
-            to.as_ref()
-                .map(|t| format!("{t}{}", &old[from.len()..]))
+            to.as_ref().map(|t| format!("{t}{}", &old[from.len()..]))
         } else {
             continue;
         };
@@ -280,8 +282,12 @@ mod tests {
     #[test]
     fn set_get_clear() {
         let root = temp_vault();
-        let tags = set_tags_for_path(&root, "a.pdf", &["Work".into(), "#work".into(), "api".into()])
-            .unwrap();
+        let tags = set_tags_for_path(
+            &root,
+            "a.pdf",
+            &["Work".into(), "#work".into(), "api".into()],
+        )
+        .unwrap();
         assert_eq!(tags, vec!["Work".to_string(), "api".to_string()]);
         assert_eq!(get_tags_for_path(&root, "a.pdf").unwrap(), tags);
         let cleared = set_tags_for_path(&root, "a.pdf", &[]).unwrap();
@@ -304,14 +310,8 @@ mod tests {
         remap_filemeta(&root, "docs", Some("archive")).unwrap();
 
         let all = load_all_filemeta_tags(&root);
-        assert_eq!(
-            all.get("renamed.pdf"),
-            Some(&vec!["x".to_string()])
-        );
-        assert_eq!(
-            all.get("archive/b.pdf"),
-            Some(&vec!["y".to_string()])
-        );
+        assert_eq!(all.get("renamed.pdf"), Some(&vec!["x".to_string()]));
+        assert_eq!(all.get("archive/b.pdf"), Some(&vec!["y".to_string()]));
 
         fs::remove_file(root.join("renamed.pdf")).unwrap();
         remap_filemeta(&root, "renamed.pdf", None).unwrap();

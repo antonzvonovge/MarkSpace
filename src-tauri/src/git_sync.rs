@@ -1,7 +1,7 @@
 use git2::{
-    AnnotatedCommit, Cred, ErrorCode, FetchOptions, FileFavor, IndexAddOption, IndexEntry,
-    IndexTime, MergeFileOptions, PushOptions, RemoteCallbacks, Repository, Signature,
-    StatusOptions, build::CheckoutBuilder,
+    build::CheckoutBuilder, AnnotatedCommit, Cred, ErrorCode, FetchOptions, FileFavor,
+    IndexAddOption, IndexEntry, IndexTime, MergeFileOptions, PushOptions, RemoteCallbacks,
+    Repository, Signature, StatusOptions,
 };
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -80,7 +80,9 @@ pub struct SyncRuntime {
 static REPO_LOCK: Mutex<()> = Mutex::new(());
 
 fn repo_guard() -> std::sync::MutexGuard<'static, ()> {
-    REPO_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    REPO_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn vault_root(state: &VaultState) -> Result<PathBuf, String> {
@@ -111,7 +113,9 @@ fn normalize_remote_url(input: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Repository URL is empty".into());
     }
-    if trimmed.starts_with("https://") || trimmed.starts_with("http://") || trimmed.starts_with("git@")
+    if trimmed.starts_with("https://")
+        || trimmed.starts_with("http://")
+        || trimmed.starts_with("git@")
     {
         return Ok(trimmed.to_string());
     }
@@ -353,7 +357,13 @@ fn do_merge(repo: &Repository, fetch_commit: &AnnotatedCommit<'_>) -> Result<Vec
                 // Unborn or missing local branch — set HEAD to fetched commit
                 repo.set_head_detached(fetch_commit.id())
                     .map_err(|e| format!("Cannot detach HEAD: {e}"))?;
-                let _ = repo.branch(&branch_name, &repo.find_commit(fetch_commit.id()).map_err(|e| format!("{e}"))?, false);
+                let _ = repo.branch(
+                    &branch_name,
+                    &repo
+                        .find_commit(fetch_commit.id())
+                        .map_err(|e| format!("{e}"))?,
+                    false,
+                );
                 let refname = format!("refs/heads/{branch_name}");
                 repo.set_head(&refname)
                     .map_err(|e| format!("Cannot set HEAD: {e}"))?;
@@ -380,11 +390,7 @@ fn do_merge(repo: &Repository, fetch_commit: &AnnotatedCommit<'_>) -> Result<Vec
     Ok(Vec::new())
 }
 
-fn blob_text_at_stage(
-    repo: &Repository,
-    rel: &str,
-    stage: i32,
-) -> Result<String, String> {
+fn blob_text_at_stage(repo: &Repository, rel: &str, stage: i32) -> Result<String, String> {
     let index = repo
         .index()
         .map_err(|e| format!("Cannot read index: {e}"))?;
@@ -394,8 +400,7 @@ fn blob_text_at_stage(
     let blob = repo
         .find_blob(entry.id)
         .map_err(|e| format!("Cannot read blob for {rel} stage {stage}: {e}"))?;
-    String::from_utf8(blob.content().to_vec())
-        .map_err(|e| format!("order.json is not UTF-8: {e}"))
+    String::from_utf8(blob.content().to_vec()).map_err(|e| format!("order.json is not UTF-8: {e}"))
 }
 
 fn is_order_rel(rel: &str) -> bool {
@@ -609,11 +614,9 @@ fn resolve_md_both(repo: &Repository, rel: &str) -> Result<bool, String> {
         .and_then(|entry| repo.find_blob(entry.id).ok())
         .map(|blob| String::from_utf8_lossy(blob.content()).into_owned());
 
-    if let Some(merged) = md_merge::merge_markdown_notes(
-        &ours_text,
-        &theirs_text,
-        base_text.as_deref(),
-    ) {
+    if let Some(merged) =
+        md_merge::merge_markdown_notes(&ours_text, &theirs_text, base_text.as_deref())
+    {
         write_and_stage(repo, rel, merged.as_bytes())?;
         return Ok(true);
     }
@@ -709,15 +712,8 @@ fn finalize_merge_commit(repo: &Repository) -> Result<(), String> {
         None => vec![&head_commit],
     };
 
-    repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        "MarkSpace merge",
-        &tree,
-        &parents,
-    )
-    .map_err(|e| format!("Merge commit failed: {e}"))?;
+    repo.commit(Some("HEAD"), &sig, &sig, "MarkSpace merge", &tree, &parents)
+        .map_err(|e| format!("Merge commit failed: {e}"))?;
 
     repo.cleanup_state()
         .map_err(|e| format!("cleanup_state: {e}"))?;
@@ -796,8 +792,15 @@ pub fn sync_connect(
             let tree_oid = index.write_tree().map_err(|e| format!("{e}"))?;
             let tree = repo.find_tree(tree_oid).map_err(|e| format!("{e}"))?;
             let sig = make_signature()?;
-            repo.commit(Some("HEAD"), &sig, &sig, "MarkSpace initial commit", &tree, &[])
-                .map_err(|e| format!("Initial commit failed: {e}"))?;
+            repo.commit(
+                Some("HEAD"),
+                &sig,
+                &sig,
+                "MarkSpace initial commit",
+                &tree,
+                &[],
+            )
+            .map_err(|e| format!("Initial commit failed: {e}"))?;
         }
     }
 
@@ -817,7 +820,8 @@ pub fn sync_connect(
         if !conflicts.is_empty() {
             let mut status = build_status(&repo);
             status.conflicted = conflicts;
-            status.last_error = Some("Connected with merge conflicts — resolve them, then Sync".into());
+            status.last_error =
+                Some("Connected with merge conflicts — resolve them, then Sync".into());
             return Ok(status);
         }
     }
@@ -842,10 +846,7 @@ pub fn sync_disconnect(vault: State<'_, VaultState>) -> Result<SyncStatus, Strin
 }
 
 #[tauri::command(async)]
-pub fn sync_now(
-    token: Option<String>,
-    vault: State<'_, VaultState>,
-) -> Result<SyncResult, String> {
+pub fn sync_now(token: Option<String>, vault: State<'_, VaultState>) -> Result<SyncResult, String> {
     let _guard = repo_guard();
     let root = vault_root(&vault)?;
     let repo = open_repo(&root)?;
@@ -931,10 +932,7 @@ pub fn sync_resolve_conflict(
         "both" => {
             if is_order_rel(rel) {
                 let _ = auto_resolve_order_conflict(&repo)?;
-                if conflicted_paths(&repo)
-                    .iter()
-                    .any(|p| is_order_rel(p))
-                {
+                if conflicted_paths(&repo).iter().any(|p| is_order_rel(p)) {
                     return Err("Could not merge order.json".into());
                 }
             } else if is_drawio_rel(rel) {
@@ -995,10 +993,7 @@ pub fn sync_device_flow_start(
     let res = client
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
-        .form(&[
-            ("client_id", client_id),
-            ("scope", "repo"),
-        ])
+        .form(&[("client_id", client_id), ("scope", "repo")])
         .send()
         .map_err(|e| format!("Device code request failed: {e}"))?;
 
@@ -1029,8 +1024,8 @@ pub fn sync_device_flow_poll(
     device_code: String,
     runtime: State<'_, SyncRuntime>,
 ) -> Result<DeviceTokenResponse, String> {
-    let client_id = github_client_id()
-        .ok_or_else(|| "GitHub Device Flow is not configured".to_string())?;
+    let client_id =
+        github_client_id().ok_or_else(|| "GitHub Device Flow is not configured".to_string())?;
 
     let client = Client::new();
     let res = client
@@ -1155,8 +1150,12 @@ after
         commit_all(&repo, "base");
 
         // Branch "theirs": edit both files
-        repo.branch("theirs", &repo.head().unwrap().peel_to_commit().unwrap(), false)
-            .unwrap();
+        repo.branch(
+            "theirs",
+            &repo.head().unwrap().peel_to_commit().unwrap(),
+            false,
+        )
+        .unwrap();
         repo.set_head("refs/heads/theirs").unwrap();
         repo.checkout_head(Some(CheckoutBuilder::default().force()))
             .unwrap();

@@ -6,12 +6,12 @@
 use crate::vault::{get_root, VaultState};
 use http::{HeaderName, HeaderValue};
 use rmcp::{
-    ServiceExt,
     model::CallToolRequestParams,
     transport::{
-        StreamableHttpClientTransport, TokioChildProcess,
-        streamable_http_client::StreamableHttpClientTransportConfig,
+        streamable_http_client::StreamableHttpClientTransportConfig, StreamableHttpClientTransport,
+        TokioChildProcess,
     },
+    ServiceExt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -313,7 +313,9 @@ fn servers_from_array(arr: &[Value]) -> Vec<McpServerConfig> {
         if out.len() >= MAX_SERVERS {
             break;
         }
-        let Some(obj) = item.as_object() else { continue };
+        let Some(obj) = item.as_object() else {
+            continue;
+        };
         let Some(id) = obj.get("id").and_then(Value::as_str) else {
             continue;
         };
@@ -530,8 +532,8 @@ async fn open_session(
                             }
                             let result = timeout(CALL_TIMEOUT, client.call_tool(params)).await;
                             let payload = match result {
-                                Ok(Ok(value)) => Ok(serde_json::to_value(&value).unwrap_or_else(
-                                    |_| {
+                                Ok(Ok(value)) => {
+                                    Ok(serde_json::to_value(&value).unwrap_or_else(|_| {
                                         serde_json::json!({
                                             "isError": true,
                                             "content": [{
@@ -539,8 +541,8 @@ async fn open_session(
                                                 "text": "Failed to serialize MCP result"
                                             }],
                                         })
-                                    },
-                                )),
+                                    }))
+                                }
                                 Ok(Err(e)) => Err(format!("MCP tool failed: {e}")),
                                 Err(_) => Err("MCP tool timed out".into()),
                             };
@@ -582,9 +584,7 @@ async fn start_client(
         let config =
             StreamableHttpClientTransportConfig::with_uri(url.clone()).custom_headers(headers);
         let transport = StreamableHttpClientTransport::from_config(config);
-        return ().serve(transport)
-            .await
-            .map_err(|e| format!("MCP HTTP handshake failed: {e}"));
+        return ().serve(transport).await.map_err(|e| format!("MCP HTTP handshake failed: {e}"));
     }
 
     let command = cfg
@@ -604,8 +604,8 @@ async fn start_client(
         cmd.current_dir(dir);
     }
     cmd.stderr(std::process::Stdio::inherit());
-    let transport = TokioChildProcess::new(cmd)
-        .map_err(|e| format!("Failed to start `{command}`: {e}"))?;
+    let transport =
+        TokioChildProcess::new(cmd).map_err(|e| format!("Failed to start `{command}`: {e}"))?;
     ().serve(transport)
         .await
         .map_err(|e| format!("MCP stdio handshake failed: {e}"))
@@ -713,7 +713,8 @@ async fn reconcile(
                 .snapshots
                 .get(&cfg.id)
                 .map(|snap| {
-                    snap.status == McpStatus::Connected && fingerprint(&snap.config) == fingerprint(&cfg)
+                    snap.status == McpStatus::Connected
+                        && fingerprint(&snap.config) == fingerprint(&cfg)
                 })
                 .unwrap_or(false);
             if already && same && !force {
@@ -728,9 +729,10 @@ async fn reconcile(
                 shutdown_session(handle).await;
                 inner = runtime.inner.lock().await;
             }
-            inner
-                .snapshots
-                .insert(cfg.id.clone(), connecting_snapshot(scope.clone(), cfg.clone()));
+            inner.snapshots.insert(
+                cfg.id.clone(),
+                connecting_snapshot(scope.clone(), cfg.clone()),
+            );
             to_start.push((scope, cfg));
         }
     }
@@ -758,7 +760,9 @@ async fn reconcile(
 }
 
 #[tauri::command]
-pub async fn mcp_list_snapshot(runtime: State<'_, McpRuntime>) -> Result<Vec<McpServerSnapshot>, String> {
+pub async fn mcp_list_snapshot(
+    runtime: State<'_, McpRuntime>,
+) -> Result<Vec<McpServerSnapshot>, String> {
     let inner = runtime.inner.lock().await;
     Ok(snapshot_list(&inner))
 }

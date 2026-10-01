@@ -15,7 +15,10 @@ fn normalize_rel(path: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Cannot favorite vault root".into());
     }
-    if trimmed.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
+    if trimmed
+        .split('/')
+        .any(|p| p.is_empty() || p == "." || p == "..")
+    {
         return Err("Invalid favorite path".into());
     }
     for component in Path::new(&trimmed).components() {
@@ -167,8 +170,7 @@ pub fn remap_favorites(root: &Path, from: &str, to: Option<&str>) -> Result<(), 
         let next = if old == from {
             to.clone()
         } else if old.starts_with(&format!("{from}/")) {
-            to.as_ref()
-                .map(|t| format!("{t}{}", &old[from.len()..]))
+            to.as_ref().map(|t| format!("{t}{}", &old[from.len()..]))
         } else {
             continue;
         };

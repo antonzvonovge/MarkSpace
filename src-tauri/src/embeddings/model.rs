@@ -2,7 +2,7 @@ use candle_core::{Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config, DTYPE};
 use std::path::Path;
-use tokenizers::{PaddingParams, TruncationParams, Tokenizer};
+use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
 
 /// Multilingual MiniLM sentence-transformers default max length.
 const MAX_SEQ_LEN: usize = 128;
@@ -168,7 +168,9 @@ mod tests {
         let en = embedder.embed_one("employee onboarding checklist").unwrap();
         println!("query embed: {:?}", started.elapsed());
 
-        let ru = embedder.embed_one("чеклист онбординга сотрудников").unwrap();
+        let ru = embedder
+            .embed_one("чеклист онбординга сотрудников")
+            .unwrap();
         assert_eq!(en.len(), EMBEDDING_DIM);
         let sim: f32 = en.iter().zip(&ru).map(|(a, b)| a * b).sum();
         println!("ru/en similarity: {sim:.3}");
@@ -184,4 +186,3 @@ mod tests {
             .join(MODEL_ID)
     }
 }
-

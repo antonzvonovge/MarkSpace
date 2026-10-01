@@ -54,10 +54,7 @@ pub fn vault_key(vault_path: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(vault_path.as_bytes());
     let digest = hasher.finalize();
-    digest[..16]
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    digest[..16].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub fn index_dir(app_data: &Path, vault_path: &str) -> PathBuf {

@@ -223,7 +223,8 @@ impl WorkerState {
             model_id: MODEL_ID.to_string(),
             indexed_files: self.index.files.len(),
             pending_files: self.pending.len(),
-            indexing: self.enabled && (self.indexing || !self.pending.is_empty() || self.scan_at.is_some()),
+            indexing: self.enabled
+                && (self.indexing || !self.pending.is_empty() || self.scan_at.is_some()),
             progress: self.progress,
             indexing_enabled: self.enabled,
             error: self.last_error.clone(),
@@ -243,7 +244,8 @@ impl WorkerState {
             }
             let elapsed = started.elapsed();
             self.last_persist = Some(Instant::now());
-            self.persist_interval = (elapsed * 10).clamp(MIN_PERSIST_INTERVAL, MAX_PERSIST_INTERVAL);
+            self.persist_interval =
+                (elapsed * 10).clamp(MIN_PERSIST_INTERVAL, MAX_PERSIST_INTERVAL);
         }
     }
 
@@ -286,10 +288,7 @@ impl WorkerState {
             self.emit_job(
                 "running",
                 0,
-                Some(format!(
-                    "Starting in {}s…",
-                    self.delay.as_secs().max(1)
-                )),
+                Some(format!("Starting in {}s…", self.delay.as_secs().max(1))),
             );
         }
     }
@@ -552,7 +551,11 @@ impl WorkerState {
         if self.user_is_busy() {
             if self.enabled && self.has_queued_work() && !self.paused_emitted {
                 self.paused_emitted = true;
-                self.emit_job("paused", self.progress, Some("Paused while you work".into()));
+                self.emit_job(
+                    "paused",
+                    self.progress,
+                    Some("Paused while you work".into()),
+                );
             }
             return true;
         }
@@ -765,7 +768,11 @@ impl WorkerState {
                 });
             }
         }
-        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        hits.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         hits.truncate(limit.max(1).min(50));
         Ok(hits)
     }
@@ -812,9 +819,7 @@ fn worker_loop(rx: Receiver<Msg>, emit_job: Sender<BackgroundJobPayload>) {
     let mut queue: VecDeque<Msg> = VecDeque::new();
 
     loop {
-        let waiting = queue.is_empty()
-            && state.pending.is_empty()
-            && state.scan_at.is_none();
+        let waiting = queue.is_empty() && state.pending.is_empty() && state.scan_at.is_none();
         if waiting {
             match rx.recv() {
                 Ok(msg) => queue.push_back(msg),

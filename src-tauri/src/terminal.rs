@@ -39,7 +39,6 @@ struct Job {
     child: Mutex<Option<Child>>,
 }
 
-
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RunTerminalResponse {
@@ -56,7 +55,9 @@ pub struct RunTerminalResponse {
 }
 
 pub(crate) fn clamp_timeout_ms(value: Option<u64>) -> u64 {
-    value.unwrap_or(DEFAULT_TIMEOUT_MS).clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
+    value
+        .unwrap_or(DEFAULT_TIMEOUT_MS)
+        .clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
 }
 
 pub(crate) fn allowed_env_key(key: &str) -> bool {
@@ -167,7 +168,8 @@ fn spawn_shell(command: &str, cwd: &Path) -> Result<Child, String> {
         cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
 
-    cmd.spawn().map_err(|e| format!("Failed to start command: {e}"))
+    cmd.spawn()
+        .map_err(|e| format!("Failed to start command: {e}"))
 }
 
 fn kill_process_tree(pid: u32) {
@@ -263,7 +265,10 @@ pub fn run_terminal_command(
         pid,
         child: Mutex::new(Some(child)),
     });
-    runtime.jobs.lock().insert(job_id.to_string(), Arc::clone(&job));
+    runtime
+        .jobs
+        .lock()
+        .insert(job_id.to_string(), Arc::clone(&job));
 
     let stdout_handle = thread::spawn(move || match stdout {
         Some(pipe) => read_capped(pipe, MAX_OUTPUT_BYTES),

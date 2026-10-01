@@ -24,6 +24,7 @@ import {
   isIncomingFolder,
   isIncomingPath,
   isTasksFolder,
+  isRoutinesFolder,
   INCOMING_FOLDER,
   isVaultDocumentPath,
   isVaultProjectFolder,
@@ -209,6 +210,8 @@ export type FileTreeHandle = {
 type FileTreeProps = {
   /** Rendered inside the scroll area (between comments and workspace). */
   tasksSection?: ReactNode;
+  /** Rendered after Tasks, before the workspace tree. */
+  routinesSection?: ReactNode;
 };
 
 type DeleteTarget = {
@@ -1346,7 +1349,7 @@ function FavoritesTreeRows({
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { tasksSection = null },
+  { tasksSection = null, routinesSection = null },
   ref,
 ) {
   const tree = useVaultStore((s) => s.tree);
@@ -1687,7 +1690,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         } else if (activePath) {
           target = activePath;
         }
-        if (!target || isSkillsFolder(target) || isIncomingFolder(target) || isTasksFolder(target)) return;
+        if (!target || isSkillsFolder(target) || isIncomingFolder(target) || isTasksFolder(target) || isRoutinesFolder(target)) return;
         e.preventDefault();
         setContextMenu(null);
         setRenamingPath(target);
@@ -1706,7 +1709,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
       const workspaceChildren = (vaultTree?.children ?? []).filter(
         (n) =>
-          !isIncomingFolder(n.path, n.isDir) && !isTasksFolder(n.path, n.isDir),
+          !isIncomingFolder(n.path, n.isDir) && !isTasksFolder(n.path, n.isDir) && !isRoutinesFolder(n.path, n.isDir),
       );
       const incomingNode = vaultTree?.children?.find((n) =>
         isIncomingFolder(n.path, n.isDir),
@@ -2532,6 +2535,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         ) : null}
         <CommentsInboxSection />
         {tasksSection}
+        {routinesSection}
         <div className="workspace-section">
           <WorkspaceTree
             tree={tree}
