@@ -76,6 +76,7 @@ import {
   type StructuralAnchor,
   type UpsertCommentInput,
 } from "../lib/vaultApi";
+import { useSidebarUiStore } from "./sidebarUiStore";
 import {
   loadExpandedPaths,
   loadRecentFiles,
@@ -136,6 +137,7 @@ import {
   setNoteDayMarker,
   setNoteFileMarker,
   setNoteTags,
+  getNoteTags,
   type MovieAttrs,
 } from "../lib/noteFrontmatter";
 import { downloadPosterToAssets } from "../lib/omdb";
@@ -442,7 +444,7 @@ type VaultStore = {
   isFavorite: (path: string) => boolean;
   addToFavorites: (path: string) => Promise<void>;
   removeFromFavorites: (path: string) => Promise<void>;
-  createNoteInSelection: (name: string) => Promise<void>;
+  createNoteInSelection: (name: string) => Promise<string | null>;
   /** Create a Media library project film card note under `folder` (or selected folder). */
   createFilmNote: (
     folder: string,
@@ -2829,17 +2831,35 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   createNoteInSelection: async (name) => {
     const { selectedFolderPath } = get();
     const trimmed = name.trim().replace(/\.md$/i, "");
-    if (!trimmed) return;
+    if (!trimmed) return null;
     const rel = joinPath(selectedFolderPath, trimmed);
     const predicted = rel.toLowerCase().endsWith(".md") ? rel : `${rel}.md`;
-    await runOptimisticCreate(
+    const created = await runOptimisticCreate(
       get,
       set,
       selectedFolderPath,
       predicted,
       false,
-      () => createNote(rel),
+      async () => {
+        const path = await createNote(rel);
+        const ui = useSidebarUiStore.getState();
+        const tag = ui.selectedTagPath;
+        if (ui.workspaceView !== "tags" || !tag) return path;
+        try {
+          const markdown = await readNote(path);
+          const existing = getNoteTags(markdown);
+          if (!existing.some((item) => item.toLowerCase() === tag.toLowerCase())) {
+            await writeNote(path, setNoteTags(markdown, [...existing, tag]));
+            const vaultTags = await listVaultTags();
+            set({ vaultTags });
+          }
+        } catch (e) {
+          set({ error: e instanceof Error ? e.message : String(e) });
+        }
+        return path;
+      },
     );
+    return created;
   },
 
   createFilmNote: async (folder, input) => {

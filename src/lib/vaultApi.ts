@@ -448,6 +448,17 @@ export async function listNoteTags(): Promise<NoteTags[]> {
   return invoke("list_note_tags");
 }
 
+/**
+ * Rename (`to`) or delete (`to === null`) a tag and every `tag/…` descendant
+ * in markdown and PDF sidecars. Returns the updated index.
+ */
+export async function retagPrefix(
+  from: string,
+  to: string | null,
+): Promise<NoteTags[]> {
+  return invoke("retag_prefix", { from, to });
+}
+
 /** One note and resolved existing `[[wiki]]` targets. */
 export type NoteWikilinks = {
   path: string;

@@ -3777,6 +3777,95 @@ pub fn list_note_tags(state: State<VaultState>) -> Result<Vec<NoteTags>, String>
     Ok(out)
 }
 
+fn snapshot_note_tags(state: &VaultState) -> Result<Vec<NoteTags>, String> {
+    let guard = state
+        .tag_index
+        .lock()
+        .map_err(|_| "Tag index lock poisoned")?;
+    let mut out: Vec<NoteTags> = guard
+        .iter()
+        .map(|(path, tags)| NoteTags {
+            path: path.clone(),
+            tags: tags.clone(),
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    Ok(out)
+}
+
+/// Rename (`to` set) or delete (`to` omitted) a tag and every `tag/…` descendant.
+/// Notes stay on disk. Returns the updated path → tags index.
+#[tauri::command(async)]
+pub fn retag_prefix(
+    from: String,
+    to: Option<String>,
+    state: State<VaultState>,
+) -> Result<Vec<NoteTags>, String> {
+    let from = from.trim().trim_start_matches('#').trim().to_string();
+    if from.is_empty() || from.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err("Tag required".into());
+    }
+    let to = match to {
+        None => None,
+        Some(raw) => {
+            let next = raw.trim().trim_start_matches('#').trim().to_string();
+            if next.is_empty()
+                || next
+                    .split('/')
+                    .any(|part| part.is_empty() || part == "." || part == "..")
+            {
+                return Err("Invalid tag".into());
+            }
+            if next == from {
+                return snapshot_note_tags(&state);
+            }
+            Some(next)
+        }
+    };
+
+    let root = get_root(&state)?;
+    let paths: Vec<String> = {
+        let guard = state
+            .tag_index
+            .lock()
+            .map_err(|_| "Tag index lock poisoned")?;
+        guard
+            .iter()
+            .filter(|(_, tags)| {
+                tags.iter()
+                    .any(|tag| crate::tag_prefix::tag_matches_branch(tag, &from))
+            })
+            .map(|(path, _)| path.clone())
+            .collect()
+    };
+
+    for rel in paths {
+        let full = ensure_inside(&root, Path::new(&rel))?;
+        if rel.to_lowercase().ends_with(".md") {
+            let raw = fs::read_to_string(&full).map_err(|e| format!("Cannot read note: {e}"))?;
+            let prev = normalize_newlines(&raw);
+            let next = normalize_newlines(&crate::tag_prefix::rewrite_note_content(
+                &prev,
+                &from,
+                to.as_deref(),
+            ));
+            if next != prev {
+                fs::write(&full, &next).map_err(|e| format!("Cannot write note: {e}"))?;
+                crate::embeddings::notify_file_changed(&rel);
+            }
+            set_tag_index_path(&state, &rel, tags_from_note_content(&next));
+        } else {
+            let current = crate::filemeta::get_tags_for_path(&root, &rel)?;
+            let next = crate::tag_prefix::apply_tag_list(&current, &from, to.as_deref());
+            let stored = crate::filemeta::set_tags_for_path(&root, &rel, &next)?;
+            set_tag_index_path(&state, &rel, stored);
+        }
+    }
+
+    snapshot_note_tags(&state)
+}
+
 /// One note and the existing vault files its `[[wiki]]` links resolve to.
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useVaultStore } from "../store/vaultStore";
+import { useVaultStore, GRAPH_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
+import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { isUnderDiaryProject } from "../lib/diaryNotes";
 import { FcDocument } from "react-icons/fc";
 import {
@@ -15,7 +16,6 @@ import {
   PlusIcon,
   RefreshIcon,
 } from "./treeIcons";
-import { GRAPH_TAB_PATH, SETTINGS_TAB_PATH } from "../store/vaultStore";
 
 export type TreeCreateKind =
   | "note"
@@ -272,6 +272,39 @@ function ShowResolvedIcon({ active }: { active: boolean }) {
 }
 
 /** Workspace actions; collapse stays last (right edge). */
+export function WorkspaceViewSwitch() {
+  const view = useSidebarUiStore((s) => s.workspaceView);
+  const setWorkspaceView = useSidebarUiStore((s) => s.setWorkspaceView);
+  return (
+    <div
+      className="workspace-view-switch"
+      role="group"
+      aria-label="Workspace view"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        className={view === "folders" ? "is-active" : ""}
+        aria-pressed={view === "folders"}
+        onClick={() => setWorkspaceView("folders")}
+      >
+        Folders
+      </button>
+      <button
+        type="button"
+        className={view === "tags" ? "is-active" : ""}
+        aria-pressed={view === "tags"}
+        onClick={() => setWorkspaceView("tags")}
+      >
+        Tags
+      </button>
+    </div>
+  );
+}
+
+/** Workspace actions; collapse stays last (right edge). */
 export function WorkspaceHeaderActions({
   onCreate,
   onLocateActive,
@@ -282,6 +315,8 @@ export function WorkspaceHeaderActions({
   onCollapseAll: () => void;
 }) {
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
+  const workspaceView = useSidebarUiStore((s) => s.workspaceView);
+  const tagExpandedPaths = useSidebarUiStore((s) => s.tagExpandedPaths);
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
   const projectPropertiesByPath = useVaultStore(
@@ -351,7 +386,11 @@ export function WorkspaceHeaderActions({
       <TreeCreateMenu onCreate={onCreate} disabled={createDisabled} />
       <SectionCollapseButton
         onCollapse={onCollapseAll}
-        disabled={expandedPaths.length === 0}
+        disabled={
+          workspaceView === "tags"
+            ? tagExpandedPaths.length === 0
+            : expandedPaths.length === 0
+        }
         title="Collapse to top level"
       />
     </div>

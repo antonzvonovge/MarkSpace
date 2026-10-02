@@ -20,6 +20,7 @@ mod projects;
 mod routines;
 mod task_lists;
 mod terminal;
+mod tag_prefix;
 mod vault;
 mod vault_ai;
 mod vault_appearance;
@@ -202,6 +203,7 @@ pub fn run() {
             vault::list_file_markers,
             vault::list_note_titles,
             vault::list_note_tags,
+            vault::retag_prefix,
             vault::list_note_wikilinks,
             vault::reindex_note_tags,
             pdf_text::extract_pdf_text_cmd,
