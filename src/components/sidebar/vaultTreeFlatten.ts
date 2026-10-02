@@ -1,10 +1,14 @@
 import type { TreeNode } from "../../lib/vaultApi";
 import {
   isIncomingFolder,
+  isIncomingPath,
   isDashboardsFolder,
+  isDashboardsPath,
   isRoutinesFolder,
+  isRoutinesPath,
   isSkillsFolder,
   isTasksFolder,
+  isTasksPath,
   parentPath,
 } from "../../lib/vaultApi";
 
@@ -29,6 +33,16 @@ function isMdNestTarget(path: string, isDir: boolean): boolean {
   return !isSkillsFolder(parentPath(path), true);
 }
 
+/** Reserved roots have their own sidebar sections and are skipped here. */
+function isWorkspaceChild(node: TreeNode): boolean {
+  return (
+    !isIncomingFolder(node.path, node.isDir) &&
+    !isTasksFolder(node.path, node.isDir) &&
+    !isRoutinesFolder(node.path, node.isDir) &&
+    !isDashboardsFolder(node.path, node.isDir)
+  );
+}
+
 /**
  * Visible workspace rows only (Incoming / Tasks / Routines omitted).
  * Vault root (`path === ""`) is always expanded.
@@ -47,21 +61,11 @@ export function flattenVisibleWorkspace(
     siblingIndex: number,
   ) => {
     const children = node.children ?? [];
-    const workspaceChildren = node.isDir
-      ? children.filter(
-          (c) =>
-            !isIncomingFolder(c.path, c.isDir) &&
-            !isTasksFolder(c.path, c.isDir) &&
-            !isRoutinesFolder(c.path, c.isDir) &&
-            !isDashboardsFolder(c.path, c.isDir),
-        )
-      : [];
-    const hasChildren = node.isDir && workspaceChildren.length > 0;
     out.push({
       path: node.path,
       name: node.name,
       isDir: node.isDir,
-      hasChildren,
+      hasChildren: node.isDir && children.some(isWorkspaceChild),
       depth,
       parentPath: parent,
       indexAmongSiblings: siblingIndex,
@@ -71,7 +75,10 @@ export function flattenVisibleWorkspace(
     const isOpen = node.path === VAULT_PATH || expanded.has(node.path);
     if (!node.isDir || !isOpen) return;
 
-    workspaceChildren.forEach((child, i) => {
+    // Index within the full child list: drops send it to the vault as a slot in
+    // the parent's on-disk order, which still holds the skipped folders.
+    children.forEach((child, i) => {
+      if (!isWorkspaceChild(child)) return;
       walk(child, depth + 1, node.path, i);
     });
   };
@@ -90,32 +97,47 @@ export function flattenAllWorkspace(root: TreeNode): FlattenedVaultRow[] {
     siblingIndex: number,
   ) => {
     const children = node.children ?? [];
-    const workspaceChildren = node.isDir
-      ? children.filter(
-          (c) =>
-            !isIncomingFolder(c.path, c.isDir) &&
-            !isTasksFolder(c.path, c.isDir) &&
-            !isRoutinesFolder(c.path, c.isDir) &&
-            !isDashboardsFolder(c.path, c.isDir),
-        )
-      : [];
     out.push({
       path: node.path,
       name: node.name,
       isDir: node.isDir,
-      hasChildren: node.isDir && workspaceChildren.length > 0,
+      hasChildren: node.isDir && children.some(isWorkspaceChild),
       depth,
       parentPath: parent,
       indexAmongSiblings: siblingIndex,
       droppable: node.isDir || isMdNestTarget(node.path, node.isDir),
     });
     if (!node.isDir) return;
-    workspaceChildren.forEach((child, i) => {
+    children.forEach((child, i) => {
+      if (!isWorkspaceChild(child)) return;
       walk(child, depth + 1, node.path, i);
     });
   };
   walk(root, 0, "__tree_root__", 0);
   return out;
+}
+
+/**
+ * Drag between the Incoming section and the workspace tree (both directions).
+ * `destParent` is the folder that receives the item: the hovered folder, or the
+ * parent of a hovered file. Same-parent drops are rejected as no-ops.
+ */
+export function canMoveBetweenIncomingAndWorkspace(
+  from: string,
+  destParent: string,
+): boolean {
+  if (!from) return false;
+  // Only this pair of sections; Tasks / Routines / Dashboards keep their own UI.
+  if (!isIncomingPath(from) && !isIncomingPath(destParent)) return false;
+  if (
+    isTasksPath(destParent) ||
+    isRoutinesPath(destParent) ||
+    isDashboardsPath(destParent)
+  ) {
+    return false;
+  }
+  if (parentPath(from) === destParent) return false;
+  return canDropVaultPath(from, destParent, true);
 }
 
 export function canDropVaultPath(

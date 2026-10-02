@@ -1,6 +1,7 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, type DragEvent } from "react";
 import type { IncomingCaptureEntry } from "../lib/incomingCaptureIndex";
 import { formatCaptureListTime } from "../lib/incomingCaptureIndex";
+import { bindVaultTreeDragStart } from "../lib/vaultTreeDrag";
 import { useVaultStore } from "../store/vaultStore";
 import { IncomingSectionIcon } from "./treeIcons";
 
@@ -17,6 +18,10 @@ const IncomingCaptureRow = memo(function IncomingCaptureRow({
       type="button"
       className="incoming-capture-row"
       title={entry.source ? `${label}\n${entry.source}` : label}
+      draggable
+      onDragStart={(e: DragEvent<HTMLButtonElement>) => {
+        bindVaultTreeDragStart(e.dataTransfer, entry.path, false);
+      }}
       onClick={() => onOpen(entry.path)}
     >
       <span className="incoming-capture-row-icon" aria-hidden>

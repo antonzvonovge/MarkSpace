@@ -9,6 +9,7 @@ export function IncomingSection({
   hasChildren,
   captureCount,
   listMode,
+  dropTarget = false,
   onListModeChange,
   onToggle,
   onOpenIncoming,
@@ -21,6 +22,8 @@ export function IncomingSection({
   hasChildren: boolean;
   captureCount: number;
   listMode: boolean;
+  /** Header highlight while a file or folder is dragged onto it. */
+  dropTarget?: boolean;
   onListModeChange: (next: boolean) => void;
   onToggle: () => void;
   onOpenIncoming: () => void;
@@ -36,6 +39,7 @@ export function IncomingSection({
         className={[
           "incoming-section-header",
           selected ? "is-selected" : "",
+          dropTarget ? "is-drop-target" : "",
         ]
           .filter(Boolean)
           .join(" ")}

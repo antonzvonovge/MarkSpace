@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../lib/vaultApi";
 import {
   canDropVaultPath,
+  canMoveBetweenIncomingAndWorkspace,
   flattenAllWorkspace,
   flattenVisibleWorkspace,
   VAULT_PATH,
@@ -60,6 +61,15 @@ describe("flattenVisibleWorkspace", () => {
     expect(deep.map((r) => r.path)).toContain("Proj/sub/deep.md");
   });
 
+  it("numbers siblings as on disk, including rows hidden from this list", () => {
+    // `indexAmongSiblings` is sent to `move_entry` as a slot in the parent's
+    // order, which still contains Incoming / Tasks.
+    const rows = flattenVisibleWorkspace(sample, []);
+    expect(rows.find((r) => r.path === "Skills")?.indexAmongSiblings).toBe(2);
+    expect(rows.find((r) => r.path === "Proj")?.indexAmongSiblings).toBe(3);
+    expect(rows.find((r) => r.path === "root.md")?.indexAmongSiblings).toBe(4);
+  });
+
   it("marks .md notes droppable and folders droppable", () => {
     const rows = flattenAllWorkspace(sample);
     expect(rows.find((r) => r.path === "Proj")?.droppable).toBe(true);
@@ -77,6 +87,70 @@ describe("canDropVaultPath / Skills", () => {
   it("blocks drop into self or descendant", () => {
     expect(canDropVaultPath("Proj", "Proj", true)).toBe(false);
     expect(canDropVaultPath("Proj", "Proj/sub", true)).toBe(false);
+  });
+});
+
+describe("canMoveBetweenIncomingAndWorkspace", () => {
+  it("accepts Incoming items dropped on the workspace tree", () => {
+    expect(canMoveBetweenIncomingAndWorkspace("Incoming/a.md", "Proj")).toBe(
+      true,
+    );
+    expect(canMoveBetweenIncomingAndWorkspace("Incoming/box", VAULT_PATH)).toBe(
+      true,
+    );
+  });
+
+  it("accepts workspace items dropped on Incoming", () => {
+    expect(canMoveBetweenIncomingAndWorkspace("Proj/note.md", "Incoming")).toBe(
+      true,
+    );
+    expect(canMoveBetweenIncomingAndWorkspace("Proj", "Incoming/box")).toBe(
+      true,
+    );
+  });
+
+  it("accepts moves deeper inside Incoming", () => {
+    expect(
+      canMoveBetweenIncomingAndWorkspace("Incoming/a.md", "Incoming/box"),
+    ).toBe(true);
+  });
+
+  it("rejects drops on the folder the item already sits in", () => {
+    expect(canMoveBetweenIncomingAndWorkspace("Incoming/a.md", "Incoming")).toBe(
+      false,
+    );
+    expect(canMoveBetweenIncomingAndWorkspace("Proj/note.md", "Proj")).toBe(
+      false,
+    );
+  });
+
+  it("rejects reserved folders as source or destination", () => {
+    expect(canMoveBetweenIncomingAndWorkspace("Incoming", "Proj")).toBe(false);
+    expect(canMoveBetweenIncomingAndWorkspace("Tasks", "Incoming")).toBe(false);
+    for (const dest of ["Tasks", "Routines", "Dashboards"]) {
+      expect(canMoveBetweenIncomingAndWorkspace("Incoming/a.md", dest)).toBe(
+        false,
+      );
+    }
+  });
+
+  it("keeps Skills at the vault root", () => {
+    expect(canMoveBetweenIncomingAndWorkspace("Skills", "Incoming")).toBe(
+      false,
+    );
+  });
+
+  it("ignores drags that touch neither Incoming side", () => {
+    expect(canMoveBetweenIncomingAndWorkspace("Proj/note.md", "Journal")).toBe(
+      false,
+    );
+    expect(canMoveBetweenIncomingAndWorkspace("", "Incoming")).toBe(false);
+  });
+
+  it("rejects dropping a folder into its own subtree", () => {
+    expect(
+      canMoveBetweenIncomingAndWorkspace("Incoming/box", "Incoming/box/deep"),
+    ).toBe(false);
   });
 });
 
@@ -117,8 +191,9 @@ describe("resolveVaultDrop", () => {
       kind: "move",
       from: "Skills",
       targetPath: VAULT_PATH,
-      // Skills(0) after Proj(1) → toIndex 2, then same-parent adjust → 1
-      toIndex: 1,
+      // Skills(2) after Proj(3) → toIndex 4, then same-parent adjust → 3,
+      // which lands right after Proj once Skills is pulled out of the order.
+      toIndex: 3,
     });
   });
 });

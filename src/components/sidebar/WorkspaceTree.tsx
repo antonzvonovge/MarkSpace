@@ -101,7 +101,8 @@ export type WorkspaceTreeProps = {
   showNoteTitles?: boolean;
   titlesByPath?: Readonly<Record<string, string>>;
   renamingPath: string | null;
-  osDropRowPath: string | null;
+  /** Row painted as the drop destination (OS files or a moved vault item). */
+  dropHighlightPath: string | null;
   scrollParentRef: React.RefObject<HTMLElement | null>;
   onToggleExpanded: (path: string) => void;
   onSelectFolder: (path: string) => void;
@@ -126,6 +127,18 @@ export type WorkspaceTreeProps = {
   onCollapseAll: () => void;
   favoriteSet: Set<string>;
   onMoved?: (from: string, next: string | null) => void;
+  /**
+   * Drop targets that live outside the virtual list but inside its scroll
+   * container (the Incoming section). Returns the destination folder, or null
+   * when the pointer is elsewhere or the move is not allowed.
+   */
+  externalDropTargetAt?: (
+    clientX: number,
+    clientY: number,
+    from: string,
+  ) => string | null;
+  onExternalDropHover?: (dest: string | null) => void;
+  onExternalDrop?: (from: string, dest: string) => void;
 };
 
 function isUnsupported(isDir: boolean, path: string): boolean {
@@ -217,7 +230,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   showNoteTitles = false,
   titlesByPath,
   renamingPath,
-  osDropRowPath,
+  dropHighlightPath,
   scrollParentRef,
   onToggleExpanded,
   onSelectFolder,
@@ -232,6 +245,9 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   onCollapseAll,
   favoriteSet,
   onMoved,
+  externalDropTargetAt,
+  onExternalDropHover,
+  onExternalDrop,
 }: WorkspaceTreeProps): ReactNode {
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
@@ -498,26 +514,54 @@ export const WorkspaceTree = memo(function WorkspaceTree({
     [startPointerTracking],
   );
 
+  /** Only reachable while `over` is null: the list droppable covers the rows. */
+  const probeExternalDrop = useCallback(
+    (activeDragId: UniqueIdentifier) => {
+      const dest =
+        externalDropTargetAt?.(
+          pointerXRef.current,
+          pointerYRef.current,
+          String(activeDragId),
+        ) ?? null;
+      onExternalDropHover?.(dest);
+    },
+    [externalDropTargetAt, onExternalDropHover],
+  );
+
   const onDragOver = useCallback(
     (event: DragOverEvent) => {
       if (event.over == null) {
+        probeExternalDrop(event.active.id);
         commitDropIndicator(null);
         return;
       }
+      onExternalDropHover?.(null);
       updateDropFromPointer(event.active.id);
     },
-    [commitDropIndicator, updateDropFromPointer],
+    [
+      commitDropIndicator,
+      onExternalDropHover,
+      probeExternalDrop,
+      updateDropFromPointer,
+    ],
   );
 
   const onDragMove = useCallback(
     (event: DragMoveEvent) => {
       if (event.over == null) {
+        probeExternalDrop(event.active.id);
         commitDropIndicator(null);
         return;
       }
+      onExternalDropHover?.(null);
       updateDropFromPointer(event.active.id);
     },
-    [commitDropIndicator, updateDropFromPointer],
+    [
+      commitDropIndicator,
+      onExternalDropHover,
+      probeExternalDrop,
+      updateDropFromPointer,
+    ],
   );
 
   const clearDragState = useCallback(() => {
@@ -542,6 +586,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       const clientY = pointerYRef.current;
       const fromRow = rowsRef.current.find((r) => r.path === from);
       clearDragState();
+      onExternalDropHover?.(null);
 
       // Tree-internal drop (reorder / nest).
       if (indicator && from !== indicator.path) {
@@ -566,6 +611,14 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         return;
       }
 
+      // Sidebar drop zone outside the list (Incoming section).
+      const externalDest =
+        externalDropTargetAt?.(clientX, clientY, from) ?? null;
+      if (externalDest != null) {
+        onExternalDrop?.(from, externalDest);
+        return;
+      }
+
       // Outside the list: deliver to chat composer / note editor (no HTML5 DnD).
       const parent = scrollParentRef.current;
       const parentRect = parent?.getBoundingClientRect();
@@ -586,13 +639,17 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       nestTreeEntryUnderNote,
       onMoved,
       clearDragState,
+      externalDropTargetAt,
+      onExternalDrop,
+      onExternalDropHover,
       scrollParentRef,
     ],
   );
 
   const onDragCancel = useCallback(() => {
     clearDragState();
-  }, [clearDragState]);
+    onExternalDropHover?.(null);
+  }, [clearDragState, onExternalDropHover]);
 
   const activeRow = activeId
     ? rowsByPath.get(String(activeId)) ?? null
@@ -698,7 +755,9 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         selected={selected}
         active={active}
         renaming={renamingPath === path}
-        osDropHighlight={osDropRowPath !== null && path === osDropRowPath}
+        osDropHighlight={
+          dropHighlightPath !== null && path === dropHighlightPath
+        }
         openComments={unresolvedCounts.get(path) ?? 0}
         fileMarkerEmoji={fileMarker?.emoji}
         fileMarkerLabel={fileMarker?.label}

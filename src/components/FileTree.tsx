@@ -10,6 +10,7 @@ import {
   startTransition,
   useSyncExternalStore,
   type CSSProperties,
+  type DragEvent as ReactDragEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -106,10 +107,13 @@ import {
 } from "react-icons/fc";
 import { MdChevronRight } from "react-icons/md";
 import {
+  bindVaultTreeDragStart,
   endVaultTreeDrag,
   isVaultTreeDrag,
+  vaultDragSourcePath,
   vaultPathFromDrop,
 } from "../lib/vaultTreeDrag";
+import { canMoveBetweenIncomingAndWorkspace } from "./sidebar/vaultTreeFlatten";
 import {
   clipboardHasOsFiles,
   collectVaultDocumentFiles,
@@ -255,6 +259,52 @@ function vaultRowFromPointerTarget(target: EventTarget | null): {
 
 function importParentFromRow(path: string, isDir: boolean): string {
   return isDir ? path : parentPath(path);
+}
+
+/** Highlight key for the Incoming header, which has no row path of its own. */
+const INCOMING_HEADER_ZONE = "__incoming_header__";
+
+type VaultDropZone = {
+  /** Folder that receives the dragged item. */
+  dest: string;
+  /** Which row (or the header) to highlight. */
+  zone: string;
+};
+
+/**
+ * Destination for a vault item dropped on `el`: a row in the Incoming section
+ * or in the workspace tree. Other sections (favorites, comments) stay inert.
+ */
+function vaultDropZoneFromElement(
+  el: HTMLElement | null,
+): VaultDropZone | null {
+  if (!el) return null;
+  const incomingHeaderZone: VaultDropZone = {
+    dest: INCOMING_FOLDER,
+    zone: INCOMING_HEADER_ZONE,
+  };
+  if (el.closest(".incoming-section-header")) return incomingHeaderZone;
+  const section = el.closest(".incoming-section, .workspace-section");
+  if (!section) return null;
+  const row = el.closest("[data-vault-path]") as HTMLElement | null;
+  if (!row || !section.contains(row)) {
+    // Capture rows and section padding stand for the Incoming folder itself.
+    return section.classList.contains("incoming-section")
+      ? incomingHeaderZone
+      : null;
+  }
+  const path = row.getAttribute("data-vault-path") ?? "";
+  const isDir = row.dataset.vaultIsdir === "1" || path === "";
+  return {
+    dest: importParentFromRow(path, isDir),
+    zone: isIncomingFolder(path, isDir) ? INCOMING_HEADER_ZONE : path,
+  };
+}
+
+/** Last slot among `parent`'s children, so a drop lands at the end. */
+function appendIndexForParent(root: TreeNode | null, parent: string): number {
+  const node = parent === "" ? root : findTreeNode(root, parent);
+  return node?.children?.length ?? 0;
 }
 
 function isUnsupportedTreeFile(isDir: boolean, path: string): boolean {
@@ -1142,6 +1192,8 @@ function FavoritesTreeRows({
   onToggleExpanded,
   onRenameCommit,
   onRenameCancel,
+  vaultDrag = false,
+  dropTargetPath = null,
 }: {
   nodes: TreeNode[];
   depth: number;
@@ -1169,6 +1221,10 @@ function FavoritesTreeRows({
   onToggleExpanded: (path: string) => void;
   onRenameCommit: (path: string, nextName: string) => void;
   onRenameCancel: () => void;
+  /** HTML5 drag out of this section (Incoming only; favorites stay inert). */
+  vaultDrag?: boolean;
+  /** Row to highlight as the current drop destination. */
+  dropTargetPath?: string | null;
 }) {
   return (
     <>
@@ -1227,6 +1283,7 @@ function FavoritesTreeRows({
                 unsupported ? "is-unsupported" : "",
                 projectColor ? "has-project-color" : "",
                 selected || active ? "is-selected" : "",
+                dropTargetPath === path ? "is-drop-target" : "",
                 renaming ? "is-renaming" : "",
               ]
                 .filter(Boolean)
@@ -1242,6 +1299,15 @@ function FavoritesTreeRows({
               data-vault-path={path}
               data-vault-isdir={isDir ? "1" : undefined}
               data-drawio-path={isDrawio ? path : undefined}
+              draggable={vaultDrag && !renaming}
+              onDragStart={
+                vaultDrag
+                  ? (e: ReactDragEvent<HTMLDivElement>) => {
+                      bindVaultTreeDragStart(e.dataTransfer, path, isDir);
+                      e.stopPropagation();
+                    }
+                  : undefined
+              }
               onClick={(e) => {
                 if (renaming) return;
                 if (isDir) {
@@ -1406,6 +1472,8 @@ function FavoritesTreeRows({
                 onToggleExpanded={onToggleExpanded}
                 onRenameCommit={onRenameCommit}
                 onRenameCancel={onRenameCancel}
+                vaultDrag={vaultDrag}
+                dropTargetPath={dropTargetPath}
               />
             ) : null}
           </div>
@@ -1478,6 +1546,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [pendingOsImport, setPendingOsImport] =
     useState<PendingOsImport | null>(null);
   const [osDropRowPath, setOsDropRowPath] = useState<string | null>(null);
+  /** Row (or Incoming header) highlighted while moving a vault item. */
+  const [vaultDropZone, setVaultDropZone] = useState<string | null>(null);
   const [projectPropsTarget, setProjectPropsTarget] =
     useState<ProjectProperties | null>(null);
   const [projectPropsLoading, setProjectPropsLoading] = useState(false);
@@ -1718,6 +1788,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const endDragChrome = () => {
       endVaultTreeDrag();
       setOsDropRowPath(null);
+      setVaultDropZone(null);
     };
     const onDragEnd = () => endDragChrome();
     dndRoot.addEventListener("dragend", onDragEnd, true);
@@ -1933,6 +2004,43 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     return beginOsImport(parent, data);
   };
 
+  /** dnd-kit tree row released over the Incoming section. */
+  const incomingDropTargetAt = useCallback(
+    (clientX: number, clientY: number, from: string): string | null => {
+      const zone = vaultDropZoneFromElement(
+        document.elementFromPoint(clientX, clientY) as HTMLElement | null,
+      );
+      if (!zone || !isIncomingPath(zone.dest)) return null;
+      if (!canMoveBetweenIncomingAndWorkspace(from, zone.dest)) return null;
+      return zone.dest;
+    },
+    [],
+  );
+
+  const onVaultDropHover = useCallback((dest: string | null) => {
+    const next =
+      dest == null
+        ? null
+        : isIncomingFolder(dest)
+          ? INCOMING_HEADER_ZONE
+          : dest;
+    setVaultDropZone((prev) => (prev === next ? prev : next));
+  }, []);
+
+  const moveIntoDropZone = useCallback(
+    (from: string, dest: string) => {
+      // Incoming is an inbox: newest first. Folders keep their manual order.
+      const toIndex = isIncomingPath(dest)
+        ? 0
+        : appendIndexForParent(useVaultStore.getState().tree, dest);
+      void moveTreeEntry(from, dest, toIndex);
+    },
+    [moveTreeEntry],
+  );
+
+  /** Workspace row under the drag; the Incoming header highlights itself. */
+  const workspaceDropRowPath =
+    vaultDropZone === INCOMING_HEADER_ZONE ? null : vaultDropZone;
 
   const favoriteSet = useMemo(() => new Set(favoritePaths), [favoritePaths]);
 
@@ -2424,12 +2532,20 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         }}
         onDragOverCapture={(e) => {
           if (isVaultTreeDrag(e.dataTransfer)) {
-            const row = vaultRowFromPointerTarget(e.target);
-            const dest = importParentFromRow(row.path, row.isDir);
-            if (isIncomingPath(dest)) {
+            // `getData` is blocked during dragover; the path comes from the bridge.
+            const from = vaultDragSourcePath(vaultPathFromDrop(e.dataTransfer));
+            const zone = vaultDropZoneFromElement(
+              e.target as HTMLElement | null,
+            );
+            const allowed =
+              zone !== null &&
+              canMoveBetweenIncomingAndWorkspace(from, zone.dest);
+            if (allowed) {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
             }
+            const next = allowed ? zone.zone : null;
+            setVaultDropZone((prev) => (prev === next ? prev : next));
             return;
           }
           if (!clipboardHasOsFiles(e.dataTransfer)) return;
@@ -2440,30 +2556,24 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           setOsDropRowPath(row.path);
         }}
         onDragLeaveCapture={(e) => {
-          if (isVaultTreeDrag(e.dataTransfer)) return;
           const related = e.relatedTarget as Node | null;
           if (related && e.currentTarget.contains(related)) return;
+          setVaultDropZone(null);
+          if (isVaultTreeDrag(e.dataTransfer)) return;
           setOsDropRowPath(null);
         }}
         onDropCapture={(e) => {
           if (isVaultTreeDrag(e.dataTransfer)) {
-            const row = vaultRowFromPointerTarget(e.target);
-            const dest = importParentFromRow(row.path, row.isDir);
-            const from = (vaultPathFromDrop(e.dataTransfer) ?? "").replace(
-              /\/+$/,
-              "",
+            const from = vaultDragSourcePath(vaultPathFromDrop(e.dataTransfer));
+            const zone = vaultDropZoneFromElement(
+              e.target as HTMLElement | null,
             );
+            setVaultDropZone(null);
             setOsDropRowPath(null);
-            if (
-              from &&
-              isIncomingPath(dest) &&
-              from !== dest &&
-              !dest.startsWith(`${from}/`) &&
-              !isIncomingFolder(from)
-            ) {
+            if (zone && canMoveBetweenIncomingAndWorkspace(from, zone.dest)) {
               e.preventDefault();
               e.stopPropagation();
-              void moveTreeEntry(from, dest, 0);
+              moveIntoDropZone(from, zone.dest);
             }
             return;
           }
@@ -2489,6 +2599,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           hasChildren={(incomingNode.children ?? []).length > 0}
           captureCount={incomingMdPaths.length}
           listMode={incomingListMode}
+          dropTarget={vaultDropZone === INCOMING_HEADER_ZONE}
           onListModeChange={onIncomingListModeChange}
           onToggle={() => toggleExpanded(INCOMING_FOLDER)}
           onOpenIncoming={() => {
@@ -2537,6 +2648,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             onToggleExpanded={toggleExpanded}
             onRenameCommit={commitInlineRename}
             onRenameCancel={cancelInlineRename}
+            vaultDrag
+            dropTargetPath={vaultDropZone}
           />
         </IncomingSection>
         {favoriteNodes.length > 0 ? (
@@ -2630,7 +2743,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             showNoteTitles={showNoteTitles}
             titlesByPath={titlesByPath}
             renamingPath={renamingPath}
-            osDropRowPath={osDropRowPath}
+            dropHighlightPath={osDropRowPath ?? workspaceDropRowPath}
             scrollParentRef={treeFocusRef}
             onToggleExpanded={toggleExpanded}
             onSelectFolder={selectFolder}
@@ -2644,6 +2757,9 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             onLocateActive={revealActiveInTree}
             onCollapseAll={collapseAllInTree}
             favoriteSet={favoriteSet}
+            externalDropTargetAt={incomingDropTargetAt}
+            onExternalDropHover={onVaultDropHover}
+            onExternalDrop={moveIntoDropZone}
           />
         </div>
       </div>

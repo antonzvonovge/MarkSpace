@@ -8,6 +8,7 @@ import {
   getActiveVaultTreeDrag,
   normalizeVaultTreeDragPath,
   subscribeVaultTreeDrag,
+  vaultDragSourcePath,
   VAULT_TREE_POINTER_DROP_EVENT,
   type VaultTreePointerDropDetail,
 } from "./vaultTreeDrag";
@@ -20,6 +21,14 @@ describe("normalizeVaultTreeDragPath", () => {
 
   it("leaves file paths unchanged", () => {
     expect(normalizeVaultTreeDragPath("Notes/a.md", false)).toBe("Notes/a.md");
+  });
+});
+
+describe("vaultDragSourcePath", () => {
+  it("strips the folder trailing slash", () => {
+    expect(vaultDragSourcePath("Notes/box/")).toBe("Notes/box");
+    expect(vaultDragSourcePath("Notes/a.md")).toBe("Notes/a.md");
+    expect(vaultDragSourcePath(null)).toBe("");
   });
 });
 

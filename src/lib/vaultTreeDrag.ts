@@ -32,6 +32,29 @@ export function normalizeVaultTreeDragPath(
   return path.endsWith("/") ? path : `${path}/`;
 }
 
+/** Inverse of `normalizeVaultTreeDragPath`: drag payload → vault path. */
+export function vaultDragSourcePath(path: string | null | undefined): string {
+  return (path ?? "").replace(/\/+$/, "");
+}
+
+/**
+ * Start an HTML5 drag for a sidebar row outside the dnd-kit tree (Incoming).
+ * The bridge carries the path too, because `getData` is blocked during dragover.
+ */
+export function bindVaultTreeDragStart(
+  dataTransfer: DataTransfer | null,
+  path: string,
+  isDir: boolean,
+): void {
+  const payload = normalizeVaultTreeDragPath(path, isDir);
+  if (dataTransfer) {
+    dataTransfer.setData(VAULT_TREE_MIME, payload);
+    dataTransfer.setData("text/plain", path);
+    dataTransfer.effectAllowed = "move";
+  }
+  beginVaultTreeDrag(payload);
+}
+
 export function beginVaultTreeDrag(path: string) {
   if (clearTimer != null) {
     window.clearTimeout(clearTimer);

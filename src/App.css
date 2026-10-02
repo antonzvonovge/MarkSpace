@@ -2887,7 +2887,9 @@ select {
 }
 
 .tree-folder-row.is-drop-target,
-.tree-file.is-drop-target {
+.tree-file.is-drop-target,
+.incoming-section-header.is-drop-target,
+.incoming-section-header.is-drop-target:hover {
   outline: 1px solid rgba(var(--accent-rgb), 0.55);
   background: rgba(var(--accent-rgb), 0.1);
 }
