@@ -1201,6 +1201,32 @@ pub fn read_note(path: String, state: State<VaultState>) -> Result<String, Strin
     Ok(normalize_newlines(&raw))
 }
 
+const MAX_EXTERNAL_TEXT_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Read a user-picked absolute file as text. It does not have to live in the vault.
+#[tauri::command(async)]
+pub fn read_external_text(path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path required".into());
+    }
+    let candidate = Path::new(trimmed);
+    if !candidate.is_absolute() {
+        return Err("Path must be absolute".into());
+    }
+    if !candidate.is_file() {
+        return Err("File not found".into());
+    }
+    let len = fs::metadata(candidate)
+        .map_err(|e| format!("Cannot read file: {e}"))?
+        .len();
+    if len > MAX_EXTERNAL_TEXT_BYTES {
+        return Err("File is too large".into());
+    }
+    let raw = fs::read_to_string(candidate).map_err(|e| format!("Cannot read file: {e}"))?;
+    Ok(normalize_newlines(&raw))
+}
+
 #[tauri::command(async)]
 pub fn write_note(path: String, content: String, state: State<VaultState>) -> Result<(), String> {
     let root = get_root(&state)?;

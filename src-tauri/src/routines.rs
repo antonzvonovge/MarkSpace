@@ -586,9 +586,40 @@ where
         .ok_or_else(|| "Cron never fires".to_string())
 }
 
+fn cron_parts(expr: &str) -> Result<Vec<Schedule>, String> {
+    let trimmed = expr.trim();
+    if trimmed.is_empty() {
+        return Err("Cron must have 5 fields: minute hour day month weekday".into());
+    }
+    let mut schedules = Vec::new();
+    for part in trimmed.split(';') {
+        let part = part.trim();
+        if part.is_empty() {
+            return Err("Invalid cron: empty schedule".into());
+        }
+        schedules.push(parse_cron(part)?);
+    }
+    Ok(schedules)
+}
+
+fn earliest_fire<Tz>(cron: &str, after: &DateTime<Tz>) -> Result<DateTime<Tz>, String>
+where
+    Tz: TimeZone + Clone,
+    Tz::Offset: std::fmt::Display,
+{
+    let mut best: Option<DateTime<Tz>> = None;
+    for schedule in cron_parts(cron)? {
+        let next = next_fire(&schedule, after)?;
+        best = Some(match best {
+            Some(current) if current <= next => current,
+            _ => next,
+        });
+    }
+    best.ok_or_else(|| "Cron never fires".to_string())
+}
+
 fn next_from_cron(cron: &str, after: &DateTime<Local>) -> Result<String, String> {
-    let schedule = parse_cron(cron)?;
-    Ok(next_fire(&schedule, after)?.to_rfc3339())
+    Ok(earliest_fire(cron, after)?.to_rfc3339())
 }
 
 fn parse_local(raw: &str) -> Option<DateTime<Local>> {
@@ -1139,7 +1170,7 @@ fn upsert(root: &Path, input: UpsertRoutineArgs, now: DateTime<Local>) -> Result
     }
     let name: String = name.chars().take(MAX_NAME_CHARS).collect();
     let cron = input.cron.trim().to_string();
-    parse_cron(&cron)?;
+    cron_parts(&cron)?;
 
     let id = match input.id {
         Some(id) => {
@@ -1456,6 +1487,35 @@ mod tests {
         let monday = next_fire(&schedule, &saturday).unwrap();
         assert_eq!(monday.date_naive().to_string(), "2026-10-05");
         assert_eq!(monday.hour(), 9);
+    }
+
+    #[test]
+    fn quarter_hour_window_steps_fifteen_minutes() {
+        let tz = FixedOffset::east_opt(4 * 3600).unwrap();
+        let cron = "15,30,45 9 * * 1-5;*/15 10-17 * * 1-5;0 18 * * 1-5";
+        // Monday 2026-10-05 09:00 → 09:15, then 18:00 is the last slot, then Tuesday.
+        let at_nine = tz.with_ymd_and_hms(2026, 10, 5, 9, 0, 0).unwrap();
+        let first = earliest_fire(cron, &at_nine).unwrap();
+        assert_eq!(first.hour(), 9);
+        assert_eq!(first.minute(), 15);
+
+        let before_close = tz.with_ymd_and_hms(2026, 10, 5, 17, 45, 0).unwrap();
+        let last = earliest_fire(cron, &before_close).unwrap();
+        assert_eq!(last.date_naive().to_string(), "2026-10-05");
+        assert_eq!(last.hour(), 18);
+        assert_eq!(last.minute(), 0);
+
+        let after_close = tz.with_ymd_and_hms(2026, 10, 5, 18, 0, 0).unwrap();
+        let tuesday = earliest_fire(cron, &after_close).unwrap();
+        assert_eq!(tuesday.date_naive().to_string(), "2026-10-06");
+        assert_eq!(tuesday.hour(), 9);
+        assert_eq!(tuesday.minute(), 15);
+
+        let saturday = tz.with_ymd_and_hms(2026, 10, 3, 10, 0, 0).unwrap();
+        let monday = earliest_fire(cron, &saturday).unwrap();
+        assert_eq!(monday.date_naive().to_string(), "2026-10-05");
+        assert_eq!(monday.hour(), 9);
+        assert_eq!(monday.minute(), 15);
     }
 
     #[test]

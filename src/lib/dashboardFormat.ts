@@ -13,6 +13,10 @@ export const DASHBOARD_WIDGET_W = 6;
 export const DASHBOARD_WIDGET_H = 4;
 export const DASHBOARD_WEATHER_W = 4;
 export const DASHBOARD_WEATHER_H = 5;
+export const DASHBOARD_TASKS_W = 6;
+export const DASHBOARD_TASKS_H = 6;
+export const DASHBOARD_NOTE_W = 6;
+export const DASHBOARD_NOTE_H = 6;
 
 /** Saturated swatches. Lime and amber disappear on the light sidebar. */
 const DASHBOARD_ICON_COLORS = PROJECT_COLOR_SWATCHES.flatMap((swatch) =>
@@ -63,9 +67,48 @@ const weatherWidgetSchema = z
     }
   });
 
+const tasksWidgetSchema = z.object({
+  id: widgetId,
+  kind: z.literal("tasks"),
+  /** Task list folder under Tasks/. Empty for Today / Overdue, or until a list is picked. */
+  list: z.string().trim().max(200),
+  /** Smart view. When set, `list` is ignored. */
+  view: z.enum(["today", "overdue"]).optional(),
+  ...gridTail,
+});
+
+/** Absolute file path from the system dialog, a vault-relative `.md` path, or empty. */
+export function isDashboardNotePath(path: string): boolean {
+  if (!path) return true;
+  if (path.includes("\0")) return false;
+  if (path.startsWith("/") || path.startsWith("\\\\")) return true;
+  if (/^[A-Za-z]:[\\/]/.test(path)) return true;
+  if (path.split("/").includes("..")) return false;
+  return path.toLowerCase().endsWith(".md");
+}
+
+const noteWidgetSchema = z
+  .object({
+    id: widgetId,
+    kind: z.literal("note"),
+    /** Absolute path. Empty until the user picks a file. */
+    path: z.string().trim().max(4096),
+    ...gridTail,
+  })
+  .superRefine((widget, ctx) => {
+    if (!isDashboardNotePath(widget.path)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Note widget needs a file path",
+      });
+    }
+  });
+
 const widgetSchema = z.discriminatedUnion("kind", [
   routineWidgetSchema,
   weatherWidgetSchema,
+  tasksWidgetSchema,
+  noteWidgetSchema,
 ]);
 
 const dashboardSchema = z.object({
@@ -77,6 +120,11 @@ const dashboardSchema = z.object({
 
 export type RoutineWidget = z.infer<typeof routineWidgetSchema>;
 export type WeatherWidget = z.infer<typeof weatherWidgetSchema>;
+export type TasksWidget = z.infer<typeof tasksWidgetSchema>;
+export type NoteWidget = z.infer<typeof noteWidgetSchema>;
+export type TasksWidgetSource =
+  | { view: "today" | "overdue" }
+  | { list: string };
 export type DashboardWidget = z.infer<typeof widgetSchema>;
 export type DashboardDoc = Omit<z.infer<typeof dashboardSchema>, "color"> & {
   /** Palette hex, or "" until the file is assigned a color. */
@@ -207,6 +255,74 @@ export function setWeatherPlace(
         w: widget.w,
         h: widget.h,
       };
+    }),
+  };
+}
+
+export function placeTasksWidget(doc: DashboardDoc, id: string): DashboardDoc {
+  const cell = findFreeCell(doc.widgets, doc.cols, {
+    w: DASHBOARD_TASKS_W,
+    h: DASHBOARD_TASKS_H,
+  });
+  return {
+    ...doc,
+    widgets: [...doc.widgets, { id, kind: "tasks", list: "", ...cell }],
+  };
+}
+
+export function setTasksSource(
+  doc: DashboardDoc,
+  id: string,
+  source: TasksWidgetSource,
+): DashboardDoc {
+  return {
+    ...doc,
+    widgets: doc.widgets.map((widget) => {
+      if (widget.id !== id || widget.kind !== "tasks") return widget;
+      const grid = {
+        x: widget.x,
+        y: widget.y,
+        w: widget.w,
+        h: widget.h,
+      };
+      if ("view" in source) {
+        return {
+          id: widget.id,
+          kind: "tasks" as const,
+          list: "",
+          view: source.view,
+          ...grid,
+        };
+      }
+      return {
+        id: widget.id,
+        kind: "tasks" as const,
+        list: source.list.trim(),
+        ...grid,
+      };
+    }),
+  };
+}
+
+export function placeNoteWidget(doc: DashboardDoc, id: string): DashboardDoc {
+  const cell = findFreeCell(doc.widgets, doc.cols, {
+    w: DASHBOARD_NOTE_W,
+    h: DASHBOARD_NOTE_H,
+  });
+  return {
+    ...doc,
+    widgets: [...doc.widgets, { id, kind: "note", path: "", ...cell }],
+  };
+}
+
+export function setNotePath(doc: DashboardDoc, id: string, path: string): DashboardDoc {
+  const nextPath = path.trim();
+  if (!isDashboardNotePath(nextPath)) return doc;
+  return {
+    ...doc,
+    widgets: doc.widgets.map((widget) => {
+      if (widget.id !== id || widget.kind !== "note") return widget;
+      return { ...widget, path: nextPath };
     }),
   };
 }

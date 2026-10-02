@@ -1,9 +1,11 @@
-export type ScheduleFrequency = "daily" | "weekly" | "hourly";
+export type ScheduleFrequency = "daily" | "weekly" | "hourly" | "quarter";
 
 /**
  * `days` uses Sunday = 0 … Saturday = 6. An empty list is every day.
  * Hourly fires at `minute` from `hour` through the last slot that is still
  * at or before `endHour:endMinute` on the same day.
+ * Quarter fires every 15 minutes from `hour:minute` through `endHour:endMinute`
+ * on the same day. Both ends sit on a quarter hour (:00, :15, :30, :45).
  */
 export type RoutineSchedule = {
   hour: number;
@@ -69,17 +71,77 @@ export function hourlyLastHour(schedule: RoutineSchedule): number | null {
   return last < startHour ? null : last;
 }
 
+const QUARTER_MINUTES = [0, 15, 30, 45] as const;
+
+/** Nearest lower quarter (:00, :15, :30, :45). Values past :59 become :00. */
+export function snapQuarterMinute(minute: number): number {
+  if (!Number.isInteger(minute) || minute < 0) return 0;
+  if (minute > 59) return 0;
+  return Math.floor(minute / 15) * 15;
+}
+
+function quarterWindow(schedule: RoutineSchedule): { start: number; end: number } | null {
+  const start = clamp(schedule.hour, 23, 0) * 60 + snapQuarterMinute(schedule.minute);
+  const end = clamp(schedule.endHour, 23, 23) * 60 + snapQuarterMinute(schedule.endMinute);
+  if (end < start) return null;
+  return { start, end };
+}
+
 export function scheduleIssue(schedule: RoutineSchedule): string | null {
   if (schedule.frequency === "weekly" && normalizedDays(schedule.days).length === 0) {
     return "Pick at least one day";
   }
-  if (schedule.frequency === "hourly" && hourlyLastHour(schedule) == null) {
+  if (
+    (schedule.frequency === "hourly" && hourlyLastHour(schedule) == null) ||
+    (schedule.frequency === "quarter" && quarterWindow(schedule) == null)
+  ) {
     return "End must be at or after the start";
   }
   return null;
 }
 
+function quarterCron(schedule: RoutineSchedule): string {
+  const window = quarterWindow(schedule);
+  const startAbs = window?.start ?? clamp(schedule.hour, 23, 0) * 60;
+  const endAbs = window?.end ?? startAbs;
+  const bands: { from: number; to: number; minutes: number[] }[] = [];
+  const firstHour = Math.floor(startAbs / 60);
+  const lastHour = Math.floor(endAbs / 60);
+  for (let hour = firstHour; hour <= lastHour; hour += 1) {
+    const minutes = QUARTER_MINUTES.filter((minute) => {
+      const abs = hour * 60 + minute;
+      return abs >= startAbs && abs <= endAbs;
+    });
+    if (minutes.length === 0) continue;
+    const prev = bands[bands.length - 1];
+    if (
+      prev &&
+      prev.to === hour - 1 &&
+      prev.minutes.length === minutes.length &&
+      prev.minutes.every((minute, index) => minute === minutes[index])
+    ) {
+      prev.to = hour;
+    } else {
+      bands.push({ from: hour, to: hour, minutes: [...minutes] });
+    }
+  }
+  const dow = dowField(schedule.days);
+  return bands
+    .map((band) => {
+      const minuteField = band.minutes.length === 4 ? "*/15" : band.minutes.join(",");
+      const hourField =
+        band.from === 0 && band.to === 23
+          ? "*"
+          : band.from === band.to
+            ? String(band.from)
+            : `${band.from}-${band.to}`;
+      return `${minuteField} ${hourField} * * ${dow}`;
+    })
+    .join(";");
+}
+
 export function scheduleToCron(schedule: RoutineSchedule): string {
+  if (schedule.frequency === "quarter") return quarterCron(schedule);
   const minute = clamp(schedule.minute, 59, 0);
   if (schedule.frequency === "hourly") {
     const startHour = clamp(schedule.hour, 23, 0);
@@ -156,8 +218,81 @@ function parseHourField(
   return { kind: "span", start: hour, end: hour };
 }
 
+function parseQuarterMinutes(field: string): number[] | null {
+  if (field === "*/15") return [...QUARTER_MINUTES];
+  const stepped = /^(\d{1,2})-(\d{1,2})\/15$/.exec(field);
+  if (stepped) {
+    const lo = Number(stepped[1]);
+    const hi = Number(stepped[2]);
+    if (lo > hi || lo % 15 !== 0 || hi % 15 !== 0 || hi > 59) return null;
+    const minutes: number[] = [];
+    for (let minute = lo; minute <= hi; minute += 15) minutes.push(minute);
+    return minutes.length > 0 ? minutes : null;
+  }
+  if (!field.includes(",")) {
+    const minute = parseClock(field, 59);
+    if (minute == null || minute % 15 !== 0) return null;
+    return [minute];
+  }
+  const minutes: number[] = [];
+  for (const part of field.split(",")) {
+    const minute = parseClock(part, 59);
+    if (minute == null || minute % 15 !== 0) return null;
+    if (minutes.length > 0 && minute !== minutes[minutes.length - 1] + 15) return null;
+    minutes.push(minute);
+  }
+  return minutes.length > 1 ? minutes : null;
+}
+
+function parseQuarterCron(cron: string): RoutineSchedule | null {
+  const parts = cron
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length === 0) return null;
+  let startAbs = Number.POSITIVE_INFINITY;
+  let endAbs = -1;
+  let days: number[] | null = null;
+  for (const part of parts) {
+    const fields = part.split(/\s+/);
+    if (fields.length !== 5) return null;
+    const [minuteRaw, hourRaw, dom, month, dow] = fields;
+    if (dom !== "*" || month !== "*") return null;
+    if (parts.length === 1 && minuteRaw != null && !minuteRaw.includes(",") && !minuteRaw.includes("/")) {
+      return null;
+    }
+    const minutes = parseQuarterMinutes(minuteRaw ?? "");
+    const hours = parseHourField(hourRaw ?? "");
+    const partDays = parseDays(dow ?? "");
+    if (!minutes || !hours || !partDays) return null;
+    const normalized = partDays.length === 7 ? [] : partDays;
+    if (days == null) days = normalized;
+    else if (days.join(",") !== normalized.join(",")) return null;
+    const startHour = hours.kind === "all" ? 0 : hours.start;
+    const endHour = hours.kind === "all" ? 23 : hours.end;
+    const first = startHour * 60 + minutes[0]!;
+    const last = endHour * 60 + minutes[minutes.length - 1]!;
+    if (first < startAbs) startAbs = first;
+    if (last > endAbs) endAbs = last;
+  }
+  if (days == null || !Number.isFinite(startAbs) || endAbs < 0) return null;
+  return {
+    frequency: "quarter",
+    hour: Math.floor(startAbs / 60),
+    minute: startAbs % 60,
+    endHour: Math.floor(endAbs / 60),
+    endMinute: endAbs % 60,
+    days,
+  };
+}
+
 export function cronToSchedule(cron: string): RoutineSchedule | null {
-  const fields = cron.trim().split(/\s+/);
+  const trimmed = cron.trim();
+  const minuteField = trimmed.split(/\s+/)[0] ?? "";
+  if (trimmed.includes(";") || minuteField.includes(",") || minuteField.includes("/")) {
+    return parseQuarterCron(trimmed);
+  }
+  const fields = trimmed.split(/\s+/);
   if (fields.length !== 5) return null;
   const [minuteRaw, hourRaw, dom, month, dow] = fields;
   if (dom !== "*" || month !== "*") return null;
@@ -203,6 +338,22 @@ export function formatSchedule(cron: string): string {
   const schedule = cronToSchedule(cron);
   if (!schedule) return cron.trim() || "Not set";
   const time = formatTime(schedule.hour, schedule.minute);
+  if (schedule.frequency === "quarter") {
+    const allDay =
+      schedule.hour === 0 &&
+      schedule.minute === 0 &&
+      schedule.endHour === 23 &&
+      schedule.endMinute === 45;
+    const allDays = schedule.days.length === 0;
+    const end = formatTime(schedule.endHour, schedule.endMinute);
+    const range = time === end ? `at ${time}` : `${time}–${end}`;
+    if (allDay && allDays) return "Every 15 min";
+    if (allDay && isWeekdayList(schedule.days)) return "Every 15 min on weekdays";
+    if (allDay) return `Every 15 min on ${dayListLabel(schedule.days)}`;
+    if (allDays) return `Every 15 min ${range}`;
+    if (isWeekdayList(schedule.days)) return `Every 15 min on weekdays ${range}`;
+    return `Every 15 min on ${dayListLabel(schedule.days)} ${range}`;
+  }
   if (schedule.frequency === "hourly") {
     const allDay = schedule.hour === 0 && schedule.endHour === 23;
     const allDays = schedule.days.length === 0;

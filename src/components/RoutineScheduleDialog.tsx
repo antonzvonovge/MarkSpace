@@ -5,6 +5,7 @@ import {
   endTimeInputValue,
   scheduleIssue,
   scheduleToCron,
+  snapQuarterMinute,
   timeInputValue,
   type RoutineSchedule,
 } from "../lib/routineSchedule";
@@ -43,7 +44,11 @@ export function RoutineScheduleDialog({
     const hour = Number(hourRaw);
     const minute = Number(minuteRaw);
     if (!Number.isInteger(hour) || !Number.isInteger(minute)) return;
-    setDraft((current) => ({ ...current, hour, minute }));
+    setDraft((current) => ({
+      ...current,
+      hour,
+      minute: current.frequency === "quarter" ? snapQuarterMinute(minute) : minute,
+    }));
   };
 
   const setEndTime = (value: string) => {
@@ -51,12 +56,16 @@ export function RoutineScheduleDialog({
     const endHour = Number(hourRaw);
     const endMinute = Number(minuteRaw);
     if (!Number.isInteger(endHour) || !Number.isInteger(endMinute)) return;
-    setDraft((current) => ({ ...current, endHour, endMinute }));
+    setDraft((current) => ({
+      ...current,
+      endHour,
+      endMinute: current.frequency === "quarter" ? snapQuarterMinute(endMinute) : endMinute,
+    }));
   };
 
   const toggleDay = (day: number) => {
     setDraft((current) => {
-      if (current.frequency === "hourly") {
+      if (current.frequency === "hourly" || current.frequency === "quarter") {
         const base = current.days.length === 0 ? [0, 1, 2, 3, 4, 5, 6] : current.days;
         const days = base.includes(day)
           ? base.filter((item) => item !== day)
@@ -73,6 +82,7 @@ export function RoutineScheduleDialog({
   };
 
   const issue = scheduleIssue(draft);
+  const windowed = draft.frequency === "hourly" || draft.frequency === "quarter";
   const hourlyDayOn = (day: number) => draft.days.length === 0 || draft.days.includes(day);
 
   return (
@@ -131,6 +141,7 @@ export function RoutineScheduleDialog({
               ["daily", "Daily"],
               ["weekly", "Weekly"],
               ["hourly", "Hourly"],
+              ["quarter", "Every 15 min"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -147,6 +158,9 @@ export function RoutineScheduleDialog({
                 setDraft((current) => ({
                   ...current,
                   frequency: id,
+                  minute: id === "quarter" ? snapQuarterMinute(current.minute) : current.minute,
+                  endMinute:
+                    id === "quarter" ? snapQuarterMinute(current.endMinute) : current.endMinute,
                   days:
                     id === "weekly" && current.days.length === 0
                       ? [1, 2, 3, 4, 5]
@@ -158,7 +172,7 @@ export function RoutineScheduleDialog({
             </button>
           ))}
         </div>
-        {draft.frequency === "hourly" ? (
+        {windowed ? (
           <div className="routines-window">
             <label className="routines-window-field" htmlFor="routine-start">
               <span className="app-dialog-label">Start</span>
@@ -166,6 +180,7 @@ export function RoutineScheduleDialog({
                 id="routine-start"
                 className="app-dialog-input routines-time"
                 type="time"
+                step={draft.frequency === "quarter" ? 900 : undefined}
                 value={timeInputValue(draft)}
                 onChange={(event) => setTime(event.target.value)}
               />
@@ -176,6 +191,7 @@ export function RoutineScheduleDialog({
                 id="routine-end"
                 className="app-dialog-input routines-time"
                 type="time"
+                step={draft.frequency === "quarter" ? 900 : undefined}
                 value={endTimeInputValue(draft)}
                 onChange={(event) => setEndTime(event.target.value)}
               />
@@ -201,8 +217,7 @@ export function RoutineScheduleDialog({
             <div className="app-dialog-label">Days</div>
             <div className="routines-days">
               {DAY_LABELS.map((label, day) => {
-                const on =
-                  draft.frequency === "hourly" ? hourlyDayOn(day) : draft.days.includes(day);
+                const on = windowed ? hourlyDayOn(day) : draft.days.includes(day);
                 return (
                   <button
                     key={DAY_NAMES[day]}

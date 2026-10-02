@@ -38,6 +38,11 @@ function skipMarkdownNormalize(path: string): boolean {
   );
 }
 
+/** Read a user-picked absolute file as text. It does not have to live in the vault. */
+export async function readExternalText(path: string): Promise<string> {
+  return invoke("read_external_text", { path });
+}
+
 export async function readNote(path: string): Promise<string> {
   const raw = await invoke<string>("read_note", { path });
   // Don't run markdown fence healing on draw.io / links files.

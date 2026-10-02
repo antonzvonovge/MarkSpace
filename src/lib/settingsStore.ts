@@ -114,6 +114,20 @@ export async function savePrefs(prefs: Prefs): Promise<void> {
   await store.save();
 }
 
+const DASHBOARDS_ENABLED_KEY = "dashboardsEnabled";
+
+/** App-level switch for dashboard widget refresh and actions. Default off. */
+export async function loadDashboardsEnabled(): Promise<boolean> {
+  const store = await Store.load(STORE_FILE);
+  return (await store.get<boolean>(DASHBOARDS_ENABLED_KEY)) === true;
+}
+
+export async function saveDashboardsEnabled(enabled: boolean): Promise<void> {
+  const store = await Store.load(STORE_FILE);
+  await store.set(DASHBOARDS_ENABLED_KEY, enabled);
+  await store.save();
+}
+
 /** One-shot: copy accent out of machine prefs (pre-vault storage) and drop it. */
 export async function peekAndClearLegacyAccentColor(): Promise<string | null> {
   const store = await Store.load(STORE_FILE);

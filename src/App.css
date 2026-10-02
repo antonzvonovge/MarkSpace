@@ -1639,6 +1639,7 @@ select {
 
 .routines-frequency {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -18788,12 +18789,42 @@ button.status-bar-jobs-menu-item:hover {
 .dashboard-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   flex-shrink: 0;
-  height: 36px;
+  height: 40px;
   padding: 0 12px;
   border-bottom: 1px solid #e5e7eb;
   background: #ffffff;
+}
+
+.dashboard-enabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #292d34;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dashboard-enabled input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #7b68ee;
+  cursor: pointer;
+}
+
+.dashboard-enabled input:disabled {
+  cursor: default;
+}
+
+:root[data-theme="dark"] .dashboard-enabled {
+  color: #e2e4e9;
 }
 
 :root[data-theme="dark"] .dashboard-toolbar {
@@ -18827,9 +18858,10 @@ button.status-bar-jobs-menu-item:hover {
 .dashboard-add-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  width: 26px;
   height: 26px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .dashboard-add-btn svg {
@@ -19005,6 +19037,26 @@ button.status-bar-jobs-menu-item:hover {
   border-bottom-color: #282a2d;
 }
 
+.dashboard-widget-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #7c828d;
+}
+
+.dashboard-widget-kind svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+:root[data-theme="dark"] .dashboard-widget-kind {
+  color: #9a9fa8;
+}
+
 .dashboard-widget-title {
   flex: 1;
   min-width: 0;
@@ -19097,6 +19149,45 @@ button.status-bar-jobs-menu-item:hover {
   opacity: 0;
 }
 
+.dashboard-widget-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #7c828d;
+  cursor: pointer;
+}
+
+.dashboard-widget-refresh:hover {
+  background: #f0f1f3;
+  color: #292d34;
+}
+
+.dashboard-widget-refresh:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.dashboard-widget-refresh:disabled:hover {
+  background: transparent;
+  color: #7c828d;
+}
+
+:root[data-theme="dark"] .dashboard-widget-refresh:hover {
+  background: #2d2e32;
+  color: #e2e4e9;
+}
+
+:root[data-theme="dark"] .dashboard-widget-refresh:disabled:hover {
+  background: transparent;
+  color: #7c828d;
+}
+
 .dashboard-widget:hover .dashboard-widget-remove,
 .dashboard-widget-remove:focus-visible {
   opacity: 1;
@@ -19118,6 +19209,39 @@ button.status-bar-jobs-menu-item:hover {
   padding: 8px 10px;
   user-select: text;
   cursor: auto;
+}
+
+.dashboard-widget-body.is-tasks {
+  padding: 0;
+}
+
+.dashboard-widget-browse {
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #292d34;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.dashboard-widget-browse:hover {
+  background: #f0f1f3;
+}
+
+:root[data-theme="dark"] .dashboard-widget-browse {
+  background: #242528;
+  border-color: #2f3136;
+  color: #e2e4e9;
+}
+
+:root[data-theme="dark"] .dashboard-widget-browse:hover {
+  background: #2d2e32;
 }
 
 .dashboard-markdown {
@@ -19325,7 +19449,48 @@ button.status-bar-jobs-menu-item:hover {
   min-height: 0;
 }
 
-.dashboard-weather-hit {
+.dashboard-tasks {
+  --tasks-ink: #25221e;
+  --tasks-ink-done: rgba(37, 34, 30, 0.49);
+  --tasks-ink-muted: rgba(37, 34, 30, 0.66);
+  --tasks-line-height: 1.32;
+  --tasks-checkbox-inset: 12px;
+}
+
+:root[data-theme="dark"] .dashboard-tasks {
+  --tasks-ink: var(--text);
+  --tasks-ink-done: rgba(231, 238, 242, 0.45);
+  --tasks-ink-muted: var(--muted);
+}
+
+.dashboard-tasks .tasks-row {
+  padding-right: 10px;
+}
+
+.dashboard-tasks-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  min-height: 0;
+}
+
+.dashboard-tasks-pick-rule {
+  height: 1px;
+  margin: 4px 8px;
+  background: #f1f2f4;
+}
+
+:root[data-theme="dark"] .dashboard-tasks-pick-rule {
+  background: #282a2d;
+}
+
+.dashboard-widget-body.is-tasks .dashboard-widget-empty {
+  padding: 8px 10px;
+}
+
+.dashboard-weather-hit,
+.dashboard-tasks-hit {
   display: block;
   width: 100%;
   height: 28px;
@@ -19344,15 +19509,18 @@ button.status-bar-jobs-menu-item:hover {
   white-space: nowrap;
 }
 
-.dashboard-weather-hit:hover {
+.dashboard-weather-hit:hover,
+.dashboard-tasks-hit:hover {
   background: #f0f1f3;
 }
 
-:root[data-theme="dark"] .dashboard-weather-hit {
+:root[data-theme="dark"] .dashboard-weather-hit,
+:root[data-theme="dark"] .dashboard-tasks-hit {
   color: #e2e4e9;
 }
 
-:root[data-theme="dark"] .dashboard-weather-hit:hover {
+:root[data-theme="dark"] .dashboard-weather-hit:hover,
+:root[data-theme="dark"] .dashboard-tasks-hit:hover {
   background: #2d2e32;
 }
 

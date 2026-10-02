@@ -169,6 +169,7 @@ pub fn run() {
             vault::open_vault,
             vault::list_tree,
             vault::read_note,
+            vault::read_external_text,
             vault::write_note,
             vault::create_note,
             vault::create_drawio,

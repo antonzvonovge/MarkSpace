@@ -1,16 +1,40 @@
-/** Flat dashboard mark. Color comes from the parent (`currentColor`). */
+/** Outline dashboard mark. Color comes from the parent (`currentColor`). */
 export function DashboardIcon({ size = 16 }: { size?: number }) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 16 16"
-      fill="currentColor"
+      fill="none"
       aria-hidden="true"
     >
-      <rect x="1.25" y="1.25" width="6" height="6" rx="1.2" />
-      <rect x="8.75" y="1.25" width="6" height="6" rx="1.2" />
-      <rect x="1.25" y="8.75" width="13.5" height="6" rx="1.2" />
+      <rect
+        x="1.75"
+        y="1.75"
+        width="5.1"
+        height="5.1"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <rect
+        x="9.15"
+        y="1.75"
+        width="5.1"
+        height="5.1"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <rect
+        x="1.75"
+        y="9.15"
+        width="12.5"
+        height="5.1"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
     </svg>
   );
 }

@@ -527,7 +527,7 @@ function TaskCommentComposer({
   );
 }
 
-function TaskDetailPanel({
+export function TaskDetailPanel({
   path,
   entries,
   lists,

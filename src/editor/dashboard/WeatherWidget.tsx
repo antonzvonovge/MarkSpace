@@ -12,8 +12,10 @@ import {
   type CurrentWeather,
   type WeatherPlace,
 } from "../../lib/weather";
+import { useDashboardsLive } from "../../store/dashboardEnabledStore";
 import { usePrefsStore } from "../../store/prefsStore";
 import { WeatherGlyph } from "./WeatherGlyph";
+import { WidgetWeatherIcon } from "./widgetIcons";
 
 type Readout =
   | { phase: "loading" }
@@ -124,6 +126,7 @@ const WeatherReadout = memo(function WeatherReadout({
   longitude: number;
 }) {
   const language = usePrefsStore((s) => s.prefs.nativeLanguage);
+  const live = useDashboardsLive();
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<Readout>(() => {
     const cached = cachedWeather(latitude, longitude);
@@ -131,6 +134,7 @@ const WeatherReadout = memo(function WeatherReadout({
   });
 
   useEffect(() => {
+    if (!live) return;
     let cancelled = false;
     let active: AbortController | null = null;
 
@@ -173,8 +177,11 @@ const WeatherReadout = memo(function WeatherReadout({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [latitude, longitude, retry]);
+  }, [live, latitude, longitude, retry]);
 
+  if (!live) {
+    return <p className="dashboard-widget-empty">Paused</p>;
+  }
   if (state.phase === "loading") {
     return <p className="dashboard-widget-empty">Loading…</p>;
   }
@@ -185,7 +192,11 @@ const WeatherReadout = memo(function WeatherReadout({
         <button
           type="button"
           className="dashboard-weather-cancel"
-          onClick={() => setRetry((value) => value + 1)}
+          disabled={!live}
+          onClick={() => {
+            if (!live) return;
+            setRetry((value) => value + 1);
+          }}
         >
           Retry
         </button>
@@ -238,6 +249,9 @@ export const WeatherWidget = memo(function WeatherWidget({
   return (
     <article className="dashboard-widget is-weather">
       <header className="dashboard-widget-handle">
+        <span className="dashboard-widget-kind">
+          <WidgetWeatherIcon />
+        </span>
         <span className="dashboard-widget-title">{title}</span>
         {configured && !editing ? (
           <button

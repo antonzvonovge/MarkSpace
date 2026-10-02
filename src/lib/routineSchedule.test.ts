@@ -66,4 +66,36 @@ describe("routine schedule", () => {
       days: [1, 2, 3, 4, 5],
     });
   });
+
+  it("fires every 15 minutes inside a day and hour window", () => {
+    const weekdays = {
+      frequency: "quarter" as const,
+      hour: 9,
+      minute: 15,
+      endHour: 18,
+      endMinute: 0,
+      days: [1, 2, 3, 4, 5],
+    };
+    const cron = scheduleToCron(weekdays);
+    expect(cron).toBe(
+      "15,30,45 9 * * 1,2,3,4,5;*/15 10-17 * * 1,2,3,4,5;0 18 * * 1,2,3,4,5",
+    );
+    expect(cronToSchedule(cron)).toMatchObject(weekdays);
+    expect(formatSchedule(cron)).toBe("Every 15 min on weekdays 09:15–18:00");
+
+    expect(
+      scheduleToCron({
+        frequency: "quarter",
+        hour: 0,
+        minute: 0,
+        endHour: 23,
+        endMinute: 45,
+        days: [],
+      }),
+    ).toBe("*/15 * * * *");
+    expect(formatSchedule("*/15 * * * *")).toBe("Every 15 min");
+    expect(formatSchedule("*/15 * * * 1-5")).toBe("Every 15 min on weekdays");
+    expect(formatSchedule("*/15 9-17 * * *")).toBe("Every 15 min 09:00–17:45");
+    expect(cronToSchedule("30 9-17 * * *")?.frequency).toBe("hourly");
+  });
 });

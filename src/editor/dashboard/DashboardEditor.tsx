@@ -10,19 +10,27 @@ import {
   applyGridLayout,
   parseDashboard,
   pickDashboardColor,
+  placeNoteWidget,
   placeRoutineWidget,
+  placeTasksWidget,
   placeWeatherWidget,
   removeWidget,
   serializeDashboard,
+  setNotePath,
+  setTasksSource,
   setWeatherPlace,
   type DashboardDoc,
 } from "../../lib/dashboardFormat";
 import { useDashboardColorStore } from "../../store/dashboardColorStore";
+import { useDashboardEnabledStore } from "../../store/dashboardEnabledStore";
 import { useRoutinesStore } from "../../store/routinesStore";
-import { RoutineColorIcon, routineIconColor } from "../../components/routineIcon";
+import { routineIconColor } from "../../components/routineIcon";
+import { WidgetRoutineIcon } from "./widgetIcons";
 import { PlusIcon } from "../../components/treeIcons";
 import type { WeatherPlace } from "../../lib/weather";
+import { NoteWidget } from "./NoteWidget";
 import { RoutineWidget } from "./RoutineWidget";
+import { TasksWidget } from "./TasksWidget";
 import { WeatherWidget } from "./WeatherWidget";
 
 const ROW_HEIGHT = 32;
@@ -97,6 +105,7 @@ const AddWidgetButton = memo(function AddWidgetButton({
       <button
         type="button"
         className="dashboard-add-btn"
+        aria-label="Add widget"
         aria-expanded={open}
         onClick={() => {
           setOpen((value) => !value);
@@ -104,7 +113,6 @@ const AddWidgetButton = memo(function AddWidgetButton({
         }}
       >
         <PlusIcon />
-        Add widget
       </button>
       {open ? (
         <div className="dashboard-add-menu" role="menu">
@@ -145,7 +153,7 @@ const AddWidgetButton = memo(function AddWidgetButton({
                         className="dashboard-add-routine-icon"
                         style={{ color: routineIconColor(routine.id) }}
                       >
-                        <RoutineColorIcon />
+                        <WidgetRoutineIcon />
                       </span>
                       <span className="dashboard-add-label">{routine.name}</span>
                     </button>
@@ -165,6 +173,30 @@ const AddWidgetButton = memo(function AddWidgetButton({
             }}
           >
             Weather
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="dashboard-add-item"
+            onClick={() => {
+              setOpen(false);
+              setRoutinesOpen(false);
+              onChange(serializeDashboard(placeTasksWidget(doc, newWidgetId())));
+            }}
+          >
+            Tasks
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="dashboard-add-item"
+            onClick={() => {
+              setOpen(false);
+              setRoutinesOpen(false);
+              onChange(serializeDashboard(placeNoteWidget(doc, newWidgetId())));
+            }}
+          >
+            Note
           </button>
         </div>
       ) : null}
@@ -219,6 +251,43 @@ const WeatherSlot = memo(function WeatherSlot({
   );
 });
 
+const NoteSlot = memo(function NoteSlot({
+  id,
+  path,
+  onRemove,
+  onPath,
+}: {
+  id: string;
+  path: string;
+  onRemove: (id: string) => void;
+  onPath: (id: string, path: string) => void;
+}) {
+  const remove = useCallback(() => onRemove(id), [onRemove, id]);
+  const pick = useCallback((next: string) => onPath(id, next), [onPath, id]);
+  return <NoteWidget path={path} onRemove={remove} onPath={pick} />;
+});
+
+const TasksSlot = memo(function TasksSlot({
+  id,
+  list,
+  view,
+  onRemove,
+  onSource,
+}: {
+  id: string;
+  list: string;
+  view?: "today" | "overdue";
+  onRemove: (id: string) => void;
+  onSource: (id: string, source: { view: "today" | "overdue" } | { list: string }) => void;
+}) {
+  const remove = useCallback(() => onRemove(id), [onRemove, id]);
+  const pick = useCallback(
+    (source: { view: "today" | "overdue" } | { list: string }) => onSource(id, source),
+    [onSource, id],
+  );
+  return <TasksWidget list={list} view={view} onRemove={remove} onSource={pick} />;
+});
+
 const DashboardCanvas = memo(function DashboardCanvas({
   doc,
   onChange,
@@ -226,6 +295,14 @@ const DashboardCanvas = memo(function DashboardCanvas({
   doc: DashboardDoc;
   onChange: (next: string) => void;
 }) {
+  const dashboardsEnabled = useDashboardEnabledStore((s) => s.enabled);
+  const dashboardsHydrated = useDashboardEnabledStore((s) => s.hydrated);
+  const setDashboardsEnabled = useDashboardEnabledStore((s) => s.setEnabled);
+
+  useEffect(() => {
+    void useDashboardEnabledStore.getState().hydrate();
+  }, []);
+
   const { width: measured, containerRef, mounted } = useContainerWidth({
     measureBeforeMount: true,
   });
@@ -284,6 +361,17 @@ const DashboardCanvas = memo(function DashboardCanvas({
     onChangeRef.current(serializeDashboard(setWeatherPlace(docRef.current, id, place)));
   }, []);
 
+  const setTasksSourceById = useCallback(
+    (id: string, source: { view: "today" | "overdue" } | { list: string }) => {
+      onChangeRef.current(serializeDashboard(setTasksSource(docRef.current, id, source)));
+    },
+    [],
+  );
+
+  const setNotePathById = useCallback((id: string, path: string) => {
+    onChangeRef.current(serializeDashboard(setNotePath(docRef.current, id, path)));
+  }, []);
+
   const commit = (next: Layout) => {
     interacting.current = false;
     setLive(next);
@@ -295,6 +383,15 @@ const DashboardCanvas = memo(function DashboardCanvas({
   return (
     <div className="dashboard-editor">
       <div className="dashboard-toolbar">
+        <label className="dashboard-enabled">
+          <input
+            type="checkbox"
+            checked={dashboardsHydrated && dashboardsEnabled}
+            disabled={!dashboardsHydrated}
+            onChange={(event) => setDashboardsEnabled(event.target.checked)}
+          />
+          Enabled
+        </label>
         <AddWidgetButton doc={doc} onChange={onChange} />
       </div>
       <div className="dashboard-grid-host" ref={containerRef}>
@@ -337,7 +434,7 @@ const DashboardCanvas = memo(function DashboardCanvas({
                     routineId={widget.routineId}
                     onRemove={removeWidgetById}
                   />
-                ) : (
+                ) : widget.kind === "weather" ? (
                   <WeatherSlot
                     id={widget.id}
                     place={widget.place}
@@ -347,6 +444,21 @@ const DashboardCanvas = memo(function DashboardCanvas({
                     longitude={widget.longitude}
                     onRemove={removeWidgetById}
                     onPlace={setWeatherPlaceById}
+                  />
+                ) : widget.kind === "tasks" ? (
+                  <TasksSlot
+                    id={widget.id}
+                    list={widget.list}
+                    view={widget.view}
+                    onRemove={removeWidgetById}
+                    onSource={setTasksSourceById}
+                  />
+                ) : (
+                  <NoteSlot
+                    id={widget.id}
+                    path={widget.path}
+                    onRemove={removeWidgetById}
+                    onPath={setNotePathById}
                   />
                 )}
               </div>
