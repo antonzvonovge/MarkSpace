@@ -33,6 +33,7 @@ function skipMarkdownNormalize(path: string): boolean {
     lower.endsWith(".mddict") ||
     lower.endsWith(".mdhabit") ||
     lower.endsWith(".mdcourse") ||
+    lower.endsWith(".dashboard") ||
     lower.endsWith(".json")
   );
 }
@@ -989,6 +990,7 @@ export function candidateFolderNotePath(path: string): string | null {
     lower.endsWith(".mdlnks") ||
     lower.endsWith(".mdhabit") ||
     lower.endsWith(".mdcourse") ||
+    lower.endsWith(".dashboard") ||
     lower.endsWith(".drawio") ||
     lower.endsWith(".pdf") ||
     lower.endsWith(".json")
@@ -1038,6 +1040,9 @@ export const TASKS_FOLDER = "Tasks";
 /** Reserved job-log folder: hidden from the workspace tree, shown in the Routines section. */
 export const ROUTINES_FOLDER = "Routines";
 
+/** Reserved dashboards folder: hidden from the workspace tree, shown in the Dashboards section. */
+export const DASHBOARDS_FOLDER = "Dashboards";
+
 /** True for the protected root-level Skills/ folder. */
 export function isSkillsFolder(path: string, isDir = true): boolean {
   return isDir && path === SKILLS_FOLDER;
@@ -1075,6 +1080,16 @@ export function isRoutinesPath(path: string): boolean {
   return path === ROUTINES_FOLDER || path.startsWith(`${ROUTINES_FOLDER}/`);
 }
 
+/** True for the reserved root-level Dashboards/ folder. */
+export function isDashboardsFolder(path: string, isDir = true): boolean {
+  return isDir && path === DASHBOARDS_FOLDER;
+}
+
+/** Dashboards folder or any path inside it. */
+export function isDashboardsPath(path: string): boolean {
+  return path === DASHBOARDS_FOLDER || path.startsWith(`${DASHBOARDS_FOLDER}/`);
+}
+
 /** Skill id = filename stem under Skills/ (lowercase letters, digits, hyphens). */
 export function isValidSkillId(id: string): boolean {
   return (
@@ -1101,7 +1116,7 @@ export function skillPathForId(id: string): string {
 /**
  * A MarkSpace "project" is a first-level folder under the vault root
  * (path has no `/`). Nested folders are ordinary folders, not projects.
- * The reserved Skills/, Incoming/, Tasks/, and Routines/ folders are not projects.
+ * The reserved Skills/, Incoming/, Tasks/, Routines/, and Dashboards/ folders are not projects.
  */
 export function isVaultProjectFolder(path: string, isDir: boolean): boolean {
   return (
@@ -1111,7 +1126,8 @@ export function isVaultProjectFolder(path: string, isDir: boolean): boolean {
     !isSkillsFolder(path, true) &&
     !isIncomingFolder(path, true) &&
     !isTasksFolder(path, true) &&
-    !isRoutinesFolder(path, true)
+    !isRoutinesFolder(path, true) &&
+    !isDashboardsFolder(path, true)
   );
 }
 
@@ -1131,6 +1147,7 @@ export type DocumentKind =
   | "mddict"
   | "mdhabit"
   | "mdcourse"
+  | "dashboard"
   | "pdf";
 
 export function isVaultDocumentPath(path: string): boolean {
@@ -1142,6 +1159,7 @@ export function isVaultDocumentPath(path: string): boolean {
     lower.endsWith(".mddict") ||
     lower.endsWith(".mdhabit") ||
     lower.endsWith(".mdcourse") ||
+    lower.endsWith(".dashboard") ||
     lower.endsWith(".pdf")
   );
 }
@@ -1153,6 +1171,7 @@ export function documentKind(path: string): DocumentKind {
   if (lower.endsWith(".mddict")) return "mddict";
   if (lower.endsWith(".mdhabit")) return "mdhabit";
   if (lower.endsWith(".mdcourse")) return "mdcourse";
+  if (lower.endsWith(".dashboard")) return "dashboard";
   if (lower.endsWith(".pdf")) return "pdf";
   return "markdown";
 }

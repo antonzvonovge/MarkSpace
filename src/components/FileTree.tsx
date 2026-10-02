@@ -25,6 +25,7 @@ import {
   isIncomingPath,
   isTasksFolder,
   isRoutinesFolder,
+  isDashboardsFolder,
   INCOMING_FOLDER,
   isVaultDocumentPath,
   isVaultProjectFolder,
@@ -212,6 +213,8 @@ type FileTreeProps = {
   tasksSection?: ReactNode;
   /** Rendered after Tasks, before the workspace tree. */
   routinesSection?: ReactNode;
+  /** Rendered after Routines, before the workspace tree. */
+  dashboardsSection?: ReactNode;
 };
 
 type DeleteTarget = {
@@ -1349,7 +1352,7 @@ function FavoritesTreeRows({
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { tasksSection = null, routinesSection = null },
+  { tasksSection = null, routinesSection = null, dashboardsSection = null },
   ref,
 ) {
   const tree = useVaultStore((s) => s.tree);
@@ -1690,7 +1693,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         } else if (activePath) {
           target = activePath;
         }
-        if (!target || isSkillsFolder(target) || isIncomingFolder(target) || isTasksFolder(target) || isRoutinesFolder(target)) return;
+        if (!target || isSkillsFolder(target) || isIncomingFolder(target) || isTasksFolder(target) || isRoutinesFolder(target) || isDashboardsFolder(target)) return;
         e.preventDefault();
         setContextMenu(null);
         setRenamingPath(target);
@@ -1709,7 +1712,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
       const workspaceChildren = (vaultTree?.children ?? []).filter(
         (n) =>
-          !isIncomingFolder(n.path, n.isDir) && !isTasksFolder(n.path, n.isDir) && !isRoutinesFolder(n.path, n.isDir),
+          !isIncomingFolder(n.path, n.isDir) && !isTasksFolder(n.path, n.isDir) && !isRoutinesFolder(n.path, n.isDir) && !isDashboardsFolder(n.path, n.isDir),
       );
       const incomingNode = vaultTree?.children?.find((n) =>
         isIncomingFolder(n.path, n.isDir),
@@ -2533,6 +2536,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             ) : null}
           </div>
         ) : null}
+        {dashboardsSection}
         <CommentsInboxSection />
         {tasksSection}
         {routinesSection}

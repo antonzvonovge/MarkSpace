@@ -115,6 +115,7 @@ function mediaTypeFromExt(ext: string): string | null {
       return "text/plain";
     case "mdhabit":
     case "mdcourse":
+    case "dashboard":
       return "text/plain";
     default:
       return null;

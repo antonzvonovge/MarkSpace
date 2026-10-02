@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { FcCalendar, FcDocument, FcLink, FcPlanner, FcReading } from "react-icons/fc";
 import {
   useVaultStore,
@@ -25,6 +25,8 @@ import {
   TabContextMenu,
   type TabContextMenuState,
 } from "./TabContextMenu";
+import { DashboardIcon } from "./dashboardIcon";
+import { useDashboardColorStore, loadDashboardColor } from "../store/dashboardColorStore";
 import { RoutineColorIcon, routineIconColor } from "./routineIcon";
 import {
   CloseIcon,
@@ -60,6 +62,13 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
   const projectPropertiesByPath = useVaultStore(
     (s) => s.projectPropertiesByPath,
   );
+  const dashboardPath = documentKind(tab.path) === "dashboard" ? tab.path : "";
+  const dashboardColor = useDashboardColorStore((s) =>
+    dashboardPath ? (s.byPath[dashboardPath] ?? "") : "",
+  );
+  useEffect(() => {
+    if (dashboardPath && !dashboardColor) void loadDashboardColor(dashboardPath);
+  }, [dashboardPath, dashboardColor]);
 
   if (isGraphTab(tab)) {
     return (
@@ -104,7 +113,11 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
 
   const kind = documentKind(tab.path);
   return (
-    <span className="editor-tab-icon" aria-hidden>
+    <span
+      className={kind === "dashboard" ? "editor-tab-icon is-dashboard" : "editor-tab-icon"}
+      style={kind === "dashboard" && dashboardColor ? { color: dashboardColor } : undefined}
+      aria-hidden
+    >
       {kind === "drawio" ? (
         <DiagramIcon size={14} />
       ) : kind === "mdlnks" ? (
@@ -115,6 +128,8 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
         <FcCalendar size={14} />
       ) : kind === "mdcourse" ? (
         <CourseTrackerIcon size={14} />
+      ) : kind === "dashboard" ? (
+        <DashboardIcon size={14} />
       ) : kind === "pdf" ? (
         <PdfIcon />
       ) : (

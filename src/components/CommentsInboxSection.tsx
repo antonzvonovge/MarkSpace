@@ -185,7 +185,7 @@ export function CommentsInboxSection() {
     setExpanded(new Set());
   }, []);
 
-  if (allComments.length === 0) return null;
+  if (visible.length === 0) return null;
 
   const openCount = allComments.filter((r) => !r.comment.resolved).length;
 
@@ -244,9 +244,6 @@ export function CommentsInboxSection() {
         </div>
       </div>
       {!collapsed ? (
-        visible.length === 0 ? (
-          <p className="comments-inbox-empty">No open comments</p>
-        ) : (
           <div className="comments-inbox-tree">
             {listMode ? (
               <CommentListRows
@@ -267,7 +264,6 @@ export function CommentsInboxSection() {
               />
             )}
           </div>
-        )
       ) : null}
     </div>
   );

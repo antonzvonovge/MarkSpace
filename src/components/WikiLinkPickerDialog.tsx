@@ -15,6 +15,7 @@ import {
   documentKind,
   isFolderNotePath,
   isIncomingFolder,
+  isDashboardsFolder,
   isRoutinesFolder,
   isTasksFolder,
   isVaultDocumentPath,
@@ -93,6 +94,7 @@ function isLinkableChild(node: TreeNode): boolean {
   if (isIncomingFolder(node.path, node.isDir)) return false;
   if (isTasksFolder(node.path, node.isDir)) return false;
   if (isRoutinesFolder(node.path, node.isDir)) return false;
+  if (isDashboardsFolder(node.path, node.isDir)) return false;
   if (node.isDir) return true;
   if (isFolderNotePath(node.path)) return false;
   return isVaultDocumentPath(node.path);
@@ -226,7 +228,8 @@ export function WikiLinkPickerDialog({
         c.isDir &&
         !isIncomingFolder(c.path, true) &&
         !isTasksFolder(c.path, true) &&
-        !isRoutinesFolder(c.path, true),
+        !isRoutinesFolder(c.path, true) &&
+        !isDashboardsFolder(c.path, true),
     );
   }, [tree]);
 
@@ -269,7 +272,8 @@ export function WikiLinkPickerDialog({
             c.isDir &&
             !isIncomingFolder(c.path, true) &&
             !isTasksFolder(c.path, true) &&
-            !isRoutinesFolder(c.path, true),
+            !isRoutinesFolder(c.path, true) &&
+            !isDashboardsFolder(c.path, true),
         )
         .slice(0, 3)
         .map((r) => r.path);

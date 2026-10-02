@@ -2,7 +2,7 @@
 export const AUDIO_WIKI_EMBED_EXT = /\.(?:wav|mp3|m4a|ogg|aac)$/i;
 
 const VAULT_LINK_FILE_EXT =
-  String.raw`md|mddict|mdlnks|mdhabit|mdcourse|drawio|pdf|wav|mp3|m4a|ogg|aac`;
+  String.raw`md|mddict|mdlnks|mdhabit|mdcourse|dashboard|drawio|pdf|wav|mp3|m4a|ogg|aac`;
 
 /** LLM anti-pattern: `[Note.md](https://Note.md)` — host is a vault filename, not a site. */
 function fakeHttpsVaultLinkRe(): RegExp {

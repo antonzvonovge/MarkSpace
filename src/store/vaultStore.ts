@@ -36,6 +36,7 @@ import {
   isSkillsFolder,
   isIncomingFolder,
   isRoutinesFolder,
+  isDashboardsFolder,
   isTasksFolder,
   INCOMING_FOLDER,
   isValidSkillId,
@@ -804,6 +805,7 @@ function tabLabel(path: string, kind?: TabKind): string {
     .replace(/\.mddict$/i, "")
     .replace(/\.mdhabit$/i, "")
     .replace(/\.mdcourse$/i, "")
+    .replace(/\.dashboard$/i, "")
     .replace(/\.pdf$/i, "");
 }
 
@@ -1712,7 +1714,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       isSkillsFolder(treePath, true) ||
       isIncomingFolder(treePath, true) ||
       isTasksFolder(treePath, true) ||
-      isRoutinesFolder(treePath, true)
+      isRoutinesFolder(treePath, true) ||
+      isDashboardsFolder(treePath, true)
     ) {
       return;
     }
@@ -3149,6 +3152,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot move the Routines folder" });
       return null;
     }
+    if (isDashboardsFolder(from)) {
+      set({ error: "Cannot move the Dashboards folder" });
+      return null;
+    }
     if (isSkillsFolder(from) && toParent !== "") {
       set({ error: "Cannot move the Skills folder into another folder" });
       return null;
@@ -3329,7 +3336,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   },
 
   nestTreeEntryUnderNote: async (from, notePath, toIndex = 0) => {
-    if (isIncomingFolder(from) || isSkillsFolder(from) || isTasksFolder(from) || isRoutinesFolder(from)) {
+    if (isIncomingFolder(from) || isSkillsFolder(from) || isTasksFolder(from) || isRoutinesFolder(from) || isDashboardsFolder(from)) {
       set({ error: "Cannot move the reserved folder" });
       return null;
     }
@@ -3613,6 +3620,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot rename the Routines folder" });
       return null;
     }
+    if (isDashboardsFolder(from)) {
+      set({ error: "Cannot rename the Dashboards folder" });
+      return null;
+    }
     const trimmed = nextName.trim().replace(/[\\/]/g, "");
     if (!trimmed || !from) return null;
 
@@ -3633,6 +3644,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       set({ error: "Cannot rename to the reserved Routines folder" });
       return null;
     }
+    if (isDashboardsFolder(to)) {
+      set({ error: "Cannot rename to the reserved Dashboards folder" });
+      return null;
+    }
     const fromKind = documentKind(from);
     if (fromKind === "drawio") {
       if (to === from || to === from.replace(/\.drawio$/i, "")) return null;
@@ -3644,6 +3659,8 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       if (to === from || to === from.replace(/\.mdhabit$/i, "")) return null;
     } else if (fromKind === "mdcourse") {
       if (to === from || to === from.replace(/\.mdcourse$/i, "")) return null;
+    } else if (fromKind === "dashboard") {
+      if (to === from || to === from.replace(/\.dashboard$/i, "")) return null;
     } else if (to === from || to === from.replace(/\.md$/i, "")) {
       return null;
     }
@@ -3862,6 +3879,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
     if (isRoutinesFolder(path)) {
       set({ error: "Cannot delete the Routines folder" });
+      return false;
+    }
+    if (isDashboardsFolder(path)) {
+      set({ error: "Cannot delete the Dashboards folder" });
       return false;
     }
     const {

@@ -122,6 +122,10 @@ fn is_mdcourse(name: &str) -> bool {
     name.ends_with(".mdcourse")
 }
 
+fn is_dashboard(name: &str) -> bool {
+    name.ends_with(".dashboard")
+}
+
 fn is_pdf(name: &str) -> bool {
     name.ends_with(".pdf")
 }
@@ -133,6 +137,7 @@ fn is_vault_document(name: &str) -> bool {
         || is_mddict(name)
         || is_mdhabit(name)
         || is_mdcourse(name)
+        || is_dashboard(name)
         || is_pdf(name)
 }
 
@@ -642,6 +647,8 @@ fn strip_known_doc_ext(rel: &mut String) {
         rel.truncate(rel.len() - 8);
     } else if rel.ends_with(".mdcourse") {
         rel.truncate(rel.len() - 9);
+    } else if rel.ends_with(".dashboard") {
+        rel.truncate(rel.len() - 10);
     } else if rel.ends_with(".pdf") {
         rel.truncate(rel.len() - 4);
     }
@@ -691,6 +698,13 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         }
         return to_rel;
     }
+    if is_dashboard(&from_name) {
+        if !to_rel.ends_with(".dashboard") {
+            strip_known_doc_ext(&mut to_rel);
+            to_rel.push_str(".dashboard");
+        }
+        return to_rel;
+    }
     if is_pdf(&from_name) {
         if !to_rel.ends_with(".pdf") {
             strip_known_doc_ext(&mut to_rel);
@@ -705,6 +719,7 @@ fn ensure_document_extension(from_full: &Path, to_rel: &str) -> String {
         && !to_rel.ends_with(".mddict")
         && !to_rel.ends_with(".mdhabit")
         && !to_rel.ends_with(".mdcourse")
+        && !to_rel.ends_with(".dashboard")
         && !to_rel.ends_with(".pdf")
     {
         to_rel.push_str(".md");
@@ -1470,7 +1485,7 @@ pub fn import_drawio(
 }
 
 /// Copy external files/folders (from OS clipboard / explorer) into a vault folder.
-/// Vault documents (`.md` / `.drawio` / `.mdlnks` / `.mddict` / `.mdhabit` / `.mdcourse` / `.pdf`) are imported;
+/// Vault documents (`.md` / `.drawio` / `.mdlnks` / `.mddict` / `.mdhabit` / `.mdcourse` / `.dashboard` / `.pdf`) are imported;
 /// directory structure is preserved. When `overwrite` is false, name conflicts get a
 /// unique sibling (`note-1.md`). When true, existing files are replaced and folders merge.
 #[tauri::command(async)]
@@ -1649,7 +1664,7 @@ pub fn import_document_bytes(
     let name = sanitize_asset_filename(&file_name);
     if !is_vault_document(&name) {
         return Err(
-            "Only .md, .drawio, .mdlnks, .mddict, .mdhabit, .mdcourse, and .pdf files can be imported".into(),
+            "Only .md, .drawio, .mdlnks, .mddict, .mdhabit, .mdcourse, .dashboard, and .pdf files can be imported".into(),
         );
     }
 
@@ -2293,6 +2308,7 @@ pub fn resolve_wiki_target(
         || lower.ends_with(".mddict")
         || lower.ends_with(".mdhabit")
         || lower.ends_with(".mdcourse")
+        || lower.ends_with(".dashboard")
     {
         target.to_string()
     } else {
@@ -2312,6 +2328,7 @@ pub fn resolve_wiki_target(
         || lower.ends_with(".mddict")
         || lower.ends_with(".mdhabit")
         || lower.ends_with(".mdcourse")
+        || lower.ends_with(".dashboard")
     {
         None
     } else if lower.ends_with(".md") {
@@ -2348,6 +2365,8 @@ pub fn resolve_wiki_target(
         Some("mdhabit")
     } else if lower.ends_with(".mdcourse") {
         Some("mdcourse")
+    } else if lower.ends_with(".dashboard") {
+        Some("dashboard")
     } else if lower.ends_with(".drawio") {
         Some("drawio")
     } else if lower.ends_with(".md") {
@@ -3533,6 +3552,7 @@ fn resolve_wiki_with_index(index: &WikiResolveIndex, target: &str) -> Option<Str
         || lower.ends_with(".mddict")
         || lower.ends_with(".mdhabit")
         || lower.ends_with(".mdcourse")
+        || lower.ends_with(".dashboard")
     {
         target.to_string()
     } else {
@@ -3548,6 +3568,7 @@ fn resolve_wiki_with_index(index: &WikiResolveIndex, target: &str) -> Option<Str
         || lower.ends_with(".mddict")
         || lower.ends_with(".mdhabit")
         || lower.ends_with(".mdcourse")
+        || lower.ends_with(".dashboard")
     {
         None
     } else if lower.ends_with(".md") {
@@ -3588,6 +3609,8 @@ fn resolve_wiki_with_index(index: &WikiResolveIndex, target: &str) -> Option<Str
         Some("mdhabit")
     } else if lower.ends_with(".mdcourse") {
         Some("mdcourse")
+    } else if lower.ends_with(".dashboard") {
+        Some("dashboard")
     } else if lower.ends_with(".drawio") {
         Some("drawio")
     } else if lower.ends_with(".md") {

@@ -126,7 +126,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
     system: [
       "You apply mechanical vault operations and verbatim text already written in the brief. Do not invent prose, structure, or what a note should say.",
       "If the brief asks you to decide the note's content, stop and say the orchestrator must supply the exact text.",
-      "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, .mddict, .mdhabit, or .mdcourse — those need other specialists.",
+      "Prefer edit_note over write_note. Never raw-edit .drawio, .mdlnks, .mddict, .mdhabit, .mdcourse, or .dashboard — those need other specialists.",
       "Never create or edit files under Tasks/ — delegate run_specialist kind=tasks (task notes use dedicated helpers).",
       "To rename a file or folder in place use rename_path (new basename); to change folders use move_path.",
       "move_path migrates referenced sibling .assets and rewrites links — after a successful move do NOT invent ../.assets/ or manually rewrite note-relative .assets/ paths (including Media library posters).",
@@ -354,7 +354,7 @@ export const SPECIALIST_PRESETS: Record<SpecialistKind, SpecialistPreset> = {
       "Match the Host OS / shell line in this prompt — do not guess Windows vs Unix.",
       "The user must approve each command unless they enabled Allow for this chat.",
       "If the task is heavy, dangerous, or involves writing and running custom scripts, and it does not already say the user approved the plan: do not run commands; reply that you need confirmation of the plan (needs clarification).",
-      "Do not edit notes, diagrams, .mdlnks, .mddict, .mdhabit, or .mdcourse via the shell — other specialists own those.",
+      "Do not edit notes, diagrams, .mdlnks, .mddict, .mdhabit, .mdcourse, or .dashboard via the shell — other specialists own those.",
       "Prefer list_folder / read_note to inspect vault files. End with a summary of commands and results.",
     ].join(" "),
     toolNames: ["run_terminal", "list_folder", "read_note"],

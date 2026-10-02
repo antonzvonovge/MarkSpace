@@ -55,6 +55,7 @@ import { LinksEditor } from "./editor/mdlnks/LinksEditor";
 import { DictionaryEditor } from "./editor/mddict/DictionaryEditor";
 import { HabitTrackerEditor } from "./editor/mdhabit/HabitTrackerEditor";
 import { CourseTrackerEditor } from "./editor/mdcourse/CourseTrackerEditor";
+import { DashboardEditor } from "./editor/dashboard/DashboardEditor";
 import { DictPracticeDialog } from "./editor/mddict/DictPracticeDialog";
 import { PdfViewer } from "./editor/pdf/PdfViewer";
 import type { VaultChange } from "./lib/vaultApi";
@@ -305,6 +306,12 @@ const DocumentTab = memo(function DocumentTab({
             </div>
           ) : null}
         </>
+      ) : docKind === "dashboard" ? (
+        <DashboardEditor
+          path={path}
+          content={content}
+          onChange={(next) => onEditorChange(path, next)}
+        />
       ) : docKind === "mdcourse" ? (
         <>
           <div

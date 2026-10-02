@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   listNoteTags,
   listNoteWikilinks,
+  isDashboardsPath,
   isTasksPath,
   type NoteTags,
   type NoteWikilinks,
@@ -27,7 +28,7 @@ export type TagGraphViewOptions = {
 
 function collectDocumentPaths(node: TreeNode | null, out: string[] = []): string[] {
   if (!node) return out;
-  if (isTasksPath(node.path)) return out;
+  if (isTasksPath(node.path) || isDashboardsPath(node.path)) return out;
   if (!node.isDir) {
     const lower = node.path.toLowerCase();
     if (lower.endsWith(".md") || lower.endsWith(".pdf")) {
@@ -90,6 +91,7 @@ export function useTagGraph(options: TagGraphViewOptions) {
   const inSelectedProject = useCallback(
     (path: string) =>
       !isTasksPath(path) &&
+      !isDashboardsPath(path) &&
       (!options.projectPath || path.startsWith(`${options.projectPath}/`)),
     [options.projectPath],
   );
