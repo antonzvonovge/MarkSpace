@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -8,6 +16,13 @@ import {
   useGroupRef,
 } from "react-resizable-panels";
 import { Sidebar, loadLastVault } from "./components/Sidebar";
+import {
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  TAG_FILES_MAX_WIDTH,
+} from "./components/sidebar/tagFileSlot";
+
+const MAIN_MIN_WIDTH = 360;
 import { ChatSidebar } from "./components/chat/ChatSidebar";
 import { SelectionToChatButton } from "./components/chat/SelectionToChatButton";
 import {
@@ -645,6 +660,14 @@ function App() {
   const syncMcpHost = useMcpHostStore((s) => s.syncForVault);
   const refreshSyncStatus = useSyncStore((s) => s.refreshStatus);
   const sidebarOpen = useSidebarUiStore((s) => s.open);
+  const tagFilesOpen = useSidebarUiStore(
+    (s) => s.workspaceView === "tags" && s.selectedTagPath != null,
+  );
+  const tagFilesWidth = useSidebarUiStore((s) => s.tagFilesWidth);
+  const tagFilesOpenRef = useRef(tagFilesOpen);
+  const tagFilesWidthRef = useRef(tagFilesWidth);
+  tagFilesOpenRef.current = tagFilesOpen;
+  tagFilesWidthRef.current = tagFilesWidth;
   const chatOpen = useChatUiStore((s) => s.open);
   const toggleChat = useChatUiStore((s) => s.toggle);
   const sidebarSizePercent = useSidebarUiStore((s) => s.lastSizePercent);
@@ -822,31 +845,132 @@ function App() {
     })();
   }, [openVaultAt]);
 
+  // Pixel width of the left half when the tag list opened.
+  const tagListLeftPxRef = useRef<number | null>(null);
+  // True only after the shell has grown enough to show the whole tag list.
+  const tagListInShellRef = useRef(false);
+
   // Re-apply persisted sizes when sidebar/chat open state changes (and once on mount).
-  useEffect(() => {
+  // The tag list adds its saved pixel width on top of the live sidebar, then retries
+  // until the panel actually reaches that size.
+  useLayoutEffect(() => {
+    let cancelled = false;
     let tries = 0;
+    let retryFrame = 0;
+    let clearFrame = 0;
     const apply = () => {
+      if (cancelled) return;
       const group = groupRef.current;
-      if (!group) {
-        if (tries++ < 40) requestAnimationFrame(apply);
+      const frame = panelsFrameRef.current;
+      const aside = frame?.querySelector(".sidebar");
+      if (!group || !frame || !(aside instanceof HTMLElement)) {
+        if (tries++ < 40) retryFrame = requestAnimationFrame(apply);
         return;
       }
-      const next = toGroupLayout(savedRef.current, chatOpen, sidebarOpen);
+      const frameWidth = frame.clientWidth;
+      if (frameWidth <= 0) {
+        if (tries++ < 40) retryFrame = requestAnimationFrame(apply);
+        return;
+      }
+      const files = tagFilesWidthRef.current;
+      const currentPx = aside.clientWidth;
+      let chatPct = 0;
+      try {
+        const layout = group.getLayout();
+        if (typeof layout.chat === "number" && Number.isFinite(layout.chat)) {
+          chatPct = layout.chat;
+        }
+      } catch {
+        chatPct = chatOpen ? savedRef.current.chat : 0;
+      }
+      if (!chatOpen) chatPct = 0;
+
+      let targetPx: number;
+      if (tagFilesOpen && sidebarOpen) {
+        if (tagListInShellRef.current) {
+          targetPx = currentPx;
+        } else {
+          if (tagListLeftPxRef.current == null) tagListLeftPxRef.current = currentPx;
+          targetPx = tagListLeftPxRef.current + files;
+        }
+      } else if (tagListInShellRef.current || tagListLeftPxRef.current != null) {
+        targetPx = Math.max(SIDEBAR_MIN_WIDTH, currentPx - files);
+        tagListLeftPxRef.current = null;
+        tagListInShellRef.current = false;
+        const basePct = (targetPx / frameWidth) * 100;
+        if (basePct >= 5) {
+          savedRef.current = { sidebar: basePct, chat: savedRef.current.chat };
+          saveShellLayout(savedRef.current);
+          useSidebarUiStore.getState().rememberSizePercent(basePct);
+        }
+      } else {
+        applyingRef.current = true;
+        try {
+          group.setLayout(toGroupLayout(savedRef.current, chatOpen, sidebarOpen));
+        } catch {
+          // group may not be ready
+        }
+        clearFrame = requestAnimationFrame(() => {
+          if (!cancelled) applyingRef.current = false;
+        });
+        return;
+      }
+
+      let sidebarPct = (targetPx / frameWidth) * 100;
+      let mainPct = 100 - sidebarPct - chatPct;
+      const minMainPct = (MAIN_MIN_WIDTH / frameWidth) * 100;
+      if (mainPct < minMainPct) {
+        mainPct = minMainPct;
+        sidebarPct = Math.max(0, 100 - mainPct - chatPct);
+      }
       applyingRef.current = true;
       try {
-        group.setLayout(next);
+        group.setLayout({ sidebar: sidebarPct, main: mainPct, chat: chatPct });
       } catch {
         // group may not be ready
-      } finally {
-        // Allow layout callbacks from setLayout to settle first
-        requestAnimationFrame(() => {
-          applyingRef.current = false;
-        });
       }
+      if (
+        tagFilesOpen &&
+        sidebarOpen &&
+        aside.clientWidth + 8 < targetPx &&
+        tries++ < 8
+      ) {
+        retryFrame = requestAnimationFrame(apply);
+        return;
+      }
+      if (tagFilesOpen && sidebarOpen && aside.clientWidth + 8 >= targetPx) {
+        tagListInShellRef.current = true;
+      }
+      clearFrame = requestAnimationFrame(() => {
+        if (!cancelled) applyingRef.current = false;
+      });
     };
-    const id = requestAnimationFrame(apply);
-    return () => cancelAnimationFrame(id);
-  }, [chatOpen, sidebarOpen, groupRef]);
+    apply();
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(retryFrame);
+      cancelAnimationFrame(clearFrame);
+    };
+  }, [chatOpen, sidebarOpen, tagFilesOpen, groupRef]);
+
+  // Remember the left half after the inner split moves. Skip while the shell
+  // has not yet grown, or this would store the closed width minus the list.
+  useLayoutEffect(() => {
+    if (!tagFilesOpen || !sidebarOpen || !tagListInShellRef.current) return;
+    const frame = panelsFrameRef.current;
+    const aside = frame?.querySelector(".sidebar");
+    if (!frame || !(aside instanceof HTMLElement)) return;
+    const frameWidth = frame.clientWidth;
+    if (frameWidth <= 0) return;
+    const files = tagFilesWidthRef.current;
+    if (aside.clientWidth < files + SIDEBAR_MIN_WIDTH - 8) return;
+    const leftPx = aside.clientWidth - files;
+    const basePct = (leftPx / frameWidth) * 100;
+    if (basePct < 5) return;
+    savedRef.current = { sidebar: basePct, chat: savedRef.current.chat };
+    saveShellLayout(savedRef.current);
+    useSidebarUiStore.getState().rememberSizePercent(basePct);
+  }, [tagFilesWidth, tagFilesOpen, sidebarOpen]);
 
   useEffect(() => subscribeDocumentFind(), []);
 
@@ -1310,10 +1434,14 @@ function App() {
             // Ignore programmatic setLayout / collapse noise — that was wiping sizes.
             if (applyingRef.current || !meta.isUserInteraction) return;
 
-            const sidebarPct = layout.sidebar;
+            let sidebarPct = layout.sidebar;
             const chatPct = layout.chat;
             if (typeof sidebarPct !== "number" || !Number.isFinite(sidebarPct)) {
               return;
+            }
+            const frameWidth = panelsFrameRef.current?.clientWidth ?? 0;
+            if (tagFilesOpenRef.current && frameWidth > 0) {
+              sidebarPct -= (tagFilesWidthRef.current / frameWidth) * 100;
             }
 
             const next: ShellLayout = {
@@ -1342,8 +1470,12 @@ function App() {
             collapsible
             collapsedSize={0}
             defaultSize={`${initialLayout.sidebar}%`}
-            minSize={200}
-            maxSize={480}
+            minSize={SIDEBAR_MIN_WIDTH}
+            maxSize={
+              tagFilesOpen
+                ? SIDEBAR_MAX_WIDTH + TAG_FILES_MAX_WIDTH + 64
+                : SIDEBAR_MAX_WIDTH
+            }
             groupResizeBehavior="preserve-pixel-size"
             onPointerEnter={() => {
               if (!sidebarOpen && sidebarPeeking) showPeek("sidebar");
@@ -1364,7 +1496,7 @@ function App() {
             id="main"
             className="main-panel"
             defaultSize={`${initialLayout.main}%`}
-            minSize={360}
+            minSize={MAIN_MIN_WIDTH}
           >
             <MainPane onEditorChange={onEditorChange} />
           </Panel>

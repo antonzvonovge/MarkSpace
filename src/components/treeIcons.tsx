@@ -230,6 +230,44 @@ export function GraphIcon() {
   );
 }
 
+/** Outline eye. `off` draws a slash for the hidden state. */
+export function EyeIcon({ off = false }: { off?: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M1.75 8S3.9 4.35 8 4.35 14.25 8 14.25 8 12.1 11.65 8 11.65 1.75 8 1.75 8Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+      <circle cx="8" cy="8" r="1.65" stroke="currentColor" strokeWidth="1.3" />
+      {off ? (
+        <path
+          d="M3.15 12.85 12.85 3.15"
+          stroke="currentColor"
+          strokeWidth="1.35"
+          strokeLinecap="round"
+        />
+      ) : null}
+    </svg>
+  );
+}
+
+/** Outline tag, same weight as the vault and section icons. */
+export function TagIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.4 3.55A1.2 1.2 0 0 1 3.6 2.35h3.85c.32 0 .62.13.85.35l5.05 5.05a1.2 1.2 0 0 1 0 1.7l-3.9 3.9a1.2 1.2 0 0 1-1.7 0L2.7 8.3a1.2 1.2 0 0 1-.35-.85V3.55Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+      <circle cx="5.55" cy="5.55" r="0.85" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** Vault root — outline safe, matches Favorites/Comments section icons. */
 export function VaultSectionIcon() {
   return (

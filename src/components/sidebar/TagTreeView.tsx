@@ -27,7 +27,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FcDocument } from "react-icons/fc";
 import { ConfirmDialog, PromptDialog } from "../AppDialog";
-import { PdfIcon, VaultSectionIcon } from "../treeIcons";
+import { EyeIcon, PdfIcon, TagIcon, VaultSectionIcon } from "../treeIcons";
 import {
   WorkspaceHeaderActions,
   WorkspaceViewSwitch,
@@ -40,6 +40,7 @@ import {
   applyTagPrefixToNotes,
   buildTagTree,
   collectTagDocumentPaths,
+  documentsForSelection,
   flattenTagView,
   tagHasPrefix,
   type TagFlatRow,
@@ -63,6 +64,7 @@ import {
   hitTestVirtualRow,
   type VirtualRowGeom,
 } from "./vaultTreeDnD";
+import { useTagFileSlot } from "./tagFileSlot";
 
 const OVERSCAN = 12;
 const TAG_LIST_ID = "tag-tree-list";
@@ -216,6 +218,7 @@ export const TagTreeView = memo(function TagTreeView({
         documentPaths,
         selection: selectedTagPath,
         hideSubtagNotes,
+        includeDocuments: false,
       }),
     [
       tagNodes,
@@ -580,6 +583,18 @@ export const TagTreeView = memo(function TagTreeView({
           void applyPrefix(from, null);
         }}
       />
+      <TagFileColumn
+        notes={noteTags}
+        documentPaths={documentPaths}
+        selectedTagPath={selectedTagPath}
+        hideSubtagNotes={hideSubtagNotes}
+        showNoteTitles={showNoteTitles}
+        titlesByPath={titlesByPath}
+        activePath={activePath}
+        rowHeight={rowHeight}
+        onOpenNote={onOpenNote}
+        onHideSubtags={setHideSubtagNotes}
+      />
     </DndContext>
   );
 });
@@ -735,6 +750,9 @@ const TagFlatRowView = memo(function TagFlatRowView({
         >
           {row.hasChildren ? <ChevronIcon open={row.open} /> : null}
         </span>
+        <span className="tree-node-icon" aria-hidden>
+          <TagIcon />
+        </span>
         <span className="tree-node-label">{row.name}</span>
       </div>
     );
@@ -756,12 +774,16 @@ function TagNoteRow({
   showNoteTitles,
   titlesByPath,
   onOpenNote,
+  depth = 0,
+  flush = false,
 }: {
   path: string;
   active: boolean;
   showNoteTitles: boolean;
   titlesByPath?: Readonly<Record<string, string>>;
   onOpenNote: (path: string, options?: { preview?: boolean }) => void;
+  depth?: number;
+  flush?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `tag-doc:${path}`,
@@ -783,13 +805,17 @@ function TagNoteRow({
             ? "tree-row tree-file is-dragging"
             : "tree-row tree-file"
       }
-      style={rowPad(1)}
+      style={
+        flush
+          ? { paddingLeft: 0, paddingRight: "var(--tree-pad-x)" }
+          : rowPad(depth)
+      }
       {...attributes}
       {...listeners}
       onClick={open}
       onDoubleClick={() => onOpenNote(path, { preview: false })}
     >
-      <span className="tree-chevron-btn is-empty" aria-hidden />
+      {flush ? null : <span className="tree-chevron-btn is-empty" aria-hidden />}
       <span className="tree-node-icon" aria-hidden>
         {pdf ? (
           <span className="tree-pdf-icon">
@@ -801,5 +827,128 @@ function TagNoteRow({
       </span>
       <span className="tree-node-label">{label}</span>
     </div>
+  );
+}
+
+function TagFileColumn({
+  notes,
+  documentPaths,
+  selectedTagPath,
+  hideSubtagNotes,
+  showNoteTitles,
+  titlesByPath,
+  activePath,
+  rowHeight,
+  onOpenNote,
+  onHideSubtags,
+}: {
+  notes: NoteTags[];
+  documentPaths: string[];
+  selectedTagPath: string | null;
+  hideSubtagNotes: boolean;
+  showNoteTitles: boolean;
+  titlesByPath?: Readonly<Record<string, string>>;
+  activePath: string | null;
+  rowHeight: number;
+  onOpenNote: (path: string, options?: { preview?: boolean }) => void;
+  onHideSubtags: (hide: boolean) => void;
+}) {
+  const slot = useTagFileSlot();
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const docs = useMemo(
+    () =>
+      documentsForSelection(
+        notes,
+        documentPaths,
+        selectedTagPath,
+        hideSubtagNotes,
+      ),
+    [notes, documentPaths, selectedTagPath, hideSubtagNotes],
+  );
+  const virtualizer = useVirtualizer({
+    count: docs.length,
+    getScrollElement: () => scrollEl,
+    estimateSize: () => rowHeight,
+    overscan: OVERSCAN,
+    getItemKey: (index) => docs[index] ?? index,
+  });
+
+  if (!slot || selectedTagPath == null) return null;
+
+  const exact = selectedTagPath !== UNTAGGED_SELECTION;
+  const title = exact ? selectedTagPath : "Untagged";
+  const items = virtualizer.getVirtualItems();
+
+  return createPortal(
+    <div className="tag-file-column">
+      <div className="tag-file-column-header">
+        {exact ? (
+          <span className="tree-node-icon" aria-hidden>
+            <TagIcon />
+          </span>
+        ) : null}
+        <span className="tag-file-column-title" title={title}>
+          {title}
+        </span>
+        {exact ? (
+          <button
+            type="button"
+            className={
+              hideSubtagNotes
+                ? "tree-toolbar-btn is-open"
+                : "tree-toolbar-btn"
+            }
+            title={hideSubtagNotes ? "Show subtag notes" : "Hide subtag notes"}
+            aria-label={hideSubtagNotes ? "Show subtag notes" : "Hide subtag notes"}
+            aria-pressed={hideSubtagNotes}
+            onClick={() => onHideSubtags(!hideSubtagNotes)}
+          >
+            <EyeIcon off={hideSubtagNotes} />
+          </button>
+        ) : null}
+      </div>
+      <div
+        className="tag-file-column-scroll"
+        ref={setScrollEl}
+      >
+        {docs.length === 0 ? (
+          <div className="tag-tree-empty">No notes</div>
+        ) : (
+          <div
+            className="tag-file-column-list"
+            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+          >
+            {items.map((item) => {
+              const path = docs[item.index];
+              if (!path) return null;
+              return (
+                <div
+                  key={path}
+                  className="workspace-virtual-row"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: rowHeight,
+                    transform: `translateY(${item.start}px)`,
+                  }}
+                >
+                  <TagNoteRow
+                    path={path}
+                    active={activePath === path}
+                    showNoteTitles={showNoteTitles}
+                    titlesByPath={titlesByPath}
+                    onOpenNote={onOpenNote}
+                    flush
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>,
+    slot,
   );
 }

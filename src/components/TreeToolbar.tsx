@@ -15,6 +15,7 @@ import {
   LocateIcon,
   PlusIcon,
   RefreshIcon,
+  TagIcon,
 } from "./treeIcons";
 
 export type TreeCreateKind =
@@ -271,36 +272,26 @@ function ShowResolvedIcon({ active }: { active: boolean }) {
   );
 }
 
-/** Workspace actions; collapse stays last (right edge). */
+/** Sticky tags toggle. Unpressed shows folders; pressed shows the tag tree. */
 export function WorkspaceViewSwitch() {
-  const view = useSidebarUiStore((s) => s.workspaceView);
+  const tags = useSidebarUiStore((s) => s.workspaceView) === "tags";
   const setWorkspaceView = useSidebarUiStore((s) => s.setWorkspaceView);
   return (
-    <div
-      className="workspace-view-switch"
-      role="group"
-      aria-label="Workspace view"
-      onClick={(e) => e.stopPropagation()}
+    <button
+      type="button"
+      className={tags ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
+      title={tags ? "Show folders" : "Show tags"}
+      aria-label={tags ? "Show folders" : "Show tags"}
+      aria-pressed={tags}
+      onClick={(e) => {
+        e.stopPropagation();
+        setWorkspaceView(tags ? "folders" : "tags");
+      }}
       onDoubleClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <button
-        type="button"
-        className={view === "folders" ? "is-active" : ""}
-        aria-pressed={view === "folders"}
-        onClick={() => setWorkspaceView("folders")}
-      >
-        Folders
-      </button>
-      <button
-        type="button"
-        className={view === "tags" ? "is-active" : ""}
-        aria-pressed={view === "tags"}
-        onClick={() => setWorkspaceView("tags")}
-      >
-        Tags
-      </button>
-    </div>
+      <TagIcon />
+    </button>
   );
 }
 

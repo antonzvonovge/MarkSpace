@@ -244,7 +244,9 @@ function flattenNodes(
 }
 
 /**
- * One virtual list: Untagged, the tag tree, then the note list for the selection.
+ * Untagged plus the tag tree. The note list is included when `includeDocuments`
+ * is true (default) and a selection is set. The sidebar shows that list in a
+ * separate column, so the tree view passes `includeDocuments: false`.
  * `selection === null` omits the note list. `""` is Untagged.
  */
 export function flattenTagView(options: {
@@ -254,12 +256,14 @@ export function flattenTagView(options: {
   documentPaths: string[];
   selection: string | null;
   hideSubtagNotes: boolean;
+  includeDocuments?: boolean;
 }): TagFlatRow[] {
   const expanded = new Set(
     [...options.expanded].map((path) => path.toLowerCase()),
   );
   const rows: TagFlatRow[] = [{ kind: "untagged", key: "untagged" }];
   flattenNodes(options.tree, expanded, 0, rows);
+  if (options.includeDocuments === false) return rows;
   if (options.selection == null) return rows;
   const docs = documentsForSelection(
     options.notes,

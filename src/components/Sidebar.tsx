@@ -1,5 +1,12 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { memo, useEffect, useMemo, useRef } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import { SidebarCreateButton } from "./sidebar/SidebarCreateButton";
@@ -15,6 +22,11 @@ import { loadLastVault, saveLastVault } from "../lib/settingsStore";
 import { usePrefsStore, useSettingsTabActive } from "../store/prefsStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
+import {
+  SIDEBAR_MIN_WIDTH,
+  clampTagFilesWidth,
+  TagFileSlotContext,
+} from "./sidebar/tagFileSlot";
 
 export { loadLastVault, saveLastVault };
 
@@ -47,6 +59,62 @@ export const Sidebar = memo(function Sidebar() {
   const setCalendarOpen = useSidebarUiStore((s) => s.setCalendarOpen);
   const toggleCalendar = useSidebarUiStore((s) => s.toggleCalendar);
   const fileTreeRef = useRef<FileTreeHandle>(null);
+  const [tagFileSlot, setTagFileSlot] = useState<HTMLDivElement | null>(null);
+  const tagFilesOpen = useSidebarUiStore(
+    (s) =>
+      s.open && s.workspaceView === "tags" && s.selectedTagPath != null,
+  );
+  const tagFilesWidth = useSidebarUiStore((s) => s.tagFilesWidth);
+  const setTagFilesWidth = useSidebarUiStore((s) => s.setTagFilesWidth);
+  const asideRef = useRef<HTMLElement | null>(null);
+  const [primaryWidth, setPrimaryWidth] = useState<number | null>(null);
+  const tagFilesOpenRef = useRef(tagFilesOpen);
+  const tagFilesWidthRef = useRef(tagFilesWidth);
+  tagFilesWidthRef.current = tagFilesWidth;
+  /** Aside width before the file column opened; `null` once the aside has grown. */
+  const pendingGrowRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const aside = asideRef.current;
+    if (!aside) return;
+    const wasOpen = tagFilesOpenRef.current;
+    tagFilesOpenRef.current = tagFilesOpen;
+    if (tagFilesOpen && !wasOpen) {
+      pendingGrowRef.current = primaryWidth ?? aside.clientWidth;
+      setPrimaryWidth(pendingGrowRef.current);
+    } else if (!tagFilesOpen) {
+      pendingGrowRef.current = null;
+    }
+  }, [tagFilesOpen, primaryWidth]);
+
+  useLayoutEffect(() => {
+    const aside = asideRef.current;
+    if (!aside || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const width = aside.clientWidth;
+      if (width <= 0) return;
+      if (!tagFilesOpenRef.current) {
+        setPrimaryWidth(width);
+        return;
+      }
+      const pending = pendingGrowRef.current;
+      const filesWidth = tagFilesWidthRef.current;
+      if (pending != null) {
+        if (width < pending + filesWidth - 1) return;
+        pendingGrowRef.current = null;
+      }
+      setPrimaryWidth(Math.max(SIDEBAR_MIN_WIDTH, width - filesWidth));
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(aside);
+    return () => ro.disconnect();
+  }, []);
+  const fitTagFilesWidth = (width: number) => {
+    const aside = asideRef.current?.clientWidth ?? 0;
+    const maxByLeft =
+      aside > 0 ? Math.max(0, aside - SIDEBAR_MIN_WIDTH) : width;
+    return clampTagFilesWidth(Math.min(width, maxByLeft));
+  };
   const tasksSection = useMemo(() => <TasksSection />, []);
   const routinesSection = useMemo(() => <RoutinesSection />, []);
   const dashboardsSection = useMemo(() => <DashboardsSection />, []);
@@ -73,7 +141,9 @@ export const Sidebar = memo(function Sidebar() {
   };
 
   return (
+    <TagFileSlotContext.Provider value={tagFileSlot}>
     <aside
+      ref={asideRef}
       className="sidebar"
       onContextMenu={(e) => {
         const el = e.target as HTMLElement;
@@ -83,6 +153,7 @@ export const Sidebar = memo(function Sidebar() {
         if (el.closest(".sidebar-calendar")) return;
         if (el.closest("button")) return;
         if (el.closest(".tree-context-menu")) return;
+        if (el.closest(".sidebar-tag-files, .sidebar-tag-split")) return;
         e.preventDefault();
         fileTreeRef.current?.openCreateMenu(
           e.clientX,
@@ -105,15 +176,79 @@ export const Sidebar = memo(function Sidebar() {
           />
         </div>
 
-        <FileTree
-          ref={fileTreeRef}
-          tasksSection={tasksSection}
-          routinesSection={routinesSection}
-          dashboardsSection={dashboardsSection}
-        />
+        <div className="sidebar-columns">
+          <div
+            className="sidebar-primary"
+            style={
+              tagFilesOpen && pendingGrowRef.current != null && primaryWidth != null
+                ? { flex: `0 0 ${primaryWidth}px`, minWidth: 0 }
+                : tagFilesOpen
+                  ? { flex: "1 1 0", minWidth: 0 }
+                  : undefined
+            }
+          >
+            <FileTree
+              ref={fileTreeRef}
+              tasksSection={tasksSection}
+              routinesSection={routinesSection}
+              dashboardsSection={dashboardsSection}
+            />
+            {calendarOpen && <SidebarCalendar />}
+          </div>
+          {tagFilesOpen ? (
+            <>
+              <div
+                className="sidebar-tag-split"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize tag list"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+                  e.preventDefault();
+                  const delta = e.key === "ArrowRight" ? -16 : 16;
+                  const next = fitTagFilesWidth(tagFilesWidthRef.current + delta);
+                  tagFilesWidthRef.current = next;
+                  setTagFilesWidth(next);
+                }}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.preventDefault();
+                  const startX = e.clientX;
+                  const startWidth = tagFilesWidthRef.current;
+                  const target = e.currentTarget;
+                  target.setPointerCapture(e.pointerId);
+                  const move = (ev: PointerEvent) => {
+                    const next = fitTagFilesWidth(startWidth + startX - ev.clientX);
+                    tagFilesWidthRef.current = next;
+                    setTagFilesWidth(next);
+                  };
+                  const end = (ev: PointerEvent) => {
+                    if (target.hasPointerCapture(ev.pointerId)) {
+                      target.releasePointerCapture(ev.pointerId);
+                    }
+                    target.removeEventListener("pointermove", move);
+                    target.removeEventListener("pointerup", end);
+                    target.removeEventListener("pointercancel", end);
+                  };
+                  target.addEventListener("pointermove", move);
+                  target.addEventListener("pointerup", end);
+                  target.addEventListener("pointercancel", end);
+                }}
+              />
+              <div
+                className="sidebar-tag-files"
+                ref={setTagFileSlot}
+                style={{
+                  width: tagFilesWidth,
+                  flex: `0 0 ${tagFilesWidth}px`,
+                  maxWidth: tagFilesWidth,
+                }}
+              />
+            </>
+          ) : null}
+        </div>
       </div>
-
-      {calendarOpen && <SidebarCalendar />}
 
       <footer className="sidebar-footer">
         <button
@@ -154,5 +289,6 @@ export const Sidebar = memo(function Sidebar() {
         </div>
       </footer>
     </aside>
+    </TagFileSlotContext.Provider>
   );
 });

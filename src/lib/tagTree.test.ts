@@ -147,6 +147,21 @@ describe("flattenTagView", () => {
     ]);
     expect(rows.filter((row) => row.kind === "note")).toHaveLength(3);
   });
+
+  it("omits documents when the file list is a separate column", () => {
+    const rows = flattenTagView({
+      tree: buildTagTree(["language/georgian"]),
+      expanded: ["language"],
+      notes,
+      documentPaths: [],
+      selection: "language",
+      hideSubtagNotes: false,
+      includeDocuments: false,
+    });
+    expect(rows.some((row) => row.kind === "note" || row.kind === "divider")).toBe(
+      false,
+    );
+  });
 });
 
 describe("addTagToNotes", () => {

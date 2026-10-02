@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import { loadShellLayout } from "../lib/shellLayout";
+import {
+  TAG_FILES_COLUMN_WIDTH,
+  clampTagFilesWidth,
+} from "../components/sidebar/tagFileSlot";
 
 const OPEN_KEY = "markspace-sidebar-open";
 const CALENDAR_OPEN_KEY = "markspace-sidebar-calendar-open";
@@ -7,6 +11,7 @@ const WORKSPACE_VIEW_KEY = "markspace-workspace-view";
 const TAG_EXPANDED_KEY = "markspace-tag-expanded";
 const TAG_HIDE_KEY = "markspace-tag-hide-subtags";
 const TAG_SELECTION_KEY = "markspace-tag-selection";
+const TAG_FILES_WIDTH_KEY = "markspace-tag-files-width";
 
 export type WorkspaceView = "folders" | "tags";
 
@@ -90,6 +95,26 @@ function readTagSelection(): string | null {
   }
 }
 
+function readTagFilesWidth(): number {
+  try {
+    const raw = localStorage.getItem(TAG_FILES_WIDTH_KEY);
+    if (raw == null) return TAG_FILES_COLUMN_WIDTH;
+    const width = Number(raw);
+    if (!Number.isFinite(width)) return TAG_FILES_COLUMN_WIDTH;
+    return clampTagFilesWidth(width);
+  } catch {
+    return TAG_FILES_COLUMN_WIDTH;
+  }
+}
+
+function writeTagFilesWidth(width: number) {
+  try {
+    localStorage.setItem(TAG_FILES_WIDTH_KEY, String(clampTagFilesWidth(width)));
+  } catch {
+    // ignore
+  }
+}
+
 function writeTagSelection(path: string | null) {
   try {
     if (path == null) localStorage.removeItem(TAG_SELECTION_KEY);
@@ -110,6 +135,8 @@ type SidebarUiStore = {
   /** `null` = no note list, `""` = Untagged, otherwise a tag path. */
   selectedTagPath: string | null;
   hideSubtagNotes: boolean;
+  /** Pixel width of the tag file column. */
+  tagFilesWidth: number;
   setOpen: (open: boolean) => void;
   toggle: () => void;
   setCalendarOpen: (open: boolean) => void;
@@ -123,6 +150,7 @@ type SidebarUiStore = {
   setTagExpandedPaths: (paths: string[]) => void;
   setSelectedTagPath: (path: string | null) => void;
   setHideSubtagNotes: (hide: boolean) => void;
+  setTagFilesWidth: (width: number) => void;
 };
 
 export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
@@ -135,6 +163,8 @@ export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
   tagExpandedPaths: typeof window !== "undefined" ? readTagExpanded() : [],
   selectedTagPath: typeof window !== "undefined" ? readTagSelection() : null,
   hideSubtagNotes: typeof window !== "undefined" ? readHideSubtagNotes() : false,
+  tagFilesWidth:
+    typeof window !== "undefined" ? readTagFilesWidth() : TAG_FILES_COLUMN_WIDTH,
   setOpen: (open) => {
     writeOpen(open);
     set({ open });
@@ -222,5 +252,13 @@ export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
       // ignore
     }
     set({ hideSubtagNotes: hide });
+  },
+  setTagFilesWidth: (width) => {
+    const tagFilesWidth = clampTagFilesWidth(width);
+    set((state) => {
+      if (state.tagFilesWidth === tagFilesWidth) return state;
+      writeTagFilesWidth(tagFilesWidth);
+      return { tagFilesWidth };
+    });
   },
 }));
