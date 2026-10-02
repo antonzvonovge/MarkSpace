@@ -5,8 +5,10 @@ import {
   findFreeCell,
   parseDashboard,
   placeRoutineWidget,
+  placeWeatherWidget,
   previewRoutineReport,
   serializeDashboard,
+  setWeatherPlace,
 } from "./dashboardFormat";
 
 describe("dashboardFormat", () => {
@@ -74,6 +76,51 @@ describe("dashboardFormat", () => {
     const placed = placeRoutineWidget(doc, "one", "a");
     const next = applyGridLayout(placed, [{ i: "a", x: 2, y: 1, w: 4, h: 3 }]);
     expect(next.widgets[0]).toMatchObject({ x: 2, y: 1, w: 4, h: 3 });
+  });
+
+  it("places a weather widget and keeps the chosen city", () => {
+    const placed = placeWeatherWidget(
+      { version: 1, cols: 12, color: "#2196f3", widgets: [] },
+      "w",
+    );
+    expect(placed.widgets[0]).toMatchObject({
+      kind: "weather",
+      place: "",
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 5,
+    });
+    const chosen = setWeatherPlace(placed, "w", {
+      name: "Tbilisi",
+      admin: "Tbilisi",
+      country: "Georgia",
+      latitude: 41.69411,
+      longitude: 44.83368,
+    });
+    const widget = chosen.widgets[0];
+    expect(widget).toMatchObject({
+      place: "Tbilisi",
+      country: "Georgia",
+      latitude: 41.6941,
+      longitude: 44.8337,
+    });
+    const src = serializeDashboard(chosen);
+    expect(serializeDashboard(parseDashboard(src))).toBe(src);
+    const second = placeWeatherWidget(chosen, "w2");
+    expect(second.widgets.map((item) => item.x)).toEqual([0, 4]);
+  });
+
+  it("rejects a weather widget that has a city without coordinates", () => {
+    expect(() =>
+      parseDashboard(
+        JSON.stringify({
+          version: 1,
+          cols: 12,
+          widgets: [{ id: "w", kind: "weather", place: "Tbilisi", x: 0, y: 0, w: 4, h: 4 }],
+        }),
+      ),
+    ).toThrow(/does not match the dashboard format/);
   });
 
   it("strips run metadata and truncates a long report", () => {

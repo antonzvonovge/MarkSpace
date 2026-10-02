@@ -31,6 +31,10 @@ import { useAiSettingsStore } from "../store/aiSettingsStore";
 import { useRoutinesStore } from "../store/routinesStore";
 import { useVaultStore } from "../store/vaultStore";
 import { helperModelCallParams, vaultChatModelId, vaultWorkerModelId } from "../store/vaultAiSettingsStore";
+import {
+  WIDGET_SECTION_MISSING,
+  widgetSectionFromMessages,
+} from "./routineWidgetSection";
 
 const inflight = new Set<string>();
 const controllers = new Map<string, AbortController>();
@@ -238,6 +242,7 @@ async function executeRoutineRun(
   }
   if (controller.signal.aborted) return;
 
+  const section = widgetSectionFromMessages(latest);
   const text = assistantText(latest);
   if (askedTheUser(latest)) {
     await finish(
@@ -245,13 +250,17 @@ async function executeRoutineRun(
       epoch,
       controller.signal,
       "needs you",
-      text || "The run stopped because it needed a decision from you.",
+      section || text || "The run stopped because it needed a decision from you.",
     );
+    return;
+  }
+  if (section) {
+    await finish(id, epoch, controller.signal, "done", section);
     return;
   }
   if (!text) {
     await finish(id, epoch, controller.signal, "failed", "The run produced no reply.");
     return;
   }
-  await finish(id, epoch, controller.signal, "done", text);
+  await finish(id, epoch, controller.signal, "done", WIDGET_SECTION_MISSING);
 }

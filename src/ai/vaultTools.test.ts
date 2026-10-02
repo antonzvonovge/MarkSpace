@@ -109,7 +109,9 @@ describe("vault agent tools", () => {
       });
       expect(routine).toContain("pre-approved for this routine");
       expect(routine).toContain("unattended routine");
+      expect(routine).toContain("<!-- widget -->");
       expect(routine).not.toContain("terminal plan confirmation");
+      expect(prompt).not.toContain("<!-- widget -->");
     } finally {
       useAiSettingsStore.setState({ settings: prev, hydrated: true });
     }

@@ -5,11 +5,14 @@ import {
   PROJECT_COLOR_SWATCHES,
   normalizeProjectColor,
 } from "./projectColors";
+import type { WeatherPlace } from "./weather";
 
 export const DASHBOARD_VERSION = 1;
 export const DASHBOARD_COLS = 12;
 export const DASHBOARD_WIDGET_W = 6;
 export const DASHBOARD_WIDGET_H = 4;
+export const DASHBOARD_WEATHER_W = 4;
+export const DASHBOARD_WEATHER_H = 5;
 
 /** Saturated swatches. Lime and amber disappear on the light sidebar. */
 const DASHBOARD_ICON_COLORS = PROJECT_COLOR_SWATCHES.flatMap((swatch) =>
@@ -22,25 +25,59 @@ export function pickDashboardColor(): string {
   return DASHBOARD_ICON_COLORS[index] ?? DASHBOARD_ICON_COLORS[0];
 }
 
-const routineWidgetSchema = z.object({
-  id: z.string().trim().min(1).max(80),
-  kind: z.literal("routine"),
-  routineId: z.string().trim().min(1),
+const widgetId = z.string().trim().min(1).max(80);
+const gridTail = {
   x: z.number().int().min(0).max(DASHBOARD_COLS - 1),
   y: z.number().int().min(0).max(200),
   w: z.number().int().min(1).max(DASHBOARD_COLS),
   h: z.number().int().min(1).max(40),
+};
+
+const routineWidgetSchema = z.object({
+  id: widgetId,
+  kind: z.literal("routine"),
+  routineId: z.string().trim().min(1),
+  ...gridTail,
 });
+
+const weatherWidgetSchema = z
+  .object({
+    id: widgetId,
+    kind: z.literal("weather"),
+    /** City name. Empty until the user picks a place. */
+    place: z.string().trim().max(120),
+    admin: z.string().trim().max(120).optional(),
+    country: z.string().trim().max(80).optional(),
+    latitude: z.number().gte(-90).lte(90).optional(),
+    longitude: z.number().gte(-180).lte(180).optional(),
+    ...gridTail,
+  })
+  .superRefine((widget, ctx) => {
+    const hasLat = widget.latitude !== undefined;
+    const hasLon = widget.longitude !== undefined;
+    if (hasLat !== hasLon || (widget.place.length > 0) !== hasLat) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Weather widget needs a place and both coordinates",
+      });
+    }
+  });
+
+const widgetSchema = z.discriminatedUnion("kind", [
+  routineWidgetSchema,
+  weatherWidgetSchema,
+]);
 
 const dashboardSchema = z.object({
   version: z.literal(DASHBOARD_VERSION),
   cols: z.literal(DASHBOARD_COLS),
   color: z.string().optional(),
-  widgets: z.array(routineWidgetSchema).max(40),
+  widgets: z.array(widgetSchema).max(40),
 });
 
 export type RoutineWidget = z.infer<typeof routineWidgetSchema>;
-export type DashboardWidget = RoutineWidget;
+export type WeatherWidget = z.infer<typeof weatherWidgetSchema>;
+export type DashboardWidget = z.infer<typeof widgetSchema>;
 export type DashboardDoc = Omit<z.infer<typeof dashboardSchema>, "color"> & {
   /** Palette hex, or "" until the file is assigned a color. */
   color: string;
@@ -103,13 +140,14 @@ function cellsOverlap(a: GridCell, b: GridCell): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-/** First free 6×4 cell, scanning rows left to right. */
+/** First free cell of the given size, scanning rows left to right. */
 export function findFreeCell(
   widgets: readonly GridCell[],
   cols = DASHBOARD_COLS,
+  size: { w: number; h: number } = { w: DASHBOARD_WIDGET_W, h: DASHBOARD_WIDGET_H },
 ): GridCell {
-  const w = Math.min(DASHBOARD_WIDGET_W, cols);
-  const h = DASHBOARD_WIDGET_H;
+  const w = Math.min(size.w, cols);
+  const h = size.h;
   const limit = widgets.reduce((max, item) => Math.max(max, item.y + item.h), 0) + h;
   for (let y = 0; y <= limit; y++) {
     for (let x = 0; x <= cols - w; x++) {
@@ -129,6 +167,47 @@ export function placeRoutineWidget(
   return {
     ...doc,
     widgets: [...doc.widgets, { id, kind: "routine", routineId, ...cell }],
+  };
+}
+
+function roundCoord(value: number): number {
+  return Math.round(value * 10000) / 10000;
+}
+
+export function placeWeatherWidget(doc: DashboardDoc, id: string): DashboardDoc {
+  const cell = findFreeCell(doc.widgets, doc.cols, {
+    w: DASHBOARD_WEATHER_W,
+    h: DASHBOARD_WEATHER_H,
+  });
+  return {
+    ...doc,
+    widgets: [...doc.widgets, { id, kind: "weather", place: "", ...cell }],
+  };
+}
+
+export function setWeatherPlace(
+  doc: DashboardDoc,
+  id: string,
+  place: WeatherPlace,
+): DashboardDoc {
+  return {
+    ...doc,
+    widgets: doc.widgets.map((widget) => {
+      if (widget.id !== id || widget.kind !== "weather") return widget;
+      return {
+        id: widget.id,
+        kind: "weather",
+        place: place.name,
+        ...(place.admin ? { admin: place.admin } : {}),
+        ...(place.country ? { country: place.country } : {}),
+        latitude: roundCoord(place.latitude),
+        longitude: roundCoord(place.longitude),
+        x: widget.x,
+        y: widget.y,
+        w: widget.w,
+        h: widget.h,
+      };
+    }),
   };
 }
 

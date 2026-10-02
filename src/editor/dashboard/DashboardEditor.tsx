@@ -11,15 +11,19 @@ import {
   parseDashboard,
   pickDashboardColor,
   placeRoutineWidget,
+  placeWeatherWidget,
   removeWidget,
   serializeDashboard,
+  setWeatherPlace,
   type DashboardDoc,
 } from "../../lib/dashboardFormat";
 import { useDashboardColorStore } from "../../store/dashboardColorStore";
 import { useRoutinesStore } from "../../store/routinesStore";
 import { RoutineColorIcon, routineIconColor } from "../../components/routineIcon";
 import { PlusIcon } from "../../components/treeIcons";
+import type { WeatherPlace } from "../../lib/weather";
 import { RoutineWidget } from "./RoutineWidget";
+import { WeatherWidget } from "./WeatherWidget";
 
 const ROW_HEIGHT = 32;
 
@@ -150,13 +154,25 @@ const AddWidgetButton = memo(function AddWidgetButton({
               </div>
             ) : null}
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            className="dashboard-add-item"
+            onClick={() => {
+              setOpen(false);
+              setRoutinesOpen(false);
+              onChange(serializeDashboard(placeWeatherWidget(doc, newWidgetId())));
+            }}
+          >
+            Weather
+          </button>
         </div>
       ) : null}
     </div>
   );
 });
 
-const WidgetSlot = memo(function WidgetSlot({
+const RoutineSlot = memo(function RoutineSlot({
   id,
   routineId,
   onRemove,
@@ -167,6 +183,40 @@ const WidgetSlot = memo(function WidgetSlot({
 }) {
   const remove = useCallback(() => onRemove(id), [onRemove, id]);
   return <RoutineWidget routineId={routineId} onRemove={remove} />;
+});
+
+const WeatherSlot = memo(function WeatherSlot({
+  id,
+  place,
+  admin,
+  country,
+  latitude,
+  longitude,
+  onRemove,
+  onPlace,
+}: {
+  id: string;
+  place: string;
+  admin: string;
+  country: string;
+  latitude?: number;
+  longitude?: number;
+  onRemove: (id: string) => void;
+  onPlace: (id: string, place: WeatherPlace) => void;
+}) {
+  const remove = useCallback(() => onRemove(id), [onRemove, id]);
+  const pick = useCallback((next: WeatherPlace) => onPlace(id, next), [onPlace, id]);
+  return (
+    <WeatherWidget
+      place={place}
+      admin={admin}
+      country={country}
+      latitude={latitude}
+      longitude={longitude}
+      onRemove={remove}
+      onPlace={pick}
+    />
+  );
 });
 
 const DashboardCanvas = memo(function DashboardCanvas({
@@ -194,8 +244,44 @@ const DashboardCanvas = memo(function DashboardCanvas({
     setLive(null);
   }, [doc]);
 
+  useEffect(() => {
+    const host = containerRef.current;
+    if (!host) return;
+    const clearSelection = () => window.getSelection()?.removeAllRanges();
+    const arm = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (!target.closest(".react-resizable-handle, .dashboard-widget-handle")) return;
+      host.classList.add("is-interacting");
+      clearSelection();
+    };
+    const disarm = () => {
+      if (!host.classList.contains("is-interacting")) return;
+      host.classList.remove("is-interacting");
+      clearSelection();
+    };
+    const blockSelect = (event: Event) => {
+      if (host.classList.contains("is-interacting")) event.preventDefault();
+    };
+    host.addEventListener("pointerdown", arm, true);
+    window.addEventListener("pointerup", disarm);
+    window.addEventListener("pointercancel", disarm);
+    document.addEventListener("selectstart", blockSelect);
+    return () => {
+      host.removeEventListener("pointerdown", arm, true);
+      window.removeEventListener("pointerup", disarm);
+      window.removeEventListener("pointercancel", disarm);
+      document.removeEventListener("selectstart", blockSelect);
+      host.classList.remove("is-interacting");
+    };
+  }, [containerRef]);
+
   const removeWidgetById = useCallback((id: string) => {
     onChangeRef.current(serializeDashboard(removeWidget(docRef.current, id)));
+  }, []);
+
+  const setWeatherPlaceById = useCallback((id: string, place: WeatherPlace) => {
+    onChangeRef.current(serializeDashboard(setWeatherPlace(docRef.current, id, place)));
   }, []);
 
   const commit = (next: Layout) => {
@@ -226,7 +312,7 @@ const DashboardCanvas = memo(function DashboardCanvas({
             dragConfig={{
               enabled: true,
               handle: ".dashboard-widget-handle",
-              cancel: "button, a",
+              cancel: "button, a, input",
             }}
             resizeConfig={{ enabled: true, handles: ["se"] }}
             compactor={verticalCompactor}
@@ -245,16 +331,29 @@ const DashboardCanvas = memo(function DashboardCanvas({
           >
             {doc.widgets.map((widget) => (
               <div key={widget.id}>
-                <WidgetSlot
-                  id={widget.id}
-                  routineId={widget.routineId}
-                  onRemove={removeWidgetById}
-                />
+                {widget.kind === "routine" ? (
+                  <RoutineSlot
+                    id={widget.id}
+                    routineId={widget.routineId}
+                    onRemove={removeWidgetById}
+                  />
+                ) : (
+                  <WeatherSlot
+                    id={widget.id}
+                    place={widget.place}
+                    admin={widget.admin ?? ""}
+                    country={widget.country ?? ""}
+                    latitude={widget.latitude}
+                    longitude={widget.longitude}
+                    onRemove={removeWidgetById}
+                    onPlace={setWeatherPlaceById}
+                  />
+                )}
               </div>
             ))}
           </GridLayout>
         ) : mounted && width > 0 ? (
-          <p className="dashboard-empty">Add a widget to show a routine report.</p>
+          <p className="dashboard-empty">Add a widget.</p>
         ) : null}
       </div>
     </div>

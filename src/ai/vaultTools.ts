@@ -94,6 +94,7 @@ import { orchestratorToolNames, pickTools, type SpecialistKind } from "./toolPac
 import { buildMcpTools, formatMcpOrchestratorPromptLines } from "./mcpTools";
 import { hostOsSystemPromptLine } from "../lib/hostOs";
 import { buildRunTerminalTool, isAgentTerminalEnabled } from "./terminalTool";
+import { WIDGET_SECTION_PROMPT } from "./routineWidgetSection";
 import type { ChatMode } from "./types";
 import { buildWebTools } from "./webTools";
 import {
@@ -2363,6 +2364,7 @@ export function buildSystemPrompt(opts: {
     ...(opts.unattended
       ? [
           "This turn is an unattended routine. Nobody is at the keyboard. Do not call ask_user or pick_vault_folder. If you cannot finish without a decision, stop and write the question in your final reply.",
+          WIDGET_SECTION_PROMPT,
         ]
       : [
           "When you need a vault folder (save location): call pick_vault_folder. The UI remembers the last folder across chats and lets the user Browse the vault tree. Do not use ask_user for folder paths.",

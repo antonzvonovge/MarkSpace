@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { WIDGET_SECTION_EXAMPLE, WIDGET_SECTION_HINT } from "../ai/routineWidgetSection";
 import { formatSchedule } from "../lib/routineSchedule";
 import {
   briefStateFromRoutine,
@@ -349,6 +350,12 @@ function RoutineJob({ id }: { id: string }) {
           </div>
         </div>
         <div className="routine-job-label">Brief</div>
+        <div className="routine-job-widget-hint">
+          <p>{WIDGET_SECTION_HINT}</p>
+          <pre>
+            <code>{WIDGET_SECTION_EXAMPLE}</code>
+          </pre>
+        </div>
         <div className="routine-job-brief">
           <RoutineBriefComposer
             key={id}
