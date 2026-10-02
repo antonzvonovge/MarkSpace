@@ -12,6 +12,7 @@ const INTERACTIVE_SELECTOR = [
   "label",
   ".bn-side-menu",
   ".bn-resize-handle",
+  ".image-resize-handle",
   ".bn-trailing-block",
   ".bn-suggestion-menu",
   ".bn-block-content",

@@ -10,7 +10,7 @@ guide.
 - In the note body and in chat, write a wiki-link with the bracket characters alone. Do not put a backtick character on either side of it. A backtick-wrapped link is inert code and does not open.
 - In **chat replies**, reference vault files with [[vault/path/Note.md]], [[Note|Label]], or ![[vault/path/Note.md]] — also `.mddict`, `.mdlnks`, `.mdhabit`, `.mdcourse`, `.drawio`, and `.pdf` paths. All render as a clickable file link that opens the document. Mention a file this way whenever you create, open, or cite one. Never nest `[Name.md](https://Name.md)` inside [[…]].
 - Embed Draw.io only as ![[path/diagram.drawio]] or ![[path/diagram.drawio|480]]. Embed audio as ![[clip.wav]] or ![[folder/clip.mp3]] (also `.m4a` / `.ogg` / `.aac`; a bare filename is next to the note). Outside the chat-only `.md` reference above, do not use ![[OtherNote]] for notes.
-- Images: `![alt](.assets/file.ext)` or Obsidian-style width `![alt|320](.assets/file.ext)`. Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
+- Images: `![alt](.assets/file.ext)`, width `![alt|320](.assets/file.ext)`, or width and height `![alt|320x180](.assets/file.ext)` (the picture stretches to that box). Put one blank line before and after the image. Never invent `.assets/` paths — use `save_attachment` / `write_asset` / `read_file` (with `save_as`) / `clip_article` first.
 - Tables: use GFM pipe tables (`| col |`). Never draw ASCII / box-drawing tables (`+---`, `│`, monospace grids) and never put a table inside a plain-text / untitled code fence — those stay unrendered junk. Colored cells become HTML `<table>` with `data-background-color` / `data-text-color` on cells; preserve that HTML when editing.
 - Spacing: exactly one blank line between paragraphs and between a paragraph and a list/heading/code block. No multiple consecutive blank lines.
 - Blockquotes: each line is `>` then **exactly one** space then the text (`> **Goal:** …`). Never `>  ` (two spaces after `>`) — CommonMark treats the extra space as content, so Live shows the quote shifted right of the bar. Blank quoted lines are a lone `>`. Nested quotes use `> > ` (one space after each `>`). Quoted lists: `> * item`, not `>  * item`.
@@ -219,8 +219,8 @@ Legacy HTML `<div data-drawio-src="…">` may still round-trip to ![[diagram.dra
 - You may also save with `read_file` + `save_as` to any vault-relative path the user requests; use the returned `saved_path` in markdown (relative to the note when possible).
 - Plain: `![alt text](.assets/photo.png)`
 - Width (Obsidian-style): `![alt|320](.assets/photo.png)` or `![320](.assets/photo.png)`
-- `![alt|320x200](…)` — only the width is kept; height is ignored
-- Captioned images may persist as HTML `<figure><img width="…">…</figure>`; preserve width when editing
+- Width and height: `![alt|320x180](…)` or `![320x180](…)`. Both numbers are pixels; the image stretches to that box. Omit the height to keep the original aspect ratio.
+- Captioned images may persist as HTML `<figure><img width="…" height="…">…</figure>`; preserve width and height when editing
 - Always one blank line before and after an image block
 
 ## Tables

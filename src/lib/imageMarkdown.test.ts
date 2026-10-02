@@ -97,4 +97,53 @@ describe("imageMarkdown", () => {
       previewWidth: 400,
     });
   });
+
+  it("projects width and height into the alt", () => {
+    const md = applyImagePreviewWidths("![photo](pic.png)\n", [
+      { url: "pic.png", name: "photo", previewWidth: 320, previewHeight: 180 },
+    ]);
+    expect(md).toBe("![photo|320x180](pic.png)\n");
+  });
+
+  it("restores width and height from the alt", () => {
+    const [block] = restoreImagePreviewWidthsFromAlt([
+      {
+        type: "image",
+        props: { url: "pic.png", name: "photo|320x180" },
+      },
+    ]);
+    expect(block?.props).toMatchObject({
+      name: "photo",
+      previewWidth: 320,
+      previewHeight: 180,
+    });
+  });
+
+  it("keeps a stored height when the alt also has one", () => {
+    const [block] = restoreImagePreviewWidthsFromAlt([
+      {
+        type: "image",
+        props: {
+          url: "pic.png",
+          name: "photo|100x50",
+          previewWidth: 400,
+          previewHeight: 80,
+        },
+      },
+    ]);
+    expect(block?.props).toMatchObject({
+      name: "photo",
+      previewWidth: 400,
+      previewHeight: 80,
+    });
+  });
+
+  it("injects height into captioned HTML figures", () => {
+    const md = applyImagePreviewWidths(
+      '<figure><img alt="cap" src="pic.png"><figcaption>cap</figcaption></figure>\n',
+      [{ url: "pic.png", name: "cap", previewWidth: 400, previewHeight: 120 }],
+    );
+    expect(md).toContain('width="400"');
+    expect(md).toContain('height="120"');
+  });
 });

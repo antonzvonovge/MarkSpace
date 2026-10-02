@@ -4,6 +4,8 @@ export type ImageSizeRef = {
   url: string;
   name?: string;
   previewWidth?: number;
+  /** Set only when the image is stretched to an explicit height. */
+  previewHeight?: number;
 };
 
 type BlockLike = {
@@ -20,12 +22,17 @@ export function collectImageSizeRefs(blocks: BlockLike[]): ImageSizeRef[] {
       const url = String(block.props?.url ?? "");
       if (url) {
         const width = Number(block.props?.previewWidth);
-        out.push({
+        const height = Number(block.props?.previewHeight);
+        const ref: ImageSizeRef = {
           url,
           name: String(block.props?.name ?? ""),
           previewWidth:
             Number.isFinite(width) && width > 0 ? Math.round(width) : undefined,
-        });
+        };
+        if (Number.isFinite(height) && height > 0) {
+          ref.previewHeight = Math.round(height);
+        }
+        out.push(ref);
       }
     }
     if (block.children?.length) {
@@ -36,9 +43,9 @@ export function collectImageSizeRefs(blocks: BlockLike[]): ImageSizeRef[] {
 }
 
 /**
- * Write `previewWidth` into markdown that BlockNote's lossy exporter omitted.
- * Non-captioned: `![alt|width](src)` / `![width](src)`.
- * Captioned (HTML figure): inject `width` on the `<img>`.
+ * Write image size into markdown that BlockNote's lossy exporter omitted.
+ * Non-captioned: `![alt|width](src)` / `![alt|widthxheight](src)`.
+ * Captioned (HTML figure): inject `width` and, when set, `height` on the `<img>`.
  */
 export function applyImagePreviewWidths(
   markdown: string,
@@ -62,8 +69,9 @@ export function applyImagePreviewWidths(
             image.name ?? hit.alt,
             hit.src,
             image.previewWidth,
+            image.previewHeight,
           )
-        : injectImgWidth(hit.text, image.previewWidth);
+        : injectImgSize(hit.text, image.previewWidth, image.previewHeight);
 
     result = result.slice(0, hit.start) + replacement + result.slice(hit.end);
     cursor = hit.start + replacement.length;
@@ -73,8 +81,8 @@ export function applyImagePreviewWidths(
 }
 
 /**
- * After BlockNote parses `![alt|width](src)` / `![width](src)`, the size lives
- * in `name`. Move it to `previewWidth` (Obsidian convention).
+ * After BlockNote parses `![alt|width](src)` / `![alt|widthxheight](src)`, the
+ * size lives in `name`. Move it onto `previewWidth` / `previewHeight`.
  */
 export function restoreImagePreviewWidthsFromAlt<T extends BlockLike>(
   blocks: T[],
@@ -85,14 +93,21 @@ export function restoreImagePreviewWidthsFromAlt<T extends BlockLike>(
     if (block.type === "image" && block.props) {
       const existing = Number(block.props.previewWidth);
       const hasExisting = Number.isFinite(existing) && existing > 0;
+      const existingHeight = Number(block.props.previewHeight);
+      const hasExistingHeight =
+        Number.isFinite(existingHeight) && existingHeight > 0;
       const parsed = parseSizedAlt(String(block.props.name ?? ""));
       if (parsed) {
+        const previewHeight = hasExistingHeight
+          ? existingHeight
+          : parsed.previewHeight;
         next = {
           ...block,
           props: {
             ...block.props,
             name: parsed.name,
             previewWidth: hasExisting ? existing : parsed.previewWidth,
+            ...(previewHeight ? { previewHeight } : {}),
           },
         };
       }
@@ -111,44 +126,68 @@ export function restoreImagePreviewWidthsFromAlt<T extends BlockLike>(
 
 function parseSizedAlt(
   alt: string,
-): { name: string; previewWidth: number } | null {
-  const pipe = /^(.*?)\|(\d+)(?:x\d+)?$/.exec(alt);
+): { name: string; previewWidth: number; previewHeight?: number } | null {
+  const pipe = /^(.*?)\|(\d+)(?:x(\d+))?$/.exec(alt);
   if (pipe) {
-    const previewWidth = Number(pipe[2]);
-    if (!Number.isFinite(previewWidth) || previewWidth <= 0) return null;
-    return { name: (pipe[1] ?? "").trim(), previewWidth };
+    return sizedAlt((pipe[1] ?? "").trim(), pipe[2], pipe[3]);
   }
 
-  const only = /^(\d+)(?:x\d+)?$/.exec(alt.trim());
-  if (only) {
-    const previewWidth = Number(only[1]);
-    if (!Number.isFinite(previewWidth) || previewWidth <= 0) return null;
-    return { name: "", previewWidth };
-  }
+  const only = /^(\d+)(?:x(\d+))?$/.exec(alt.trim());
+  if (only) return sizedAlt("", only[1], only[2]);
 
   return null;
+}
+
+function sizedAlt(
+  name: string,
+  widthRaw: string | undefined,
+  heightRaw: string | undefined,
+): { name: string; previewWidth: number; previewHeight?: number } | null {
+  const previewWidth = Number(widthRaw);
+  if (!Number.isFinite(previewWidth) || previewWidth <= 0) return null;
+  const previewHeight = positivePx(heightRaw);
+  return previewHeight
+    ? { name, previewWidth, previewHeight }
+    : { name, previewWidth };
+}
+
+/** Positive pixel length from an attribute or the height half of `320x180`. */
+export function positivePx(raw: string | null | undefined): number | undefined {
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return n;
 }
 
 function formatSizedMarkdownImage(
   alt: string,
   src: string,
   width: number,
+  height?: number,
 ): string {
   const trimmed = alt.trim();
   // If alt still has a stale |width from a partial restore, strip it.
   const cleaned = trimmed.replace(/\|(\d+)(?:x\d+)?$/, "").trim();
-  if (!cleaned) return `![${width}](${src})`;
-  return `![${cleaned}|${width}](${src})`;
+  const size = height ? `${width}x${height}` : `${width}`;
+  if (!cleaned) return `![${size}](${src})`;
+  return `![${cleaned}|${size}](${src})`;
 }
 
-function injectImgWidth(imgTag: string, width: number): string {
-  if (/\bwidth\s*=/i.test(imgTag)) {
-    return imgTag.replace(
-      /\bwidth\s*=\s*(?:"[^"]*"|'[^']*'|\d+)/i,
-      `width="${width}"`,
-    );
+function injectImgSize(imgTag: string, width: number, height?: number): string {
+  let next = setImgAttr(imgTag, "width", width);
+  if (height) next = setImgAttr(next, "height", height);
+  return next;
+}
+
+function setImgAttr(imgTag: string, name: string, value: number): string {
+  const attr = new RegExp(
+    `\\b${name}\\s*=\\s*(?:"[^"]*"|'[^']*'|\\d+)`,
+    "i",
+  );
+  if (attr.test(imgTag)) {
+    return imgTag.replace(attr, `${name}="${value}"`);
   }
-  return imgTag.replace(/^<img\b/i, `<img width="${width}"`);
+  return imgTag.replace(/^<img\b/i, `<img ${name}="${value}"`);
 }
 
 type ImageHit = {

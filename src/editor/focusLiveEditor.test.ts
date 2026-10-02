@@ -27,8 +27,13 @@ describe("isEmptyLiveEditorClick", () => {
     main.appendChild(link);
     document.body.appendChild(main);
 
+    const handle = document.createElement("div");
+    handle.className = "image-resize-handle";
+    main.appendChild(handle);
+
     expect(isEmptyLiveEditorClick(content)).toBe(false);
     expect(isEmptyLiveEditorClick(link)).toBe(false);
+    expect(isEmptyLiveEditorClick(handle)).toBe(false);
 
     main.remove();
   });
