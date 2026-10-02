@@ -7,6 +7,7 @@ import {
   DEFAULT_TERMINAL_TIMEOUT_MS,
   getTerminalThreadAutoAllow,
   hasPendingTerminalApproval,
+  terminalCommandNeedsApproval,
   listPendingTerminalApprovals,
   MAX_TERMINAL_TIMEOUT_MS,
   resolveTerminalApproval,
@@ -97,6 +98,15 @@ describe("terminal helpers", () => {
     expect(clampTerminalTimeoutMs(0)).toBe(1_000);
     expect(clampTerminalTimeoutMs(99_999_999)).toBe(MAX_TERMINAL_TIMEOUT_MS);
     expect(clampTerminalTimeoutMs(5_000)).toBe(5_000);
+  });
+
+  it("tool auto-allow does not change the open chat flag", () => {
+    expect(getTerminalThreadAutoAllow()).toBe(false);
+    expect(terminalCommandNeedsApproval(true)).toBe(false);
+    expect(getTerminalThreadAutoAllow()).toBe(false);
+    setTerminalThreadAutoAllow(true);
+    expect(terminalCommandNeedsApproval(false)).toBe(false);
+    expect(getTerminalThreadAutoAllow()).toBe(true);
   });
 
   it("thread auto-allow flag is independent of the pending map", () => {

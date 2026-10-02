@@ -56,6 +56,11 @@ export function setTerminalThreadAutoAllow(value: boolean): void {
   threadAutoAllow = value;
 }
 
+/** True when this command must wait for the chat approval bar. */
+export function terminalCommandNeedsApproval(toolAutoAllow: boolean): boolean {
+  return !toolAutoAllow && !threadAutoAllow;
+}
+
 function notify() {
   pendingSnapshot = [...pending.values()].map((p) => p.request);
   for (const l of listeners) l();
@@ -179,10 +184,13 @@ function normalizeCwd(cwd: string | undefined, projectPath: string | null): stri
 
 export type BuildRunTerminalToolOpts = {
   projectPath?: string | null;
+  /** Skip the approval bar for this tool only. Does not change the open chat. */
+  autoAllow?: boolean;
 };
 
 export function buildRunTerminalTool(opts?: BuildRunTerminalToolOpts) {
   const projectPath = opts?.projectPath?.trim() || null;
+  const toolAutoAllow = opts?.autoAllow === true;
 
   return tool({
     description:
@@ -220,9 +228,7 @@ export function buildRunTerminalTool(opts?: BuildRunTerminalToolOpts) {
 
       const resolvedCwd = normalizeCwd(cwd, projectPath);
       const resolvedTimeout = clampTerminalTimeoutMs(timeoutMs);
-      const autoAllow = threadAutoAllow;
-
-      if (!autoAllow) {
+      if (terminalCommandNeedsApproval(toolAutoAllow)) {
         try {
           const decision = await waitForTerminalApproval(
             {

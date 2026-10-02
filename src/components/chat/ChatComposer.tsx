@@ -34,8 +34,8 @@ import {
   insertComposerDraft,
   insertPathChip,
   insertSkillChip,
-  isComposerVisuallyEmpty,
   renderComposerFromDraft,
+  syncComposerInputHeight,
   replaceAtWithToolChip,
   replaceSlashWithSkillChip,
   serializeComposer,
@@ -78,28 +78,6 @@ function selectionTextIn(el: HTMLElement): string {
   const range = sel.getRangeAt(0);
   if (!el.contains(range.commonAncestorContainer)) return "";
   return sel.toString();
-}
-
-const COMPOSER_INPUT_MIN_HEIGHT_PX = 28;
-const COMPOSER_INPUT_MAX_HEIGHT_PX = 160;
-
-function syncComposerInputHeight(el: HTMLElement) {
-  // WebKitGTK (Tauri/Linux): while the panel still has no laid-out width,
-  // an empty field reports scrollHeight near max-height. Stay at the
-  // single-line size until width is real; ResizeObserver re-syncs later.
-  if (isComposerVisuallyEmpty(el) || el.clientWidth <= 0) {
-    el.style.height = `${COMPOSER_INPUT_MIN_HEIGHT_PX}px`;
-    el.style.overflowY = "hidden";
-    return;
-  }
-
-  el.style.height = "0px";
-  el.style.overflowY = "hidden";
-  const contentHeight = Math.max(el.scrollHeight, COMPOSER_INPUT_MIN_HEIGHT_PX);
-  const next = Math.min(contentHeight, COMPOSER_INPUT_MAX_HEIGHT_PX);
-  el.style.height = `${next}px`;
-  el.style.overflowY =
-    contentHeight > COMPOSER_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
 }
 
 function kindLabel(kind: ChatAttachment["kind"]): string {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildAskUserTool,
   cancelAllPendingAskUser,
   cancelAskUser,
   hasPendingAskUser,
@@ -100,5 +101,31 @@ describe("parseAskUserInput", () => {
         ],
       }),
     ).toBeNull();
+  });
+});
+
+describe("unattended ask_user", () => {
+  it("returns immediately instead of waiting for the UI", async () => {
+    const ask = buildAskUserTool({ unattended: true });
+    const result = await ask.execute!(
+      {
+        questions: [
+          {
+            prompt: "Where?",
+            options: [
+              { label: "Inbox" },
+              { label: "Archive" },
+            ],
+          },
+        ],
+      },
+      {
+        toolCallId: "routine-1",
+        messages: [],
+        context: {},
+      },
+    );
+    expect(result).toMatchObject({ unavailable: true });
+    expect(hasPendingAskUser()).toBe(false);
   });
 });

@@ -61,7 +61,19 @@ export function parsePickVaultFolderOutput(
   return { folder };
 }
 
-export function buildPickVaultFolderTool() {
+export function buildPickVaultFolderTool(opts?: { unattended?: boolean }) {
+  if (opts?.unattended) {
+    return tool({
+      description:
+        "Unavailable during an unattended routine. Do not call this. Pick a folder yourself or write the question in your final reply.",
+      inputSchema: pickVaultFolderInputSchema,
+      execute: async () => ({
+        ok: false as const,
+        error:
+          "No user is present. Choose a folder yourself or write the question in your final reply.",
+      }),
+    });
+  }
   return tool({
     description:
       "Ask the user to pick a vault folder (save location). The UI preselects the last folder they used in any chat and has Browse for a compact folder tree. Use this instead of ask_user when you need a folder path. Blocks until they confirm.",

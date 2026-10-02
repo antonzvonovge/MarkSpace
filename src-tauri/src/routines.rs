@@ -1,15 +1,15 @@
 //! Scheduled routines stored in `{vault}/.markspace/routines/<id>.json`.
 //!
 //! The tick lives here, not in the webview. It emits `routine-run` only when a
-//! run starts or finishes. The empty executor holds `running` briefly so the
-//! sidebar spinner can paint; a later agent executor replaces that hold.
+//! run starts or finishes. The executor holds `running` until the webview
+//! calls `complete_routine_run` with the agent report.
 
 use crate::vault::{get_root, VaultState};
 use chrono::{DateTime, Local, TimeZone};
 use cron::Schedule;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -17,14 +17,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{interval, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
 const MAX_NAME_CHARS: usize = 80;
 const ROUTINES_ROOT: &str = "Routines";
-const EMPTY_HOLD: Duration = Duration::from_millis(400);
 const TICK: Duration = Duration::from_secs(30);
+const MAX_REPORT_CHARS: usize = 200_000;
+const MAX_KEPT_RUNS: usize = 20;
+const BRIEF_ATTACHMENTS_DIR: &str = ".brief-attachments";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -59,6 +61,25 @@ pub struct Routine {
     /// Legacy journal. Read once, written out as markdown, then dropped.
     #[serde(default, skip_serializing)]
     pub runs: Vec<RoutineRun>,
+    /// Composer draft (same serialization as the chat composer).
+    #[serde(default)]
+    pub brief: String,
+    #[serde(default)]
+    pub project_path: String,
+    /// `ask` or `agent`. Empty means agent.
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub model_id: String,
+    /// `off`, `auto`, or `on`. Empty means auto.
+    #[serde(default)]
+    pub reasoning_mode: String,
+    #[serde(default)]
+    pub specialist_model_id: String,
+    #[serde(default)]
+    pub specialists_use_chat_model: bool,
+    #[serde(default)]
+    pub attachments: Vec<RoutineAttachmentRef>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -67,6 +88,18 @@ pub struct RoutineRunFile {
     pub path: String,
     pub at: String,
     pub trigger: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineAttachmentRef {
+    pub id: String,
+    pub name: String,
+    pub media_type: String,
+    pub kind: String,
+    /// Vault-relative file inside `{folder}/.brief-attachments/`.
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -91,6 +124,37 @@ pub struct UpsertRoutineArgs {
     pub id: Option<String>,
     pub name: String,
     pub cron: String,
+    /// `None` keeps the stored value. `Some("")` clears it.
+    #[serde(default)]
+    pub brief: Option<String>,
+    #[serde(default)]
+    pub project_path: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub reasoning_mode: Option<String>,
+    #[serde(default)]
+    pub specialist_model_id: Option<String>,
+    #[serde(default)]
+    pub specialists_use_chat_model: Option<bool>,
+    #[serde(default)]
+    pub attachments: Option<Vec<RoutineAttachmentRef>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompleteRoutineRunArgs {
+    pub id: String,
+    pub epoch: u64,
+    pub status: String,
+    pub body: String,
+}
+
+struct RunOutcome {
+    status: String,
+    body: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -147,6 +211,7 @@ struct RoutinesRuntime {
     cancel: Mutex<Option<CancellationToken>>,
     epoch: AtomicU64,
     running: Mutex<Option<(u64, String)>>,
+    completions: Mutex<HashMap<(u64, String), oneshot::Sender<RunOutcome>>>,
 }
 
 impl RoutinesRuntime {
@@ -157,12 +222,14 @@ impl RoutinesRuntime {
             cancel: Mutex::new(None),
             epoch: AtomicU64::new(0),
             running: Mutex::new(None),
+            completions: Mutex::new(HashMap::new()),
         }
     }
 
     fn bump_epoch(&self) -> u64 {
         let epoch = self.epoch.fetch_add(1, Ordering::SeqCst) + 1;
         *self.running.lock() = None;
+        self.completions.lock().clear();
         epoch
     }
 
@@ -287,7 +354,7 @@ async fn drive(
             return;
         }
         let job = gate.running.clone().expect("running");
-        execute_empty(app, root, epoch, cancel, &job).await;
+        execute_agent(app, root, epoch, cancel, &job).await;
         if cancel.is_cancelled() || runtime().epoch() != epoch {
             gate.clear();
             runtime().set_running(epoch, None);
@@ -299,7 +366,7 @@ async fn drive(
     }
 }
 
-async fn execute_empty(
+async fn execute_agent(
     app: &AppHandle,
     root: &Path,
     epoch: u64,
@@ -310,6 +377,11 @@ async fn execute_empty(
         return;
     }
     runtime().set_running(epoch, Some(job.id.clone()));
+    let (tx, rx) = oneshot::channel();
+    runtime()
+        .completions
+        .lock()
+        .insert((epoch, job.id.clone()), tx);
     let _ = app.emit(
         "routine-run",
         RoutineRunEvent {
@@ -319,31 +391,29 @@ async fn execute_empty(
         },
     );
 
-    tokio::select! {
-        _ = cancel.cancelled() => {
-            runtime().set_running(epoch, None);
-            if runtime().epoch() == epoch {
-                let _ = app.emit(
-                    "routine-run",
-                    RoutineRunEvent {
-                        id: job.id.clone(),
-                        phase: "finished".into(),
-                        epoch,
-                    },
-                );
-            }
-            return;
-        }
-        _ = tokio::time::sleep(EMPTY_HOLD) => {}
-    }
+    let outcome = tokio::select! {
+        _ = cancel.cancelled() => None,
+        result = rx => result.ok(),
+    };
+    runtime()
+        .completions
+        .lock()
+        .remove(&(epoch, job.id.clone()));
 
     if runtime().epoch() != epoch {
         return;
     }
 
-    {
+    if let Some(outcome) = outcome {
         let _io = runtime().io.lock();
-        if let Err(err) = append_run(root, &job.id, job.trigger, Local::now()) {
+        if let Err(err) = append_run_report(
+            root,
+            &job.id,
+            job.trigger,
+            Local::now(),
+            &outcome.status,
+            &outcome.body,
+        ) {
             eprintln!("routine run {id}: {err}", id = job.id);
         }
     }
@@ -705,15 +775,28 @@ fn claim_due(
     Ok(claimed)
 }
 
+#[cfg(test)]
 fn append_run(
     root: &Path,
     id: &str,
     trigger: RunTrigger,
     at: DateTime<Local>,
 ) -> Result<(), String> {
+    append_run_report(root, id, trigger, at, "ok", "")
+}
+
+fn append_run_report(
+    root: &Path,
+    id: &str,
+    trigger: RunTrigger,
+    at: DateTime<Local>,
+    status: &str,
+    report: &str,
+) -> Result<(), String> {
     let doc = read_routine(root, id)?;
     let dir = root.join(&doc.folder);
-    write_run_file(&dir, at, trigger)?;
+    write_run_file(&dir, at, trigger, status, report)?;
+    prune_job_dir(&dir)?;
     Ok(())
 }
 
@@ -836,7 +919,7 @@ fn settle_job_folder(root: &Path, doc: &mut Routine) -> Result<bool, String> {
     let dir = root.join(&doc.folder);
     for run in doc.runs.drain(..) {
         let at = parse_local(&run.at).unwrap_or_else(Local::now);
-        write_run_file(&dir, at, run.trigger)?;
+        write_run_file(&dir, at, run.trigger, &run.status, "")?;
     }
     Ok(true)
 }
@@ -882,7 +965,13 @@ fn display_stamp(stamp: &str) -> String {
     }
 }
 
-fn write_run_file(dir: &Path, at: DateTime<Local>, trigger: RunTrigger) -> Result<(), String> {
+fn write_run_file(
+    dir: &Path,
+    at: DateTime<Local>,
+    trigger: RunTrigger,
+    status: &str,
+    report: &str,
+) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|err| err.to_string())?;
     let stamp = at.format("%Y-%m-%d %H-%M-%S").to_string();
     let trigger_name = trigger_name(trigger);
@@ -896,8 +985,28 @@ fn write_run_file(dir: &Path, at: DateTime<Local>, trigger: RunTrigger) -> Resul
         }
     }
     let display = display_stamp(&stamp);
-    let body = format!("# {display}\n\n- Trigger: {trigger_name}\n- Status: ok\n");
+    let report: String = report.trim().chars().take(MAX_REPORT_CHARS).collect();
+    let body = if report.is_empty() {
+        format!("# {display}\n\n- Trigger: {trigger_name}\n- Status: {status}\n")
+    } else {
+        format!("# {display}\n\n- Trigger: {trigger_name}\n- Status: {status}\n\n{report}\n")
+    };
     fs::write(dir.join(name), body).map_err(|err| err.to_string())
+}
+
+fn read_run_status(path: &Path) -> String {
+    let Ok(text) = fs::read_to_string(path) else {
+        return "done".into();
+    };
+    for line in text.lines().take(12) {
+        if let Some(rest) = line.strip_prefix("- Status:") {
+            let status = rest.trim();
+            if !status.is_empty() {
+                return status.to_string();
+            }
+        }
+    }
+    "done".into()
 }
 
 fn delete_run_file(root: &Path, folder: &str, path: &str) -> Result<(), String> {
@@ -925,6 +1034,64 @@ fn delete_run_file(root: &Path, folder: &str, path: &str) -> Result<(), String> 
     Ok(())
 }
 
+/// Drops old run logs and anything else in the job folder.
+/// Keeps the newest [`MAX_KEPT_RUNS`] logs plus `.brief-attachments` and `.folder.md`.
+/// Names decide what stays, so report bodies are not opened.
+fn prune_job_dir(dir: &Path) -> Result<(), String> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let mut runs: Vec<(String, PathBuf)> = Vec::new();
+    let mut garbage: Vec<PathBuf> = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|err| err.to_string())? {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let path = entry.path();
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            garbage.push(path);
+            continue;
+        };
+        if name == BRIEF_ATTACHMENTS_DIR {
+            if path.is_dir() {
+                continue;
+            }
+            garbage.push(path);
+            continue;
+        }
+        if name == ".folder.md" && path.is_file() {
+            continue;
+        }
+        if let Some(stem) = name.strip_suffix(".md") {
+            if path.is_file() && parse_run_stem(stem).is_some() {
+                runs.push((name, path));
+                continue;
+            }
+        }
+        garbage.push(path);
+    }
+    runs.sort_by(|a, b| b.0.cmp(&a.0));
+    if runs.len() > MAX_KEPT_RUNS {
+        garbage.extend(runs.into_iter().skip(MAX_KEPT_RUNS).map(|(_, path)| path));
+    }
+    for path in garbage {
+        remove_job_garbage(&path);
+    }
+    Ok(())
+}
+
+fn remove_job_garbage(path: &Path) {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return;
+    };
+    let result = if meta.file_type().is_symlink() || !meta.is_dir() {
+        fs::remove_file(path)
+    } else {
+        fs::remove_dir_all(path)
+    };
+    if let Err(err) = result {
+        eprintln!("routine prune {}: {err}", path.display());
+    }
+}
+
 fn list_run_files(root: &Path, folder: &str) -> Result<Vec<RoutineRunFile>, String> {
     if !routines_child(folder) {
         return Ok(Vec::new());
@@ -933,11 +1100,12 @@ fn list_run_files(root: &Path, folder: &str) -> Result<Vec<RoutineRunFile>, Stri
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
+    prune_job_dir(&dir)?;
     let mut files = Vec::new();
     for entry in fs::read_dir(&dir).map_err(|err| err.to_string())? {
         let entry = entry.map_err(|err| err.to_string())?;
         let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+        if !path.is_file() {
             continue;
         }
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
@@ -949,14 +1117,19 @@ fn list_run_files(root: &Path, folder: &str) -> Result<Vec<RoutineRunFile>, Stri
         let Some((stamp, trigger)) = parse_run_stem(stem) else {
             continue;
         };
-        files.push(RoutineRunFile {
+        files.push((file_name.to_string(), path, stamp, trigger));
+    }
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    files.truncate(MAX_KEPT_RUNS);
+    Ok(files
+        .into_iter()
+        .map(|(file_name, path, stamp, trigger)| RoutineRunFile {
             path: format!("{folder}/{file_name}"),
             at: display_stamp(&stamp),
             trigger,
-        });
-    }
-    files.sort_by(|a, b| b.path.cmp(&a.path));
-    Ok(files)
+            status: read_run_status(&path),
+        })
+        .collect())
 }
 
 fn upsert(root: &Path, input: UpsertRoutineArgs, now: DateTime<Local>) -> Result<Routine, String> {
@@ -993,6 +1166,22 @@ fn upsert(root: &Path, input: UpsertRoutineArgs, now: DateTime<Local>) -> Result
             .and_then(|doc| doc.next_run_at.clone())
             .or(Some(next_from_cron(&cron, &now)?))
     };
+    let prev = existing.as_ref();
+    let mode = normalize_mode(&keep_string(input.mode, prev.map(|doc| doc.mode.as_str())));
+    let reasoning_mode = normalize_reasoning(&keep_string(
+        input.reasoning_mode,
+        prev.map(|doc| doc.reasoning_mode.as_str()),
+    ));
+    let previous_folder = prev.map(|doc| doc.folder.clone());
+    let mut attachments = input
+        .attachments
+        .unwrap_or_else(|| prev.map(|doc| doc.attachments.clone()).unwrap_or_default());
+    if let Some(previous) = previous_folder.as_deref() {
+        if previous != folder {
+            remap_attachment_paths(&mut attachments, previous, &folder);
+        }
+    }
+    validate_attachments(&folder, &attachments)?;
     let doc = Routine {
         id,
         name,
@@ -1001,9 +1190,80 @@ fn upsert(root: &Path, input: UpsertRoutineArgs, now: DateTime<Local>) -> Result
         folder,
         next_run_at,
         runs: Vec::new(),
+        brief: keep_string(input.brief, prev.map(|doc| doc.brief.as_str())),
+        project_path: keep_string(input.project_path, prev.map(|doc| doc.project_path.as_str())),
+        mode,
+        model_id: keep_string(input.model_id, prev.map(|doc| doc.model_id.as_str())),
+        reasoning_mode,
+        specialist_model_id: keep_string(
+            input.specialist_model_id,
+            prev.map(|doc| doc.specialist_model_id.as_str()),
+        ),
+        specialists_use_chat_model: input
+            .specialists_use_chat_model
+            .unwrap_or_else(|| prev.is_some_and(|doc| doc.specialists_use_chat_model)),
+        attachments,
     };
     write_routine(root, &doc)?;
     Ok(doc)
+}
+
+fn keep_string(next: Option<String>, prev: Option<&str>) -> String {
+    match next {
+        Some(value) => value,
+        None => prev.unwrap_or("").to_string(),
+    }
+}
+
+fn normalize_mode(mode: &str) -> String {
+    match mode.trim() {
+        "ask" => "ask".into(),
+        "agent" => "agent".into(),
+        _ => String::new(),
+    }
+}
+
+fn normalize_reasoning(mode: &str) -> String {
+    match mode.trim() {
+        "off" | "auto" | "on" => mode.trim().to_string(),
+        _ => String::new(),
+    }
+}
+
+fn remap_attachment_paths(attachments: &mut [RoutineAttachmentRef], from: &str, to: &str) {
+    let old = format!("{from}/.brief-attachments/");
+    let new_prefix = format!("{to}/.brief-attachments/");
+    for attachment in attachments.iter_mut() {
+        if let Some(name) = attachment.path.strip_prefix(&old) {
+            attachment.path = format!("{new_prefix}{name}");
+        }
+    }
+}
+
+fn validate_attachments(folder: &str, attachments: &[RoutineAttachmentRef]) -> Result<(), String> {
+    let prefix = format!("{folder}/.brief-attachments/");
+    for attachment in attachments {
+        let path = attachment.path.trim().trim_start_matches('/');
+        let Some(name) = path.strip_prefix(&prefix) else {
+            return Err("Attachment must stay inside the routine folder".into());
+        };
+        if name.is_empty()
+            || name.contains('/')
+            || name.contains('\\')
+            || name.contains("..")
+            || attachment.id.trim().is_empty()
+        {
+            return Err("Attachment must stay inside the routine folder".into());
+        }
+    }
+    Ok(())
+}
+
+fn normalize_run_status(status: &str) -> String {
+    match status.trim() {
+        "done" | "needs you" | "failed" => status.trim().to_string(),
+        _ => "failed".into(),
+    }
 }
 
 fn snapshot(app: &AppHandle, root: &Path) -> Result<RoutineSnapshot, String> {
@@ -1111,6 +1371,22 @@ pub fn run_routine_now(state: State<VaultState>, id: String) -> Result<(), Strin
         .map_err(|_| "Scheduler stopped".to_string())
 }
 
+#[tauri::command]
+pub fn complete_routine_run(args: CompleteRoutineRunArgs) -> Result<(), String> {
+    validate_id(&args.id)?;
+    let outcome = RunOutcome {
+        status: normalize_run_status(&args.status),
+        body: args.body.chars().take(MAX_REPORT_CHARS).collect(),
+    };
+    let tx = runtime()
+        .completions
+        .lock()
+        .remove(&(args.epoch, args.id))
+        .ok_or_else(|| "This run is not waiting".to_string())?;
+    tx.send(outcome)
+        .map_err(|_| "Run finished already".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1132,6 +1408,22 @@ mod tests {
         PendingRun {
             id: id.to_string(),
             trigger: RunTrigger::Schedule,
+        }
+    }
+
+    fn args(id: Option<&str>, name: &str, cron: &str) -> UpsertRoutineArgs {
+        UpsertRoutineArgs {
+            id: id.map(str::to_string),
+            name: name.into(),
+            cron: cron.into(),
+            brief: None,
+            project_path: None,
+            mode: None,
+            model_id: None,
+            reasoning_mode: None,
+            specialist_model_id: None,
+            specialists_use_chat_model: None,
+            attachments: None,
         }
     }
 
@@ -1182,11 +1474,7 @@ mod tests {
         let root = temp_root();
         let err = upsert(
             &root,
-            UpsertRoutineArgs {
-                id: None,
-                name: "Broken".into(),
-                cron: "nope".into(),
-            },
+            args(None, "Broken", "nope"),
             Local::now(),
         )
         .unwrap_err();
@@ -1195,11 +1483,7 @@ mod tests {
 
         let err = upsert(
             &root,
-            UpsertRoutineArgs {
-                id: None,
-                name: "Short".into(),
-                cron: "0 9 * *".into(),
-            },
+            args(None, "Short", "0 9 * *"),
             Local::now(),
         )
         .unwrap_err();
@@ -1214,11 +1498,7 @@ mod tests {
         let past = now - chrono::Duration::hours(30);
         let saved = upsert(
             &root,
-            UpsertRoutineArgs {
-                id: Some("daily".into()),
-                name: "Daily".into(),
-                cron: "0 9 * * *".into(),
-            },
+            args(Some("daily"), "Daily", "0 9 * * *"),
             now,
         )
         .unwrap();
@@ -1247,11 +1527,7 @@ mod tests {
         let now = Local::now();
         let mut doc = upsert(
             &root,
-            UpsertRoutineArgs {
-                id: Some("off".into()),
-                name: "Off".into(),
-                cron: "0 * * * *".into(),
-            },
+            args(Some("off"), "Off", "0 * * * *"),
             now,
         )
         .unwrap();
@@ -1289,11 +1565,7 @@ mod tests {
         let root = temp_root();
         let saved = upsert(
             &root,
-            UpsertRoutineArgs {
-                id: Some("job".into()),
-                name: "Morning".into(),
-                cron: "0 9 * * *".into(),
-            },
+            args(Some("job"), "Morning", "0 9 * * *"),
             Local::now(),
         )
         .unwrap();
@@ -1355,5 +1627,74 @@ mod tests {
             Some(("2026-10-01 16-32-00".into(), "manual".into()))
         );
         assert!(parse_run_stem("notes").is_none());
+    }
+
+    #[test]
+    fn name_upsert_keeps_the_brief() {
+        let root = temp_root();
+        let mut first = args(Some("job"), "Morning", "0 9 * * *");
+        first.brief = Some("File the inbox".into());
+        first.mode = Some("agent".into());
+        first.attachments = Some(vec![RoutineAttachmentRef {
+            id: "a1".into(),
+            name: "note.txt".into(),
+            media_type: "text/plain".into(),
+            kind: "text".into(),
+            path: "Routines/Morning/.brief-attachments/a1-note.txt".into(),
+        }]);
+        upsert(&root, first, Local::now()).unwrap();
+        let renamed = upsert(&root, args(Some("job"), "Evening", "0 9 * * *"), Local::now()).unwrap();
+        assert_eq!(renamed.brief, "File the inbox");
+        assert_eq!(renamed.mode, "agent");
+        assert_eq!(renamed.attachments.len(), 1);
+        assert!(renamed.folder.starts_with("Routines/"));
+    }
+
+    #[test]
+    fn keeps_twenty_runs_and_drops_garbage() {
+        let root = temp_root();
+        upsert(
+            &root,
+            args(Some("job"), "Morning", "0 9 * * *"),
+            Local::now(),
+        )
+        .unwrap();
+        let dir = root.join("Routines/Morning");
+        fs::create_dir_all(dir.join(".brief-attachments")).unwrap();
+        fs::write(dir.join(".brief-attachments/a1-note.txt"), "hi").unwrap();
+        fs::write(dir.join(".folder.md"), "overview").unwrap();
+        fs::write(dir.join("notes.md"), "junk").unwrap();
+        fs::write(dir.join("scratch.txt"), "junk").unwrap();
+        fs::create_dir_all(dir.join("scratch")).unwrap();
+        fs::write(dir.join("scratch/x.txt"), "x").unwrap();
+        for i in 0..25 {
+            let name = format!("2026-10-01 10-00-{i:02} schedule.md");
+            fs::write(dir.join(&name), "# t\n\n- Status: ok\n").unwrap();
+        }
+        let files = list_run_files(&root, "Routines/Morning").unwrap();
+        assert_eq!(files.len(), 20);
+        assert!(files[0].path.ends_with("2026-10-01 10-00-24 schedule.md"));
+        assert!(files[19].path.ends_with("2026-10-01 10-00-05 schedule.md"));
+        assert!(!dir.join("2026-10-01 10-00-04 schedule.md").exists());
+        assert!(!dir.join("notes.md").exists());
+        assert!(!dir.join("scratch.txt").exists());
+        assert!(!dir.join("scratch").exists());
+        assert_eq!(
+            fs::read_to_string(dir.join(".brief-attachments/a1-note.txt")).unwrap(),
+            "hi"
+        );
+        assert_eq!(fs::read_to_string(dir.join(".folder.md")).unwrap(), "overview");
+    }
+
+    #[test]
+    fn report_status_is_readable_from_the_run_file() {
+        let root = temp_root();
+        upsert(&root, args(Some("job"), "Morning", "0 9 * * *"), Local::now()).unwrap();
+        let at = Local.with_ymd_and_hms(2026, 10, 1, 9, 5, 0).unwrap();
+        append_run_report(&root, "job", RunTrigger::Manual, at, "needs you", "Which folder?").unwrap();
+        let files = list_run_files(&root, "Routines/Morning").unwrap();
+        assert_eq!(files[0].status, "needs you");
+        let body = fs::read_to_string(root.join(&files[0].path)).unwrap();
+        assert!(body.contains("Which folder?"));
     }
 }

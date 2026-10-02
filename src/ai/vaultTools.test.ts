@@ -100,6 +100,16 @@ describe("vault agent tools", () => {
       expect(prompt).toMatch(/run_terminal uses (cmd\.exe \/C|\/bin\/sh -c)/);
       expect(prompt).toContain("terminal plan confirmation");
       expect(prompt).toContain("ask_user");
+      const routine = buildSystemPrompt({
+        mode: "agent",
+        vaultPath: null,
+        activePath: null,
+        activeExcerpt: null,
+        unattended: true,
+      });
+      expect(routine).toContain("pre-approved for this routine");
+      expect(routine).toContain("unattended routine");
+      expect(routine).not.toContain("terminal plan confirmation");
     } finally {
       useAiSettingsStore.setState({ settings: prev, hydrated: true });
     }

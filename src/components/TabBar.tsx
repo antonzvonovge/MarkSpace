@@ -8,6 +8,7 @@ import {
   isTasksTab,
   isRoutineTab,
   isVirtualTab,
+  routineIdFromTab,
   type EditorTab,
 } from "../store/vaultStore";
 import { canGoBack, canGoForward } from "../lib/navHistory";
@@ -24,6 +25,7 @@ import {
   TabContextMenu,
   type TabContextMenuState,
 } from "./TabContextMenu";
+import { RoutineColorIcon, routineIconColor } from "./routineIcon";
 import {
   CloseIcon,
   CourseTrackerIcon,
@@ -81,9 +83,14 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
     );
   }
   if (isRoutineTab(tab)) {
+    const routineId = routineIdFromTab(tab.path) ?? "";
     return (
-      <span className="editor-tab-icon" aria-hidden>
-        <RoutineTabIcon />
+      <span
+        className="editor-tab-icon is-routine"
+        style={{ color: routineIconColor(routineId) }}
+        aria-hidden
+      >
+        <RoutineColorIcon tight />
       </span>
     );
   }
@@ -114,21 +121,6 @@ function TabFileIcon({ tab }: { tab: EditorTab }) {
         <FcDocument size={14} />
       )}
     </span>
-  );
-}
-
-function RoutineTabIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="8" cy="8" r="5.25" stroke="currentColor" strokeWidth="1.35" />
-      <path
-        d="M8 4.75V8l2.1 1.4"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

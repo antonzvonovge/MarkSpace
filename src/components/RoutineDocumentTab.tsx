@@ -1,6 +1,10 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { formatSchedule } from "../lib/routineSchedule";
 import {
+  briefStateFromRoutine,
+  type RoutineBriefState,
+} from "../lib/routineBrief";
+import {
   deleteRoutineRun,
   listRoutineRuns,
   type RoutineRunFile,
@@ -9,6 +13,7 @@ import {
 import { useRoutinesStore } from "../store/routinesStore";
 import { routineIdFromTab, useVaultStore } from "../store/vaultStore";
 import { ConfirmDialog } from "./AppDialog";
+import { RoutineBriefComposer } from "./RoutineBriefComposer";
 import { RoutineScheduleDialog } from "./RoutineScheduleDialog";
 
 function errorText(err: unknown): string {
@@ -33,6 +38,13 @@ function triggerLabel(trigger: RoutineTrigger): string {
   if (trigger === "manual") return "Manual";
   if (trigger === "catchup") return "Catch-up";
   return "Scheduled";
+}
+
+function statusLabel(status: string): string {
+  if (status === "needs you") return "Needs you";
+  if (status === "failed") return "Failed";
+  if (status === "ok" || status === "done" || !status) return "Done";
+  return status;
 }
 
 function PlayIcon() {
@@ -147,6 +159,13 @@ function RoutineJob({ id }: { id: string }) {
   const nameFocused = useRef(false);
   const listSeq = useRef(0);
   const holdEpoch = useRef<number | null>(null);
+  const nameRef = useRef(name);
+  const cronRef = useRef(cron);
+  const briefRef = useRef<RoutineBriefState | null>(routine ? briefStateFromRoutine(routine) : null);
+  const saveQueue = useRef(Promise.resolve());
+  const saveTimer = useRef<number | null>(null);
+  nameRef.current = name;
+  cronRef.current = cron;
 
   useEffect(() => {
     if (!routine || nameFocused.current) return;
@@ -180,22 +199,62 @@ function RoutineJob({ id }: { id: string }) {
       });
   }, [id, journalEpoch, reloadTick]);
 
-  const persist = async (nextName: string, nextCron: string) => {
-    const trimmed = nextName.trim();
+  const persistAll = (nextName?: string, nextCron?: string) => {
+    const trimmed = (nextName ?? nameRef.current).trim();
     if (!trimmed) {
       setName(routine?.name ?? "");
+      nameRef.current = routine?.name ?? "";
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
-      await save({ id, name: trimmed, cron: nextCron });
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
+    nameRef.current = trimmed;
+    cronRef.current = nextCron ?? cronRef.current;
+    const brief = briefRef.current;
+    const run = saveQueue.current.then(async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        await save({
+          id,
+          name: nameRef.current.trim(),
+          cron: cronRef.current,
+          brief: brief?.brief ?? null,
+          projectPath: brief?.projectPath ?? null,
+          mode: brief?.mode ?? null,
+          modelId: brief?.modelId ?? null,
+          reasoningMode: brief?.reasoningMode ?? null,
+          specialistModelId: brief?.specialistModelId ?? null,
+          specialistsUseChatModel: brief?.specialistsUseChatModel ?? null,
+          attachments: brief?.attachments ?? null,
+        });
+      } catch (err) {
+        setError(errorText(err));
+      } finally {
+        setBusy(false);
+      }
+    });
+    saveQueue.current = run.then(
+      () => undefined,
+      () => undefined,
+    );
   };
+
+  const scheduleBriefSave = () => {
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      saveTimer.current = null;
+      persistAll();
+    }, 400);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current != null) {
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        persistAll();
+      }
+    };
+  }, []);
 
   if (!routine) {
     if (epoch === 0) return null;
@@ -248,40 +307,58 @@ function RoutineJob({ id }: { id: string }) {
         </button>
       </div>
       <div className="routine-job-settings">
-        <label className="routine-job-label" htmlFor={`routine-name-${id}`}>
-          Name
-        </label>
-        <input
-          id={`routine-name-${id}`}
-          className="routine-job-input"
-          value={name}
-          disabled={busy}
-          onFocus={() => {
-            nameFocused.current = true;
-          }}
-          onChange={(event) => setName(event.target.value)}
-          onBlur={() => {
-            nameFocused.current = false;
-            if (name.trim() !== routine.name) void persist(name, cron);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
-          }}
-        />
-        <div className="routine-job-label">Schedule</div>
-        <div className="routines-schedule-field">
-          <span className="routines-schedule-summary">{formatSchedule(cron)}</span>
-          <button
-            type="button"
-            className="routines-schedule-more"
-            aria-label="Edit schedule"
-            title="Edit schedule"
-            onClick={() => setScheduleOpen(true)}
-          >
-            <MoreIcon />
-          </button>
+        <div className="routine-job-meta">
+          <div className="routine-job-field">
+            <label className="routine-job-label" htmlFor={`routine-name-${id}`}>
+              Name
+            </label>
+            <input
+              id={`routine-name-${id}`}
+              className="routine-job-input"
+              value={name}
+              disabled={busy}
+              onFocus={() => {
+                nameFocused.current = true;
+              }}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={() => {
+                nameFocused.current = false;
+                if (name.trim() !== routine.name) persistAll(name, cron);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
+          <div className="routine-job-field">
+            <div className="routine-job-label">Schedule</div>
+            <div className="routines-schedule-field">
+              <span className="routines-schedule-summary">{formatSchedule(cron)}</span>
+              <button
+                type="button"
+                className="routines-schedule-more"
+                aria-label="Edit schedule"
+                title="Edit schedule"
+                onClick={() => setScheduleOpen(true)}
+              >
+                <MoreIcon />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="routine-job-label">Brief</div>
+        <div className="routine-job-brief">
+          <RoutineBriefComposer
+            key={id}
+            folder={routine.folder}
+            initial={briefStateFromRoutine(routine)}
+            onChange={(next) => {
+              briefRef.current = next;
+              scheduleBriefSave();
+            }}
+          />
         </div>
         {error ? <p className="routine-job-error">{error}</p> : null}
       </div>
@@ -314,7 +391,9 @@ function RoutineJob({ id }: { id: string }) {
                 }}
               >
                 <span className="routine-job-run-when">{run.at}</span>
-                <span className="routine-job-run-trigger">{triggerLabel(run.trigger)}</span>
+                <span className="routine-job-run-trigger">
+                  {statusLabel(run.status)} · {triggerLabel(run.trigger)}
+                </span>
               </button>
               <button
                 type="button"
@@ -377,13 +456,20 @@ function RoutineJob({ id }: { id: string }) {
             return;
           }
           if (action === "run") {
+            if (saveTimer.current != null) {
+              window.clearTimeout(saveTimer.current);
+              saveTimer.current = null;
+            }
+            persistAll();
             holdEpoch.current = useRoutinesStore.getState().journalEpoch;
             setHoldRun(true);
-            void runNow(id).catch((err: unknown) => {
-              holdEpoch.current = null;
-              setHoldRun(false);
-              setError(errorText(err));
-            });
+            void saveQueue.current
+              .then(() => runNow(id))
+              .catch((err: unknown) => {
+                holdEpoch.current = null;
+                setHoldRun(false);
+                setError(errorText(err));
+              });
           }
         }}
       />
@@ -393,8 +479,9 @@ function RoutineJob({ id }: { id: string }) {
           onCancel={() => setScheduleOpen(false)}
           onConfirm={(next) => {
             setCron(next);
+            cronRef.current = next;
             setScheduleOpen(false);
-            void persist(name, next);
+            persistAll(name, next);
           }}
         />
       ) : null}

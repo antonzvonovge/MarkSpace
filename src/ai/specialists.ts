@@ -58,6 +58,7 @@ type Listener = () => void;
 
 const liveById = new Map<string, SpecialistLiveState>();
 const listeners = new Set<Listener>();
+const quietIds = new Set<string>();
 
 function notify() {
   for (const l of listeners) l();
@@ -77,6 +78,7 @@ export function subscribeSpecialistLive(listener: Listener): () => void {
 }
 
 function setLive(state: SpecialistLiveState) {
+  if (quietIds.has(state.toolCallId)) return;
   liveById.set(state.toolCallId, { ...state, steps: [...state.steps] });
   notify();
 }
@@ -85,13 +87,15 @@ function patchLive(
   toolCallId: string,
   patch: Partial<Omit<SpecialistLiveState, "toolCallId">>,
 ) {
+  if (quietIds.has(toolCallId)) return;
   const prev = liveById.get(toolCallId);
   if (!prev) return;
   setLive({ ...prev, ...patch, steps: patch.steps ?? prev.steps });
 }
 
 function clearLive(toolCallId: string) {
-  liveById.delete(toolCallId);
+  if (quietIds.has(toolCallId)) return;
+  if (!liveById.delete(toolCallId)) return;
   notify();
 }
 
@@ -311,6 +315,10 @@ export type RunSpecialistContext = {
   specialistsUseChatModel?: boolean;
   /** Per-thread specialist model when not linked to chat. */
   specialistModelId?: string | null;
+  /** Routine runs pre-approve terminal commands for this specialist too. */
+  terminalAutoAllow?: boolean;
+  /** Skip chat specialist cards. Used by unattended routine runs. */
+  quiet?: boolean;
 };
 
 export type RunSpecialistResult = {
@@ -389,6 +397,7 @@ export async function runSpecialist(params: {
   const preset = SPECIALIST_PRESETS[params.kind];
   const title = params.title.trim() || preset.label;
   const paths = (params.paths ?? []).map((p) => p.trim()).filter(Boolean);
+  if (params.ctx.quiet) quietIds.add(params.toolCallId);
 
   setLive({
     toolCallId: params.toolCallId,
@@ -427,6 +436,8 @@ export async function runSpecialist(params: {
       getMessages: () => [] as UIMessage[],
       toolNames: [...preset.toolNames],
       specialistKind: params.kind,
+      terminalAutoAllow: params.ctx.terminalAutoAllow === true,
+      unattended: params.ctx.terminalAutoAllow === true,
     });
 
     const settings = useAiSettingsStore.getState().settings;
@@ -454,6 +465,11 @@ export async function runSpecialist(params: {
     }
     if (params.kind === "terminal") {
       contextLines.push(hostOsSystemPromptLine(undefined, { terminalEnabled: true }));
+      if (params.ctx.terminalAutoAllow) {
+        contextLines.push(
+          "Commands are already approved for this routine. Do not ask for confirmation. Run the task.",
+        );
+      }
     }
     if (params.ctx.projectPath) {
       contextLines.push(`Active project: ${params.ctx.projectPath}`);
@@ -641,6 +657,7 @@ export async function runSpecialist(params: {
     return out;
   } finally {
     releaseLock?.();
+    quietIds.delete(params.toolCallId);
     // Keep live state briefly for UI; clear on next tick after output is painted.
     window.setTimeout(() => clearLive(params.toolCallId), 30_000);
   }

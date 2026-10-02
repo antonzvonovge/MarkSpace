@@ -141,7 +141,19 @@ export function normalizeAskUserInput(raw: AskUserInputRaw): AskUserInput {
   };
 }
 
-export function buildAskUserTool() {
+export function buildAskUserTool(opts?: { unattended?: boolean }) {
+  if (opts?.unattended) {
+    return tool({
+      description:
+        "Unavailable during an unattended routine. Do not call this. Write the question in your final reply instead.",
+      inputSchema: askUserInputSchema,
+      execute: async () => ({
+        unavailable: true,
+        error:
+          "No user is present. Stop and write the question in your final reply.",
+      }),
+    });
+  }
   return tool({
     description:
       "Ask the user a clarifying multiple-choice question (with optional free-text). Prefer this over listing choices in plain chat text when a decision is needed. Also use this to confirm a plan before heavy or dangerous terminal work or custom scripts. Blocks until the user answers.",

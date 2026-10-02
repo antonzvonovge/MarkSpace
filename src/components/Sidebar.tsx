@@ -74,6 +74,7 @@ export const Sidebar = memo(function Sidebar() {
       onContextMenu={(e) => {
         const el = e.target as HTMLElement;
         if (el.closest(".tree-row")) return;
+        if (el.closest(".routines-row-line")) return;
         if (el.closest(".sidebar-footer")) return;
         if (el.closest(".sidebar-calendar")) return;
         if (el.closest("button")) return;

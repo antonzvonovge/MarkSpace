@@ -28,6 +28,13 @@ type RoutinesState = {
 };
 
 let loadSeq = 0;
+let earlyRunEvents: RoutineRunEvent[] = [];
+
+function handoffRun(id: string, epoch: number) {
+  void import("../ai/routineRunner").then((mod) => {
+    mod.kickRoutineRun(id, epoch);
+  });
+}
 
 function sortRoutines(routines: Routine[]): Routine[] {
   return [...routines].sort((a, b) =>
@@ -43,6 +50,8 @@ export const useRoutinesStore = create<RoutinesState>((set, get) => ({
 
   reset: () => {
     loadSeq += 1;
+    earlyRunEvents = [];
+    void import("../ai/routineRunner").then((mod) => mod.abortAllRoutineRuns());
     set({ routines: [], runningId: null, journalEpoch: 0, epoch: 0 });
   },
 
@@ -68,13 +77,24 @@ export const useRoutinesStore = create<RoutinesState>((set, get) => ({
         runningId: eventRunning ?? fromDisk,
       };
     });
+    if (seq !== loadSeq) return;
+    const queued = earlyRunEvents.filter((event) => event.epoch === snapshot.epoch);
+    earlyRunEvents = earlyRunEvents.filter((event) => event.epoch !== snapshot.epoch);
+    for (const event of queued) get().applyRunEvent(event);
+    const runningId = get().runningId;
+    if (runningId) handoffRun(runningId, snapshot.epoch);
   },
 
   applyRunEvent: (event) => {
     const { epoch } = get();
-    if (epoch === 0 || event.epoch !== epoch) return;
+    if (epoch === 0) {
+      earlyRunEvents.push(event);
+      return;
+    }
+    if (event.epoch !== epoch) return;
     if (event.phase === "started") {
       set({ runningId: event.id });
+      handoffRun(event.id, event.epoch);
       return;
     }
     set((state) => ({

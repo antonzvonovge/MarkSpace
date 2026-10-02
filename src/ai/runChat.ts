@@ -113,6 +113,10 @@ export type RunChatParams = {
   specialistsUseChatModel?: boolean;
   /** Per-thread specialist model when not linked to chat. */
   specialistModelId?: string | null;
+  /** Skip the terminal approval bar for this turn only. */
+  terminalAutoAllow?: boolean;
+  /** Scheduled routine with nobody at the keyboard. */
+  unattended?: boolean;
   /** Model context window — sliding window + abort if the latest turn still cannot fit. */
   contextWindow?: number;
   /**
@@ -420,6 +424,7 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     skills: params.skills,
     forcedSkills: params.forcedSkills,
     forcedTools: params.forcedTools,
+    unattended: params.unattended,
   });
 
   const tools = buildVaultTools(params.mode, {
@@ -432,6 +437,8 @@ export async function runChat(params: RunChatParams): Promise<RunChatResult> {
     modelId: params.modelId,
     specialistsUseChatModel: params.specialistsUseChatModel,
     specialistModelId: params.specialistModelId,
+    terminalAutoAllow: params.terminalAutoAllow,
+    unattended: params.unattended,
   });
 
   const contextWindow = params.contextWindow;
