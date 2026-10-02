@@ -20,7 +20,7 @@ const MIN_TIMEOUT_MS: u64 = 1_000;
 const MAX_TIMEOUT_MS: u64 = 10 * 60 * 1_000;
 const MAX_OUTPUT_BYTES: usize = 200_000;
 const MAX_JOBS: usize = 4;
-const MAX_COMMAND_CHARS: usize = 32_768;
+pub(crate) const MAX_COMMAND_CHARS: usize = 32_768;
 
 pub struct TerminalRuntime {
     jobs: Mutex<HashMap<String, Arc<Job>>>,
@@ -229,23 +229,21 @@ fn kill_job(job: &Job) {
     }
 }
 
-#[tauri::command]
-pub fn run_terminal_command(
-    job_id: String,
-    command: String,
-    cwd: Option<String>,
-    timeout_ms: Option<u64>,
-    vault: State<'_, VaultState>,
-    runtime: State<'_, TerminalRuntime>,
+/// One-shot shell. `cwd_abs` is already vault-checked. Registers `job_id` so
+/// [`kill_shell_job`] can stop it.
+pub(crate) fn run_shell(
+    runtime: &TerminalRuntime,
+    job_id: &str,
+    command: &str,
+    cwd_abs: &Path,
+    cwd_rel: &str,
+    timeout: Duration,
 ) -> Result<RunTerminalResponse, String> {
     let job_id = job_id.trim();
     if job_id.is_empty() {
         return Err("jobId required".into());
     }
-    let command = validate_command(&command)?.to_string();
-    let root = get_root(&vault)?;
-    let (cwd_abs, cwd_rel) = resolve_terminal_cwd(&root, cwd.as_deref().unwrap_or(""))?;
-    let timeout = Duration::from_millis(clamp_timeout_ms(timeout_ms));
+    let command = validate_command(command)?.to_string();
 
     {
         let jobs = runtime.jobs.lock();
@@ -257,7 +255,7 @@ pub fn run_terminal_command(
         }
     }
 
-    let mut child = spawn_shell(&command, &cwd_abs)?;
+    let mut child = spawn_shell(&command, cwd_abs)?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let pid = child.id();
@@ -315,7 +313,7 @@ pub fn run_terminal_command(
         thread::sleep(Duration::from_millis(40));
     }
 
-    take_job(&runtime, job_id);
+    take_job(runtime, job_id);
 
     let (stdout_bytes, stdout_trunc) = stdout_handle.join().unwrap_or_else(|_| (Vec::new(), false));
     let (stderr_bytes, stderr_trunc) = stderr_handle.join().unwrap_or_else(|_| (Vec::new(), false));
@@ -327,7 +325,7 @@ pub fn run_terminal_command(
             exit_code: None,
             stdout: bytes_to_text(stdout_bytes),
             stderr: bytes_to_text(stderr_bytes),
-            cwd: cwd_rel,
+            cwd: cwd_rel.to_string(),
             timed_out,
             truncated,
             killed,
@@ -341,7 +339,7 @@ pub fn run_terminal_command(
         exit_code,
         stdout: bytes_to_text(stdout_bytes),
         stderr: bytes_to_text(stderr_bytes),
-        cwd: cwd_rel,
+        cwd: cwd_rel.to_string(),
         timed_out,
         truncated,
         killed,
@@ -355,6 +353,36 @@ pub fn run_terminal_command(
     })
 }
 
+pub(crate) fn kill_shell_job(runtime: &TerminalRuntime, job_id: &str) -> bool {
+    let Some(job) = runtime.jobs.lock().get(job_id).cloned() else {
+        return false;
+    };
+    kill_job(&job);
+    true
+}
+
+#[tauri::command]
+pub fn run_terminal_command(
+    job_id: String,
+    command: String,
+    cwd: Option<String>,
+    timeout_ms: Option<u64>,
+    vault: State<'_, VaultState>,
+    runtime: State<'_, TerminalRuntime>,
+) -> Result<RunTerminalResponse, String> {
+    let root = get_root(&vault)?;
+    let (cwd_abs, cwd_rel) = resolve_terminal_cwd(&root, cwd.as_deref().unwrap_or(""))?;
+    let timeout = Duration::from_millis(clamp_timeout_ms(timeout_ms));
+    run_shell(
+        &runtime,
+        &job_id,
+        &command,
+        &cwd_abs,
+        &cwd_rel,
+        timeout,
+    )
+}
+
 #[tauri::command]
 pub fn kill_terminal_command(
     job_id: String,
@@ -364,11 +392,7 @@ pub fn kill_terminal_command(
     if id.is_empty() {
         return Err("jobId required".into());
     }
-    let Some(job) = runtime.jobs.lock().get(id).cloned() else {
-        return Ok(false);
-    };
-    kill_job(&job);
-    Ok(true)
+    Ok(kill_shell_job(&runtime, id))
 }
 
 #[cfg(test)]

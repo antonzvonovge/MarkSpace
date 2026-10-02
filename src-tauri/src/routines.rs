@@ -1,9 +1,11 @@
 //! Scheduled routines stored in `{vault}/.markspace/routines/<id>.json`.
 //!
 //! The tick lives here, not in the webview. It emits `routine-run` only when a
-//! run starts or finishes. The executor holds `running` until the webview
-//! calls `complete_routine_run` with the agent report.
+//! run starts or finishes. An agent routine holds `running` until the webview
+//! calls `complete_routine_run`. A command routine runs the shell here and
+//! writes the report itself.
 
+use crate::terminal::{self, TerminalRuntime};
 use crate::vault::{get_root, VaultState};
 use chrono::{DateTime, Local, TimeZone};
 use cron::Schedule;
@@ -80,6 +82,18 @@ pub struct Routine {
     pub specialists_use_chat_model: bool,
     #[serde(default)]
     pub attachments: Vec<RoutineAttachmentRef>,
+    /// `command` runs a shell command. Empty or `agent` runs the brief.
+    #[serde(default)]
+    pub kind: String,
+    /// Shell command for `kind = command`.
+    #[serde(default)]
+    pub command: String,
+    /// Vault-relative working directory. Empty is the vault root.
+    #[serde(default)]
+    pub command_cwd: String,
+    /// `0` means 60 seconds. Otherwise clamped to the terminal limits.
+    #[serde(default)]
+    pub command_timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -116,6 +130,8 @@ struct RoutineRunEvent {
     id: String,
     phase: String,
     epoch: u64,
+    /// `command` or `agent`. The webview starts Grisha only for `agent`.
+    kind: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,6 +157,14 @@ pub struct UpsertRoutineArgs {
     pub specialists_use_chat_model: Option<bool>,
     #[serde(default)]
     pub attachments: Option<Vec<RoutineAttachmentRef>>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub command_cwd: Option<String>,
+    #[serde(default)]
+    pub command_timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -354,7 +378,11 @@ async fn drive(
             return;
         }
         let job = gate.running.clone().expect("running");
-        execute_agent(app, root, epoch, cancel, &job).await;
+        if routine_is_command(root, &job.id) {
+            execute_command(app, root, epoch, cancel, &job).await;
+        } else {
+            execute_agent(app, root, epoch, cancel, &job).await;
+        }
         if cancel.is_cancelled() || runtime().epoch() != epoch {
             gate.clear();
             runtime().set_running(epoch, None);
@@ -388,6 +416,7 @@ async fn execute_agent(
             id: job.id.clone(),
             phase: "started".into(),
             epoch,
+            kind: "agent".into(),
         },
     );
 
@@ -426,9 +455,249 @@ async fn execute_agent(
                 id: job.id.clone(),
                 phase: "finished".into(),
                 epoch,
+                kind: "agent".into(),
             },
         );
     }
+}
+
+fn routine_is_command(root: &Path, id: &str) -> bool {
+    let _io = runtime().io.lock();
+    read_routine(root, id)
+        .map(|doc| is_command_kind(&doc.kind))
+        .unwrap_or(false)
+}
+
+fn is_command_kind(kind: &str) -> bool {
+    kind.trim() == "command"
+}
+
+const WIDGET_OPEN: &str = "<!-- widget -->";
+const WIDGET_CLOSE: &str = "<!-- /widget -->";
+
+fn last_closed_widget_block(text: &str) -> Option<String> {
+    let mut search_end = text.len();
+    while search_end > 0 {
+        let head = &text[..search_end];
+        let Some(close_at) = head.rfind(WIDGET_CLOSE) else {
+            return None;
+        };
+        if let Some(open_at) = head[..close_at].rfind(WIDGET_OPEN) {
+            let body = text[open_at + WIDGET_OPEN.len()..close_at].trim();
+            if !body.is_empty() {
+                return Some(body.to_string());
+            }
+        }
+        search_end = close_at;
+    }
+    None
+}
+
+/// Card text for a command run. A closed widget block wins. Otherwise stdout.
+/// A failed run with empty stdout uses stderr, then `reason`.
+fn command_card_body(stdout: &str, stderr: &str, failed: bool, reason: &str) -> String {
+    if let Some(block) = last_closed_widget_block(stdout) {
+        return block;
+    }
+    let stdout = stdout.trim();
+    if !stdout.is_empty() {
+        return stdout.to_string();
+    }
+    if !failed {
+        return String::new();
+    }
+    let stderr = stderr.trim();
+    if !stderr.is_empty() {
+        return stderr.to_string();
+    }
+    reason.trim().to_string()
+}
+
+struct CommandReport {
+    status: String,
+    body: String,
+    command: String,
+    cwd_label: String,
+    exit_label: String,
+}
+
+fn cwd_label(rel: &str) -> String {
+    let rel = rel.trim().trim_start_matches('/');
+    if rel.is_empty() {
+        "vault root".into()
+    } else {
+        rel.to_string()
+    }
+}
+
+fn exit_label(exit_code: Option<i32>, timed_out: bool, killed: bool) -> String {
+    if timed_out {
+        return "timed out".into();
+    }
+    if killed {
+        return "stopped".into();
+    }
+    match exit_code {
+        Some(code) => code.to_string(),
+        None => "-".into(),
+    }
+}
+
+fn failed_without_process(command: &str, cwd: &str, body: &str) -> CommandReport {
+    CommandReport {
+        status: "failed".into(),
+        body: body.to_string(),
+        command: command.to_string(),
+        cwd_label: cwd_label(cwd),
+        exit_label: "-".into(),
+    }
+}
+
+fn report_from_shell(
+    command: &str,
+    cwd: &str,
+    response: &terminal::RunTerminalResponse,
+) -> CommandReport {
+    let failed = !response.ok;
+    let reason = response.error.clone().unwrap_or_default();
+    CommandReport {
+        status: if failed { "failed" } else { "done" }.into(),
+        body: command_card_body(&response.stdout, &response.stderr, failed, &reason),
+        command: command.to_string(),
+        cwd_label: cwd_label(if response.cwd.is_empty() { cwd } else { &response.cwd }),
+        exit_label: exit_label(response.exit_code, response.timed_out, response.killed),
+    }
+}
+
+fn command_timeout(ms: u64) -> Duration {
+    Duration::from_millis(if ms == 0 {
+        terminal::clamp_timeout_ms(None)
+    } else {
+        terminal::clamp_timeout_ms(Some(ms))
+    })
+}
+
+async fn execute_command(
+    app: &AppHandle,
+    root: &Path,
+    epoch: u64,
+    cancel: &CancellationToken,
+    job: &PendingRun,
+) {
+    if cancel.is_cancelled() || runtime().epoch() != epoch {
+        return;
+    }
+    let doc = {
+        let _io = runtime().io.lock();
+        match read_routine(root, &job.id) {
+            Ok(doc) => doc,
+            Err(err) => {
+                eprintln!("routine run {id}: {err}", id = job.id);
+                return;
+            }
+        }
+    };
+    runtime().set_running(epoch, Some(job.id.clone()));
+    let _ = app.emit(
+        "routine-run",
+        RoutineRunEvent {
+            id: job.id.clone(),
+            phase: "started".into(),
+            epoch,
+            kind: "command".into(),
+        },
+    );
+
+    let outcome = if cancel.is_cancelled() || runtime().epoch() != epoch {
+        None
+    } else {
+        run_command_shell(app, root, cancel, &doc).await
+    };
+
+    if runtime().epoch() != epoch {
+        return;
+    }
+
+    if let Some(report) = outcome {
+        let _io = runtime().io.lock();
+        if let Err(err) = append_command_report(
+            root,
+            &job.id,
+            job.trigger,
+            Local::now(),
+            &report,
+        ) {
+            eprintln!("routine run {id}: {err}", id = job.id);
+        }
+    }
+
+    runtime().set_running(epoch, None);
+    if runtime().epoch() == epoch {
+        let _ = app.emit(
+            "routine-run",
+            RoutineRunEvent {
+                id: job.id.clone(),
+                phase: "finished".into(),
+                epoch,
+                kind: "command".into(),
+            },
+        );
+    }
+}
+
+async fn run_command_shell(
+    app: &AppHandle,
+    root: &Path,
+    cancel: &CancellationToken,
+    doc: &Routine,
+) -> Option<CommandReport> {
+    let command = doc.command.trim();
+    if command.is_empty() {
+        return Some(failed_without_process(
+            &doc.command,
+            &doc.command_cwd,
+            "Command is empty",
+        ));
+    }
+    let (cwd_abs, cwd_rel) = match terminal::resolve_terminal_cwd(root, &doc.command_cwd) {
+        Ok(pair) => pair,
+        Err(err) => {
+            return Some(failed_without_process(&doc.command, &doc.command_cwd, &err));
+        }
+    };
+    let timeout = command_timeout(doc.command_timeout_ms);
+    let job_id = format!("routine-{}", doc.id);
+    let app_run = app.clone();
+    let job_id_run = job_id.clone();
+    let command_owned = command.to_string();
+    let cwd_rel_run = cwd_rel.clone();
+    let mut join = tokio::task::spawn_blocking(move || {
+        let shell = app_run.state::<TerminalRuntime>();
+        terminal::run_shell(
+            &shell,
+            &job_id_run,
+            &command_owned,
+            &cwd_abs,
+            &cwd_rel_run,
+            timeout,
+        )
+    });
+    let command_for_report = doc.command.clone();
+    let waited = tokio::select! {
+        _ = cancel.cancelled() => None,
+        result = &mut join => Some(result),
+    };
+    let Some(result) = waited else {
+        let shell = app.state::<TerminalRuntime>();
+        terminal::kill_shell_job(&shell, &job_id);
+        let _ = join.await;
+        return None;
+    };
+    Some(match result {
+        Ok(Ok(response)) => report_from_shell(&command_for_report, &cwd_rel, &response),
+        Ok(Err(err)) => failed_without_process(&command_for_report, &cwd_rel, &err),
+        Err(err) => failed_without_process(&command_for_report, &cwd_rel, &err.to_string()),
+    })
 }
 
 fn routines_dir(root: &Path) -> PathBuf {
@@ -826,9 +1095,33 @@ fn append_run_report(
 ) -> Result<(), String> {
     let doc = read_routine(root, id)?;
     let dir = root.join(&doc.folder);
-    write_run_file(&dir, at, trigger, status, report)?;
+    write_run_file(&dir, at, trigger, status, report, &[])?;
     prune_job_dir(&dir)?;
     Ok(())
+}
+
+fn append_command_report(
+    root: &Path,
+    id: &str,
+    trigger: RunTrigger,
+    at: DateTime<Local>,
+    report: &CommandReport,
+) -> Result<(), String> {
+    let doc = read_routine(root, id)?;
+    let dir = root.join(&doc.folder);
+    let extra = vec![
+        header_line("Command", &report.command),
+        header_line("Cwd", &report.cwd_label),
+        header_line("Exit", &report.exit_label),
+    ];
+    write_run_file(&dir, at, trigger, &report.status, &report.body, &extra)?;
+    prune_job_dir(&dir)?;
+    Ok(())
+}
+
+fn header_line(label: &str, value: &str) -> String {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    format!("- {label}: {collapsed}")
 }
 
 fn trigger_name(trigger: RunTrigger) -> &'static str {
@@ -950,7 +1243,7 @@ fn settle_job_folder(root: &Path, doc: &mut Routine) -> Result<bool, String> {
     let dir = root.join(&doc.folder);
     for run in doc.runs.drain(..) {
         let at = parse_local(&run.at).unwrap_or_else(Local::now);
-        write_run_file(&dir, at, run.trigger, &run.status, "")?;
+        write_run_file(&dir, at, run.trigger, &run.status, "", &[])?;
     }
     Ok(true)
 }
@@ -1002,6 +1295,7 @@ fn write_run_file(
     trigger: RunTrigger,
     status: &str,
     report: &str,
+    extra_header: &[String],
 ) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|err| err.to_string())?;
     let stamp = at.format("%Y-%m-%d %H-%M-%S").to_string();
@@ -1017,10 +1311,15 @@ fn write_run_file(
     }
     let display = display_stamp(&stamp);
     let report: String = report.trim().chars().take(MAX_REPORT_CHARS).collect();
+    let mut header = format!("- Trigger: {trigger_name}\n- Status: {status}\n");
+    for line in extra_header {
+        header.push_str(line);
+        header.push('\n');
+    }
     let body = if report.is_empty() {
-        format!("# {display}\n\n- Trigger: {trigger_name}\n- Status: {status}\n")
+        format!("# {display}\n\n{header}")
     } else {
-        format!("# {display}\n\n- Trigger: {trigger_name}\n- Status: {status}\n\n{report}\n")
+        format!("# {display}\n\n{header}\n{report}\n")
     };
     fs::write(dir.join(name), body).map_err(|err| err.to_string())
 }
@@ -1213,6 +1512,17 @@ fn upsert(root: &Path, input: UpsertRoutineArgs, now: DateTime<Local>) -> Result
         }
     }
     validate_attachments(&folder, &attachments)?;
+    let kind = normalize_kind(&keep_string(input.kind, prev.map(|doc| doc.kind.as_str())));
+    let command = keep_string(input.command, prev.map(|doc| doc.command.as_str()));
+    validate_stored_command(&command)?;
+    let command_cwd = keep_string(input.command_cwd, prev.map(|doc| doc.command_cwd.as_str()));
+    if command_cwd.contains('\0') {
+        return Err("Invalid cwd".into());
+    }
+    let command_timeout_ms = normalize_timeout_ms(match input.command_timeout_ms {
+        Some(ms) => ms,
+        None => prev.map(|doc| doc.command_timeout_ms).unwrap_or(0),
+    });
     let doc = Routine {
         id,
         name,
@@ -1234,6 +1544,10 @@ fn upsert(root: &Path, input: UpsertRoutineArgs, now: DateTime<Local>) -> Result
             .specialists_use_chat_model
             .unwrap_or_else(|| prev.is_some_and(|doc| doc.specialists_use_chat_model)),
         attachments,
+        kind,
+        command,
+        command_cwd,
+        command_timeout_ms,
     };
     write_routine(root, &doc)?;
     Ok(doc)
@@ -1252,6 +1566,32 @@ fn normalize_mode(mode: &str) -> String {
         "agent" => "agent".into(),
         _ => String::new(),
     }
+}
+
+fn normalize_kind(kind: &str) -> String {
+    if is_command_kind(kind) {
+        "command".into()
+    } else {
+        String::new()
+    }
+}
+
+fn normalize_timeout_ms(ms: u64) -> u64 {
+    if ms == 0 {
+        0
+    } else {
+        terminal::clamp_timeout_ms(Some(ms))
+    }
+}
+
+fn validate_stored_command(command: &str) -> Result<(), String> {
+    if command.contains('\0') {
+        return Err("Invalid command".into());
+    }
+    if command.chars().count() > terminal::MAX_COMMAND_CHARS {
+        return Err("Command is too long".into());
+    }
+    Ok(())
 }
 
 fn normalize_reasoning(mode: &str) -> String {
@@ -1455,6 +1795,10 @@ mod tests {
             specialist_model_id: None,
             specialists_use_chat_model: None,
             attachments: None,
+            kind: None,
+            command: None,
+            command_cwd: None,
+            command_timeout_ms: None,
         }
     }
 
@@ -1756,5 +2100,125 @@ mod tests {
         assert_eq!(files[0].status, "needs you");
         let body = fs::read_to_string(root.join(&files[0].path)).unwrap();
         assert!(body.contains("Which folder?"));
+    }
+
+    #[test]
+    fn legacy_json_without_kind_is_an_agent() {
+        let root = temp_root();
+        fs::create_dir_all(routines_dir(&root)).unwrap();
+        fs::write(
+            routine_path(&root, "old"),
+            "{\"id\":\"old\",\"name\":\"Old\",\"cron\":\"0 9 * * *\"}\n",
+        )
+        .unwrap();
+        let loaded = read_routine(&root, "old").unwrap();
+        assert_eq!(loaded.kind, "");
+        assert_eq!(loaded.command, "");
+        assert_eq!(loaded.command_cwd, "");
+        assert_eq!(loaded.command_timeout_ms, 0);
+        assert!(!is_command_kind(&loaded.kind));
+    }
+
+    #[test]
+    fn upsert_keeps_command_fields() {
+        let root = temp_root();
+        let mut first = args(Some("job"), "Ping", "0 9 * * *");
+        first.kind = Some("command".into());
+        first.command = Some("echo hello".into());
+        first.command_cwd = Some("Notes".into());
+        first.command_timeout_ms = Some(5_000);
+        first.brief = Some("keep me".into());
+        let saved = upsert(&root, first, Local::now()).unwrap();
+        assert_eq!(saved.kind, "command");
+        assert_eq!(saved.command, "echo hello");
+        assert_eq!(saved.command_cwd, "Notes");
+        assert_eq!(saved.command_timeout_ms, 5_000);
+        let renamed = upsert(&root, args(Some("job"), "Pong", "0 9 * * *"), Local::now()).unwrap();
+        assert_eq!(renamed.kind, "command");
+        assert_eq!(renamed.command, "echo hello");
+        assert_eq!(renamed.command_cwd, "Notes");
+        assert_eq!(renamed.command_timeout_ms, 5_000);
+        assert_eq!(renamed.brief, "keep me");
+        let back = args(Some("job"), "Pong", "0 9 * * *");
+        let mut agent = back;
+        agent.kind = Some("agent".into());
+        let agent = upsert(&root, agent, Local::now()).unwrap();
+        assert_eq!(agent.kind, "");
+        assert_eq!(agent.command, "echo hello");
+    }
+
+    #[test]
+    fn command_card_prefers_the_widget_block() {
+        let body = command_card_body(
+            "noise\n<!-- widget -->\n**Hi**\n<!-- /widget -->\ntrailing\n",
+            "err",
+            false,
+            "",
+        );
+        assert_eq!(body, "**Hi**");
+        assert_eq!(
+            command_card_body("", "nope", true, "Command timed out"),
+            "nope"
+        );
+        assert_eq!(
+            command_card_body("", "  ", true, "Command timed out"),
+            "Command timed out"
+        );
+        assert_eq!(command_card_body("", "nope", false, "Command timed out"), "");
+    }
+
+    #[test]
+    fn empty_command_report_does_not_spawn() {
+        let report = failed_without_process("  ", "missing", "Command is empty");
+        assert_eq!(report.status, "failed");
+        assert_eq!(report.body, "Command is empty");
+        assert_eq!(report.exit_label, "-");
+        assert_eq!(report.cwd_label, "missing");
+    }
+
+    #[test]
+    fn command_echo_and_nonzero_exit_write_reports() {
+        let root = temp_root();
+        let mut input = args(Some("job"), "Ping", "0 9 * * *");
+        input.kind = Some("command".into());
+        input.command = Some("echo hello-routine".into());
+        upsert(&root, input, Local::now()).unwrap();
+        let shell = TerminalRuntime::default();
+        let (cwd_abs, cwd_rel) = terminal::resolve_terminal_cwd(&root, "").unwrap();
+        let ok = terminal::run_shell(
+            &shell,
+            "routine-job",
+            "echo hello-routine",
+            &cwd_abs,
+            &cwd_rel,
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        let report = report_from_shell("echo hello-routine", &cwd_rel, &ok);
+        assert_eq!(report.status, "done");
+        assert!(report.body.contains("hello-routine"));
+        assert_eq!(report.exit_label, "0");
+        let at = Local.with_ymd_and_hms(2026, 10, 1, 12, 0, 0).unwrap();
+        append_command_report(&root, "job", RunTrigger::Manual, at, &report).unwrap();
+        let files = list_run_files(&root, "Routines/Ping").unwrap();
+        assert_eq!(files[0].status, "done");
+        let body = fs::read_to_string(root.join(&files[0].path)).unwrap();
+        assert!(body.contains("- Command: echo hello-routine"));
+        assert!(body.contains("- Cwd: vault root"));
+        assert!(body.contains("- Exit: 0"));
+        assert!(body.contains("hello-routine"));
+
+        let failed = terminal::run_shell(
+            &shell,
+            "routine-job-fail",
+            "exit 3",
+            &cwd_abs,
+            &cwd_rel,
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        let failed_report = report_from_shell("exit 3", &cwd_rel, &failed);
+        assert_eq!(failed_report.status, "failed");
+        assert_eq!(failed_report.exit_label, "3");
     }
 }

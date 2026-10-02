@@ -200,4 +200,32 @@ describe("dashboardFormat", () => {
     expect(long.truncated).toBe(true);
     expect(long.text.length).toBeLessThanOrEqual(8);
   });
+
+  it("skips command headers and prefers a widget block", () => {
+    const preview = previewRoutineReport(
+      "# Run\n\n- Trigger: schedule\n- Status: done\n- Command: echo hi\n- Cwd: vault root\n- Exit: 0\n\nnoise\n<!-- widget -->\n**Card**\n<!-- /widget -->\nmore\n",
+    );
+    expect(preview).toEqual({ text: "**Card**", truncated: false });
+  });
+
+  it("shows stdout when a command report has no widget block", () => {
+    const preview = previewRoutineReport(
+      "# Run\n\n- Trigger: manual\n- Status: failed\n- Command: exit 3\n- Cwd: vault root\n- Exit: 3\n\nboom\n",
+    );
+    expect(preview).toEqual({ text: "boom", truncated: false });
+  });
+
+  it("lifts the widget section out of an activity log", () => {
+    const preview = previewRoutineReport(
+      "# Run\n\n- Trigger: manual\n- Status: done\n\n## Activity\n\n**Reply**\n\nChecked the clock.\n\n<!-- widget -->\n14:21\n<!-- /widget -->\n",
+    );
+    expect(preview).toEqual({ text: "14:21", truncated: false });
+  });
+
+  it("leaves an activity log off the card when it has no widget section", () => {
+    const preview = previewRoutineReport(
+      "# Run\n\n- Trigger: manual\n- Status: done\n\n## Activity\n\n**Reply**\n\nChecked the clock.\n",
+    );
+    expect(preview).toEqual({ text: "", truncated: false });
+  });
 });

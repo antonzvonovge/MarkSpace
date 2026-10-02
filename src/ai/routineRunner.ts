@@ -32,8 +32,12 @@ import { useRoutinesStore } from "../store/routinesStore";
 import { useVaultStore } from "../store/vaultStore";
 import { helperModelCallParams, vaultChatModelId, vaultWorkerModelId } from "../store/vaultAiSettingsStore";
 import {
-  WIDGET_SECTION_MISSING,
+  composeRoutineReport,
+  formatRoutineActivity,
+  routineCardFromRun,
+  synthesizeRoutineWidget,
   widgetSectionFromMessages,
+  widgetSynthesisMaterial,
 } from "./routineWidgetSection";
 
 const inflight = new Set<string>();
@@ -75,17 +79,6 @@ async function resolveReasoning(opts: {
     ...helperModelCallParams(),
     abortSignal: opts.abortSignal,
   });
-}
-
-function assistantText(messages: UIMessage[]): string {
-  const chunks: string[] = [];
-  for (const message of messages) {
-    if (message.role !== "assistant") continue;
-    for (const part of message.parts ?? []) {
-      if (part.type === "text" && part.text.trim()) chunks.push(part.text.trim());
-    }
-  }
-  return chunks.join("\n\n").trim();
 }
 
 function askedTheUser(messages: UIMessage[]): boolean {
@@ -242,25 +235,42 @@ async function executeRoutineRun(
   }
   if (controller.signal.aborted) return;
 
+  const trace = formatRoutineActivity(latest);
   const section = widgetSectionFromMessages(latest);
-  const text = assistantText(latest);
   if (askedTheUser(latest)) {
-    await finish(
-      id,
-      epoch,
-      controller.signal,
-      "needs you",
-      section || text || "The run stopped because it needed a decision from you.",
-    );
+    const report =
+      composeRoutineReport(trace, section) ||
+      "The run stopped because it needed a decision from you.";
+    await finish(id, epoch, controller.signal, "needs you", report);
     return;
   }
-  if (section) {
-    await finish(id, epoch, controller.signal, "done", section);
-    return;
+
+  let card = section;
+  if (!card) {
+    const material = widgetSynthesisMaterial(latest);
+    if (material) {
+      try {
+        card = await synthesizeRoutineWidget({
+          material,
+          keys,
+          ...helperModelCallParams(),
+          abortSignal: controller.signal,
+        });
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (err instanceof Error && err.name === "AbortError") return;
+        card = null;
+      }
+    }
+    if (controller.signal.aborted) return;
+    if (!card) card = routineCardFromRun(latest);
   }
-  if (!text) {
+
+  const report = composeRoutineReport(trace, card);
+  if (!report) {
     await finish(id, epoch, controller.signal, "failed", "The run produced no reply.");
     return;
   }
-  await finish(id, epoch, controller.signal, "done", WIDGET_SECTION_MISSING);
+  await finish(id, epoch, controller.signal, "done", report);
 }

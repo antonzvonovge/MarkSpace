@@ -27,6 +27,13 @@ export type Routine = {
   specialistModelId?: string;
   specialistsUseChatModel?: boolean;
   attachments?: RoutineAttachmentRef[];
+  /** Empty means agent. `command` runs a shell command. */
+  kind?: string;
+  command?: string;
+  /** Vault-relative. Empty is the vault root. */
+  commandCwd?: string;
+  /** `0` means 60 seconds. */
+  commandTimeoutMs?: number;
 };
 
 export type RoutineRunFile = {
@@ -46,6 +53,8 @@ export type RoutineRunEvent = {
   id: string;
   phase: "started" | "finished";
   epoch: number;
+  /** `command` skips the agent. Missing means agent. */
+  kind?: string;
 };
 
 export type UpsertRoutineInput = {
@@ -61,7 +70,15 @@ export type UpsertRoutineInput = {
   specialistModelId?: string | null;
   specialistsUseChatModel?: boolean | null;
   attachments?: RoutineAttachmentRef[] | null;
+  kind?: string | null;
+  command?: string | null;
+  commandCwd?: string | null;
+  commandTimeoutMs?: number | null;
 };
+
+export function routineIsCommand(kind: string | null | undefined): boolean {
+  return kind === "command";
+}
 
 export async function listRoutines(): Promise<RoutineSnapshot> {
   return invoke<RoutineSnapshot>("list_routines");
@@ -81,6 +98,10 @@ export async function upsertRoutine(input: UpsertRoutineInput): Promise<Routine>
       specialistModelId: input.specialistModelId ?? null,
       specialistsUseChatModel: input.specialistsUseChatModel ?? null,
       attachments: input.attachments ?? null,
+      kind: input.kind ?? null,
+      command: input.command ?? null,
+      commandCwd: input.commandCwd ?? null,
+      commandTimeoutMs: input.commandTimeoutMs ?? null,
     },
   });
 }

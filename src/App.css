@@ -1886,6 +1886,29 @@ select {
   font-size: 13px;
 }
 
+.routine-job-kind {
+  display: flex;
+  gap: 6px;
+}
+
+.routine-job-command {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.routine-job-timeout {
+  flex: 0 0 140px;
+}
+
 .routine-job-error,
 .routine-job-empty,
 .routine-job-missing {

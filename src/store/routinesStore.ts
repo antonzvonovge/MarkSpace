@@ -3,6 +3,7 @@ import { routineTabPath, useVaultStore } from "./vaultStore";
 import {
   deleteRoutine,
   listRoutines,
+  routineIsCommand,
   runRoutineNow,
   setRoutineEnabled,
   upsertRoutine,
@@ -82,7 +83,10 @@ export const useRoutinesStore = create<RoutinesState>((set, get) => ({
     earlyRunEvents = earlyRunEvents.filter((event) => event.epoch !== snapshot.epoch);
     for (const event of queued) get().applyRunEvent(event);
     const runningId = get().runningId;
-    if (runningId) handoffRun(runningId, snapshot.epoch);
+    if (runningId) {
+      const kind = get().routines.find((routine) => routine.id === runningId)?.kind;
+      if (!routineIsCommand(kind)) handoffRun(runningId, snapshot.epoch);
+    }
   },
 
   applyRunEvent: (event) => {
@@ -94,7 +98,7 @@ export const useRoutinesStore = create<RoutinesState>((set, get) => ({
     if (event.epoch !== epoch) return;
     if (event.phase === "started") {
       set({ runningId: event.id });
-      handoffRun(event.id, event.epoch);
+      if (!routineIsCommand(event.kind)) handoffRun(event.id, event.epoch);
       return;
     }
     set((state) => ({

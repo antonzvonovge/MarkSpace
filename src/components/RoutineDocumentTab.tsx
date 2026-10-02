@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { WIDGET_SECTION_EXAMPLE, WIDGET_SECTION_HINT } from "../ai/routineWidgetSection";
+import { WIDGET_SECTION_EXAMPLE } from "../ai/routineWidgetSection";
 import { formatSchedule } from "../lib/routineSchedule";
 import {
   briefStateFromRoutine,
@@ -8,6 +8,7 @@ import {
 import {
   deleteRoutineRun,
   listRoutineRuns,
+  routineIsCommand,
   type RoutineRunFile,
   type RoutineTrigger,
 } from "../lib/routinesApi";
@@ -47,6 +48,17 @@ function statusLabel(status: string): string {
   if (status === "ok" || status === "done" || !status) return "Done";
   return status;
 }
+
+const COMMAND_TIMEOUT_MAX_SEC = 600;
+const COMMAND_TIMEOUT_DEFAULT_SEC = 60;
+
+function timeoutSeconds(ms: number | undefined): number {
+  if (!ms) return COMMAND_TIMEOUT_DEFAULT_SEC;
+  return Math.min(COMMAND_TIMEOUT_MAX_SEC, Math.max(1, Math.round(ms / 1000)));
+}
+
+const COMMAND_HINT =
+  "The dashboard card shows the last closed block from stdout. Otherwise it shows stdout. The command runs unattended when this routine fires.";
 
 function PlayIcon() {
   return (
@@ -149,6 +161,12 @@ function RoutineJob({ id }: { id: string }) {
   const openNote = useVaultStore((s) => s.openNote);
   const [name, setName] = useState(routine?.name ?? "");
   const [cron, setCron] = useState(routine?.cron ?? "0 9 * * *");
+  const [kind, setKind] = useState(routine?.kind === "command" ? "command" : "");
+  const [command, setCommand] = useState(routine?.command ?? "");
+  const [commandCwd, setCommandCwd] = useState(routine?.commandCwd ?? "");
+  const [timeoutSec, setTimeoutSec] = useState(() =>
+    String(timeoutSeconds(routine?.commandTimeoutMs)),
+  );
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [runs, setRuns] = useState<RoutineRunFile[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -158,20 +176,50 @@ function RoutineJob({ id }: { id: string }) {
   const [reloadTick, setReloadTick] = useState(0);
   const [holdRun, setHoldRun] = useState(false);
   const nameFocused = useRef(false);
+  const commandFocused = useRef(false);
+  const cwdFocused = useRef(false);
+  const timeoutFocused = useRef(false);
   const listSeq = useRef(0);
   const holdEpoch = useRef<number | null>(null);
   const nameRef = useRef(name);
   const cronRef = useRef(cron);
+  const kindRef = useRef(kind);
+  const commandRef = useRef(command);
+  const cwdRef = useRef(commandCwd);
+  const timeoutMsRef = useRef(timeoutSeconds(routine?.commandTimeoutMs) * 1000);
   const briefRef = useRef<RoutineBriefState | null>(routine ? briefStateFromRoutine(routine) : null);
   const saveQueue = useRef(Promise.resolve());
   const saveTimer = useRef<number | null>(null);
   nameRef.current = name;
   cronRef.current = cron;
+  kindRef.current = kind;
+  commandRef.current = command;
+  cwdRef.current = commandCwd;
 
   useEffect(() => {
-    if (!routine || nameFocused.current) return;
-    setName(routine.name);
-    setCron(routine.cron);
+    if (!routine) return;
+    if (!nameFocused.current) {
+      setName(routine.name);
+      setCron(routine.cron);
+    }
+    if (!commandFocused.current && !cwdFocused.current && !timeoutFocused.current) {
+      const nextKind = routine.kind === "command" ? "command" : "";
+      setKind(nextKind);
+      kindRef.current = nextKind;
+    }
+    if (!commandFocused.current) {
+      setCommand(routine.command ?? "");
+      commandRef.current = routine.command ?? "";
+    }
+    if (!cwdFocused.current) {
+      setCommandCwd(routine.commandCwd ?? "");
+      cwdRef.current = routine.commandCwd ?? "";
+    }
+    if (!timeoutFocused.current) {
+      const seconds = timeoutSeconds(routine.commandTimeoutMs);
+      setTimeoutSec(String(seconds));
+      timeoutMsRef.current = seconds * 1000;
+    }
   }, [routine]);
 
   useEffect(() => {
@@ -226,6 +274,10 @@ function RoutineJob({ id }: { id: string }) {
           specialistModelId: brief?.specialistModelId ?? null,
           specialistsUseChatModel: brief?.specialistsUseChatModel ?? null,
           attachments: brief?.attachments ?? null,
+          kind: kindRef.current,
+          command: commandRef.current,
+          commandCwd: cwdRef.current,
+          commandTimeoutMs: timeoutMsRef.current,
         });
       } catch (err) {
         setError(errorText(err));
@@ -246,6 +298,15 @@ function RoutineJob({ id }: { id: string }) {
       persistAll();
     }, 400);
   };
+
+  const chooseKind = (next: "agent" | "command") => {
+    const stored = next === "command" ? "command" : "";
+    kindRef.current = stored;
+    setKind(stored);
+    persistAll();
+  };
+
+  const commandMode = routineIsCommand(kind);
 
   useEffect(() => {
     return () => {
@@ -349,24 +410,127 @@ function RoutineJob({ id }: { id: string }) {
             </div>
           </div>
         </div>
-        <div className="routine-job-label">Brief</div>
-        <div className="routine-job-widget-hint">
-          <p>{WIDGET_SECTION_HINT}</p>
-          <pre>
-            <code>{WIDGET_SECTION_EXAMPLE}</code>
-          </pre>
+        <div className="routine-job-field">
+          <div className="routine-job-label">Runs as</div>
+          <div className="routine-job-kind">
+            <button
+              type="button"
+              className={commandMode ? "routines-preset" : "routines-preset is-selected"}
+              onClick={() => chooseKind("agent")}
+            >
+              Agent
+            </button>
+            <button
+              type="button"
+              className={commandMode ? "routines-preset is-selected" : "routines-preset"}
+              onClick={() => chooseKind("command")}
+            >
+              Command
+            </button>
+          </div>
         </div>
-        <div className="routine-job-brief">
-          <RoutineBriefComposer
-            key={id}
-            folder={routine.folder}
-            initial={briefStateFromRoutine(routine)}
-            onChange={(next) => {
-              briefRef.current = next;
-              scheduleBriefSave();
-            }}
-          />
-        </div>
+        {commandMode ? (
+          <>
+            <div className="routine-job-label">Command</div>
+            <div className="routine-job-widget-hint">
+              <p>{COMMAND_HINT}</p>
+              <pre>
+                <code>{WIDGET_SECTION_EXAMPLE}</code>
+              </pre>
+            </div>
+            <textarea
+              className="routine-job-command"
+              aria-label="Routine command"
+              spellCheck={false}
+              value={command}
+              onFocus={() => {
+                commandFocused.current = true;
+              }}
+              onBlur={() => {
+                commandFocused.current = false;
+              }}
+              onChange={(event) => {
+                const next = event.target.value;
+                commandRef.current = next;
+                setCommand(next);
+                scheduleBriefSave();
+              }}
+            />
+            <div className="routine-job-meta">
+              <div className="routine-job-field">
+                <label className="routine-job-label" htmlFor={`routine-cwd-${id}`}>
+                  Working directory
+                </label>
+                <input
+                  id={`routine-cwd-${id}`}
+                  className="routine-job-input"
+                  placeholder="Vault root"
+                  value={commandCwd}
+                  onFocus={() => {
+                    cwdFocused.current = true;
+                  }}
+                  onBlur={() => {
+                    cwdFocused.current = false;
+                  }}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    cwdRef.current = next;
+                    setCommandCwd(next);
+                    scheduleBriefSave();
+                  }}
+                />
+              </div>
+              <div className="routine-job-field routine-job-timeout">
+                <label className="routine-job-label" htmlFor={`routine-timeout-${id}`}>
+                  Timeout (seconds)
+                </label>
+                <input
+                  id={`routine-timeout-${id}`}
+                  className="routine-job-input"
+                  inputMode="numeric"
+                  value={timeoutSec}
+                  onFocus={() => {
+                    timeoutFocused.current = true;
+                  }}
+                  onBlur={() => {
+                    timeoutFocused.current = false;
+                    const sec = Number(timeoutSec);
+                    const next = Number.isInteger(sec)
+                      ? Math.min(COMMAND_TIMEOUT_MAX_SEC, Math.max(1, sec))
+                      : timeoutSeconds(timeoutMsRef.current);
+                    timeoutMsRef.current = next * 1000;
+                    setTimeoutSec(String(next));
+                    persistAll();
+                  }}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setTimeoutSec(next);
+                    const sec = Number(next);
+                    if (!Number.isInteger(sec)) return;
+                    const clamped = Math.min(COMMAND_TIMEOUT_MAX_SEC, Math.max(1, sec));
+                    timeoutMsRef.current = clamped * 1000;
+                    scheduleBriefSave();
+                  }}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="routine-job-label">Brief</div>
+            <div className="routine-job-brief">
+              <RoutineBriefComposer
+                key={id}
+                folder={routine.folder}
+                initial={briefStateFromRoutine(routine)}
+                onChange={(next) => {
+                  briefRef.current = next;
+                  scheduleBriefSave();
+                }}
+              />
+            </div>
+          </>
+        )}
         {error ? <p className="routine-job-error">{error}</p> : null}
       </div>
       <div className="routine-job-label routine-job-runs-label">

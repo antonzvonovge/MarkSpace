@@ -1,6 +1,7 @@
 /** On-disk JSON for a MarkSpace `.dashboard` file. */
 
 import { z } from "zod";
+import { lastClosedWidgetBlock, ROUTINE_ACTIVITY_HEADING } from "../ai/routineWidgetSection";
 import {
   PROJECT_COLOR_SWATCHES,
   normalizeProjectColor,
@@ -346,7 +347,11 @@ export function applyGridLayout(
   };
 }
 
-/** Drop the run-file heading and Trigger/Status lines. Cap length for the widget body. */
+/**
+ * Dashboard card for a routine run.
+ * A closed widget block is the card. An activity log without that block stays in the run file.
+ * Command stdout and older short reports stay the card when they have no activity log.
+ */
 export function previewRoutineReport(
   markdown: string,
   limit = 8000,
@@ -355,11 +360,16 @@ export function previewRoutineReport(
   let index = 0;
   if (lines[0]?.startsWith("# ")) index = 1;
   while (index < lines.length && lines[index]?.trim() === "") index += 1;
-  while (index < lines.length && /^- (Trigger|Status):/.test(lines[index] ?? "")) {
+  while (
+    index < lines.length &&
+    /^- (Trigger|Status|Command|Cwd|Exit):/.test(lines[index] ?? "")
+  ) {
     index += 1;
   }
   while (index < lines.length && lines[index]?.trim() === "") index += 1;
   const body = lines.slice(index).join("\n").trim();
-  if (body.length <= limit) return { text: body, truncated: false };
-  return { text: body.slice(0, limit).trimEnd(), truncated: true };
+  const block = lastClosedWidgetBlock(body);
+  const text = block ?? (body.includes(ROUTINE_ACTIVITY_HEADING) ? "" : body);
+  if (text.length <= limit) return { text, truncated: false };
+  return { text: text.slice(0, limit).trimEnd(), truncated: true };
 }
