@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it } from "vitest";
-import { placeAnchoredMenu } from "./menuPlacement";
+import {
+  placeAnchoredMenu,
+  placeFlyoutMenu,
+  placePointerMenu,
+} from "./menuPlacement";
 
 function rect(
   partial: Partial<DOMRect> & Pick<DOMRect, "top" | "bottom" | "left" | "right">,
@@ -76,5 +80,54 @@ describe("placeAnchoredMenu", () => {
       { width: 160, prefer: "above", force: "below" },
     );
     expect(placed.side).toBe("below");
+  });
+});
+
+describe("placePointerMenu", () => {
+  const viewport = { width: 1000, height: 800 };
+
+  it("anchors the top-left on the cursor when the menu fits", () => {
+    expect(placePointerMenu(40, 80, { width: 220, height: 160 }, viewport)).toEqual({
+      left: 40,
+      top: 80,
+    });
+  });
+
+  it("flips above the cursor when the bottom would clip", () => {
+    expect(placePointerMenu(40, 720, { width: 220, height: 160 }, viewport)).toEqual({
+      left: 40,
+      top: 560,
+    });
+  });
+
+  it("flips left of the cursor when the right edge would clip", () => {
+    expect(placePointerMenu(900, 80, { width: 220, height: 160 }, viewport)).toEqual({
+      left: 680,
+      top: 80,
+    });
+  });
+});
+
+describe("placeFlyoutMenu", () => {
+  const viewport = { width: 1000, height: 800 };
+
+  it("opens to the right of the anchor row", () => {
+    expect(
+      placeFlyoutMenu(
+        { top: 200, left: 40, right: 240 },
+        { width: 180, height: 220 },
+        viewport,
+      ),
+    ).toEqual({ left: 238, top: 200 });
+  });
+
+  it("opens to the left and shifts up when the flyout would clip", () => {
+    expect(
+      placeFlyoutMenu(
+        { top: 700, left: 800, right: 980 },
+        { width: 180, height: 220 },
+        viewport,
+      ),
+    ).toEqual({ left: 622, top: 572 });
   });
 });

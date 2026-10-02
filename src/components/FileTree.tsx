@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -40,6 +41,7 @@ import {
   moviesProjectRootForPath,
   vaultProjectRootOf,
 } from "../lib/diaryNotes";
+import { placeFlyoutMenu, placePointerMenu } from "../lib/menuPlacement";
 import { isVaultLexiconFolder, isVaultLexiconMdNote } from "../lib/lexiconNotes";
 import { fileMarkerById } from "../lib/fileMarkers";
 import { saveExpandedPaths } from "../lib/settingsStore";
@@ -203,7 +205,7 @@ type ContextMenuState = {
 };
 
 export type FileTreeHandle = {
-  openCreateMenu: (x: number, y: number) => void;
+  openCreateMenu: (x: number, y: number, parentPath?: string) => void;
   startCreate: (kind: PromptKind) => void;
   revealActive: () => void;
 };
@@ -513,8 +515,33 @@ function TreeContextMenu({
     };
   }, [onClose]);
 
-  const left = Math.min(menu.x, window.innerWidth - 280);
-  const top = Math.min(menu.y, window.innerHeight - 400);
+  useLayoutEffect(() => {
+    const root = menuRef.current;
+    if (!root) return;
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const placed = placePointerMenu(
+      menu.x,
+      menu.y,
+      { width: root.offsetWidth, height: root.offsetHeight },
+      viewport,
+    );
+    root.style.left = `${placed.left}px`;
+    root.style.top = `${placed.top}px`;
+
+    for (const sub of root.querySelectorAll<HTMLElement>(".tree-context-submenu")) {
+      const wrap = sub.closest(".tree-context-submenu-wrap");
+      if (!(wrap instanceof HTMLElement)) continue;
+      const anchor = wrap.getBoundingClientRect();
+      const fly = placeFlyoutMenu(
+        anchor,
+        { width: sub.offsetWidth, height: sub.offsetHeight },
+        viewport,
+      );
+      sub.style.position = "fixed";
+      sub.style.left = `${fly.left}px`;
+      sub.style.top = `${fly.top}px`;
+    }
+  }, [menu.x, menu.y, newItemOpen, ieltsOpen, markerOpen]);
 
   const showCreate = showSkillCreate || showStandardCreate;
   const showPaths = true; // Reveal is always available
@@ -981,7 +1008,6 @@ function TreeContextMenu({
       ref={menuRef}
       className="tree-context-menu is-plaintext"
       role="menu"
-      style={{ left, top }}
     >
       {sections.flatMap((section, i) =>
         i === 0
@@ -1623,12 +1649,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   }, [revealPathInTree, treeRevealRequest]);
 
   useImperativeHandle(ref, () => ({
-    openCreateMenu: (x, y) => {
+    openCreateMenu: (x, y, parentPath) => {
       if (!useVaultStore.getState().vaultPath) return;
       setContextMenu({
         x,
         y,
-        path: useVaultStore.getState().selectedFolderPath,
+        path: parentPath ?? useVaultStore.getState().selectedFolderPath,
         name: "",
         isDir: true,
         createOnly: true,

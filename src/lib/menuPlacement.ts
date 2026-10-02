@@ -80,3 +80,59 @@ export function placeAnchoredMenu(
     maxHeight,
   };
 }
+
+export type ViewportSize = { width: number; height: number };
+
+const POINTER_MENU_MARGIN = 8;
+
+/**
+ * Keep a pointer-opened menu on screen. Top-left sits on the cursor unless
+ * that box would leave the viewport, in which case it flips to the other
+ * side of the cursor and then clamps.
+ */
+export function placePointerMenu(
+  x: number,
+  y: number,
+  size: { width: number; height: number },
+  viewport: ViewportSize,
+  margin = POINTER_MENU_MARGIN,
+): { left: number; top: number } {
+  const maxLeft = viewport.width - size.width - margin;
+  const maxTop = viewport.height - size.height - margin;
+  let left = x;
+  if (left > maxLeft) left = x - size.width;
+  if (left > maxLeft) left = maxLeft;
+  if (left < margin) left = margin;
+
+  let top = y;
+  if (top > maxTop) top = y - size.height;
+  if (top > maxTop) top = maxTop;
+  if (top < margin) top = margin;
+
+  return { left, top };
+}
+
+/** Flyout beside an already-open menu row, flipped when it would clip. */
+export function placeFlyoutMenu(
+  anchor: { top: number; left: number; right: number },
+  size: { width: number; height: number },
+  viewport: ViewportSize,
+  margin = POINTER_MENU_MARGIN,
+): { left: number; top: number } {
+  let left = anchor.right - 2;
+  if (left + size.width > viewport.width - margin) {
+    left = anchor.left - size.width + 2;
+  }
+  if (left < margin) left = margin;
+  if (left + size.width > viewport.width - margin) {
+    left = Math.max(margin, viewport.width - size.width - margin);
+  }
+
+  let top = anchor.top;
+  if (top + size.height > viewport.height - margin) {
+    top = viewport.height - size.height - margin;
+  }
+  if (top < margin) top = margin;
+
+  return { left, top };
+}

@@ -329,15 +329,8 @@ function RoutineJob({ id }: { id: string }) {
   return (
     <div className="routine-job">
       <div className="routine-job-toolbar">
-        {running ? (
-          <span className="routine-job-status" role="status">
-            <JobSpinner />
-            Running
-          </span>
-        ) : null}
         <label className="routine-job-enabled">
           <input
-            className="routine-job-enabled-box"
             type="checkbox"
             checked={routine.enabled}
             onChange={(event) => {
@@ -347,26 +340,34 @@ function RoutineJob({ id }: { id: string }) {
           />
           Enabled
         </label>
-        <button
-          type="button"
-          className="routine-job-icon-btn"
-          title="Run now"
-          aria-label={`Run ${routine.name} now`}
-          disabled={running}
-          onClick={() => setConfirm("run")}
-        >
-          <PlayIcon />
-        </button>
-        <button
-          type="button"
-          className="routine-job-icon-btn"
-          title="Delete"
-          aria-label={`Delete ${routine.name}`}
-          disabled={busy}
-          onClick={() => setConfirm("delete")}
-        >
-          <TrashIcon />
-        </button>
+        <div className="routine-job-toolbar-actions">
+          {running ? (
+            <span className="routine-job-status" role="status">
+              <JobSpinner />
+              Running
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="routine-job-icon-btn"
+            title="Run now"
+            aria-label={`Run ${routine.name} now`}
+            disabled={running}
+            onClick={() => setConfirm("run")}
+          >
+            <PlayIcon />
+          </button>
+          <button
+            type="button"
+            className="routine-job-icon-btn"
+            title="Delete"
+            aria-label={`Delete ${routine.name}`}
+            disabled={busy}
+            onClick={() => setConfirm("delete")}
+          >
+            <TrashIcon />
+          </button>
+        </div>
       </div>
       <div className="routine-job-settings">
         <div className="routine-job-meta">

@@ -1718,18 +1718,24 @@ select {
 .routine-job-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
   height: 40px;
   padding: 0 16px;
   border-bottom: 1px solid var(--line);
 }
 
+.routine-job-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .routine-job-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-right: 4px;
   color: var(--muted);
   font-size: 13px;
 }
@@ -1794,17 +1800,26 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--text);
-  font-size: 13px;
+  margin: 0;
+  color: #292d34;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.routine-job-enabled input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #7b68ee;
   cursor: pointer;
 }
 
-.routine-job-enabled-box {
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  accent-color: var(--accent);
-  cursor: pointer;
+:root[data-theme="dark"] .routine-job-enabled {
+  color: #e2e4e9;
 }
 
 .routine-job-icon-btn {

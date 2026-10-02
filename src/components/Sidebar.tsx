@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { memo, useEffect, useMemo, useRef } from "react";
 import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
+import { emptySidebarCreateParent } from "./sidebar/emptyCreateParent";
 import { DashboardsSection } from "./DashboardsSection";
 import { RoutinesSection } from "./RoutinesSection";
 import { TasksSection } from "./TasksSection";
@@ -82,7 +83,14 @@ export const Sidebar = memo(function Sidebar() {
         if (el.closest("button")) return;
         if (el.closest(".tree-context-menu")) return;
         e.preventDefault();
-        fileTreeRef.current?.openCreateMenu(e.clientX, e.clientY);
+        fileTreeRef.current?.openCreateMenu(
+          e.clientX,
+          e.clientY,
+          emptySidebarCreateParent(
+            el,
+            useVaultStore.getState().selectedFolderPath,
+          ),
+        );
       }}
     >
       <div className="sidebar-top">
