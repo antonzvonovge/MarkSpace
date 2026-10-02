@@ -4,11 +4,13 @@ import { MdChevronRight } from "react-icons/md";
 import { DialogShell } from "./AppDialog";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
+import { isCreateFolderAllowed } from "../lib/createLocation";
 import {
   findFolderInTree,
   folderPickerExpandedPaths,
 } from "../lib/lastVaultFolder";
 import {
+  INCOMING_FOLDER,
   createFolder,
   isVaultProjectFolder,
   joinPath,
@@ -21,6 +23,8 @@ type Props = {
   selectedPath: string;
   /** Limit the tree to this folder (e.g. a language project). */
   rootPath?: string;
+  /** Hide Tasks, Routines, and diary projects. */
+  hideReserved?: boolean;
   nested?: boolean;
   onCancel: () => void;
   onChoose: (folder: string) => void;
@@ -131,11 +135,15 @@ export function VaultFolderBrowseDialog({
   open,
   selectedPath,
   rootPath,
+  hideReserved = false,
   nested = false,
   onCancel,
   onChoose,
 }: Props) {
   const tree = useVaultStore((s) => s.tree);
+  const projectPropertiesByPath = useVaultStore(
+    (s) => s.projectPropertiesByPath,
+  );
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const [draft, setDraft] = useState(selectedPath);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -150,18 +158,29 @@ export function VaultFolderBrowseDialog({
       const node = findFolderInTree(tree, scope);
       return node ? [node] : [];
     }
-    return (tree?.children ?? []).filter((c) => c.isDir);
-  }, [tree, scope]);
+    return (tree?.children ?? []).filter(
+      (c) =>
+        c.isDir &&
+        (!hideReserved || isCreateFolderAllowed(c.path, projectPropertiesByPath)),
+    );
+  }, [tree, scope, hideReserved, projectPropertiesByPath]);
 
   useEffect(() => {
     if (!open) return;
-    const start = selectedPath.replace(/^\/+|\/+$/g, "") || scope;
+    let start = selectedPath.replace(/^\/+|\/+$/g, "") || scope;
+    if (
+      hideReserved &&
+      start &&
+      !isCreateFolderAllowed(start, projectPropertiesByPath)
+    ) {
+      start = INCOMING_FOLDER;
+    }
     setDraft(start);
     setExpanded(new Set(folderPickerExpandedPaths(start || scope)));
     setCreating(false);
     setNewName("");
     setCreateError(null);
-  }, [open, selectedPath, scope]);
+  }, [open, selectedPath, scope, hideReserved, projectPropertiesByPath]);
 
   useEffect(() => {
     if (!open || !draft) return;

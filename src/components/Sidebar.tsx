@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { memo, useEffect, useMemo, useRef } from "react";
 import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
+import { SidebarCreateButton } from "./sidebar/SidebarCreateButton";
 import { emptySidebarCreateParent } from "./sidebar/emptyCreateParent";
 import { DashboardsSection } from "./DashboardsSection";
 import { RoutinesSection } from "./RoutinesSection";
@@ -97,8 +98,11 @@ export const Sidebar = memo(function Sidebar() {
         <div className="brand-block">
           <div className="brand">
             <img className="brand-logo" src={brandLogo} alt="" />
-            MarkSpace
+            <span className="brand-name">MarkSpace</span>
           </div>
+          <SidebarCreateButton
+            onCreated={() => fileTreeRef.current?.revealActive()}
+          />
         </div>
 
         <FileTree

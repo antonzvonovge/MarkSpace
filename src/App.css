@@ -852,6 +852,7 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
   min-width: 0;
   /* Center logo on the Favorites section icon column. */
   padding-left: calc(
@@ -870,6 +871,149 @@ select {
   flex-shrink: 0;
   border-radius: 50%;
   object-fit: cover;
+  transform: translateY(-1px);
+}
+
+.brand-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-create {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 34px;
+  margin-left: 8px;
+  margin-right: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sidebar);
+  color: var(--sidebar-text);
+  overflow: hidden;
+}
+
+.sidebar-create-main,
+.sidebar-create-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sidebar-create-main {
+  gap: 6px;
+  padding: 0 12px 0 11px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.sidebar-create-main svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.sidebar-create-caret {
+  width: 28px;
+  border-left: 1px solid var(--line);
+}
+
+.sidebar-create-main:hover,
+.sidebar-create-caret:hover,
+.sidebar-create-caret[aria-expanded="true"] {
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+}
+
+.sidebar-create-main:focus-visible,
+.sidebar-create-caret:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.sidebar-create-main:disabled,
+.sidebar-create-caret:disabled {
+  cursor: default;
+}
+
+.sidebar-create:has(button:disabled) {
+  opacity: 0.45;
+}
+
+.sidebar-create-menu {
+  z-index: 10000;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.16);
+  animation: tree-create-in 0.16s ease;
+}
+
+:root[data-density="compact"] .sidebar-create {
+  height: 30px;
+}
+
+:root[data-density="compact"] .sidebar-create-main {
+  padding: 0 10px 0 9px;
+  font-size: 12px;
+}
+
+.create-entity-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--editor-surface);
+}
+
+.create-entity-location-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.create-entity-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.create-entity-more:hover {
+  background: var(--menu-item-hover);
+  color: var(--text);
+}
+
+.create-entity-error {
+  margin: 4px 0 0;
+  color: var(--danger);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .ghost-btn {
