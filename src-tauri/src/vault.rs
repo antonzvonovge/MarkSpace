@@ -30,6 +30,8 @@ type OrderMap = HashMap<String, Vec<String>>;
 type TagIndex = HashMap<String, Vec<String>>;
 /// Vault-relative `.md` path → `fileMarker` catalog id.
 type FileMarkerIndex = HashMap<String, String>;
+/// Vault-relative path → stripped first ATX heading (folder notes keyed by folder).
+type NoteTitleIndex = HashMap<String, String>;
 
 pub struct VaultState {
     pub root: Mutex<Option<PathBuf>>,
@@ -38,6 +40,8 @@ pub struct VaultState {
     pub tag_index: Mutex<TagIndex>,
     /// In-memory file-marker map; rebuilt on vault open, patched on write/rename/delete.
     pub file_marker_index: Mutex<FileMarkerIndex>,
+    /// First Markdown heading per note; same lifetime as the file-marker index.
+    pub note_title_index: Mutex<NoteTitleIndex>,
 }
 
 impl Default for VaultState {
@@ -47,6 +51,7 @@ impl Default for VaultState {
             watcher: Mutex::new(None),
             tag_index: Mutex::new(HashMap::new()),
             file_marker_index: Mutex::new(HashMap::new()),
+            note_title_index: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -1117,7 +1122,9 @@ pub fn open_vault(
     }
 
     replace_tag_index(&state, rebuild_tag_index(&root));
-    replace_file_marker_index(&state, rebuild_file_marker_index(&root));
+    let (markers, titles) = rebuild_file_marker_and_title_indexes(&root);
+    replace_file_marker_index(&state, markers);
+    replace_note_title_index(&state, titles);
     start_watcher(app.clone(), &state, &root)?;
     crate::embeddings::notify_vault_opened(&app, &root);
     crate::routines::on_vault_opened(app.clone(), root.clone());
@@ -1240,6 +1247,7 @@ pub fn write_note(path: String, content: String, state: State<VaultState>) -> Re
     if is_markdown(&rel) {
         set_tag_index_path(&state, &rel, tags_from_note_content(&content));
         set_file_marker_index_path(&state, &rel, file_marker_from_note_content(&content));
+        set_note_title_index_path(&state, &rel, &content);
         crate::embeddings::notify_file_changed(&rel);
     }
     Ok(())
@@ -1269,6 +1277,7 @@ pub fn create_note(path: String, state: State<VaultState>) -> Result<String, Str
     let created = relative_to_root(&root, &full);
     set_tag_index_path(&state, &created, Vec::new());
     set_file_marker_index_path(&state, &created, None);
+    set_note_title_index_path(&state, &created, &content);
     crate::embeddings::notify_file_changed(&created);
     let parent = parent_rel(&created);
     let name = entry_name(&created);
@@ -1562,6 +1571,7 @@ pub fn import_paths(
             if let Ok(text) = fs::read_to_string(&full) {
                 set_tag_index_path(&state, rel, tags_from_note_content(&text));
                 set_file_marker_index_path(&state, rel, file_marker_from_note_content(&text));
+                set_note_title_index_path(&state, rel, &text);
             }
             crate::embeddings::notify_file_changed(rel);
         } else if is_pdf(rel) {
@@ -1730,6 +1740,7 @@ pub fn import_document_bytes(
         if let Ok(text) = fs::read_to_string(&dest) {
             set_tag_index_path(&state, &created, tags_from_note_content(&text));
             set_file_marker_index_path(&state, &created, file_marker_from_note_content(&text));
+            set_note_title_index_path(&state, &created, &text);
         }
         crate::embeddings::notify_file_changed(&created);
     } else if is_pdf(&created) {
@@ -1849,6 +1860,7 @@ pub fn ensure_folder_note(folder: String, state: State<VaultState>) -> Result<St
         fs::write(&full, &content).map_err(|e| format!("Cannot create folder note: {e}"))?;
         set_tag_index_path(&state, &note_rel, Vec::new());
         set_file_marker_index_path(&state, &note_rel, None);
+        set_note_title_index_path(&state, &note_rel, &content);
         crate::embeddings::notify_file_changed(&note_rel);
     }
     Ok(note_rel)
@@ -2003,6 +2015,7 @@ pub fn rename_path(from: String, to: String, state: State<VaultState>) -> Result
     let _ = crate::dict_progress::remap_dict_progress(&root, &from_rel, Some(&to_rel));
     remap_tag_index_path(&state, &from_rel, Some(&to_rel));
     remap_file_marker_index_path(&state, &from_rel, Some(&to_rel));
+    remap_note_title_index_path(&state, &from_rel, Some(&to_rel));
     crate::embeddings::notify_file_renamed(&from_rel, &to_rel);
 
     Ok(to_rel)
@@ -2098,6 +2111,7 @@ pub fn move_entry(
         let _ = crate::dict_progress::remap_dict_progress(&root, &from, Some(&new_rel));
         remap_tag_index_path(&state, &from, Some(&new_rel));
         remap_file_marker_index_path(&state, &from, Some(&new_rel));
+        remap_note_title_index_path(&state, &from, Some(&new_rel));
         crate::embeddings::notify_file_renamed(&from, &new_rel);
     }
 
@@ -2194,6 +2208,7 @@ fn promote_note_to_folder_inner(
     // File markers for notes are keyed by the note path; after promotion the
     // marker lives on the folder row (folder path), not on `.folder.md`.
     remap_file_marker_index_path(state, &note, Some(&folder_rel));
+    remap_note_title_index_path(state, &note, Some(&folder_rel));
     crate::embeddings::notify_file_renamed(&note, &folder_note_path);
     let _ = crate::favorites::remap_favorites(root, &note, Some(&folder_note_path));
     let _ = crate::filemeta::remap_filemeta(root, &note, Some(&folder_note_path));
@@ -2315,6 +2330,7 @@ pub fn delete_path(path: String, state: State<VaultState>) -> Result<(), String>
     let _ = crate::dict_progress::remap_dict_progress(&root, &rel, None);
     remove_tag_index_path(&state, &rel);
     remove_file_marker_index_path(&state, &rel);
+    remove_note_title_index_path(&state, &rel);
     crate::embeddings::notify_file_removed(&rel);
     Ok(())
 }
@@ -2976,8 +2992,9 @@ fn rebuild_tag_index(root: &Path) -> TagIndex {
     index
 }
 
-fn rebuild_file_marker_index(root: &Path) -> FileMarkerIndex {
-    let mut index = FileMarkerIndex::new();
+fn rebuild_file_marker_and_title_indexes(root: &Path) -> (FileMarkerIndex, NoteTitleIndex) {
+    let mut markers = FileMarkerIndex::new();
+    let mut titles = NoteTitleIndex::new();
     for entry in WalkDir::new(root)
         .into_iter()
         .filter_entry(|e| {
@@ -3001,15 +3018,231 @@ fn rebuild_file_marker_index(root: &Path) -> FileMarkerIndex {
         let Ok(text) = fs::read_to_string(entry.path()) else {
             continue;
         };
-        let Some(marker) = file_marker_from_note_content(&text) else {
-            continue;
-        };
         let rel = relative_to_root(root, entry.path());
         // Folder notes (`.folder.md`) are keyed by the folder path so the tree
-        // can show markers on folder rows without exposing the hidden note.
-        index.insert(file_marker_index_key(&rel), marker);
+        // can show markers and titles on folder rows without exposing the hidden note.
+        let key = file_marker_index_key(&rel);
+        if let Some(marker) = file_marker_from_note_content(&text) {
+            markers.insert(key.clone(), marker);
+        }
+        if let Some(title) = note_title_from_content(&text) {
+            titles.insert(key, title);
+        }
     }
-    index
+    (markers, titles)
+}
+
+fn fence_marker(trimmed: &str) -> Option<char> {
+    let mut chars = trimmed.chars();
+    let c = chars.next()?;
+    if c != '`' && c != '~' {
+        return None;
+    }
+    let mut n = 1;
+    for next in chars {
+        if next == c {
+            n += 1;
+        } else {
+            break;
+        }
+    }
+    if n >= 3 { Some(c) } else { None }
+}
+
+fn atx_heading_inner(line: &str) -> Option<String> {
+    let trimmed = line.trim_end();
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && i < 3 && bytes[i] == b' ' {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b'#' {
+        return None;
+    }
+    let mut level = 0;
+    while i < bytes.len() && bytes[i] == b'#' {
+        level += 1;
+        i += 1;
+        if level > 6 {
+            return None;
+        }
+    }
+    if level == 0 || i >= bytes.len() {
+        return None;
+    }
+    if bytes[i] != b' ' && bytes[i] != b'\t' {
+        return None;
+    }
+    let rest = trimmed[i..].trim();
+    if rest.is_empty() {
+        return None;
+    }
+    Some(rest.to_string())
+}
+
+fn first_atx_heading(content: &str) -> Option<String> {
+    let text = content
+        .strip_prefix('\u{feff}')
+        .unwrap_or(content)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
+    if lines.first().map(|l| l.trim()) == Some("---") {
+        i = 1;
+        while i < lines.len() && lines[i].trim() != "---" {
+            i += 1;
+        }
+        if i < lines.len() {
+            i += 1;
+        }
+    }
+    let mut fence: Option<char> = None;
+    while i < lines.len() {
+        let line = lines[i];
+        if let Some(marker) = fence_marker(line.trim_start()) {
+            match fence {
+                None => fence = Some(marker),
+                Some(open) if open == marker => fence = None,
+                _ => {}
+            }
+            i += 1;
+            continue;
+        }
+        if fence.is_none() {
+            if let Some(inner) = atx_heading_inner(line) {
+                return Some(inner);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn strip_wrapped(input: &str, delim: &str) -> String {
+    let mut out = String::new();
+    let mut rest = input;
+    while !rest.is_empty() {
+        let Some(start) = rest.find(delim) else {
+            out.push_str(rest);
+            break;
+        };
+        let after = &rest[start + delim.len()..];
+        if let Some(end) = after.find(delim) {
+            if end > 0 {
+                out.push_str(&rest[..start]);
+                out.push_str(&after[..end]);
+                rest = &after[end + delim.len()..];
+                continue;
+            }
+        }
+        out.push_str(&rest[..start + delim.len()]);
+        rest = after;
+    }
+    out
+}
+
+fn replace_wiki_and_links(input: &str) -> String {
+    let chars: Vec<char> = input.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if i + 1 < chars.len() && chars[i] == '[' && chars[i + 1] == '[' {
+            if let Some(end) = find_pair(&chars, i + 2) {
+                let inner: String = chars[i + 2..end].iter().collect();
+                let label = if let Some(pos) = inner.find('|') {
+                    let alias = inner[pos + 1..].trim();
+                    if alias.is_empty() {
+                        inner[..pos].trim().to_string()
+                    } else {
+                        alias.to_string()
+                    }
+                } else {
+                    inner.trim().to_string()
+                };
+                out.push_str(&label);
+                i = end + 2;
+                continue;
+            }
+        }
+        if chars[i] == '[' {
+            if let Some((label, next)) = take_md_link(&chars, i) {
+                out.push_str(&label);
+                i = next;
+                continue;
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn find_pair(chars: &[char], from: usize) -> Option<usize> {
+    let mut i = from;
+    while i + 1 < chars.len() {
+        if chars[i] == ']' && chars[i + 1] == ']' {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+fn take_md_link(chars: &[char], start: usize) -> Option<(String, usize)> {
+    if start + 1 < chars.len() && chars[start + 1] == '[' {
+        return None;
+    }
+    let mut i = start + 1;
+    while i < chars.len() && chars[i] != ']' {
+        i += 1;
+    }
+    if i >= chars.len() || i == start + 1 {
+        return None;
+    }
+    if i + 1 >= chars.len() || chars[i + 1] != '(' {
+        return None;
+    }
+    let label: String = chars[start + 1..i].iter().collect();
+    let mut j = i + 2;
+    while j < chars.len() && chars[j] != ')' {
+        j += 1;
+    }
+    if j >= chars.len() {
+        return None;
+    }
+    Some((label, j + 1))
+}
+
+fn strip_inline_markdown(input: &str) -> String {
+    let mut s = replace_wiki_and_links(input);
+    for delim in ["**", "__", "~~", "`"] {
+        s = strip_wrapped(&s, delim);
+    }
+    let mut out = String::new();
+    let mut prev_space = false;
+    for c in s.chars() {
+        if c.is_whitespace() {
+            if !prev_space && !out.is_empty() {
+                out.push(' ');
+                prev_space = true;
+            }
+        } else {
+            prev_space = false;
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
+}
+
+fn note_title_from_content(content: &str) -> Option<String> {
+    let raw = first_atx_heading(content)?;
+    let stripped = strip_inline_markdown(&raw);
+    if stripped.is_empty() {
+        None
+    } else {
+        Some(stripped)
+    }
 }
 
 /// Index key for a note path: folder notes map to their parent folder.
@@ -3057,6 +3290,55 @@ fn remove_tag_index_path(state: &VaultState, rel: &str) {
     guard.remove(rel);
     let prefix = format!("{rel}/");
     guard.retain(|path, _| !path.starts_with(&prefix));
+}
+
+fn set_note_title_index_path(state: &VaultState, rel: &str, content: &str) {
+    let Ok(mut guard) = state.note_title_index.lock() else {
+        return;
+    };
+    let key = file_marker_index_key(rel);
+    match note_title_from_content(content) {
+        Some(title) => {
+            guard.insert(key, title);
+        }
+        None => {
+            guard.remove(&key);
+        }
+    }
+}
+
+fn remove_note_title_index_path(state: &VaultState, rel: &str) {
+    let Ok(mut guard) = state.note_title_index.lock() else {
+        return;
+    };
+    let key = file_marker_index_key(rel);
+    guard.remove(rel);
+    guard.remove(&key);
+    let prefix = format!("{rel}/");
+    guard.retain(|path, _| !path.starts_with(&prefix));
+}
+
+fn remap_note_title_index_path(state: &VaultState, from: &str, to: Option<&str>) {
+    let Ok(mut guard) = state.note_title_index.lock() else {
+        return;
+    };
+    let mut next = NoteTitleIndex::new();
+    for (path, title) in guard.drain() {
+        if path == from {
+            if let Some(to) = to {
+                next.insert(to.to_string(), title);
+            }
+            continue;
+        }
+        if let Some(rest) = path.strip_prefix(&format!("{from}/")) {
+            if let Some(to) = to {
+                next.insert(format!("{to}/{rest}"), title);
+            }
+            continue;
+        }
+        next.insert(path, title);
+    }
+    *guard = next;
 }
 
 fn remove_file_marker_index_path(state: &VaultState, rel: &str) {
@@ -3122,6 +3404,12 @@ fn replace_tag_index(state: &VaultState, index: TagIndex) {
 
 fn replace_file_marker_index(state: &VaultState, index: FileMarkerIndex) {
     if let Ok(mut guard) = state.file_marker_index.lock() {
+        *guard = index;
+    }
+}
+
+fn replace_note_title_index(state: &VaultState, index: NoteTitleIndex) {
+    if let Ok(mut guard) = state.note_title_index.lock() {
         *guard = index;
     }
 }
@@ -3439,6 +3727,32 @@ pub fn list_file_markers(state: State<VaultState>) -> Result<Vec<NoteFileMarker>
         .map(|(path, marker_id)| NoteFileMarker {
             path: path.clone(),
             marker_id: marker_id.clone(),
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    Ok(out)
+}
+
+/// One note path (or folder, for `.folder.md`) and its display heading.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteTitle {
+    pub path: String,
+    pub title: String,
+}
+
+/// Paths that have a first ATX heading. Folder notes are keyed by the folder.
+#[tauri::command(async)]
+pub fn list_note_titles(state: State<VaultState>) -> Result<Vec<NoteTitle>, String> {
+    let guard = state
+        .note_title_index
+        .lock()
+        .map_err(|_| "Note title index lock poisoned")?;
+    let mut out: Vec<NoteTitle> = guard
+        .iter()
+        .map(|(path, title)| NoteTitle {
+            path: path.clone(),
+            title: title.clone(),
         })
         .collect();
     out.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
@@ -3789,11 +4103,13 @@ pub fn reindex_note_tags(path: String, state: State<VaultState>) -> Result<Vec<S
         if !full.is_file() {
             remove_tag_index_path(&state, &rel);
             remove_file_marker_index_path(&state, &rel);
+            remove_note_title_index_path(&state, &rel);
         } else {
             let text = fs::read_to_string(&full).map_err(|e| format!("Cannot read note: {e}"))?;
             let tags = tags_from_note_content(&text);
             set_tag_index_path(&state, &rel, tags);
             set_file_marker_index_path(&state, &rel, file_marker_from_note_content(&text));
+            set_note_title_index_path(&state, &rel, &text);
         }
     } else if lower.ends_with(".pdf") {
         let full = ensure_inside(&root, Path::new(&rel))?;
@@ -3993,5 +4309,28 @@ mod diary_marker_tests {
             marker_from_frontmatter_yaml("tags:\n  - marker: nested\n"),
             None
         );
+    }
+
+    #[test]
+    fn note_title_skips_frontmatter_and_fences() {
+        assert_eq!(
+            note_title_from_content("---\ntitle: yaml\n---\n\n# Real title\n\n## Later\n"),
+            Some("Real title".into())
+        );
+        assert_eq!(
+            note_title_from_content("```\n# inside\n```\n\n## Outside\n"),
+            Some("Outside".into())
+        );
+        assert_eq!(note_title_from_content("just a paragraph\n"), None);
+        assert_eq!(note_title_from_content("# **Title**\n"), Some("Title".into()));
+        assert_eq!(
+            note_title_from_content("# hello_world\n"),
+            Some("hello_world".into())
+        );
+        assert_eq!(
+            note_title_from_content("# [[Note|Alias]]\n"),
+            Some("Alias".into())
+        );
+        assert_eq!(note_title_from_content("# `code`\n"), Some("code".into()));
     }
 }

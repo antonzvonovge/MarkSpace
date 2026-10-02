@@ -92,6 +92,16 @@ describe("chipLabelForPath", () => {
     expect(chipLabelForPath("solo.md")).toBe("solo.md");
   });
 
+  it("prefers a note title when titles are provided", () => {
+    const titles = {
+      "Notes/todo.md": "Buy milk",
+      Projects: "Project notes",
+    };
+    expect(chipLabelForPath("Notes/todo.md", titles)).toBe("Buy milk");
+    expect(chipLabelForPath("Projects/", titles)).toBe("Project notes");
+    expect(chipLabelForPath("Notes/other.md", titles)).toBe("other.md");
+  });
+
   it("truncates long names with ellipsis, keeps extension", () => {
     expect(
       chipLabelForPath("Notes/very-long-document-name-here.md"),

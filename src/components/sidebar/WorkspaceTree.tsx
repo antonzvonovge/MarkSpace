@@ -32,6 +32,7 @@ import { isVaultDocumentPath } from "../../lib/vaultApi";
 import { vaultProjectRootOf } from "../../lib/diaryNotes";
 import { isVaultProjectFolder } from "../../lib/vaultApi";
 import { fileMarkerById, type FileMarker } from "../../lib/fileMarkers";
+import { treeRowTitleLabel } from "../../lib/noteTitle";
 import { useVaultStore } from "../../store/vaultStore";
 import {
   flattenVisibleWorkspace,
@@ -97,6 +98,8 @@ export type WorkspaceTreeProps = {
   unresolvedCounts: Map<string, number>;
   fileMarkersByPath: Record<string, string>;
   fileMarkerCatalog: readonly FileMarker[];
+  showNoteTitles?: boolean;
+  titlesByPath?: Readonly<Record<string, string>>;
   renamingPath: string | null;
   osDropRowPath: string | null;
   scrollParentRef: React.RefObject<HTMLElement | null>;
@@ -211,6 +214,8 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   unresolvedCounts,
   fileMarkersByPath,
   fileMarkerCatalog,
+  showNoteTitles = false,
+  titlesByPath,
   renamingPath,
   osDropRowPath,
   scrollParentRef,
@@ -665,12 +670,22 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       fileMarkersByPath[path] ?? "",
       fileMarkerCatalog,
     );
+    const titleLabel = treeRowTitleLabel(
+      path,
+      isDir,
+      row.name,
+      showNoteTitles,
+      titlesByPath ?? {},
+    );
 
     return (
       <VaultTreeRow
         key={path}
         path={path}
         name={row.name}
+        displayLabel={titleLabel.literal ? titleLabel.label : undefined}
+        renameSelectAll={titleLabel.selectAll}
+        labelTooltip={titleLabel.tooltip}
         isDir={isDir}
         hasChildren={row.hasChildren}
         depth={row.depth}
@@ -838,7 +853,15 @@ export const WorkspaceTree = memo(function WorkspaceTree({
           >
             <VaultTreeDragChip
               path={activeRow.path}
-              name={activeRow.name}
+              name={
+                treeRowTitleLabel(
+                  activeRow.path,
+                  activeRow.isDir,
+                  activeRow.name,
+                  showNoteTitles,
+                  titlesByPath ?? {},
+                ).label
+              }
               isDir={activeRow.isDir}
               projectType={activeChipMeta.projectType}
               learningLanguage={activeChipMeta.learningLanguage}

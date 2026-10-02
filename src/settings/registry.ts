@@ -40,6 +40,9 @@ export type SettingControl =
     }
   | {
       type: "date";
+    }
+  | {
+      type: "boolean";
     };
 
 export type SettingDescriptor = {
@@ -167,6 +170,15 @@ export const SETTINGS_REGISTRY: SettingDescriptor[] = [
     description: "Base font size for the shell (sidebar, tabs, settings).",
     control: { type: "number", min: 11, max: 20, step: 1 },
     default: DEFAULT_PREFS.uiFontSize,
+  },
+  {
+    id: "showNoteTitles",
+    category: "appearance",
+    label: "Show note titles",
+    description:
+      "In the file sidebar, composer chips, and chat, show the first heading of a Markdown note instead of the file name. Inline rename edits that heading. Folders use the heading of their folder note.",
+    control: { type: "boolean" },
+    default: DEFAULT_PREFS.showNoteTitles,
   },
   {
     id: "liveFontSize",

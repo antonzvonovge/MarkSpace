@@ -51,6 +51,14 @@ export function SettingRow({ setting, value, onChange }: Props) {
             aria-label={setting.label}
             onChange={(e) => onChange(e.target.value as Prefs[PrefKey])}
           />
+        ) : control.type === "boolean" ? (
+          <input
+            className="setting-checkbox"
+            type="checkbox"
+            checked={value === true}
+            aria-label={setting.label}
+            onChange={(e) => onChange(e.target.checked as Prefs[PrefKey])}
+          />
         ) : (
           <input
             className="setting-number"

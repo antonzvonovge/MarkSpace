@@ -879,6 +879,16 @@ export async function listFileMarkers(): Promise<NoteFileMarker[]> {
   return invoke<NoteFileMarker[]>("list_file_markers");
 }
 
+export type NoteTitle = {
+  path: string;
+  title: string;
+};
+
+/** Paths with a first ATX heading. Folder notes are keyed by the folder path. */
+export async function listNoteTitles(): Promise<NoteTitle[]> {
+  return invoke<NoteTitle[]>("list_note_titles");
+}
+
 /** How much of the machine background indexing may take. */
 export type BackgroundPriority = "low" | "balanced" | "full";
 

@@ -99,6 +99,7 @@ function mergePrefs(raw: LegacyPrefs | null | undefined): Prefs {
       raw.defaultViewMode === "source" || raw.defaultViewMode === "live"
         ? raw.defaultViewMode
         : DEFAULT_PREFS.defaultViewMode,
+    showNoteTitles: raw.showNoteTitles === true,
   };
 }
 

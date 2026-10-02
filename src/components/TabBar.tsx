@@ -13,6 +13,9 @@ import {
 } from "../store/vaultStore";
 import { canGoBack, canGoForward } from "../lib/navHistory";
 import { documentKind } from "../lib/vaultApi";
+import { noteTitleIndexKey } from "../lib/noteTitle";
+import { usePrefsStore } from "../store/prefsStore";
+import { useNoteTitlesStore } from "../store/noteTitlesStore";
 import { isUnderDiaryProject, vaultProjectRootOf } from "../lib/diaryNotes";
 import { useChatUiStore } from "../store/chatUiStore";
 import { useRoutinesStore } from "../store/routinesStore";
@@ -179,6 +182,12 @@ function TabItem({
     projectRoot && projectPropertiesByPath[projectRoot]?.color
       ? projectPropertiesByPath[projectRoot]!.color
       : "";
+  const showNoteTitles = usePrefsStore((s) => s.prefs.showNoteTitles);
+  const noteTitle = useNoteTitlesStore((s) => {
+    if (!showNoteTitles || virtual) return "";
+    const key = noteTitleIndexKey(tab.path);
+    return (key && s.titlesByPath[key]) || "";
+  });
   const tabTitle = isGraphTab(tab)
     ? "Tag graph"
     : isSettingsTab(tab)
@@ -188,7 +197,9 @@ function TabItem({
         : isRoutineTab(tab)
           ? routineName || "Routine"
           : tab.path;
-  const label = isRoutineTab(tab) ? routineName || "Routine" : tabLabel(tab.path, tab.kind);
+  const label = isRoutineTab(tab)
+    ? routineName || "Routine"
+    : noteTitle || tabLabel(tab.path, tab.kind);
 
   return (
     <div

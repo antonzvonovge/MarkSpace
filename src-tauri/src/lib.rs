@@ -200,6 +200,7 @@ pub fn run() {
             vault::list_diary_day_markers,
             vault::list_dictionary_tags,
             vault::list_file_markers,
+            vault::list_note_titles,
             vault::list_note_tags,
             vault::list_note_wikilinks,
             vault::reindex_note_tags,

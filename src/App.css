@@ -7434,6 +7434,14 @@ button.status-bar-jobs-menu-item:hover {
   padding-top: 2px;
 }
 
+.setting-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .rgb-picker-trigger {
   display: flex;
   align-items: center;

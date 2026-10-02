@@ -44,6 +44,11 @@ import {
 import { placeFlyoutMenu, placePointerMenu } from "../lib/menuPlacement";
 import { isVaultLexiconFolder, isVaultLexiconMdNote } from "../lib/lexiconNotes";
 import { fileMarkerById } from "../lib/fileMarkers";
+import { canEditNoteTitle, treeRowTitleLabel } from "../lib/noteTitle";
+import {
+  EMPTY_NOTE_TITLES,
+  useNoteTitlesStore,
+} from "../store/noteTitlesStore";
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
@@ -344,22 +349,33 @@ function splitFileName(name: string): { stem: string; ext: string } | null {
   return { stem: name.slice(0, lastDot), ext: name.slice(lastDot) };
 }
 
-function TreeNodeLabel({ text, isDir }: { text: string; isDir?: boolean }) {
+function TreeNodeLabel({
+  text,
+  isDir,
+  literal,
+  tooltip,
+}: {
+  text: string;
+  isDir?: boolean;
+  literal?: boolean;
+  tooltip?: string;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
-  const [title, setTitle] = useState<string | undefined>();
-  const parts = !isDir ? splitFileName(text) : null;
+  const [overflowTitle, setOverflowTitle] = useState<string | undefined>();
+  const parts = !isDir && !literal ? splitFileName(text) : null;
 
   return (
     <span
       ref={ref}
       className="tree-node-label"
-      title={title}
+      title={tooltip ?? overflowTitle}
       onMouseEnter={() => {
+        if (tooltip) return;
         const el = ref.current;
         if (!el) return;
-        setTitle(el.scrollWidth > el.clientWidth + 1 ? text : undefined);
+        setOverflowTitle(el.scrollWidth > el.clientWidth + 1 ? text : undefined);
       }}
-      onMouseLeave={() => setTitle(undefined)}
+      onMouseLeave={() => setOverflowTitle(undefined)}
     >
       {parts ? (
         <>
@@ -1028,10 +1044,12 @@ function TreeContextMenu({
 
 function InlineRenameInput({
   initialValue,
+  selectAll,
   onCommit,
   onCancel,
 }: {
   initialValue: string;
+  selectAll?: boolean;
   onCommit: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -1044,10 +1062,11 @@ function InlineRenameInput({
       const input = inputRef.current;
       if (!input) return;
       input.focus();
-      selectRenameStem(input, initialValue);
+      if (selectAll) input.select();
+      else selectRenameStem(input, initialValue);
     });
     return () => window.cancelAnimationFrame(id);
-  }, [initialValue]);
+  }, [initialValue, selectAll]);
 
   const finish = (action: () => void) => {
     if (committed.current) return;
@@ -1114,6 +1133,8 @@ function FavoritesTreeRows({
   unresolvedCounts,
   fileMarkersByPath,
   fileMarkerCatalog,
+  showNoteTitles = false,
+  titlesByPath,
   onOpenContextMenu,
   onSelectInTree,
   onOpenFolder,
@@ -1136,6 +1157,8 @@ function FavoritesTreeRows({
   unresolvedCounts: Map<string, number>;
   fileMarkersByPath: Record<string, string>;
   fileMarkerCatalog: readonly { id: string; emoji: string; label: string }[];
+  showNoteTitles?: boolean;
+  titlesByPath?: Readonly<Record<string, string>>;
   onOpenContextMenu: (menu: ContextMenuState) => void;
   onSelectInTree: (path: string, isDir: boolean) => void;
   onOpenFolder: (
@@ -1179,6 +1202,13 @@ function FavoritesTreeRows({
         const fileMarker = fileMarkerById(
           fileMarkersByPath[path] ?? "",
           fileMarkerCatalog,
+        );
+        const titleLabel = treeRowTitleLabel(
+          path,
+          isDir,
+          node.name,
+          showNoteTitles,
+          titlesByPath ?? {},
         );
         const projectRoot = vaultProjectRootOf(path);
         const projectColor =
@@ -1335,12 +1365,18 @@ function FavoritesTreeRows({
               {renaming ? (
                 <InlineRenameInput
                   key={path}
-                  initialValue={node.name}
+                  initialValue={titleLabel.label}
+                  selectAll={titleLabel.selectAll}
                   onCancel={onRenameCancel}
                   onCommit={(nextName) => onRenameCommit(path, nextName)}
                 />
               ) : (
-                <TreeNodeLabel text={node.name} isDir={isDir} />
+                <TreeNodeLabel
+                  text={titleLabel.label}
+                  isDir={isDir}
+                  literal={titleLabel.literal}
+                  tooltip={titleLabel.tooltip}
+                />
               )}
               <TreeCommentCount count={openComments} />
             </div>
@@ -1361,6 +1397,8 @@ function FavoritesTreeRows({
                 unresolvedCounts={unresolvedCounts}
                 fileMarkersByPath={fileMarkersByPath}
                 fileMarkerCatalog={fileMarkerCatalog}
+                showNoteTitles={showNoteTitles}
+                titlesByPath={titlesByPath}
                 onOpenContextMenu={onOpenContextMenu}
                 onSelectInTree={onSelectInTree}
                 onOpenFolder={onOpenFolder}
@@ -1420,6 +1458,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const allComments = useVaultStore((s) => s.allComments);
   const fileMarkersByPath = useVaultStore((s) => s.fileMarkersByPath);
   const fileMarkerCatalog = useFileMarkerSettingsStore((s) => s.markers);
+  const showNoteTitles = usePrefsStore((s) => s.prefs.showNoteTitles);
+  const titlesByPath = useNoteTitlesStore((s) =>
+    showNoteTitles ? s.titlesByPath : EMPTY_NOTE_TITLES,
+  );
 
   const treeFocusRef = useRef<HTMLDivElement | null>(null);
   const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
@@ -1519,7 +1561,14 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     (path: string, nextName: string) => {
       setRenamingPath(null);
       void (async () => {
-        await renameTreeEntry(path, nextName);
+        const show = usePrefsStore.getState().prefs.showNoteTitles;
+        const node = findTreeNode(useVaultStore.getState().tree, path);
+        const isDir = node?.isDir ?? false;
+        if (show && canEditNoteTitle(path, isDir)) {
+          await useVaultStore.getState().renameNoteTitle(path, isDir, nextName);
+        } else {
+          await renameTreeEntry(path, nextName);
+        }
         focusTree();
       })();
     },
@@ -2475,6 +2524,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             unresolvedCounts={unresolvedCounts}
             fileMarkersByPath={fileMarkersByPath}
             fileMarkerCatalog={fileMarkerCatalog}
+            showNoteTitles={showNoteTitles}
+            titlesByPath={titlesByPath}
             onOpenContextMenu={setContextMenu}
             onSelectInTree={selectInTree}
             onOpenFolder={(path, options) => {
@@ -2547,6 +2598,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
                 unresolvedCounts={unresolvedCounts}
                 fileMarkersByPath={fileMarkersByPath}
                 fileMarkerCatalog={fileMarkerCatalog}
+                showNoteTitles={showNoteTitles}
+                titlesByPath={titlesByPath}
                 onOpenContextMenu={setContextMenu}
                 onSelectInTree={selectInTree}
                 onOpenFolder={(path, options) => {
@@ -2574,6 +2627,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             unresolvedCounts={unresolvedCounts}
             fileMarkersByPath={fileMarkersByPath}
             fileMarkerCatalog={fileMarkerCatalog}
+            showNoteTitles={showNoteTitles}
+            titlesByPath={titlesByPath}
             renamingPath={renamingPath}
             osDropRowPath={osDropRowPath}
             scrollParentRef={treeFocusRef}

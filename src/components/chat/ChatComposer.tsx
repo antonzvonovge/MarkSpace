@@ -22,6 +22,7 @@ import {
 import {
   beginComposerChipDrag,
   chipLabelForPath,
+  refreshPathChipLabels,
   composerChipDragSource,
   composerDraftToHtml,
   draftFromDataTransfer,
@@ -54,6 +55,11 @@ import {
   type VaultTreePointerDropDetail,
 } from "../../lib/vaultTreeDrag";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
+import { usePrefsStore } from "../../store/prefsStore";
+import {
+  EMPTY_NOTE_TITLES,
+  useNoteTitlesStore,
+} from "../../store/noteTitlesStore";
 import { vaultChatModelId } from "../../store/vaultAiSettingsStore";
 import { useChatStore } from "../../store/chatStore";
 import { isFileTab, useVaultStore } from "../../store/vaultStore";
@@ -192,6 +198,15 @@ export function ChatComposer() {
     const tab = tabs.find((t) => t.path === activePath);
     return tab && isFileTab(tab) ? activePath : null;
   }, [activePath, tabs]);
+  const showNoteTitles = usePrefsStore((s) => s.prefs.showNoteTitles);
+  const titlesByPath = useNoteTitlesStore((s) =>
+    showNoteTitles ? s.titlesByPath : EMPTY_NOTE_TITLES,
+  );
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (el) refreshPathChipLabels(el);
+  }, [showNoteTitles, titlesByPath]);
 
   const streaming = status === "streaming" || status === "compacting";
   const models: AiModelOption[] = settings.models.length
@@ -368,14 +383,17 @@ export function ChatComposer() {
               id: "active-file",
               label: "Add current file",
               description: activeFilePath
-                ? chipLabelForPath(activeFilePath)
+                ? chipLabelForPath(
+                    activeFilePath,
+                    showNoteTitles ? titlesByPath : null,
+                  )
                 : "No file open",
               title: activeFilePath ?? undefined,
               disabled: !activeFilePath,
             },
           ]
         : undefined,
-    [skillPickerRect, activeFilePath],
+    [skillPickerRect, activeFilePath, showNoteTitles, titlesByPath],
   );
 
   const openSkillPicker = () => {

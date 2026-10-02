@@ -4,7 +4,10 @@ import {
   wrapSelectionMarker,
 } from "./chatSelectionChips";
 import type { ChatSelectionRef } from "./chatSelectionChips";
+import { noteTitleIndexKey } from "./noteTitle";
 import { folderNotePath } from "./vaultApi";
+import { usePrefsStore } from "../store/prefsStore";
+import { useNoteTitlesStore } from "../store/noteTitlesStore";
 
 /** Markers for vault path chips in the chat composer draft string. */
 export const VAULT_PATH_OPEN = "⟦";
@@ -128,29 +131,76 @@ export function extractToolIdsFromDraft(text: string): string[] {
 
 const CHIP_LABEL_MAX = 16;
 
-/** Visible chip label: basename only, truncated with … if long. */
-export function chipLabelForPath(path: string): string {
+function truncateChipLabel(
+  name: string,
+  opts: { isDir: boolean; keepExt: boolean },
+): string {
+  let label = name;
+  if (label.length > CHIP_LABEL_MAX) {
+    const dot =
+      opts.keepExt && !opts.isDir ? label.lastIndexOf(".") : -1;
+    const ext = dot > 0 && label.length - dot <= 5 ? label.slice(dot) : "";
+    if (ext) {
+      const budget = CHIP_LABEL_MAX - ext.length - 1;
+      label = `${label.slice(0, Math.max(1, budget))}…${ext}`;
+    } else {
+      label = `${label.slice(0, CHIP_LABEL_MAX - 1)}…`;
+    }
+  }
+  return opts.isDir ? `${label}/` : label;
+}
+
+function titleForChipPath(
+  path: string,
+  titles: Readonly<Record<string, string>>,
+): string | null {
   const isDir = path.endsWith("/");
+  const key = isDir
+    ? path.replace(/\/+$/, "")
+    : (noteTitleIndexKey(path) ?? path);
+  const title = titles[key]?.trim();
+  return title || null;
+}
+
+/**
+ * Visible chip label. Pass `titles` to prefer a note heading; omit it to
+ * keep the basename. The vault path stored on the chip does not change.
+ */
+export function chipLabelForPath(
+  path: string,
+  titles?: Readonly<Record<string, string>> | null,
+): string {
+  const isDir = path.endsWith("/");
+  if (titles) {
+    const title = titleForChipPath(path, titles);
+    if (title) return truncateChipLabel(title, { isDir: false, keepExt: false });
+  }
   const trimmed = isDir ? path.replace(/\/+$/, "") : path;
   const base = trimmed.includes("/")
     ? trimmed.slice(trimmed.lastIndexOf("/") + 1)
     : trimmed;
   let name = base || trimmed || path;
   if (isDir) name = name.replace(/\/+$/, "");
+  return truncateChipLabel(name, { isDir, keepExt: true });
+}
 
-  if (name.length > CHIP_LABEL_MAX) {
-    const dot = !isDir ? name.lastIndexOf(".") : -1;
-    const ext =
-      dot > 0 && name.length - dot <= 5 ? name.slice(dot) : "";
-    if (ext) {
-      const budget = CHIP_LABEL_MAX - ext.length - 1;
-      name = `${name.slice(0, Math.max(1, budget))}…${ext}`;
-    } else {
-      name = `${name.slice(0, CHIP_LABEL_MAX - 1)}…`;
-    }
-  }
+/** Titles map when the appearance checkbox is on, otherwise null. */
+export function chipTitlesForLabels(): Readonly<Record<string, string>> | null {
+  if (!usePrefsStore.getState().prefs.showNoteTitles) return null;
+  return useNoteTitlesStore.getState().titlesByPath;
+}
 
-  return isDir ? `${name}/` : name;
+/** Refresh visible path-chip text. Does not touch `data-vault-path`. */
+export function refreshPathChipLabels(root: ParentNode): void {
+  const titles = chipTitlesForLabels();
+  root.querySelectorAll<HTMLElement>(".chat-path-chip[data-vault-path]").forEach(
+    (el) => {
+      const path = el.dataset.vaultPath;
+      if (!path) return;
+      const label = chipLabelForPath(path, titles);
+      if (el.textContent !== label) el.textContent = label;
+    },
+  );
 }
 
 function decorateChip(span: HTMLSpanElement): HTMLSpanElement {
@@ -166,7 +216,7 @@ export function createPathChipElement(path: string): HTMLSpanElement {
     : "chat-path-chip";
   span.dataset.vaultPath = path;
   span.title = path;
-  span.textContent = chipLabelForPath(path);
+  span.textContent = chipLabelForPath(path, chipTitlesForLabels());
   return span;
 }
 

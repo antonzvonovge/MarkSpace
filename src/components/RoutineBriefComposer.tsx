@@ -17,6 +17,7 @@ import type { AiModelOption, ChatMode, ReasoningMode } from "../ai/types";
 import {
   beginComposerChipDrag,
   chipLabelForPath,
+  refreshPathChipLabels,
   composerChipDragSource,
   composerDraftToHtml,
   draftFromDataTransfer,
@@ -56,6 +57,11 @@ import {
   type VaultTreePointerDropDetail,
 } from "../lib/vaultTreeDrag";
 import { useAiSettingsStore } from "../store/aiSettingsStore";
+import { usePrefsStore } from "../store/prefsStore";
+import {
+  EMPTY_NOTE_TITLES,
+  useNoteTitlesStore,
+} from "../store/noteTitlesStore";
 import { vaultChatModelId, vaultWorkerModelId } from "../store/vaultAiSettingsStore";
 import { isFileTab, useVaultStore } from "../store/vaultStore";
 import { EditContextMenu, type EditContextMenuState } from "./EditContextMenu";
@@ -157,6 +163,15 @@ export function RoutineBriefComposer({
     const tab = tabs.find((item) => item.path === activePath);
     return tab && isFileTab(tab) ? activePath : null;
   }, [activePath, tabs]);
+  const showNoteTitles = usePrefsStore((s) => s.prefs.showNoteTitles);
+  const titlesByPath = useNoteTitlesStore((s) =>
+    showNoteTitles ? s.titlesByPath : EMPTY_NOTE_TITLES,
+  );
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (el) refreshPathChipLabels(el);
+  }, [showNoteTitles, titlesByPath]);
 
   const models: AiModelOption[] = settings.models.length ? settings.models : [];
   const chatModelId = modelId || vaultChatModelId();
@@ -424,7 +439,9 @@ export function RoutineBriefComposer({
         {
           id: "active-file",
           label: "Add current file",
-          description: activeFilePath ? chipLabelForPath(activeFilePath) : "No file open",
+          description: activeFilePath
+            ? chipLabelForPath(activeFilePath, showNoteTitles ? titlesByPath : null)
+            : "No file open",
           title: activeFilePath ?? undefined,
           disabled: !activeFilePath,
         },

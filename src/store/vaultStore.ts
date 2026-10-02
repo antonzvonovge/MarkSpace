@@ -3,6 +3,12 @@ import { ensureDefaultSkills, skillTemplate } from "../ai/skills";
 import { flushDrawioEditor } from "../editor/drawio/drawioEditorFlush";
 import { warmDrawioPreview } from "../editor/drawio/warmPreview";
 import { flushLiveEditor } from "../editor/liveEditorFlush";
+import {
+  canEditNoteTitle,
+  replaceFirstHeading,
+  stripInlineMarkdown,
+} from "../lib/noteTitle";
+import { useNoteTitlesStore } from "./noteTitlesStore";
 import { localIsoDate } from "../lib/mdhabitFormat";
 import type { TreeNode } from "../lib/vaultApi";
 import {
@@ -26,6 +32,7 @@ import {
   documentKind,
   ensureFolder,
   ensureFolderNote,
+  folderNotePath,
   folderPathFromFolderNote,
   importDocumentBytes,
   importPaths,
@@ -488,6 +495,12 @@ type VaultStore = {
   promoteNoteToFolder: (notePath: string) => Promise<string | null>;
   /** Returns the new vault-relative path, or null if unchanged / failed. */
   renameTreeEntry: (from: string, nextName: string) => Promise<string | null>;
+  /** Write the first heading of a note or folder note. Does not rename the file. */
+  renameNoteTitle: (
+    treePath: string,
+    isDir: boolean,
+    nextTitle: string,
+  ) => Promise<void>;
   removePath: (path: string) => Promise<boolean>;
   /** Import OS paths / file blobs into a vault folder (default: selected). */
   importIntoSelection: (
@@ -1899,6 +1912,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       void get().refreshVaultTags();
       void get().refreshDictionaryTags();
       void get().refreshFileMarkers();
+      void useNoteTitlesStore.getState().refresh();
       void get().refreshAllComments();
 
       if (restoredTabs.length > 0) {
@@ -1993,6 +2007,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           const markerProject = get().diaryDayMarkersProject;
           if (markerProject) void get().loadDiaryDayMarkers(markerProject);
           void get().refreshFileMarkers();
+          void useNoteTitlesStore.getState().refresh();
         } catch (e) {
           if (pending) continue;
           set({ error: e instanceof Error ? e.message : String(e) });
@@ -2700,6 +2715,9 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       });
       if (isDrawioPath(activePath)) warmDrawioPreview(activePath, savedContent);
       get().rememberDiaryDayMarker(activePath, savedContent);
+      if (activePath.toLowerCase().endsWith(".md")) {
+        useNoteTitlesStore.getState().patchFromMarkdown(activePath, savedContent);
+      }
       // Tag index was already patched in write_note; refresh UI catalogs after
       // a short settle so rapid saves do not spam listVaultTags IPC.
       scheduleTagCatalogRefresh(() => get().refreshVaultTags());
@@ -3600,6 +3618,42 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
       return null;
+    }
+  },
+
+  renameNoteTitle: async (treePath, isDir, nextTitle) => {
+    if (!canEditNoteTitle(treePath, isDir)) return;
+    const title = nextTitle.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!title) return;
+    const notePath = isDir ? folderNotePath(treePath) : treePath;
+    const indexKey = isDir ? treePath : notePath;
+    flushActiveEditorBuffer(get);
+    const titles = useNoteTitlesStore.getState();
+    const prev = titles.titlesByPath[indexKey] ?? null;
+    titles.patch(indexKey, stripInlineMarkdown(title) || null);
+    set({ saving: true, suppressWatchUntil: Date.now() + 6_000 });
+    try {
+      const open = tabBuffer(get(), notePath);
+      let base = "";
+      if (open) {
+        base = open.body;
+      } else {
+        try {
+          base = await readNote(notePath);
+        } catch {
+          base = "";
+        }
+      }
+      const saved = await writeNote(notePath, replaceFirstHeading(base, title));
+      get().applyExternalContent(notePath, saved, { force: true });
+      useNoteTitlesStore.getState().patchFromMarkdown(notePath, saved);
+      set({ saving: false });
+    } catch (e) {
+      useNoteTitlesStore.getState().patch(indexKey, prev);
+      set({
+        saving: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   },
 

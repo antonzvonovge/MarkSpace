@@ -33,6 +33,11 @@ import {
   selectionChipLabel,
 } from "../../lib/chatSelectionChips";
 import { chipLabelForPath } from "../../lib/chatComposerDom";
+import { usePrefsStore } from "../../store/prefsStore";
+import {
+  EMPTY_NOTE_TITLES,
+  useNoteTitlesStore,
+} from "../../store/noteTitlesStore";
 import { commentQuoteLabel } from "../../lib/commentAnchors";
 import { chatMarkdownToPasteHtml } from "../../lib/chatCopyHtml";
 import { writeClipboardHtml, writeClipboardText } from "../../lib/clipboardText";
@@ -232,8 +237,17 @@ function WaitingIndicator({ compacting }: { compacting?: boolean }) {
   );
 }
 
+function useChipTitles(): Readonly<Record<string, string>> | null {
+  const show = usePrefsStore((s) => s.prefs.showNoteTitles);
+  const titles = useNoteTitlesStore((s) =>
+    show ? s.titlesByPath : EMPTY_NOTE_TITLES,
+  );
+  return show ? titles : null;
+}
+
 /** Sent user text with selection quotes and path markers folded back into chips. */
 function UserText({ text }: { text: string }) {
+  const titles = useChipTitles();
   const segments = parseUserTextSegments(text);
   return (
     <>
@@ -253,7 +267,7 @@ function UserText({ text }: { text: string }) {
               data-vault-path={segment.path}
               title={segment.path}
             >
-              {chipLabelForPath(segment.path)}
+              {chipLabelForPath(segment.path, titles)}
             </span>
           );
         }
@@ -288,6 +302,7 @@ function UserText({ text }: { text: string }) {
               quote={segment.quote}
               body={segment.text}
               sourcePath={segment.sourcePath}
+              titles={titles}
             />
           );
         }
@@ -313,15 +328,17 @@ function CommentChip({
   quote,
   body,
   sourcePath,
+  titles,
 }: {
   quote: string;
   body: string;
   sourcePath: string | null;
+  titles: Readonly<Record<string, string>> | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const quoteLabel = commentQuoteLabel(quote);
   const label = commentChipLabel({ text: body, quote });
-  const pathLabel = sourcePath ? chipLabelForPath(sourcePath) : null;
+  const pathLabel = sourcePath ? chipLabelForPath(sourcePath, titles) : null;
 
   return (
     <span

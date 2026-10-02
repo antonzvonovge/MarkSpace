@@ -119,22 +119,33 @@ function splitFileName(name: string): { stem: string; ext: string } | null {
   return { stem: name.slice(0, lastDot), ext: name.slice(lastDot) };
 }
 
-function TreeNodeLabel({ text, isDir }: { text: string; isDir?: boolean }) {
+function TreeNodeLabel({
+  text,
+  isDir,
+  literal,
+  tooltip,
+}: {
+  text: string;
+  isDir?: boolean;
+  literal?: boolean;
+  tooltip?: string;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
-  const [title, setTitle] = useState<string | undefined>();
-  const parts = !isDir ? splitFileName(text) : null;
+  const [overflowTitle, setOverflowTitle] = useState<string | undefined>();
+  const parts = !isDir && !literal ? splitFileName(text) : null;
 
   return (
     <span
       ref={ref}
       className="tree-node-label"
-      title={title}
+      title={tooltip ?? overflowTitle}
       onMouseEnter={() => {
+        if (tooltip) return;
         const el = ref.current;
         if (!el) return;
-        setTitle(el.scrollWidth > el.clientWidth + 1 ? text : undefined);
+        setOverflowTitle(el.scrollWidth > el.clientWidth + 1 ? text : undefined);
       }}
-      onMouseLeave={() => setTitle(undefined)}
+      onMouseLeave={() => setOverflowTitle(undefined)}
     >
       {parts ? (
         <>
@@ -159,10 +170,12 @@ function TreeCommentCount({ count }: { count: number }) {
 
 function InlineRenameInput({
   initialValue,
+  selectAll,
   onCommit,
   onCancel,
 }: {
   initialValue: string;
+  selectAll?: boolean;
   onCommit: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -175,12 +188,16 @@ function InlineRenameInput({
       const input = inputRef.current;
       if (!input) return;
       input.focus();
+      if (selectAll) {
+        input.select();
+        return;
+      }
       const lastDot = initialValue.lastIndexOf(".");
       if (lastDot > 0) input.setSelectionRange(0, lastDot);
       else input.select();
     });
     return () => window.cancelAnimationFrame(id);
-  }, [initialValue]);
+  }, [initialValue, selectAll]);
 
   const finish = (action: () => void) => {
     if (committed.current) return;
@@ -227,6 +244,12 @@ export type VaultDropLine = "before" | "after" | "inside" | null;
 export type VaultTreeRowProps = {
   path: string;
   name: string;
+  /** Shown instead of `name` when the row displays a note title. */
+  displayLabel?: string;
+  /** Heading rename selects the whole field, including a filename fallback. */
+  renameSelectAll?: boolean;
+  /** Full vault path while a title is shown. */
+  labelTooltip?: string;
   isDir: boolean;
   hasChildren: boolean;
   depth: number;
@@ -282,6 +305,9 @@ function isUnsupportedTreeFile(isDir: boolean, path: string): boolean {
 function VaultTreeRowView({
   path,
   name,
+  displayLabel,
+  renameSelectAll,
+  labelTooltip,
   isDir,
   hasChildren,
   depth,
@@ -468,12 +494,18 @@ function VaultTreeRowView({
       {renaming ? (
         <InlineRenameInput
           key={path}
-          initialValue={name}
+          initialValue={displayLabel ?? name}
+          selectAll={renameSelectAll}
           onCancel={onRenameCancel}
           onCommit={onRenameCommit}
         />
       ) : (
-        <TreeNodeLabel text={name} isDir={isDir} />
+        <TreeNodeLabel
+          text={displayLabel ?? name}
+          isDir={isDir}
+          literal={displayLabel != null}
+          tooltip={labelTooltip}
+        />
       )}
       <TreeCommentCount count={openComments} />
       {isVault ? (
@@ -500,6 +532,9 @@ export const VaultTreeRow = memo(
   (a, b) =>
     a.path === b.path &&
     a.name === b.name &&
+    a.displayLabel === b.displayLabel &&
+    a.renameSelectAll === b.renameSelectAll &&
+    a.labelTooltip === b.labelTooltip &&
     a.isDir === b.isDir &&
     a.hasChildren === b.hasChildren &&
     a.depth === b.depth &&

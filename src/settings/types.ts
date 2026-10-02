@@ -55,6 +55,8 @@ export type Prefs = {
   sourceFontSize: number;
   sourceFontFamily: EditorFontFamilyId;
   defaultViewMode: ViewModePref;
+  /** Sidebar, composer chips, and chat show the note's first heading. */
+  showNoteTitles: boolean;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -71,6 +73,7 @@ export const DEFAULT_PREFS: Prefs = {
   sourceFontSize: 14,
   sourceFontFamily: "mono",
   defaultViewMode: "live",
+  showNoteTitles: false,
 };
 
 export type PrefKey = keyof Prefs;
