@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePersistedEditorScroll } from "../../hooks/usePersistedEditorScroll";
-import { SETTINGS_TAB_PATH } from "../../store/vaultStore";
+import { SETTINGS_TAB_PATH, useVaultStore } from "../../store/vaultStore";
 import {
   CATEGORIES,
   SETTINGS_REGISTRY,
@@ -8,6 +8,7 @@ import {
   settingsForCategory,
 } from "../../settings/registry";
 import type { PrefKey } from "../../settings/types";
+import { pickAndOpenVault } from "../../lib/pickVault";
 import { usePrefsStore, useSettingsTabActive } from "../../store/prefsStore";
 import { AboutSettingsPanel } from "./AboutSettingsPanel";
 import { AccentColorRow } from "./AccentColorRow";
@@ -236,6 +237,7 @@ function queryMatchesAbout(query: string): boolean {
 }
 
 export function SettingsPage({ onClose }: Props) {
+  const vaultPath = useVaultStore((s) => s.vaultPath);
   const prefs = usePrefsStore((s) => s.prefs);
   const setPref = usePrefsStore((s) => s.setPref);
   const category = usePrefsStore((s) => s.settingsCategory);
@@ -321,14 +323,25 @@ export function SettingsPage({ onClose }: Props) {
           <h1>Settings</h1>
           <p>Configure MarkSpace</p>
         </div>
-        <button
-          type="button"
-          className="settings-close"
-          aria-label="Close settings"
-          onClick={onClose}
-        >
-          ×
-        </button>
+        <div className="settings-header-actions">
+          {vaultPath ? (
+            <button
+              type="button"
+              className="settings-open-vault"
+              onClick={() => void pickAndOpenVault()}
+            >
+              Open vault…
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="settings-close"
+            aria-label="Close settings"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
       </header>
 
       <div className="settings-search-wrap">

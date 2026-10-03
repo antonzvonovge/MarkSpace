@@ -35,6 +35,7 @@ export function ChatTabBar() {
   const selectThread = useChatStore((s) => s.selectThread);
   const closeTab = useChatStore((s) => s.closeTab);
   const closeOtherTabs = useChatStore((s) => s.closeOtherTabs);
+  const closeAllTabs = useChatStore((s) => s.closeAllTabs);
   const closeTabsToTheRight = useChatStore((s) => s.closeTabsToTheRight);
   const setTabPinned = useChatStore((s) => s.setTabPinned);
   const reorderOpenTabs = useChatStore((s) => s.reorderOpenTabs);
@@ -289,6 +290,7 @@ export function ChatTabBar() {
           onCloseToTheRight={() =>
             void closeTabsToTheRight(contextMenu.targetId)
           }
+          onCloseAll={() => void closeAllTabs()}
           onTogglePinned={(pinned) =>
             void setTabPinned(contextMenu.targetId, pinned)
           }

@@ -270,6 +270,8 @@ type ChatStore = {
   closeTab: (threadId: string) => Promise<void>;
   closeOtherTabs: (threadId: string) => Promise<void>;
   closeTabsToTheRight: (threadId: string) => Promise<void>;
+  /** Close every chat tab, including pinned ones. */
+  closeAllTabs: () => Promise<void>;
   reorderOpenTabs: (fromIndex: number, toIndex: number) => Promise<void>;
   setTabPinned: (threadId: string, pinned: boolean) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
@@ -1750,6 +1752,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set,
       keepForCloseToTheRight(tabs, threadId),
     );
+  },
+
+  closeAllTabs: async () => {
+    await closeChatTabsKeeping(get, set, new Set());
   },
 
   setTabPinned: async (threadId, pinned) => {

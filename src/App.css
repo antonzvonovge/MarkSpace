@@ -157,19 +157,11 @@
 }
 
 :root[data-density="compact"] .sidebar-footer {
-  min-height: 44px;
-  padding: 6px 8px;
+  padding: 0;
 }
 
-:root[data-density="compact"] .sidebar-footer-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-}
-
-:root[data-density="compact"] .sidebar-footer-open {
-  padding: 8px 10px;
-  font-size: 0.88rem;
+:root[data-density="compact"] .sidebar-footer .sidebar-pane-switch {
+  padding: 12px 6px;
 }
 
 :root[data-density="compact"] .tree-rename-input {
@@ -587,66 +579,16 @@ select {
 .sidebar-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: center;
   flex-shrink: 0;
-  min-height: 56px;
-  padding: 10px 12px;
+  padding: 0;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   background: var(--sidebar);
 }
 
-.sidebar-footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.sidebar-footer-open {
-  flex-shrink: 0;
-  border: 0;
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: transparent;
-  color: var(--sidebar-muted);
-  font-size: 0.95rem;
-  font-weight: 400;
-  line-height: 1.2;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.sidebar-footer-open:hover {
-  background: var(--sidebar-hover);
-  color: var(--sidebar-text);
-}
-
-.sidebar-footer-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  border: 0;
-  border-radius: 10px;
-  padding: 0;
-  background: transparent;
-  color: var(--sidebar-muted);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.sidebar-footer-btn:hover {
-  background: var(--sidebar-hover);
-  color: var(--sidebar-text);
-}
-
-.sidebar-footer-btn.is-active {
-  background: var(--sidebar-active);
-  color: var(--accent-wb);
+.sidebar-footer .sidebar-pane-switch {
+  width: 100%;
+  padding: 14px 8px;
 }
 
 .sidebar-calendar {
@@ -979,10 +921,62 @@ select {
 }
 
 .brand-name {
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: 2.5em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.brand-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--brand-logo-size);
+  height: var(--brand-logo-size);
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  opacity: 0.5;
+  transform: translateY(1px);
+  --pane-icon-stroke: var(--sidebar-muted);
+  --pane-icon-fill: none;
+}
+
+.brand-settings-btn:hover {
+  opacity: 1;
+  --pane-icon-stroke: var(--accent);
+  --pane-icon-fill: none;
+}
+
+.brand-settings-btn svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.brand-open-vault {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: transparent;
+  color: var(--sidebar-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.brand-open-vault:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
 }
 
 .sidebar-create {
@@ -1159,8 +1153,12 @@ select {
   align-items: center;
   justify-content: center;
   gap: 1px;
-  padding: 12px 16px 20px;
+  padding: 20px 16px 8px;
   overflow: hidden;
+}
+
+.sidebar-pane-switch-tabs {
+  display: contents;
 }
 
 .sidebar-pane-switch-btn {
@@ -1168,8 +1166,10 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 44px;
-  width: 44px;
+  flex: 0 1 44px;
+  width: auto;
+  max-width: 44px;
+  min-width: 0;
   height: 44px;
   padding: 0;
   border: 0;
@@ -1212,6 +1212,8 @@ select {
   display: block;
   width: 28px;
   height: 28px;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .sidebar-pane-switch-btn svg path {
@@ -1264,12 +1266,12 @@ select {
 }
 
 :root[data-density="compact"] .sidebar-pane-switch {
-  padding: 6px 10px 14px;
+  padding: 14px 10px 6px;
 }
 
 :root[data-density="compact"] .sidebar-pane-switch-btn {
   flex-basis: 36px;
-  width: 36px;
+  max-width: 36px;
   height: 36px;
 }
 
@@ -7816,6 +7818,31 @@ button.status-bar-jobs-menu-item:hover {
   font-size: 1.5rem;
   font-weight: 650;
   letter-spacing: -0.02em;
+}
+
+.settings-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.settings-open-vault {
+  border: 0;
+  border-radius: 8px;
+  height: 32px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-open-vault:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--text);
 }
 
 .settings-close {

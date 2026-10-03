@@ -28,6 +28,7 @@ import {
   deleteTaskListGroup,
   taskListColor,
   taskListGroupId,
+  taskListPath,
   upsertTaskListGroup,
   type SidebarListEntry,
 } from "../lib/taskListMeta";
@@ -122,13 +123,17 @@ function ListIcon({ color }: { color: string }) {
 
 function TaskListContextMenu({
   menu,
+  isFavorite,
   onClose,
+  onToggleFavorite,
   onRename,
   onSettings,
   onDelete,
 }: {
   menu: ListMenuState;
+  isFavorite: boolean;
   onClose: () => void;
+  onToggleFavorite: () => void;
   onRename: () => void;
   onSettings: () => void;
   onDelete: () => void;
@@ -154,7 +159,7 @@ function TaskListContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 220);
-  const top = Math.min(menu.y, window.innerHeight - 180);
+  const top = Math.min(menu.y, window.innerHeight - 220);
 
   return createPortal(
     <div
@@ -163,6 +168,18 @@ function TaskListContextMenu({
       role="menu"
       style={{ position: "fixed", left, top, zIndex: 1100 }}
     >
+      <button
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        onClick={() => {
+          onClose();
+          onToggleFavorite();
+        }}
+      >
+        {isFavorite ? "Remove from favorites" : "Add to favorites"}
+      </button>
+      <div className="tree-context-sep" role="separator" />
       <button
         type="button"
         role="menuitem"
@@ -418,6 +435,7 @@ export const TasksSection = memo(function TasksSection() {
   const renameTreeEntry = useVaultStore((s) => s.renameTreeEntry);
   const removePath = useVaultStore((s) => s.removePath);
   const openTasksTab = useVaultStore((s) => s.openTasksTab);
+  const favoritePaths = useVaultStore((s) => s.favoritePaths);
   const activePath = useVaultStore((s) => s.activePath);
   const view = useTasksPanelStore((s) => s.view);
   const filters = useTasksPanelStore((s) => s.filters);
@@ -877,7 +895,14 @@ export const TasksSection = memo(function TasksSection() {
       {listMenu ? (
         <TaskListContextMenu
           menu={listMenu}
+          isFavorite={favoritePaths.includes(taskListPath(listMenu.listName))}
           onClose={() => setListMenu(null)}
+          onToggleFavorite={() => {
+            const path = taskListPath(listMenu.listName);
+            const store = useVaultStore.getState();
+            if (store.isFavorite(path)) void store.removeFromFavorites(path);
+            else void store.addToFavorites(path);
+          }}
           onRename={() => setRenameList(listMenu.listName)}
           onSettings={() => setSettingsList(listMenu.listName)}
           onDelete={() => setDeleteList(listMenu.listName)}

@@ -400,6 +400,8 @@ type VaultStore = {
   closeTab: (path: string) => Promise<void>;
   closeOtherTabs: (path: string) => Promise<void>;
   closeTabsToTheRight: (path: string) => Promise<void>;
+  /** Close every editor tab, including pinned ones. */
+  closeAllTabs: () => Promise<void>;
   setContent: (content: string) => void;
   /** Mark the active buffer dirty without waiting for Live markdown serialize. */
   markDirty: () => void;
@@ -2498,6 +2500,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const { tabs } = get();
     if (!tabs.some((t) => t.path === path)) return;
     await closeTabsKeeping(set, get, keepForCloseToTheRight(tabs, path));
+  },
+
+  closeAllTabs: async () => {
+    await closeTabsKeeping(set, get, new Set());
   },
 
   setContent: (content) => {

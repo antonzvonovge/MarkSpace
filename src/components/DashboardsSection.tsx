@@ -136,13 +136,17 @@ function DashboardRowIcon({ path }: { path: string }) {
 function DashboardContextMenu({
   x,
   y,
+  isFavorite,
   onClose,
+  onToggleFavorite,
   onRename,
   onDelete,
 }: {
   x: number;
   y: number;
+  isFavorite: boolean;
   onClose: () => void;
+  onToggleFavorite: () => void;
   onRename: () => void;
   onDelete: () => void;
 }) {
@@ -165,8 +169,8 @@ function DashboardContextMenu({
     };
   }, [onClose]);
 
-  const left = Math.min(x, window.innerWidth - 180);
-  const top = Math.min(y, window.innerHeight - 96);
+  const left = Math.min(x, window.innerWidth - 220);
+  const top = Math.min(y, window.innerHeight - 140);
 
   return createPortal(
     <div
@@ -175,6 +179,18 @@ function DashboardContextMenu({
       role="menu"
       style={{ left, top }}
     >
+      <button
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        onClick={() => {
+          onClose();
+          onToggleFavorite();
+        }}
+      >
+        {isFavorite ? "Remove from favorites" : "Add to favorites"}
+      </button>
+      <div className="tree-context-sep" role="separator" />
       <button
         type="button"
         role="menuitem"
@@ -205,6 +221,7 @@ function DashboardContextMenu({
 
 export const DashboardsSection = memo(function DashboardsSection() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
+  const favoritePaths = useVaultStore((s) => s.favoritePaths);
   const tree = useVaultStore((s) => s.tree);
   const activePath = useVaultStore((s) => s.activePath);
   const openNote = useVaultStore((s) => s.openNote);
@@ -360,7 +377,14 @@ export const DashboardsSection = memo(function DashboardsSection() {
         <DashboardContextMenu
           x={menu.x}
           y={menu.y}
+          isFavorite={favoritePaths.includes(menu.path)}
           onClose={() => setMenu(null)}
+          onToggleFavorite={() => {
+            const path = menu.path;
+            const store = useVaultStore.getState();
+            if (store.isFavorite(path)) void store.removeFromFavorites(path);
+            else void store.addToFavorites(path);
+          }}
           onRename={() => setRenamingPath(menu.path)}
           onDelete={() => setConfirmPath(menu.path)}
         />

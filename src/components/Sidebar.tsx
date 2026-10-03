@@ -1,4 +1,3 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import {
   memo,
   useEffect,
@@ -7,19 +6,21 @@ import {
   useRef,
   useState,
 } from "react";
+import { SettingTwo } from "@icon-park/react";
 import brandLogo from "../assets/m.png";
 import { FileTree, type FileTreeHandle } from "./FileTree";
+import { SidebarPaneTabs } from "./sidebar/SidebarPaneTabs";
 import { SidebarCreateButton } from "./sidebar/SidebarCreateButton";
 import { emptySidebarCreateParent } from "./sidebar/emptyCreateParent";
 import { DashboardsSection } from "./DashboardsSection";
 import { RoutinesSection } from "./RoutinesSection";
 import { TasksSection } from "./TasksSection";
 import {
-  CalendarCheckIcon,
   SidebarCalendar,
 } from "./SidebarCalendar";
 import { loadLastVault, saveLastVault } from "../lib/settingsStore";
-import { usePrefsStore, useSettingsTabActive } from "../store/prefsStore";
+import { pickAndOpenVault } from "../lib/pickVault";
+import { usePrefsStore } from "../store/prefsStore";
 import { useSidebarUiStore } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 import {
@@ -30,34 +31,18 @@ import {
 
 export { loadLastVault, saveLastVault };
 
-function SettingsGearIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M6.5 1.5h3l.35 1.4a4.5 4.5 0 0 1 1.35.78l1.4-.35 1.5 2.6-1.05 1a4.6 4.6 0 0 1 0 1.56l1.05 1-1.5 2.6-1.4-.35a4.5 4.5 0 0 1-1.35.78L9.5 14.5h-3l-.35-1.4a4.5 4.5 0 0 1-1.35-.78l-1.4.35-1.5-2.6 1.05-1a4.6 4.6 0 0 1 0-1.56l-1.05-1 1.5-2.6 1.4.35a4.5 4.5 0 0 1 1.35-.78L6.5 1.5Z"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-      <circle cx="8" cy="8" r="1.75" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
+const brandSettingsIcon = {
+  theme: "two-tone" as const,
+  size: 18,
+  strokeWidth: 3,
+  fill: ["var(--pane-icon-stroke)", "var(--pane-icon-fill)"] as [string, string],
+};
 
 export const Sidebar = memo(function Sidebar() {
-  const openVaultAt = useVaultStore((s) => s.openVaultAt);
-  const settingsActive = useSettingsTabActive();
+  const vaultPath = useVaultStore((s) => s.vaultPath);
   const toggleSettings = usePrefsStore((s) => s.toggleSettings);
   const calendarOpen = useSidebarUiStore((s) => s.calendarOpen);
   const setCalendarOpen = useSidebarUiStore((s) => s.setCalendarOpen);
-  const toggleCalendar = useSidebarUiStore((s) => s.toggleCalendar);
   const fileTreeRef = useRef<FileTreeHandle>(null);
   const [tagFileSlot, setTagFileSlot] = useState<HTMLDivElement | null>(null);
   const tagFilesOpen = useSidebarUiStore(
@@ -137,18 +122,6 @@ export const Sidebar = memo(function Sidebar() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [calendarOpen, setCalendarOpen]);
 
-  const pickVault = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "Open MarkSpace vault",
-    });
-    if (typeof selected === "string") {
-      await openVaultAt(selected);
-      await saveLastVault(selected);
-    }
-  };
-
   return (
     <TagFileSlotContext.Provider value={tagFileSlot}>
     <aside
@@ -179,10 +152,30 @@ export const Sidebar = memo(function Sidebar() {
           <div className="brand">
             <img className="brand-logo" src={brandLogo} alt="" />
             <span className="brand-name">MarkSpace</span>
+            <button
+              type="button"
+              className="brand-settings-btn"
+              aria-label="Settings"
+              title="Settings (Ctrl+,)"
+              onClick={() => toggleSettings()}
+            >
+              <SettingTwo {...brandSettingsIcon} />
+            </button>
+            {vaultPath ? null : (
+              <button
+                type="button"
+                className="brand-open-vault"
+                onClick={() => void pickAndOpenVault()}
+              >
+                Open vault…
+              </button>
+            )}
           </div>
-          <SidebarCreateButton
-            onCreated={() => fileTreeRef.current?.revealActive()}
-          />
+          {vaultPath ? (
+            <SidebarCreateButton
+              onCreated={() => fileTreeRef.current?.revealActive()}
+            />
+          ) : null}
         </div>
 
         <div className="sidebar-columns">
@@ -207,7 +200,12 @@ export const Sidebar = memo(function Sidebar() {
               routinesSection={routinesSection}
               dashboardsSection={dashboardsSection}
             />
-            {calendarOpen && <SidebarCalendar />}
+            {vaultPath && calendarOpen ? <SidebarCalendar /> : null}
+            {vaultPath ? (
+              <footer className="sidebar-footer">
+                <SidebarPaneTabs />
+              </footer>
+            ) : null}
           </div>
           {tagFilesOpen ? (
             <>
@@ -263,45 +261,6 @@ export const Sidebar = memo(function Sidebar() {
           ) : null}
         </div>
       </div>
-
-      <footer className="sidebar-footer">
-        <button
-          type="button"
-          className="sidebar-footer-open"
-          onClick={() => void pickVault()}
-        >
-          Open vault…
-        </button>
-        <div className="sidebar-footer-actions">
-          <button
-            type="button"
-            className={
-              settingsActive
-                ? "sidebar-footer-btn is-active"
-                : "sidebar-footer-btn"
-            }
-            aria-label={settingsActive ? "Close settings" : "Open settings"}
-            title="Settings (Ctrl+,)"
-            onClick={() => toggleSettings()}
-          >
-            <SettingsGearIcon />
-          </button>
-          <button
-            type="button"
-            className={
-              calendarOpen
-                ? "sidebar-footer-btn is-active"
-                : "sidebar-footer-btn"
-            }
-            aria-label={calendarOpen ? "Close calendar" : "Open calendar"}
-            aria-expanded={calendarOpen}
-            title="Calendar"
-            onClick={() => toggleCalendar()}
-          >
-            <CalendarCheckIcon />
-          </button>
-        </div>
-      </footer>
     </aside>
     </TagFileSlotContext.Provider>
   );

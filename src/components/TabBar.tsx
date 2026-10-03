@@ -328,6 +328,7 @@ export function EditorChrome() {
   const reorderTabs = useVaultStore((s) => s.reorderTabs);
   const closeTab = useVaultStore((s) => s.closeTab);
   const closeOtherTabs = useVaultStore((s) => s.closeOtherTabs);
+  const closeAllTabs = useVaultStore((s) => s.closeAllTabs);
   const closeTabsToTheRight = useVaultStore((s) => s.closeTabsToTheRight);
   const setTabPinned = useVaultStore((s) => s.setTabPinned);
   const navHistory = useVaultStore((s) => s.navHistory);
@@ -514,6 +515,7 @@ export function EditorChrome() {
           onCloseToTheRight={() =>
             void closeTabsToTheRight(contextMenu.targetId)
           }
+          onCloseAll={() => void closeAllTabs()}
           onTogglePinned={(pinned) =>
             setTabPinned(contextMenu.targetId, pinned)
           }

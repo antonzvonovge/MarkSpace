@@ -28,6 +28,7 @@ import {
   isTasksFolder,
   isRoutinesFolder,
   isDashboardsFolder,
+  isDashboardsPath,
   INCOMING_FOLDER,
   isVaultDocumentPath,
   isVaultProjectFolder,
@@ -46,6 +47,7 @@ import { placeFlyoutMenu, placePointerMenu } from "../lib/menuPlacement";
 import { isVaultLexiconFolder, isVaultLexiconMdNote } from "../lib/lexiconNotes";
 import { fileMarkerById } from "../lib/fileMarkers";
 import { canEditNoteTitle, treeRowTitleLabel } from "../lib/noteTitle";
+import { taskListNameFromPath } from "../lib/taskListMeta";
 import {
   EMPTY_NOTE_TITLES,
   useNoteTitlesStore,
@@ -54,7 +56,10 @@ import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
 import { useSidebarUiStore, type SidebarPane } from "../store/sidebarUiStore";
-import { useVaultStore } from "../store/vaultStore";
+import { TASKS_TAB_PATH, useVaultStore } from "../store/vaultStore";
+import { useTasksPanelStore } from "../store/tasksPanelStore";
+import { useTaskListMetaStore } from "../store/taskListMetaStore";
+import { useDashboardColorStore } from "../store/dashboardColorStore";
 import { useFileMarkerSettingsStore } from "../store/fileMarkerSettingsStore";
 import { startClipArticleJob } from "../ai/clipArticle";
 import {
@@ -75,7 +80,6 @@ import {
 } from "./AppDialog";
 import { NewFilmDialog } from "./MovieDialogs";
 import { CommentsInboxSection } from "./CommentsInboxSection";
-import { SidebarPaneTabs } from "./sidebar/SidebarPaneTabs";
 import { TagTreeView } from "./sidebar/TagTreeView";
 import { IncomingSection } from "./IncomingSection";
 import { IncomingCaptureList } from "./IncomingCaptureList";
@@ -123,12 +127,14 @@ import {
   importEntryNames,
   pathsFromClipboardData,
 } from "../lib/osClipboardFiles";
+import { DashboardIcon } from "./dashboardIcon";
 import {
   DiagramIcon,
   FavoritesSectionIcon,
   CourseTrackerIcon,
   IncomingSectionIcon,
   PdfIcon,
+  TasksListIcon,
 } from "./treeIcons";
 import type { TreeCreateKind } from "./TreeToolbar";
 import {
@@ -319,6 +325,51 @@ function appendIndexForParent(root: TreeNode | null, parent: string): number {
 
 function isUnsupportedTreeFile(isDir: boolean, path: string): boolean {
   return !isDir && !isVaultDocumentPath(path);
+}
+
+function isDashboardFilePath(path: string): boolean {
+  return (
+    path.toLowerCase().endsWith(".dashboard") && isDashboardsPath(path)
+  );
+}
+
+/** Open a favorited task list the same way as its row in the Tasks pane. */
+function openFavoriteTaskList(listName: string) {
+  const panel = useTasksPanelStore.getState();
+  panel.setSidebarHighlight({ kind: "list", list: listName });
+  panel.patchFilters({
+    list: listName,
+    priority: "",
+    label: "",
+    query: "",
+    status: "open",
+  });
+  panel.setView("all");
+  void useVaultStore.getState().openTasksTab({ syncTreeSelection: false });
+}
+
+function FavoriteTaskListIcon({ listName }: { listName: string }) {
+  const color = useTaskListMetaStore(
+    (s) => s.metaByName[listName]?.color ?? "",
+  );
+  return (
+    <span className="tree-node-icon" aria-hidden>
+      <TasksListIcon color={color || undefined} />
+    </span>
+  );
+}
+
+function FavoriteDashboardIcon({ path }: { path: string }) {
+  const color = useDashboardColorStore((s) => s.byPath[path] ?? "");
+  return (
+    <span
+      className="tree-node-icon"
+      style={color ? { color } : undefined}
+      aria-hidden
+    >
+      <DashboardIcon />
+    </span>
+  );
 }
 
 /** Ancestor folder paths for a vault-relative file path (excludes the file itself). */
@@ -539,8 +590,15 @@ function TreeContextMenu({
   const unsupportedFile = isUnsupportedTreeFile(menu.isDir, menu.path);
   const isIncomingRoot = isIncomingFolder(menu.path, menu.isDir);
   const isTasksRoot = isTasksFolder(menu.path, menu.isDir);
+  const favoriteShortcut =
+    (menu.isDir && taskListNameFromPath(menu.path) !== "") ||
+    isDashboardFilePath(menu.path);
   const showEditActions =
-    !menu.createOnly && menu.path !== "" && !isSkills && !isIncomingRoot;
+    !menu.createOnly &&
+    menu.path !== "" &&
+    !isSkills &&
+    !isIncomingRoot &&
+    !favoriteShortcut;
   const showCopyPath = !menu.createOnly && menu.path !== "";
   const showFavorite =
     !menu.createOnly && menu.path !== "" && !unsupportedFile;
@@ -550,15 +608,16 @@ function TreeContextMenu({
     menu.path !== "" &&
     !isIncomingRoot &&
     !isTasksRoot &&
+    !favoriteShortcut &&
     fileMarkerCatalog.length > 0 &&
     (menu.isDir || menu.path.toLowerCase().endsWith(".md"));
   const showFolderProperties =
-    !menu.createOnly && menu.isDir && menu.path !== "";
+    !menu.createOnly && menu.isDir && menu.path !== "" && !favoriteShortcut;
   const showProjectProperties = showFolderProperties && isVaultProjectFolder(menu.path, true);
   const showSkillCreate = isSkills || menu.createOnly === true;
-  const showStandardCreate = !isSkills && !unsupportedFile;
+  const showStandardCreate = !isSkills && !unsupportedFile && !favoriteShortcut;
   const showDownloadArticle =
-    !menu.createOnly && menu.isDir && !isSkills;
+    !menu.createOnly && menu.isDir && !isSkills && !favoriteShortcut;
   const showOpenChat = showProjectProperties;
   const showTranslate =
     !menu.createOnly &&
@@ -1188,6 +1247,7 @@ function FavoritesTreeRows({
   treeSelectedFilePath,
   treeSelectionVisible,
   renamingPath,
+  activeTaskList,
   favoriteSet,
   projectPropertiesByPath,
   unresolvedCounts,
@@ -1214,6 +1274,8 @@ function FavoritesTreeRows({
   treeSelectedFilePath: string | null;
   treeSelectionVisible: boolean;
   renamingPath: string | null;
+  /** Open task list name while the Tasks tab (or its sidebar highlight) is that list. */
+  activeTaskList: string;
   favoriteSet: Set<string>;
   projectPropertiesByPath: Record<string, ProjectProperties>;
   unresolvedCounts: Map<string, number>;
@@ -1241,9 +1303,12 @@ function FavoritesTreeRows({
       {nodes.map((node) => {
         const path = node.path;
         const isDir = node.isDir;
+        const listName = isDir ? taskListNameFromPath(path) : "";
+        const isTaskList = listName !== "";
+        const isDashboard = isDashboardFilePath(path);
         const children = node.children ?? [];
-        const hasChildren = isDir && children.length > 0;
-        const isOpen = isDir && expandedPaths.includes(path);
+        const hasChildren = isDir && !isTaskList && children.length > 0;
+        const isOpen = isDir && !isTaskList && expandedPaths.includes(path);
         const isProject = isVaultProjectFolder(path, isDir);
         const isSkills = isSkillsFolder(path, isDir);
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
@@ -1253,12 +1318,17 @@ function FavoritesTreeRows({
         const isMdcourse = !isDir && path.toLowerCase().endsWith(".mdcourse");
         const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
         const unsupported = isUnsupportedTreeFile(isDir, path);
-        const selected =
-          treeSelectionVisible &&
-          isDir &&
-          selectedFolderExplicit &&
-          selectedFolderPath === path;
+        const selected = isTaskList
+          ? activeTaskList === listName
+          : isDashboard
+            ? activePath === path
+            : treeSelectionVisible &&
+              isDir &&
+              selectedFolderExplicit &&
+              selectedFolderPath === path;
         const active =
+          !isTaskList &&
+          !isDashboard &&
           treeSelectionVisible &&
           !isDir &&
           !selectedFolderExplicit &&
@@ -1269,13 +1339,27 @@ function FavoritesTreeRows({
           fileMarkersByPath[path] ?? "",
           fileMarkerCatalog,
         );
-        const titleLabel = treeRowTitleLabel(
-          path,
-          isDir,
-          node.name,
-          showNoteTitles,
-          titlesByPath ?? {},
-        );
+        const titleLabel = isDashboard
+          ? {
+              label: node.name.replace(/\.dashboard$/i, ""),
+              literal: true,
+              selectAll: false,
+              tooltip: undefined,
+            }
+          : isTaskList
+            ? {
+                label: listName,
+                literal: true,
+                selectAll: false,
+                tooltip: undefined,
+              }
+            : treeRowTitleLabel(
+                path,
+                isDir,
+                node.name,
+                showNoteTitles,
+                titlesByPath ?? {},
+              );
         const projectRoot = vaultProjectRootOf(path);
         const projectColor =
           projectRoot && projectPropertiesByPath[projectRoot]?.color
@@ -1320,6 +1404,17 @@ function FavoritesTreeRows({
               }
               onClick={(e) => {
                 if (renaming) return;
+                if (isTaskList) {
+                  openFavoriteTaskList(listName);
+                  return;
+                }
+                if (isDashboard) {
+                  void useVaultStore.getState().openNote(path, {
+                    preview: false,
+                    syncTreeSelection: false,
+                  });
+                  return;
+                }
                 if (isDir) {
                   onOpenFolder(path, {
                     preview: !(e.ctrlKey || e.metaKey),
@@ -1335,7 +1430,7 @@ function FavoritesTreeRows({
                 });
               }}
               onDoubleClick={() => {
-                if (isDir || renaming) return;
+                if (isDir || isDashboard || renaming) return;
                 if (isUnsupportedTreeFile(false, path)) return;
                 onOpenNote(path, { preview: false });
               }}
@@ -1350,10 +1445,10 @@ function FavoritesTreeRows({
                   isDir,
                   isFavorite: favoriteSet.has(path),
                 });
-                onSelectInTree(path, isDir);
+                if (!isTaskList && !isDashboard) onSelectInTree(path, isDir);
               }}
             >
-              {isDir ? (
+              {isDir && !isTaskList ? (
                 <span
                   role={hasChildren ? "button" : undefined}
                   tabIndex={hasChildren ? 0 : undefined}
@@ -1397,6 +1492,11 @@ function FavoritesTreeRows({
                 <span className="tree-file-spacer" />
               )}
 
+              {isTaskList ? (
+                <FavoriteTaskListIcon listName={listName} />
+              ) : isDashboard ? (
+                <FavoriteDashboardIcon path={path} />
+              ) : (
               <span className="tree-node-icon" aria-hidden>
                 {isDir ? (
                   <FolderTreeIcon
@@ -1428,6 +1528,7 @@ function FavoritesTreeRows({
                   <FcDocument size={20} />
                 )}
               </span>
+              )}
               {fileMarker ? (
                 <span
                   className="tree-file-marker"
@@ -1468,6 +1569,7 @@ function FavoritesTreeRows({
                 treeSelectedFilePath={treeSelectedFilePath}
                 treeSelectionVisible={treeSelectionVisible}
                 renamingPath={renamingPath}
+                activeTaskList={activeTaskList}
                 favoriteSet={favoriteSet}
                 projectPropertiesByPath={projectPropertiesByPath}
                 unresolvedCounts={unresolvedCounts}
@@ -2058,6 +2160,21 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     vaultDropZone === INCOMING_HEADER_ZONE ? null : vaultDropZone;
 
   const favoriteSet = useMemo(() => new Set(favoritePaths), [favoritePaths]);
+  const tasksHighlight = useTasksPanelStore((s) => s.sidebarHighlight);
+  const tasksView = useTasksPanelStore((s) => s.view);
+  const tasksFilterList = useTasksPanelStore((s) => s.filters.list);
+  const activeTaskList = useMemo(() => {
+    if (tasksHighlight?.kind === "list") return tasksHighlight.list;
+    if (tasksHighlight) return "";
+    if (
+      activePath === TASKS_TAB_PATH &&
+      tasksView === "all" &&
+      tasksFilterList
+    ) {
+      return tasksFilterList;
+    }
+    return "";
+  }, [activePath, tasksFilterList, tasksHighlight, tasksView]);
 
   const unresolvedCounts = useMemo(
     () => buildUnresolvedCommentCounts(allComments),
@@ -2650,6 +2767,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             treeSelectedFilePath={treeSelectedFilePath}
             treeSelectionVisible={treeSelectionVisible}
             renamingPath={renamingPath}
+            activeTaskList={activeTaskList}
             favoriteSet={favoriteSet}
             projectPropertiesByPath={projectPropertiesByPath}
             unresolvedCounts={unresolvedCounts}
@@ -2727,6 +2845,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
                   treeSelectedFilePath={treeSelectedFilePath}
                   treeSelectionVisible={treeSelectionVisible}
                   renamingPath={renamingPath}
+                  activeTaskList={activeTaskList}
                   favoriteSet={favoriteSet}
                   projectPropertiesByPath={projectPropertiesByPath}
                   unresolvedCounts={unresolvedCounts}
@@ -2751,7 +2870,6 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           </div>
         ) : null}
         </div>
-        <SidebarPaneTabs />
         <div
           id="sidebar-pane"
           role="tabpanel"

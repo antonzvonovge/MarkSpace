@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import {
   AlarmClock,
+  Calendar,
   ChartHistogram,
   Comment,
   FolderClose,
@@ -32,6 +33,8 @@ const PANES: readonly { id: SidebarPane; label: string; icon: ReactNode }[] = [
 export function SidebarPaneTabs() {
   const pane = useSidebarUiStore((s) => s.sidebarPane);
   const setSidebarPane = useSidebarUiStore((s) => s.setSidebarPane);
+  const calendarOpen = useSidebarUiStore((s) => s.calendarOpen);
+  const toggleCalendar = useSidebarUiStore((s) => s.toggleCalendar);
   const tree = useVaultStore((s) => s.tree);
   const tasksPanelOpen = useVaultStore((s) => s.activePath === TASKS_TAB_PATH);
   const view = useTasksPanelStore((s) => s.view);
@@ -55,7 +58,8 @@ export function SidebarPaneTabs() {
   }, [view, filters]);
 
   return (
-    <div className="sidebar-pane-switch" role="tablist" aria-label="Sidebar">
+    <div className="sidebar-pane-switch">
+      <div className="sidebar-pane-switch-tabs" role="tablist" aria-label="Sidebar">
       {PANES.map((item) => {
         const selected = pane === item.id;
         const taskOverdue = item.id === "tasks" ? overdue : 0;
@@ -97,6 +101,21 @@ export function SidebarPaneTabs() {
           </button>
         );
       })}
+      </div>
+      <button
+        type="button"
+        className={
+          calendarOpen
+            ? "sidebar-pane-switch-btn is-active"
+            : "sidebar-pane-switch-btn"
+        }
+        aria-label={calendarOpen ? "Close calendar" : "Open calendar"}
+        aria-pressed={calendarOpen}
+        title="Calendar"
+        onClick={() => toggleCalendar()}
+      >
+        <Calendar {...paneIcon} />
+      </button>
     </div>
   );
 }

@@ -24,6 +24,7 @@ type Props = {
   onCloseOthers: () => void;
   onCloseRemaining: () => void;
   onCloseToTheRight: () => void;
+  onCloseAll: () => void;
   /** When set, shows a “Copy path” item (e.g. chat thread JSON on disk). */
   onCopyPath?: () => void;
   /** When set, shows “Rename…” and opens a dialog from the caller. */
@@ -39,6 +40,7 @@ export function TabContextMenu({
   onCloseOthers,
   onCloseRemaining,
   onCloseToTheRight,
+  onCloseAll,
   onCopyPath,
   onRename,
   onTogglePinned,
@@ -69,7 +71,7 @@ export function TabContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 220);
-  const top = Math.min(menu.y, window.innerHeight - 320);
+  const top = Math.min(menu.y, window.innerHeight - 360);
 
   return createPortal(
     <div
@@ -156,6 +158,19 @@ export function TabContextMenu({
         }}
       >
         Close to the Right
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        disabled={menu.tabCount < 1}
+        onClick={() => {
+          if (menu.tabCount < 1) return;
+          onClose();
+          onCloseAll();
+        }}
+      >
+        Close All
       </button>
       {showPin ? (
         <>
