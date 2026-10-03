@@ -1,7 +1,6 @@
 import { BlockNoteEditor } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
 import { render } from "@testing-library/react";
-import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyImagePreviewWidths,
@@ -77,7 +76,7 @@ describe("markspace image block", () => {
         props: { url: "pic.png", name: "photo", previewWidth: 200 },
       },
     ]);
-    const view = render(createElement(BlockNoteView, { editor }));
+    const view = render(<BlockNoteView editor={editor} />);
     const handles = view.container.querySelectorAll(".image-resize-handle");
     expect(
       [...handles].map((node) => node.getAttribute("data-handle")).sort(),
@@ -101,7 +100,7 @@ describe("markspace image block", () => {
     editor.replaceBlocks(editor.document, [
       { type: "image", props: { name: "photo.png", url: "" } },
     ]);
-    const view = render(createElement(BlockNoteView, { editor }));
+    const view = render(<BlockNoteView editor={editor} />);
     expect(view.container.querySelector(".bn-add-file-button")).not.toBeNull();
     view.unmount();
   });
