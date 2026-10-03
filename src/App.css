@@ -64,10 +64,11 @@
   --tree-label-size: 14px;
   --tree-icon-size: 20px;
   --tree-chevron-size: 16px;
-  /* First branch icon column — matches Favorites tree rows and Tasks list rows. */
+  /* Left edge of a depth-1 row, same as a folder under the vault root. */
+  --tree-level-2-pad: calc(var(--tree-pad-x) + var(--tree-indent));
+  /* Icon column of that row (after its chevron). */
   --tree-branch-icon-pad: calc(
-    var(--tree-pad-x) + var(--tree-indent) + var(--tree-chevron-size) +
-      var(--tree-row-gap)
+    var(--tree-level-2-pad) + var(--tree-chevron-size) + var(--tree-row-gap)
   );
   --tree-toolbar-btn: 28px;
   --tree-toolbar-icon: 16px;
@@ -1140,6 +1141,153 @@ select {
   flex: 1;
 }
 
+.sidebar-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar-pinned {
+  flex-shrink: 0;
+}
+
+.sidebar-pane-switch {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 12px 16px 20px;
+  overflow: hidden;
+}
+
+.sidebar-pane-switch-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  opacity: 0.5;
+  --pane-icon-stroke: var(--sidebar-muted);
+  --pane-icon-fill: none;
+}
+
+.sidebar-pane-switch-btn:hover:not(.is-active) {
+  background: #ececec;
+  color: var(--sidebar-text);
+  opacity: 1;
+  --pane-icon-stroke: var(--accent);
+  --pane-icon-fill: none;
+}
+
+.sidebar-pane-switch-btn.is-active,
+.sidebar-pane-switch-btn.is-active:hover {
+  color: var(--sidebar-text);
+  background: #e8ebfa;
+  opacity: 1;
+  --pane-icon-stroke: var(--accent);
+  --pane-icon-fill: rgba(var(--accent-rgb), 0.2);
+}
+
+:root[data-theme="dark"] .sidebar-pane-switch-btn:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .sidebar-pane-switch-btn.is-active,
+:root[data-theme="dark"] .sidebar-pane-switch-btn.is-active:hover {
+  background: rgba(120, 140, 220, 0.22);
+}
+
+.sidebar-pane-switch-btn svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+
+.sidebar-pane-switch-btn svg path {
+  transition: fill 120ms ease;
+}
+
+.sidebar-pane-switch-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .sidebar-pane-switch-badge {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.sidebar-pane-switch-badge.is-overdue {
+  background: #dc2626;
+}
+
+.sidebar-pane-switch-badge.is-count {
+  top: 2px;
+  right: 2px;
+  width: auto;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-theme="dark"] .sidebar-pane-switch-badge.is-count {
+  background: #dc2626;
+  color: #fff;
+}
+
+:root[data-density="compact"] .sidebar-pane-switch-badge.is-count {
+  top: 1px;
+  right: 1px;
+}
+
+:root[data-density="compact"] .sidebar-pane-switch {
+  padding: 6px 10px 14px;
+}
+
+:root[data-density="compact"] .sidebar-pane-switch-btn {
+  flex-basis: 36px;
+  width: 36px;
+  height: 36px;
+}
+
+:root[data-density="compact"] .sidebar-pane-switch-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+:root[data-density="compact"] .sidebar-pane-switch-badge {
+  top: 6px;
+  right: 6px;
+}
+
+.sidebar-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .favorites-section {
   flex-shrink: 0;
   padding-bottom: 8px;
@@ -1203,8 +1351,10 @@ select {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.incoming-section-body {
+.incoming-section-body,
+.favorites-section-body {
   max-height: calc(var(--tree-row-height) * 10);
+  overflow-y: auto;
   overscroll-behavior: contain;
 }
 
@@ -1487,8 +1637,9 @@ select {
   display: flex;
   align-items: center;
   gap: var(--tree-row-gap);
+  height: var(--tree-row-height);
   min-height: var(--tree-row-height);
-  padding: 2px var(--tree-pad-x);
+  padding: 0 var(--tree-pad-x);
   color: var(--sidebar-text);
   font-size: var(--tree-label-size);
   font-weight: 600;
@@ -1554,6 +1705,7 @@ select {
 .favorites-header:hover .section-header-actions,
 .comments-inbox-header:hover .section-header-actions,
 .tasks-section-header:hover .section-header-actions,
+.routines-section-header:hover .section-header-actions,
 .incoming-section-header:hover .section-header-actions,
 .section-header-actions:focus-within,
 .section-header-actions:has(.tree-create-menu) {
@@ -1732,12 +1884,12 @@ select {
   display: flex;
   align-items: center;
   gap: var(--tree-row-gap);
+  height: var(--tree-row-height);
   min-height: var(--tree-row-height);
-  padding: 2px var(--tree-pad-x);
+  padding: 0 var(--tree-pad-x);
   color: var(--sidebar-text);
   font-size: var(--tree-label-size);
   font-weight: 600;
-  cursor: pointer;
   user-select: none;
 }
 
@@ -1782,6 +1934,8 @@ select {
 }
 
 .routines-section-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2357,8 +2511,9 @@ select {
   display: flex;
   align-items: center;
   gap: var(--tree-row-gap);
+  height: var(--tree-row-height);
   min-height: var(--tree-row-height);
-  padding: 2px var(--tree-pad-x);
+  padding: 0 var(--tree-pad-x);
   color: var(--sidebar-text);
   font-size: var(--tree-label-size);
   font-weight: 600;
@@ -2447,11 +2602,7 @@ select {
 
 .tasks-section-sep {
   height: 1px;
-  margin: 4px var(--tree-pad-x) 4px
-    calc(
-      var(--tree-pad-x) + var(--tree-indent) + var(--tree-chevron-size) +
-        var(--tree-row-gap)
-    );
+  margin: 4px var(--tree-pad-x) 4px var(--tree-branch-icon-pad);
   background: color-mix(in srgb, var(--sidebar-text) 12%, transparent);
   list-style: none;
 }
@@ -2575,11 +2726,7 @@ select {
   width: 100%;
   min-height: 22px;
   margin: 0;
-  padding: 1px var(--tree-pad-x) 1px
-    calc(
-      var(--tree-pad-x) + var(--tree-indent) + var(--tree-chevron-size) +
-        var(--tree-row-gap)
-    );
+  padding: 1px var(--tree-pad-x) 1px var(--tree-level-2-pad);
   border: none;
   background: transparent;
   color: color-mix(in srgb, var(--sidebar-muted, var(--muted)) 88%, transparent);
@@ -2636,11 +2783,7 @@ select {
 
 .tasks-section-group-empty {
   margin: 0;
-  padding: 1px var(--tree-pad-x) 3px
-    calc(
-      var(--tree-pad-x) + var(--tree-indent) + var(--tree-chevron-size) +
-        var(--tree-row-gap) + 2px
-    );
+  padding: 1px var(--tree-pad-x) 3px var(--tree-branch-icon-pad);
   color: color-mix(in srgb, var(--sidebar-muted, var(--muted)) 75%, transparent);
   font-size: 0.6875rem;
   font-style: italic;
@@ -2730,11 +2873,15 @@ select {
 
 .comments-inbox-tree {
   overflow-x: hidden;
-  overflow-y: auto;
   min-height: 0;
-  /* ~10 rows; % max-height is ignored inside .tree-scroll (height: auto). */
-  max-height: calc(var(--tree-row-height) * 10);
-  overscroll-behavior: contain;
+}
+
+.sidebar-pane .comments-inbox-section,
+.sidebar-pane .tasks-section,
+.sidebar-pane .routines-section {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .comments-inbox-row {
@@ -3151,8 +3298,8 @@ select {
 /* Library may leave `.dnd-drop-target` on a row after dragend; only paint while dragging. */
 .tree-scroll.is-tree-dragging .dnd-drop-target > .tree-row,
 .tree-scroll.is-tree-dragging li.dnd-drop-target > .tree-row,
-.tree-scroll.is-os-file-dragging .dnd-drop-target > .tree-row,
-.tree-scroll.is-os-file-dragging li.dnd-drop-target > .tree-row {
+.sidebar-stack.is-os-file-dragging .dnd-drop-target > .tree-row,
+.sidebar-stack.is-os-file-dragging li.dnd-drop-target > .tree-row {
   outline: 1px solid rgba(203, 17, 171, 0.55);
   background: rgba(203, 17, 171, 0.1);
 }
@@ -3214,6 +3361,10 @@ select {
 .tree-node-label {
   user-select: none;
   -webkit-user-select: none;
+}
+
+.tree-node-label.is-italic {
+  font-style: italic;
 }
 
 .tree-node-ext {

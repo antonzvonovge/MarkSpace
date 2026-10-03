@@ -262,7 +262,7 @@ export function flattenTagView(options: {
     [...options.expanded].map((path) => path.toLowerCase()),
   );
   const rows: TagFlatRow[] = [{ kind: "untagged", key: "untagged" }];
-  flattenNodes(options.tree, expanded, 0, rows);
+  flattenNodes(options.tree, expanded, 1, rows);
   if (options.includeDocuments === false) return rows;
   if (options.selection == null) return rows;
   const docs = documentsForSelection(

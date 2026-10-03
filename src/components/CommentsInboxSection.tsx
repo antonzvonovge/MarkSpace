@@ -18,6 +18,7 @@ import {
   SectionCollapseButton,
 } from "./TreeToolbar";
 import { CommentsSectionIcon } from "./treeIcons";
+import { SectionCollapseChevron } from "./sidebar/SectionCollapseChevron";
 
 type FolderNode = {
   name: string;
@@ -60,27 +61,6 @@ function buildCommentsTree(refs: CommentRef[]): FolderNode {
   }
 
   return root;
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={open ? "tree-chevron-icon is-open" : "tree-chevron-icon"}
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M6 3.75 10.25 8 6 12.25"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 function InboxChevron({ open }: { open: boolean }) {
@@ -133,11 +113,13 @@ function rowPad(depth: number): string {
 export function CommentsInboxSection() {
   const allComments = useVaultStore((s) => s.allComments);
   const openComment = useVaultStore((s) => s.openComment);
+  const [sectionCollapsed, setSectionCollapsed] = useState(() =>
+    loadCommentsInboxCollapsed(),
+  );
   const [showResolved, setShowResolved] = useState(
     () => loadCommentsInboxShowResolved(),
   );
   const [listMode, setListMode] = useState(() => loadCommentsInboxList());
-  const [collapsed, setCollapsed] = useState(() => loadCommentsInboxCollapsed());
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   const visible = useMemo(
@@ -173,58 +155,35 @@ export function CommentsInboxSection() {
     saveCommentsInboxList(next);
   }, []);
 
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      saveCommentsInboxCollapsed(next);
-      return next;
-    });
-  }, []);
-
   const collapseToTopLevel = useCallback(() => {
     setExpanded(new Set());
   }, []);
-
-  if (visible.length === 0) return null;
 
   const openCount = allComments.filter((r) => !r.comment.resolved).length;
 
   return (
     <div className="comments-inbox-section">
       <div className="comments-inbox-header">
-        <span
-          role="button"
-          tabIndex={0}
-          className="tree-chevron-btn"
-          aria-label={collapsed ? "Expand comments" : "Collapse comments"}
-          aria-expanded={!collapsed}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleCollapsed();
+        <SectionCollapseChevron
+          open={!sectionCollapsed}
+          label="Comments"
+          onToggle={() => {
+            setSectionCollapsed((prev) => {
+              const next = !prev;
+              saveCommentsInboxCollapsed(next);
+              return next;
+            });
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              e.stopPropagation();
-              toggleCollapsed();
-            }
-          }}
-        >
-          <ChevronIcon open={!collapsed} />
-        </span>
+        />
         <span className="comments-inbox-header-icon" aria-hidden>
           <CommentsSectionIcon />
         </span>
-        <button
-          type="button"
-          className="comments-inbox-title-btn"
-          onClick={toggleCollapsed}
-        >
+        <span className="comments-inbox-title-btn">
           <span>Comments</span>
           {openCount > 0 ? (
             <span className="comments-inbox-header-count">{openCount}</span>
           ) : null}
-        </button>
+        </span>
         <div className="section-header-actions">
           <CommentsListSticky
             active={listMode}
@@ -243,28 +202,30 @@ export function CommentsInboxSection() {
           ) : null}
         </div>
       </div>
-      {!collapsed ? (
-          <div className="comments-inbox-tree">
-            {listMode ? (
-              <CommentListRows
-                refs={list}
-                onOpenComment={(notePath, id) => {
-                  void openComment(notePath, id);
-                }}
-              />
-            ) : (
-              <FolderRows
-                node={tree}
-                depth={0}
-                expanded={expanded}
-                onToggle={toggleExpanded}
-                onOpenComment={(notePath, id) => {
-                  void openComment(notePath, id);
-                }}
-              />
-            )}
-          </div>
-      ) : null}
+      {sectionCollapsed ? null : visible.length === 0 ? (
+        <p className="comments-inbox-empty">No comments</p>
+      ) : (
+        <div className="comments-inbox-tree">
+          {listMode ? (
+            <CommentListRows
+              refs={list}
+              onOpenComment={(notePath, id) => {
+                void openComment(notePath, id);
+              }}
+            />
+          ) : (
+            <FolderRows
+              node={tree}
+              depth={0}
+              expanded={expanded}
+              onToggle={toggleExpanded}
+              onOpenComment={(notePath, id) => {
+                void openComment(notePath, id);
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -38,7 +38,7 @@ import {
   VaultSectionIcon,
 } from "../treeIcons";
 import type { TreeCreateKind } from "../TreeToolbar";
-import { WorkspaceHeaderActions, WorkspaceViewSwitch } from "../TreeToolbar";
+import { WorkspaceHeaderActions } from "../TreeToolbar";
 import {
   beginDrawioTreeDrag,
   endDrawioTreeDrag,
@@ -510,7 +510,6 @@ function VaultTreeRowView({
       <TreeCommentCount count={openComments} />
       {isVault ? (
         <div className="workspace-root-actions">
-          <WorkspaceViewSwitch />
           <WorkspaceHeaderActions
             onCreate={onCreate}
             onLocateActive={onLocateActive}

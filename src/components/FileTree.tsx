@@ -53,7 +53,7 @@ import {
 import { saveExpandedPaths } from "../lib/settingsStore";
 import { learningLanguageFlagSvg } from "../lib/languageFlags";
 import { LearningLanguageFlag } from "./LearningLanguageFlag";
-import { useSidebarUiStore } from "../store/sidebarUiStore";
+import { useSidebarUiStore, type SidebarPane } from "../store/sidebarUiStore";
 import { useVaultStore } from "../store/vaultStore";
 import { useFileMarkerSettingsStore } from "../store/fileMarkerSettingsStore";
 import { startClipArticleJob } from "../ai/clipArticle";
@@ -75,6 +75,8 @@ import {
 } from "./AppDialog";
 import { NewFilmDialog } from "./MovieDialogs";
 import { CommentsInboxSection } from "./CommentsInboxSection";
+import { SidebarPaneTabs } from "./sidebar/SidebarPaneTabs";
+import { TagTreeView } from "./sidebar/TagTreeView";
 import { IncomingSection } from "./IncomingSection";
 import { IncomingCaptureList } from "./IncomingCaptureList";
 import {
@@ -220,11 +222,11 @@ export type FileTreeHandle = {
 };
 
 type FileTreeProps = {
-  /** Rendered inside the scroll area (between comments and workspace). */
+  /** Tasks pane. */
   tasksSection?: ReactNode;
-  /** Rendered after Tasks, before the workspace tree. */
+  /** Routines pane. */
   routinesSection?: ReactNode;
-  /** Rendered after Routines, before the workspace tree. */
+  /** Dashboards pane. */
   dashboardsSection?: ReactNode;
 };
 
@@ -240,6 +242,14 @@ type PendingOsImport = {
   files: File[];
   conflicts: string[];
 };
+
+/** OS file drops land in Incoming or the Files pane only. */
+function osImportAllowed(target: EventTarget | null, pane: SidebarPane): boolean {
+  const el = target instanceof Element ? target : null;
+  if (!el) return false;
+  if (el.closest(".incoming-section")) return true;
+  return pane === "files" && el.closest(".sidebar-pane") != null;
+}
 
 /** Row under the pointer for OS file drops; vault root when over empty tree chrome. */
 function vaultRowFromPointerTarget(target: EventTarget | null): {
@@ -1491,6 +1501,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const vaultPath = useVaultStore((s) => s.vaultPath);
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
   const treeRevealRequest = useSidebarUiStore((s) => s.treeRevealRequest);
+  const sidebarPane = useSidebarUiStore((s) => s.sidebarPane);
   const favoritePaths = useVaultStore((s) => s.favoritePaths);
   const projectPropertiesByPath = useVaultStore(
     (s) => s.projectPropertiesByPath,
@@ -1532,6 +1543,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   );
 
   const treeFocusRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const pane = treeFocusRef.current;
+    if (pane) pane.scrollTop = 0;
+  }, [sidebarPane]);
   const [dndRoot, setDndRoot] = useState<HTMLDivElement | null>(null);
   const [promptKind, setPromptKind] = useState<PromptKind | null>(null);
   const [clipFolder, setClipFolder] = useState<string | null>(null);
@@ -2504,19 +2519,17 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         }}
       />
 
-      {/* Stable ref callback: an inline closure here re-runs on every render
-          (detach with null → setDndRoot(null) → Tree unmounts → remounts with
-          initialOpen), silently resetting expand/collapse state. */}
+      {/* Listeners cover Incoming and the pane. The scroll ref stays on the
+          pane so the virtualizer host does not remount when the pane changes. */}
       <div
         className={[
-          "tree-scroll",
+          "sidebar-stack",
           osDropRowPath !== null ? "is-os-file-dragging" : "",
         ]
           .filter(Boolean)
           .join(" ")}
-        ref={setTreeScrollRef}
-        tabIndex={0}
         onPaste={(e) => {
+          if (!osImportAllowed(e.target, sidebarPane)) return;
           if (pasteOsFiles(e.clipboardData)) {
             e.preventDefault();
             e.stopPropagation();
@@ -2525,6 +2538,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         onDragEnterCapture={(e) => {
           if (isVaultTreeDrag(e.dataTransfer)) return;
           if (!clipboardHasOsFiles(e.dataTransfer)) return;
+          if (!osImportAllowed(e.target, sidebarPane)) return;
           e.preventDefault();
           e.stopPropagation();
           const row = vaultRowFromPointerTarget(e.target);
@@ -2549,6 +2563,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             return;
           }
           if (!clipboardHasOsFiles(e.dataTransfer)) return;
+          if (!osImportAllowed(e.target, sidebarPane)) {
+            setOsDropRowPath(null);
+            return;
+          }
           e.preventDefault();
           e.stopPropagation();
           e.dataTransfer.dropEffect = "copy";
@@ -2583,12 +2601,14 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           }
           e.preventDefault();
           e.stopPropagation();
-          const row = vaultRowFromPointerTarget(e.target);
           setOsDropRowPath(null);
+          if (!osImportAllowed(e.target, sidebarPane)) return;
+          const row = vaultRowFromPointerTarget(e.target);
           const parent = importParentFromRow(row.path, row.isDir);
           beginOsImport(parent, e.dataTransfer);
         }}
       >
+        <div className="sidebar-pinned">
         <IncomingSection
           expanded={incomingExpanded}
           selected={
@@ -2696,71 +2716,96 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
               </div>
             </div>
             {!favoritesCollapsed ? (
-              <FavoritesTreeRows
-                nodes={favoriteNodes}
-                depth={0}
+              <div className="favorites-section-body">
+                <FavoritesTreeRows
+                  nodes={favoriteNodes}
+                  depth={0}
+                  expandedPaths={expandedPaths}
+                  activePath={activePath}
+                  selectedFolderPath={selectedFolderPath}
+                  selectedFolderExplicit={selectedFolderExplicit}
+                  treeSelectedFilePath={treeSelectedFilePath}
+                  treeSelectionVisible={treeSelectionVisible}
+                  renamingPath={renamingPath}
+                  favoriteSet={favoriteSet}
+                  projectPropertiesByPath={projectPropertiesByPath}
+                  unresolvedCounts={unresolvedCounts}
+                  fileMarkersByPath={fileMarkersByPath}
+                  fileMarkerCatalog={fileMarkerCatalog}
+                  showNoteTitles={showNoteTitles}
+                  titlesByPath={titlesByPath}
+                  onOpenContextMenu={setContextMenu}
+                  onSelectInTree={selectInTree}
+                  onOpenFolder={(path, options) => {
+                    void openOrCreateFolderNote(path, options);
+                  }}
+                  onOpenNote={(path, options) => {
+                    void openNote(path, options);
+                  }}
+                  onToggleExpanded={toggleExpanded}
+                  onRenameCommit={commitInlineRename}
+                  onRenameCancel={cancelInlineRename}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        </div>
+        <SidebarPaneTabs />
+        <div
+          id="sidebar-pane"
+          role="tabpanel"
+          aria-labelledby={`sidebar-pane-tab-${sidebarPane}`}
+          className="sidebar-pane tree-scroll"
+          ref={setTreeScrollRef}
+          tabIndex={0}
+        >
+          {sidebarPane === "files" ? (
+            <div className="workspace-section">
+              <WorkspaceTree
+                tree={tree}
                 expandedPaths={expandedPaths}
-                activePath={activePath}
-                selectedFolderPath={selectedFolderPath}
-                selectedFolderExplicit={selectedFolderExplicit}
-                treeSelectedFilePath={treeSelectedFilePath}
-                treeSelectionVisible={treeSelectionVisible}
-                renamingPath={renamingPath}
-                favoriteSet={favoriteSet}
                 projectPropertiesByPath={projectPropertiesByPath}
                 unresolvedCounts={unresolvedCounts}
                 fileMarkersByPath={fileMarkersByPath}
                 fileMarkerCatalog={fileMarkerCatalog}
                 showNoteTitles={showNoteTitles}
                 titlesByPath={titlesByPath}
-                onOpenContextMenu={setContextMenu}
-                onSelectInTree={selectInTree}
-                onOpenFolder={(path, options) => {
-                  void openOrCreateFolderNote(path, options);
-                }}
-                onOpenNote={(path, options) => {
-                  void openNote(path, options);
-                }}
+                renamingPath={renamingPath}
+                dropHighlightPath={osDropRowPath ?? workspaceDropRowPath}
+                scrollParentRef={treeFocusRef}
                 onToggleExpanded={toggleExpanded}
+                onSelectFolder={selectFolder}
+                onOpenFolder={onWorkspaceOpenFolder}
+                onOpenNote={onWorkspaceOpenNote}
+                onSelectInTree={selectInTree}
+                onContextMenu={onWorkspaceContextMenu}
                 onRenameCommit={commitInlineRename}
                 onRenameCancel={cancelInlineRename}
+                onCreate={onWorkspaceCreate}
+                onLocateActive={revealActiveInTree}
+                onCollapseAll={collapseAllInTree}
+                favoriteSet={favoriteSet}
+                externalDropTargetAt={incomingDropTargetAt}
+                onExternalDropHover={onVaultDropHover}
+                onExternalDrop={moveIntoDropZone}
               />
-            ) : null}
-          </div>
-        ) : null}
-        {dashboardsSection}
-        <CommentsInboxSection />
-        {tasksSection}
-        {routinesSection}
-        <div className="workspace-section">
-          <WorkspaceTree
-            tree={tree}
-            expandedPaths={expandedPaths}
-            projectPropertiesByPath={projectPropertiesByPath}
-            unresolvedCounts={unresolvedCounts}
-            fileMarkersByPath={fileMarkersByPath}
-            fileMarkerCatalog={fileMarkerCatalog}
-            showNoteTitles={showNoteTitles}
-            titlesByPath={titlesByPath}
-            renamingPath={renamingPath}
-            dropHighlightPath={osDropRowPath ?? workspaceDropRowPath}
-            scrollParentRef={treeFocusRef}
-            onToggleExpanded={toggleExpanded}
-            onSelectFolder={selectFolder}
-            onOpenFolder={onWorkspaceOpenFolder}
-            onOpenNote={onWorkspaceOpenNote}
-            onSelectInTree={selectInTree}
-            onContextMenu={onWorkspaceContextMenu}
-            onRenameCommit={commitInlineRename}
-            onRenameCancel={cancelInlineRename}
-            onCreate={onWorkspaceCreate}
-            onLocateActive={revealActiveInTree}
-            onCollapseAll={collapseAllInTree}
-            favoriteSet={favoriteSet}
-            externalDropTargetAt={incomingDropTargetAt}
-            onExternalDropHover={onVaultDropHover}
-            onExternalDrop={moveIntoDropZone}
-          />
+            </div>
+          ) : null}
+          {sidebarPane === "tags" ? (
+            <TagTreeView
+              tree={tree}
+              scrollParentRef={treeFocusRef}
+              showNoteTitles={showNoteTitles}
+              titlesByPath={titlesByPath}
+              onOpenNote={onWorkspaceOpenNote}
+              onCreate={onWorkspaceCreate}
+            />
+          ) : null}
+          {sidebarPane === "tasks" ? tasksSection : null}
+          {sidebarPane === "routines" ? routinesSection : null}
+          {sidebarPane === "comments" ? <CommentsInboxSection /> : null}
+          {sidebarPane === "dashboards" ? dashboardsSection : null}
         </div>
       </div>
     </div>

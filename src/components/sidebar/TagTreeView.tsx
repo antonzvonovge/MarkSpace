@@ -28,9 +28,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { FcDocument } from "react-icons/fc";
 import { ConfirmDialog, PromptDialog } from "../AppDialog";
 import { EyeIcon, PdfIcon, TagIcon, VaultSectionIcon } from "../treeIcons";
+import { SectionCollapseChevron } from "./SectionCollapseChevron";
 import {
   WorkspaceHeaderActions,
-  WorkspaceViewSwitch,
   type TreeCreateKind,
 } from "../TreeToolbar";
 import { noteLabel } from "../../lib/tagGraph";
@@ -119,6 +119,24 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+const TAGS_COLLAPSED_KEY = "markspace-tags-section-collapsed-v1";
+
+function loadTagsCollapsed(): boolean {
+  try {
+    return localStorage.getItem(TAGS_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveTagsCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(TAGS_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
+
 function rowPad(depth: number): CSSProperties {
   return {
     paddingLeft: `calc(var(--tree-pad-x) + ${depth} * var(--tree-indent))`,
@@ -172,6 +190,7 @@ export const TagTreeView = memo(function TagTreeView({
   const setSelectedTagPath = useSidebarUiStore((s) => s.setSelectedTagPath);
   const setHideSubtagNotes = useSidebarUiStore((s) => s.setHideSubtagNotes);
 
+  const [tagsCollapsed, setTagsCollapsed] = useState(loadTagsCollapsed);
   const [noteTags, setNoteTags] = useState<NoteTags[]>([]);
   const [menu, setMenu] = useState<{ x: number; y: number; path: string } | null>(
     null,
@@ -231,6 +250,10 @@ export const TagTreeView = memo(function TagTreeView({
   );
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+  const visibleRows = useMemo(
+    () => (tagsCollapsed ? [] : rows),
+    [tagsCollapsed, rows],
+  );
 
   useLayoutEffect(() => {
     const apply = () => {
@@ -301,12 +324,12 @@ export const TagTreeView = memo(function TagTreeView({
   }, [scrollParentRef]);
 
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: visibleRows.length,
     getScrollElement: () => scrollHost ?? scrollParentRef.current,
     estimateSize: () => rowHeight,
     overscan: OVERSCAN,
     scrollMargin,
-    getItemKey: (index) => rows[index]?.key ?? index,
+    getItemKey: (index) => visibleRows[index]?.key ?? index,
   });
 
   const sensors = useSensors(
@@ -469,13 +492,22 @@ export const TagTreeView = memo(function TagTreeView({
         style={rowPad(0)}
         onClick={() => setSelectedTagPath(null)}
       >
-        <span className="tree-chevron-btn is-empty" aria-hidden />
+        <SectionCollapseChevron
+          open={!tagsCollapsed}
+          label="Tags"
+          onToggle={() => {
+            setTagsCollapsed((prev) => {
+              const next = !prev;
+              saveTagsCollapsed(next);
+              return next;
+            });
+          }}
+        />
         <span className="tree-node-icon" aria-hidden>
           <VaultSectionIcon />
         </span>
         <span className="tree-node-label">{tree.name || "Vault"}</span>
         <div className="workspace-root-actions">
-          <WorkspaceViewSwitch />
           <WorkspaceHeaderActions
             onCreate={onCreate}
             onLocateActive={locateActive}
@@ -485,7 +517,7 @@ export const TagTreeView = memo(function TagTreeView({
       </div>
       <TagListHost listRef={listRef} height={virtualizer.getTotalSize()}>
         {virtualItems.map((item) => {
-          const row = rows[item.index];
+          const row = visibleRows[item.index];
           if (!row) return null;
           return (
             <div
@@ -656,7 +688,7 @@ const TagFlatRowView = memo(function TagFlatRowView({
   if (row.kind === "listHeader") {
     const exact = selectedTagPath != null && selectedTagPath !== UNTAGGED_SELECTION;
     return (
-      <div className="tree-row tag-tree-list-header" style={rowPad(0)}>
+      <div className="tree-row tag-tree-list-header" style={rowPad(1)}>
         <span className="tree-chevron-btn is-empty" aria-hidden />
         <span className="tag-tree-list-label">Notes</span>
         {exact ? (
@@ -681,7 +713,7 @@ const TagFlatRowView = memo(function TagFlatRowView({
   }
   if (row.kind === "empty") {
     return (
-      <div className="tree-row tag-tree-empty" style={rowPad(1)}>
+      <div className="tree-row tag-tree-empty" style={rowPad(2)}>
         <span className="tree-chevron-btn is-empty" aria-hidden />
         <span className="tree-node-label">No notes</span>
       </div>
@@ -696,11 +728,14 @@ const TagFlatRowView = memo(function TagFlatRowView({
             ? "tree-row tree-folder-row is-selected"
             : "tree-row tree-folder-row"
         }
-        style={rowPad(0)}
+        style={rowPad(1)}
         onClick={() => onSelect(UNTAGGED_SELECTION)}
       >
         <span className="tree-chevron-btn is-empty" aria-hidden />
-        <span className="tree-node-label">Untagged</span>
+        <span className="tree-node-icon" aria-hidden>
+          <TagIcon />
+        </span>
+        <span className="tree-node-label is-italic">Untagged</span>
       </div>
     );
   }

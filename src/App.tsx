@@ -661,13 +661,20 @@ function App() {
   const refreshSyncStatus = useSyncStore((s) => s.refreshStatus);
   const sidebarOpen = useSidebarUiStore((s) => s.open);
   const tagFilesOpen = useSidebarUiStore(
-    (s) => s.workspaceView === "tags" && s.selectedTagPath != null,
+    (s) => s.sidebarPane === "tags" && s.selectedTagPath != null,
   );
   const tagFilesWidth = useSidebarUiStore((s) => s.tagFilesWidth);
   const tagFilesOpenRef = useRef(tagFilesOpen);
   const tagFilesWidthRef = useRef(tagFilesWidth);
   tagFilesOpenRef.current = tagFilesOpen;
   tagFilesWidthRef.current = tagFilesWidth;
+  // Stay at the wide max until the shrink layout has been applied. Dropping
+  // maxSize in the same render clamps the panel, then the shrink subtracts the
+  // file-column width again and the editor bounces.
+  const [tagListMaxLatched, setTagListMaxLatched] = useState(tagFilesOpen);
+  if (tagFilesOpen && !tagListMaxLatched) {
+    setTagListMaxLatched(true);
+  }
   const chatOpen = useChatUiStore((s) => s.open);
   const toggleChat = useChatUiStore((s) => s.toggle);
   const sidebarSizePercent = useSidebarUiStore((s) => s.lastSizePercent);
@@ -886,6 +893,7 @@ function App() {
       if (!chatOpen) chatPct = 0;
 
       let targetPx: number;
+      let releaseMax = false;
       if (tagFilesOpen && sidebarOpen) {
         if (tagListInShellRef.current) {
           targetPx = currentPx;
@@ -903,6 +911,7 @@ function App() {
           saveShellLayout(savedRef.current);
           useSidebarUiStore.getState().rememberSizePercent(basePct);
         }
+        releaseMax = true;
       } else {
         applyingRef.current = true;
         try {
@@ -910,8 +919,11 @@ function App() {
         } catch {
           // group may not be ready
         }
+        releaseMax = !tagFilesOpen;
         clearFrame = requestAnimationFrame(() => {
-          if (!cancelled) applyingRef.current = false;
+          if (cancelled) return;
+          applyingRef.current = false;
+          if (releaseMax) setTagListMaxLatched(false);
         });
         return;
       }
@@ -942,7 +954,9 @@ function App() {
         tagListInShellRef.current = true;
       }
       clearFrame = requestAnimationFrame(() => {
-        if (!cancelled) applyingRef.current = false;
+        if (cancelled) return;
+        applyingRef.current = false;
+        if (releaseMax) setTagListMaxLatched(false);
       });
     };
     apply();
@@ -1472,7 +1486,7 @@ function App() {
             defaultSize={`${initialLayout.sidebar}%`}
             minSize={SIDEBAR_MIN_WIDTH}
             maxSize={
-              tagFilesOpen
+              tagFilesOpen || tagListMaxLatched
                 ? SIDEBAR_MAX_WIDTH + TAG_FILES_MAX_WIDTH + 64
                 : SIDEBAR_MAX_WIDTH
             }

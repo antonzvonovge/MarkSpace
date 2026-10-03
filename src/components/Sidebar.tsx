@@ -62,30 +62,33 @@ export const Sidebar = memo(function Sidebar() {
   const [tagFileSlot, setTagFileSlot] = useState<HTMLDivElement | null>(null);
   const tagFilesOpen = useSidebarUiStore(
     (s) =>
-      s.open && s.workspaceView === "tags" && s.selectedTagPath != null,
+      s.open && s.sidebarPane === "tags" && s.selectedTagPath != null,
   );
   const tagFilesWidth = useSidebarUiStore((s) => s.tagFilesWidth);
   const setTagFilesWidth = useSidebarUiStore((s) => s.setTagFilesWidth);
   const asideRef = useRef<HTMLElement | null>(null);
   const [primaryWidth, setPrimaryWidth] = useState<number | null>(null);
+  /**
+   * Pixel width of the primary column while the shell grows or shrinks for the
+   * tag file list. Without this, the column flexes for a frame and the centered
+   * pane switcher jumps.
+   */
+  const [frozenPrimary, setFrozenPrimary] = useState<number | null>(null);
   const tagFilesOpenRef = useRef(tagFilesOpen);
   const tagFilesWidthRef = useRef(tagFilesWidth);
+  const frozenPrimaryRef = useRef<number | null>(null);
   tagFilesWidthRef.current = tagFilesWidth;
-  /** Aside width before the file column opened; `null` once the aside has grown. */
-  const pendingGrowRef = useRef<number | null>(null);
-
-  useLayoutEffect(() => {
-    const aside = asideRef.current;
-    if (!aside) return;
-    const wasOpen = tagFilesOpenRef.current;
+  frozenPrimaryRef.current = frozenPrimary;
+  if (tagFilesOpen !== tagFilesOpenRef.current) {
+    const asideWidth = asideRef.current?.clientWidth ?? null;
+    const nextFrozen = tagFilesOpen
+      ? (primaryWidth ?? asideWidth)
+      : primaryWidth;
     tagFilesOpenRef.current = tagFilesOpen;
-    if (tagFilesOpen && !wasOpen) {
-      pendingGrowRef.current = primaryWidth ?? aside.clientWidth;
-      setPrimaryWidth(pendingGrowRef.current);
-    } else if (!tagFilesOpen) {
-      pendingGrowRef.current = null;
+    if (nextFrozen != null && nextFrozen !== frozenPrimary) {
+      setFrozenPrimary(nextFrozen);
     }
-  }, [tagFilesOpen, primaryWidth]);
+  }
 
   useLayoutEffect(() => {
     const aside = asideRef.current;
@@ -93,15 +96,21 @@ export const Sidebar = memo(function Sidebar() {
     const measure = () => {
       const width = aside.clientWidth;
       if (width <= 0) return;
+      const frozen = frozenPrimaryRef.current;
       if (!tagFilesOpenRef.current) {
+        if (frozen != null) {
+          if (width > frozen + 8) return;
+          frozenPrimaryRef.current = null;
+          setFrozenPrimary(null);
+        }
         setPrimaryWidth(width);
         return;
       }
-      const pending = pendingGrowRef.current;
       const filesWidth = tagFilesWidthRef.current;
-      if (pending != null) {
-        if (width < pending + filesWidth - 1) return;
-        pendingGrowRef.current = null;
+      if (frozen != null) {
+        if (width < frozen + filesWidth - 1) return;
+        frozenPrimaryRef.current = null;
+        setFrozenPrimary(null);
       }
       setPrimaryWidth(Math.max(SIDEBAR_MIN_WIDTH, width - filesWidth));
     };
@@ -180,8 +189,13 @@ export const Sidebar = memo(function Sidebar() {
           <div
             className="sidebar-primary"
             style={
-              tagFilesOpen && pendingGrowRef.current != null && primaryWidth != null
-                ? { flex: `0 0 ${primaryWidth}px`, minWidth: 0 }
+              frozenPrimary != null
+                ? {
+                    flex: `0 0 ${frozenPrimary}px`,
+                    width: frozenPrimary,
+                    maxWidth: frozenPrimary,
+                    minWidth: 0,
+                  }
                 : tagFilesOpen
                   ? { flex: "1 1 0", minWidth: 0 }
                   : undefined

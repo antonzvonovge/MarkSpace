@@ -2844,7 +2844,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         const path = await createNote(rel);
         const ui = useSidebarUiStore.getState();
         const tag = ui.selectedTagPath;
-        if (ui.workspaceView !== "tags" || !tag) return path;
+        if (ui.sidebarPane !== "tags" || !tag) return path;
         try {
           const markdown = await readNote(path);
           const existing = getNoteTags(markdown);

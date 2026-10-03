@@ -15,14 +15,23 @@ import { useVaultStore } from "../store/vaultStore";
 import { ConfirmDialog } from "./AppDialog";
 import { DashboardIcon } from "./dashboardIcon";
 import { PlusIcon } from "./treeIcons";
+import { SectionCollapseChevron } from "./sidebar/SectionCollapseChevron";
 
-const COLLAPSED_KEY = "markspace.dashboardsCollapsed";
+const DASHBOARDS_COLLAPSED_KEY = "markspace-dashboards-section-collapsed-v1";
 
-function loadCollapsed(): boolean {
+function loadDashboardsCollapsed(): boolean {
   try {
-    return localStorage.getItem(COLLAPSED_KEY) === "1";
+    return localStorage.getItem(DASHBOARDS_COLLAPSED_KEY) === "1";
   } catch {
     return false;
+  }
+}
+
+function saveDashboardsCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(DASHBOARDS_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    // ignore
   }
 }
 
@@ -48,27 +57,6 @@ function nextDashboardPath(tree: TreeNode | null): string {
     n += 1;
   }
   return `${DASHBOARDS_FOLDER}/${name}.dashboard`;
-}
-
-function SectionChevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={open ? "tasks-section-chevron is-open" : "tasks-section-chevron"}
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M6 4.5 10 8l-4 3.5"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 function InlineRenameInput({
@@ -223,7 +211,7 @@ export const DashboardsSection = memo(function DashboardsSection() {
   const refreshTree = useVaultStore((s) => s.refreshTree);
   const renameTreeEntry = useVaultStore((s) => s.renameTreeEntry);
   const removePath = useVaultStore((s) => s.removePath);
-  const [collapsed, setCollapsed] = useState(loadCollapsed);
+  const [sectionCollapsed, setSectionCollapsed] = useState(loadDashboardsCollapsed);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ path: string; name: string; x: number; y: number } | null>(
     null,
@@ -240,18 +228,6 @@ export const DashboardsSection = memo(function DashboardsSection() {
     useDashboardColorStore.getState().dropMissing(paths);
     for (const path of paths) void loadDashboardColor(path);
   }, [pathKey]);
-
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0");
-      } catch {
-        /* private mode */
-      }
-      return next;
-    });
-  }, []);
 
   const openDashboard = useCallback(
     (path: string) => {
@@ -284,40 +260,22 @@ export const DashboardsSection = memo(function DashboardsSection() {
 
   return (
     <div className="routines-section dashboards-section">
-      <div className="routines-section-header" onClick={toggleCollapsed}>
-        <span
-          role="button"
-          tabIndex={0}
-          className="tree-chevron-btn"
-          aria-label={collapsed ? "Expand Dashboards" : "Collapse Dashboards"}
-          aria-expanded={!collapsed}
-          onClick={(event) => {
-            event.stopPropagation();
-            toggleCollapsed();
+      <div className="routines-section-header">
+        <SectionCollapseChevron
+          open={!sectionCollapsed}
+          label="Dashboards"
+          onToggle={() => {
+            setSectionCollapsed((prev) => {
+              const next = !prev;
+              saveDashboardsCollapsed(next);
+              return next;
+            });
           }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              event.stopPropagation();
-              toggleCollapsed();
-            }
-          }}
-        >
-          <SectionChevron open={!collapsed} />
-        </span>
+        />
         <span className="routines-section-header-icon" aria-hidden="true">
           <DashboardIcon />
         </span>
-        <button
-          type="button"
-          className="routines-section-title-btn"
-          onClick={(event) => {
-            event.stopPropagation();
-            toggleCollapsed();
-          }}
-        >
-          <span className="routines-section-title">Dashboards</span>
-        </button>
+        <span className="routines-section-title">Dashboards</span>
         <div
           className="section-header-actions"
           onClick={(event) => event.stopPropagation()}
@@ -335,7 +293,7 @@ export const DashboardsSection = memo(function DashboardsSection() {
           </button>
         </div>
       </div>
-      {!collapsed && files.length > 0 ? (
+      {sectionCollapsed || files.length === 0 ? null : (
         <ul className="routines-list">
           {files.map((file) => {
             const renaming = renamingPath === file.path;
@@ -394,10 +352,10 @@ export const DashboardsSection = memo(function DashboardsSection() {
             );
           })}
         </ul>
-      ) : null}
-      {!collapsed && vaultPath && files.length === 0 ? (
+      )}
+      {sectionCollapsed || !vaultPath || files.length > 0 ? null : (
         <p className="routines-empty">No dashboards yet</p>
-      ) : null}
+      )}
       {menu ? (
         <DashboardContextMenu
           x={menu.x}

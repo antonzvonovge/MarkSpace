@@ -59,9 +59,6 @@ import {
   dispatchVaultTreePointerDrop,
   normalizeVaultTreeDragPath,
 } from "../../lib/vaultTreeDrag";
-import { useSidebarUiStore } from "../../store/sidebarUiStore";
-import { TagTreeView } from "./TagTreeView";
-
 const ROW_HEIGHT = 28;
 const ROOT_ROW_HEIGHT = 28;
 const OVERSCAN = 12;
@@ -252,7 +249,6 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   onExternalDrop,
 }: WorkspaceTreeProps): ReactNode {
   const activePath = useVaultStore((s) => s.activePath);
-  const workspaceView = useSidebarUiStore((s) => s.workspaceView);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
   const selectedFolderExplicit = useVaultStore((s) => s.selectedFolderExplicit);
   const treeSelectedFilePath = useVaultStore((s) => s.treeSelectedFilePath);
@@ -371,7 +367,6 @@ export const WorkspaceTree = memo(function WorkspaceTree({
   // above the tree mount, unmount and resize on their own, so track presence,
   // size and — because a section can resize mid-scroll — the scroll itself.
   useLayoutEffect(() => {
-    if (workspaceView === "tags") return;
     let setupRaf = 0;
     let updateRaf = 0;
     let host: HTMLElement | null = null;
@@ -428,7 +423,7 @@ export const WorkspaceTree = memo(function WorkspaceTree({
       mo?.disconnect();
       host?.removeEventListener("scroll", schedule);
     };
-  }, [scrollParentRef, workspaceView]);
+  }, [scrollParentRef]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -857,19 +852,6 @@ export const WorkspaceTree = memo(function WorkspaceTree({
         />
       );
     }
-  }
-
-  if (workspaceView === "tags") {
-    return (
-      <TagTreeView
-        tree={tree}
-        scrollParentRef={scrollParentRef}
-        showNoteTitles={showNoteTitles}
-        titlesByPath={titlesByPath}
-        onOpenNote={onOpenNote}
-        onCreate={onCreate}
-      />
-    );
   }
 
   return (

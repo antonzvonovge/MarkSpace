@@ -6,14 +6,23 @@ import { routineIdFromTab, useVaultStore } from "../store/vaultStore";
 import { ConfirmDialog } from "./AppDialog";
 import { RoutineColorIcon, routineIconColor } from "./routineIcon";
 import { PlusIcon } from "./treeIcons";
+import { SectionCollapseChevron } from "./sidebar/SectionCollapseChevron";
 
-const COLLAPSED_KEY = "markspace.routinesCollapsed";
+const ROUTINES_COLLAPSED_KEY = "markspace-routines-section-collapsed-v1";
 
-function loadCollapsed(): boolean {
+function loadRoutinesCollapsed(): boolean {
   try {
-    return localStorage.getItem(COLLAPSED_KEY) === "1";
+    return localStorage.getItem(ROUTINES_COLLAPSED_KEY) === "1";
   } catch {
     return false;
+  }
+}
+
+function saveRoutinesCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(ROUTINES_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    // ignore
   }
 }
 
@@ -59,27 +68,6 @@ function ClockIcon() {
       <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.35" />
       <path
         d="M8 4.75V8l2.1 1.4"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SectionChevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={open ? "tasks-section-chevron is-open" : "tasks-section-chevron"}
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M6 3.75 10.25 8 6 12.25"
         stroke="currentColor"
         strokeWidth="1.35"
         strokeLinecap="round"
@@ -344,7 +332,7 @@ export const RoutinesSection = memo(function RoutinesSection() {
   const openRoutineTab = useVaultStore((s) => s.openRoutineTab);
   const remove = useRoutinesStore((s) => s.remove);
   const openId = useVaultStore((s) => routineIdFromTab(s.activePath ?? "") ?? "");
-  const [collapsed, setCollapsed] = useState(loadCollapsed);
+  const [sectionCollapsed, setSectionCollapsed] = useState(loadRoutinesCollapsed);
   const [ready, setReady] = useState(false);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [menu, setMenu] = useState<RoutineMenuState | null>(null);
@@ -373,18 +361,6 @@ export const RoutinesSection = memo(function RoutinesSection() {
       cancelled = true;
     };
   }, [vaultPath, load, reset]);
-
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0");
-      } catch {
-        /* private mode */
-      }
-      return next;
-    });
-  }, []);
 
   const openRoutine = useCallback(
     (id: string) => {
@@ -421,40 +397,22 @@ export const RoutinesSection = memo(function RoutinesSection() {
 
   return (
     <div className="routines-section">
-      <div className="routines-section-header" onClick={toggleCollapsed}>
-        <span
-          role="button"
-          tabIndex={0}
-          className="tree-chevron-btn"
-          aria-label={collapsed ? "Expand Routines" : "Collapse Routines"}
-          aria-expanded={!collapsed}
-          onClick={(event) => {
-            event.stopPropagation();
-            toggleCollapsed();
+      <div className="routines-section-header">
+        <SectionCollapseChevron
+          open={!sectionCollapsed}
+          label="Routines"
+          onToggle={() => {
+            setSectionCollapsed((prev) => {
+              const next = !prev;
+              saveRoutinesCollapsed(next);
+              return next;
+            });
           }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              event.stopPropagation();
-              toggleCollapsed();
-            }
-          }}
-        >
-          <SectionChevron open={!collapsed} />
-        </span>
+        />
         <span className="routines-section-header-icon" aria-hidden="true">
           <ClockIcon />
         </span>
-        <button
-          type="button"
-          className="routines-section-title-btn"
-          onClick={(event) => {
-            event.stopPropagation();
-            toggleCollapsed();
-          }}
-        >
-          <span className="routines-section-title">Routines</span>
-        </button>
+        <span className="routines-section-title">Routines</span>
         {runningId ? <RoutineSpinner label="Routine running" /> : null}
         <div
           className="section-header-actions"
@@ -473,7 +431,7 @@ export const RoutinesSection = memo(function RoutinesSection() {
           </button>
         </div>
       </div>
-      {!collapsed && routines.length > 0 ? (
+      {!sectionCollapsed && routines.length > 0 ? (
         <ul className="routines-list" role="list">
           {routines.map((routine) => (
             <RoutineRow
@@ -491,9 +449,9 @@ export const RoutinesSection = memo(function RoutinesSection() {
           ))}
         </ul>
       ) : null}
-      {!collapsed && ready && routines.length === 0 ? (
+      {sectionCollapsed || !ready || routines.length > 0 ? null : (
         <p className="routines-empty">No routines yet</p>
-      ) : null}
+      )}
       {menu ? (
         <RoutineContextMenu
           menu={menu}

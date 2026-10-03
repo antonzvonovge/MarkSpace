@@ -7,13 +7,30 @@ import {
 
 const OPEN_KEY = "markspace-sidebar-open";
 const CALENDAR_OPEN_KEY = "markspace-sidebar-calendar-open";
+const SIDEBAR_PANE_KEY = "markspace-sidebar-pane";
+/** Previous folders/tags toggle. Read once to migrate, then left unused. */
 const WORKSPACE_VIEW_KEY = "markspace-workspace-view";
 const TAG_EXPANDED_KEY = "markspace-tag-expanded";
 const TAG_HIDE_KEY = "markspace-tag-hide-subtags";
 const TAG_SELECTION_KEY = "markspace-tag-selection";
 const TAG_FILES_WIDTH_KEY = "markspace-tag-files-width";
 
-export type WorkspaceView = "folders" | "tags";
+export type SidebarPane =
+  | "files"
+  | "tags"
+  | "tasks"
+  | "routines"
+  | "comments"
+  | "dashboards";
+
+const SIDEBAR_PANES: readonly SidebarPane[] = [
+  "files",
+  "tags",
+  "tasks",
+  "routines",
+  "comments",
+  "dashboards",
+];
 
 function readOpen(): boolean {
   try {
@@ -50,11 +67,26 @@ function writeCalendarOpen(open: boolean) {
   }
 }
 
-function readWorkspaceView(): WorkspaceView {
+function isSidebarPane(value: string | null): value is SidebarPane {
+  return value != null && (SIDEBAR_PANES as readonly string[]).includes(value);
+}
+
+function readSidebarPane(): SidebarPane {
   try {
-    return localStorage.getItem(WORKSPACE_VIEW_KEY) === "tags" ? "tags" : "folders";
+    const stored = localStorage.getItem(SIDEBAR_PANE_KEY);
+    if (isSidebarPane(stored)) return stored;
+    if (localStorage.getItem(WORKSPACE_VIEW_KEY) === "tags") return "tags";
+    return "files";
   } catch {
-    return "folders";
+    return "files";
+  }
+}
+
+function writeSidebarPane(pane: SidebarPane) {
+  try {
+    localStorage.setItem(SIDEBAR_PANE_KEY, pane);
+  } catch {
+    // ignore
   }
 }
 
@@ -129,7 +161,7 @@ type SidebarUiStore = {
   calendarOpen: boolean;
   lastSizePercent: number;
   treeRevealRequest: { path: string; id: number } | null;
-  workspaceView: WorkspaceView;
+  sidebarPane: SidebarPane;
   /** Lowercased tag paths that are expanded. */
   tagExpandedPaths: string[];
   /** `null` = no note list, `""` = Untagged, otherwise a tag path. */
@@ -143,7 +175,7 @@ type SidebarUiStore = {
   toggleCalendar: () => void;
   rememberSizePercent: (percent: number) => void;
   revealPathInTree: (path: string) => void;
-  setWorkspaceView: (view: WorkspaceView) => void;
+  setSidebarPane: (pane: SidebarPane) => void;
   toggleTagExpanded: (path: string) => void;
   collapseTagTree: () => void;
   expandTagPaths: (paths: string[]) => void;
@@ -159,7 +191,7 @@ export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
   lastSizePercent:
     typeof window !== "undefined" ? loadShellLayout().sidebar : 22,
   treeRevealRequest: null,
-  workspaceView: typeof window !== "undefined" ? readWorkspaceView() : "folders",
+  sidebarPane: typeof window !== "undefined" ? readSidebarPane() : "files",
   tagExpandedPaths: typeof window !== "undefined" ? readTagExpanded() : [],
   selectedTagPath: typeof window !== "undefined" ? readTagSelection() : null,
   hideSubtagNotes: typeof window !== "undefined" ? readHideSubtagNotes() : false,
@@ -194,21 +226,19 @@ export const useSidebarUiStore = create<SidebarUiStore>((set) => ({
   revealPathInTree: (path) => {
     if (!path) return;
     writeOpen(true);
+    writeSidebarPane("files");
     set((state) => ({
       open: true,
+      sidebarPane: "files",
       treeRevealRequest: {
         path,
         id: (state.treeRevealRequest?.id ?? 0) + 1,
       },
     }));
   },
-  setWorkspaceView: (view) => {
-    try {
-      localStorage.setItem(WORKSPACE_VIEW_KEY, view);
-    } catch {
-      // ignore
-    }
-    set({ workspaceView: view });
+  setSidebarPane: (pane) => {
+    writeSidebarPane(pane);
+    set({ sidebarPane: pane });
   },
   toggleTagExpanded: (path) => {
     const key = path.toLowerCase();

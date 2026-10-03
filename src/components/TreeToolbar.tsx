@@ -15,7 +15,6 @@ import {
   LocateIcon,
   PlusIcon,
   RefreshIcon,
-  TagIcon,
 } from "./treeIcons";
 
 export type TreeCreateKind =
@@ -272,29 +271,6 @@ function ShowResolvedIcon({ active }: { active: boolean }) {
   );
 }
 
-/** Sticky tags toggle. Unpressed shows folders; pressed shows the tag tree. */
-export function WorkspaceViewSwitch() {
-  const tags = useSidebarUiStore((s) => s.workspaceView) === "tags";
-  const setWorkspaceView = useSidebarUiStore((s) => s.setWorkspaceView);
-  return (
-    <button
-      type="button"
-      className={tags ? "tree-toolbar-btn is-open" : "tree-toolbar-btn"}
-      title={tags ? "Show folders" : "Show tags"}
-      aria-label={tags ? "Show folders" : "Show tags"}
-      aria-pressed={tags}
-      onClick={(e) => {
-        e.stopPropagation();
-        setWorkspaceView(tags ? "folders" : "tags");
-      }}
-      onDoubleClick={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <TagIcon />
-    </button>
-  );
-}
-
 /** Workspace actions; collapse stays last (right edge). */
 export function WorkspaceHeaderActions({
   onCreate,
@@ -306,7 +282,7 @@ export function WorkspaceHeaderActions({
   onCollapseAll: () => void;
 }) {
   const expandedPaths = useVaultStore((s) => s.expandedPaths);
-  const workspaceView = useSidebarUiStore((s) => s.workspaceView);
+  const sidebarPane = useSidebarUiStore((s) => s.sidebarPane);
   const tagExpandedPaths = useSidebarUiStore((s) => s.tagExpandedPaths);
   const activePath = useVaultStore((s) => s.activePath);
   const selectedFolderPath = useVaultStore((s) => s.selectedFolderPath);
@@ -378,7 +354,7 @@ export function WorkspaceHeaderActions({
       <SectionCollapseButton
         onCollapse={onCollapseAll}
         disabled={
-          workspaceView === "tags"
+          sidebarPane === "tags"
             ? tagExpandedPaths.length === 0
             : expandedPaths.length === 0
         }

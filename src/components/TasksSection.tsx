@@ -39,6 +39,7 @@ import {
   saveTasksSectionCollapsed,
 } from "../lib/tasksUiState";
 import { TASKS_FOLDER, joinPath } from "../lib/vaultApi";
+import { SectionCollapseChevron } from "./sidebar/SectionCollapseChevron";
 import {
   EMPTY_TASK_LIST_COUNT,
   useTaskListCountsStore,
@@ -431,7 +432,9 @@ export const TasksSection = memo(function TasksSection() {
   const metaByName = useTaskListMetaStore((s) => s.metaByName);
   const refreshMeta = useTaskListMetaStore((s) => s.refresh);
 
-  const [collapsed, setCollapsed] = useState(() => loadTasksSectionCollapsed());
+  const [sectionCollapsed, setSectionCollapsed] = useState(() =>
+    loadTasksSectionCollapsed(),
+  );
   const [groupsCollapsed, setGroupsCollapsed] = useState(() =>
     loadTasksGroupsCollapsed(),
   );
@@ -472,15 +475,6 @@ export const TasksSection = memo(function TasksSection() {
   useEffect(() => {
     void refreshMeta();
   }, [refreshMeta, tree]);
-
-  useEffect(() => {
-    if (tasksTabActive) return;
-    void useTaskListCountsStore.getState().syncFromTree(tree);
-  }, [tree, tasksTabActive]);
-
-  useEffect(() => {
-    useTaskListCountsStore.getState().recompute();
-  }, [view, filters]);
 
   const openSmartView = useCallback(
     (next: TasksViewId) => {
@@ -580,14 +574,6 @@ export const TasksSection = memo(function TasksSection() {
     openSmartView("inbox");
   }, [openSmartView]);
 
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      saveTasksSectionCollapsed(next);
-      return next;
-    });
-  }, []);
-
   return (
     <div className="tasks-section">
       <div
@@ -601,26 +587,17 @@ export const TasksSection = memo(function TasksSection() {
         data-task-list-drop="Inbox"
         onClick={openInbox}
       >
-        <span
-          role="button"
-          tabIndex={0}
-          className="tree-chevron-btn"
-          aria-label={collapsed ? "Expand Tasks" : "Collapse Tasks"}
-          aria-expanded={!collapsed}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleCollapsed();
+        <SectionCollapseChevron
+          open={!sectionCollapsed}
+          label="Tasks"
+          onToggle={() => {
+            setSectionCollapsed((prev) => {
+              const next = !prev;
+              saveTasksSectionCollapsed(next);
+              return next;
+            });
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              e.stopPropagation();
-              toggleCollapsed();
-            }
-          }}
-        >
-          <InboxChevron open={!collapsed} />
-        </span>
+        />
         <span className="tasks-section-header-icon" aria-hidden="true">
           <TasksSectionIcon />
         </span>
@@ -655,7 +632,7 @@ export const TasksSection = memo(function TasksSection() {
           </button>
         </div>
       </div>
-      {!collapsed ? (
+      {sectionCollapsed ? null : (
         <ul className="tasks-section-list" role="list">
           {SMART_VIEWS.map((v) => (
             <SmartViewRow
@@ -745,7 +722,7 @@ export const TasksSection = memo(function TasksSection() {
             />
           ))}
         </ul>
-      ) : null}
+      )}
 
       <TaskListPropertiesDialog
         open={createOpen}
