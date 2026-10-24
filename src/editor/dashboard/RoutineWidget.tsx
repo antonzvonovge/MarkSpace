@@ -1,6 +1,4 @@
 import { memo, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { ConfirmDialog } from "../../components/AppDialog";
 import { previewRoutineReport } from "../../lib/dashboardFormat";
 import { listRoutineRuns } from "../../lib/routinesApi";
@@ -8,12 +6,19 @@ import { readNote } from "../../lib/vaultApi";
 import { routineIconColor } from "../../components/routineIcon";
 import { useDashboardsLive } from "../../store/dashboardEnabledStore";
 import { useRoutinesStore } from "../../store/routinesStore";
+import { DashboardMarkdown } from "./DashboardMarkdown";
 import { WidgetRoutineIcon } from "./widgetIcons";
 
 type Report =
   | { phase: "loading" }
   | { phase: "empty" }
-  | { phase: "ready"; status: string; text: string; truncated: boolean }
+  | {
+      phase: "ready";
+      status: string;
+      text: string;
+      truncated: boolean;
+      sourcePath: string;
+    }
   | { phase: "error"; message: string };
 
 function statusClass(status: string): string {
@@ -94,6 +99,7 @@ export const RoutineWidget = memo(function RoutineWidget({
           status: latest.status,
           text: preview.text,
           truncated: preview.truncated,
+          sourcePath: latest.path,
         });
       } catch (err) {
         if (cancelled) return;
@@ -178,9 +184,10 @@ export const RoutineWidget = memo(function RoutineWidget({
         ) : report.phase === "ready" ? (
           <>
             {report.text ? (
-              <div className="dashboard-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.text}</ReactMarkdown>
-              </div>
+              <DashboardMarkdown
+                text={report.text}
+                sourcePath={report.sourcePath}
+              />
             ) : (
               <p className="dashboard-widget-empty">No report text</p>
             )}

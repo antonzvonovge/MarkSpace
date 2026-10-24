@@ -79,13 +79,16 @@ import {
   createNote,
   ensureFolderNote,
   folderPathFromFolderNote,
+  isAbsoluteFsPath,
   isDrawioPath,
+  isExternalMarkdownPath,
   joinPath,
   parentPath,
   resolveWikiTarget,
   writeAsset,
   type NoteComment,
 } from "../lib/vaultApi";
+import { classifyDashboardHref } from "./dashboard/resolveDashboardHref";
 import { isUnderDiaryProject } from "../lib/diaryNotes";
 import { writeClipboardText } from "../lib/clipboardText";
 import { editorFontStack } from "../settings/applyPrefs";
@@ -858,6 +861,34 @@ export const NoteEditor = memo(function NoteEditor({
           await openUrl(href);
           return;
         }
+        if (isExternalMarkdownPath(path) || isAbsoluteFsPath(href) || /^file:/i.test(href)) {
+          const classified = classifyDashboardHref(href, path);
+          if (classified.action === "browser") {
+            await openUrl(classified.url);
+            return;
+          }
+          if (classified.action === "open") {
+            await go(classified.path);
+            return;
+          }
+          if (classified.action === "wiki") {
+            let resolved = await resolveWikiTarget(classified.target);
+            if (!resolved && classified.target.toLowerCase().endsWith(".md")) {
+              resolved = await resolveWikiTarget(
+                classified.target.replace(/\.md$/i, ""),
+              );
+            }
+            if (resolved) {
+              const folder = folderPathFromFolderNote(resolved);
+              const notePath = folder
+                ? await ensureFolderNote(folder)
+                : resolved;
+              await go(notePath);
+            }
+            return;
+          }
+          if (classified.action === "none") return;
+        }
         const cleanedHref = href.replace(/^\.\//, "");
         let resolved = await resolveWikiTarget(cleanedHref.replace(/\.md$/i, ""));
         if (!resolved && cleanedHref.endsWith(".md")) {
@@ -872,7 +903,7 @@ export const NoteEditor = memo(function NoteEditor({
         }
       })();
     },
-    [openNote, refreshTree],
+    [openNote, path, refreshTree],
   );
 
   useEffect(() => {

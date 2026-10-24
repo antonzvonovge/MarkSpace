@@ -1,10 +1,13 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { RefreshIcon } from "../../components/treeIcons";
-import { readExternalText, readNote } from "../../lib/vaultApi";
+import {
+  isAbsoluteFsPath,
+  readExternalText,
+  readNote,
+} from "../../lib/vaultApi";
 import { useDashboardsLive } from "../../store/dashboardEnabledStore";
+import { DashboardMarkdown } from "./DashboardMarkdown";
 import { WidgetNoteIcon } from "./widgetIcons";
 
 const REFRESH_MS = 15 * 60 * 1000;
@@ -19,10 +22,6 @@ type Body =
 function noteTitle(path: string): string {
   const name = path.split(/[/\\]/).pop()?.trim();
   return name || "Note";
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith("/") || path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path);
 }
 
 function isMissingFile(err: unknown): boolean {
@@ -62,7 +61,7 @@ export const NoteWidget = memo(function NoteWidget({
       setBody({ phase: "loading" });
     }
     const load = () => {
-      const read = isAbsolutePath(path) ? readExternalText(path) : readNote(path);
+      const read = isAbsoluteFsPath(path) ? readExternalText(path) : readNote(path);
       void read
         .then((text) => {
           if (cancelled) return;
@@ -157,9 +156,7 @@ export const NoteWidget = memo(function NoteWidget({
         ) : body.phase === "error" ? (
           <p className="dashboard-widget-empty">{body.message}</p>
         ) : body.text.trim() ? (
-          <div className="dashboard-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{body.text}</ReactMarkdown>
-          </div>
+          <DashboardMarkdown text={body.text} sourcePath={path} />
         ) : (
           <p className="dashboard-widget-empty">This note is empty</p>
         )}

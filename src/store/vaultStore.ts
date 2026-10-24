@@ -62,6 +62,8 @@ import {
   openVault,
   parentPath,
   promoteNoteToFolder as promoteNoteToFolderApi,
+  isExternalMarkdownPath,
+  readExternalText,
   readNote,
   reindexNoteTags as reindexNoteTagsApi,
   removeFavorite,
@@ -69,6 +71,7 @@ import {
   setCommentResolved,
   skillPathForId,
   upsertNoteComment,
+  writeExternalText,
   writeNote,
   type CommentRef,
   type NoteComment,
@@ -718,6 +721,19 @@ function flushActiveEditorBuffer(get: () => VaultStore): void {
   flushDrawioEditor(path);
 }
 
+async function readDocumentText(path: string): Promise<string> {
+  return isExternalMarkdownPath(path) ? readExternalText(path) : readNote(path);
+}
+
+async function writeDocumentText(
+  path: string,
+  content: string,
+): Promise<string> {
+  return isExternalMarkdownPath(path)
+    ? writeExternalText(path, content)
+    : writeNote(path, content);
+}
+
 /**
  * After optimistic path remaps, write the dirty buffer to the path that still
  * exists on disk (`diskPath`). Call after UI paint so DnD never waits on save.
@@ -743,7 +759,7 @@ async function saveDirtyAtDiskPath(
   const body = state.content;
   set({ saving: true, suppressWatchUntil: Date.now() + 6_000 });
   try {
-    const savedContent = await writeNote(diskPath, body);
+    const savedContent = await writeDocumentText(diskPath, body);
     const current = get();
     const tabPath = current.activePath;
     set({
@@ -754,8 +770,10 @@ async function saveDirtyAtDiskPath(
         ? withTabBody(current.tabs, tabPath, savedContent, false)
         : current.tabs,
     });
-    if (isDrawioPath(diskPath)) warmDrawioPreview(diskPath, savedContent);
-    get().rememberDiaryDayMarker(diskPath, savedContent);
+    if (!isExternalMarkdownPath(diskPath)) {
+      if (isDrawioPath(diskPath)) warmDrawioPreview(diskPath, savedContent);
+      get().rememberDiaryDayMarker(diskPath, savedContent);
+    }
   } catch (e) {
     set({ saving: false });
     throw e;
@@ -1068,7 +1086,8 @@ function recordRecentFile(
     !path ||
     path === GRAPH_TAB_PATH ||
     path === SETTINGS_TAB_PATH ||
-    path === TASKS_TAB_PATH
+    path === TASKS_TAB_PATH ||
+    isExternalMarkdownPath(path)
   ) {
     return;
   }
@@ -1198,7 +1217,7 @@ function reconcileActiveTabFromDisk(
 ): void {
   if (isPdfPath(path)) return;
   const allowDirtyTruncateCheck = opts?.allowDirtyTruncateCheck === true;
-  void readNote(path)
+  void readDocumentText(path)
     .then((disk) => {
       const st = get();
       if (st.activePath !== path) return;
@@ -1269,7 +1288,7 @@ async function persistDirtyTab(
 
   // Prefer a fuller on-disk restore over writing a truncated dirty buffer.
   try {
-    const disk = await readNote(path);
+    const disk = await readDocumentText(path);
     if (disk.length > start.body.length + 200) {
       const st = get();
       const cur = tabBuffer(st, path);
@@ -1298,7 +1317,7 @@ async function persistDirtyTab(
     suppressWatchUntil: Date.now() + 6_000,
   });
   try {
-    const savedContent = await writeNote(path, still.body);
+    const savedContent = await writeDocumentText(path, still.body);
     const latest = get();
     const cur = tabBuffer(latest, path);
     if (!cur) {
@@ -1321,11 +1340,13 @@ async function persistDirtyTab(
     } else {
       set({ tabs: withTabBody(latest.tabs, path, savedContent, false) });
     }
-    if (isDrawioPath(path)) warmDrawioPreview(path, savedContent);
-    get().rememberDiaryDayMarker(path, savedContent);
-    scheduleTagCatalogRefresh(() => get().refreshVaultTags());
-    if (path.toLowerCase().endsWith(".mddict")) {
-      void get().refreshDictionaryTags();
+    if (!isExternalMarkdownPath(path)) {
+      if (isDrawioPath(path)) warmDrawioPreview(path, savedContent);
+      get().rememberDiaryDayMarker(path, savedContent);
+      scheduleTagCatalogRefresh(() => get().refreshVaultTags());
+      if (path.toLowerCase().endsWith(".mddict")) {
+        void get().refreshDictionaryTags();
+      }
     }
   } catch (e) {
     if (get().activePath === path) {
@@ -1381,6 +1402,7 @@ async function activateTab(
       content,
       tabs,
       dirty,
+      !isExternalMarkdownPath(tab.path),
     );
     void get().loadActiveNoteComments();
     reconcileActiveTabFromDisk(set, get, tab.path, {
@@ -1390,8 +1412,16 @@ async function activateTab(
   }
   set({ loading: true, tabs, dirty: false });
   try {
-    const body = await readNote(tab.path);
-    activateLoaded(set, get().vaultPath, tab.path, body, tabs);
+    const body = await readDocumentText(tab.path);
+    activateLoaded(
+      set,
+      get().vaultPath,
+      tab.path,
+      body,
+      tabs,
+      false,
+      !isExternalMarkdownPath(tab.path),
+    );
     void get().loadActiveNoteComments();
   } catch {
     set({
@@ -2205,14 +2235,17 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       });
       return;
     }
-    if (!isVaultDocumentPath(path)) {
+    if (!isVaultDocumentPath(path) && !isExternalMarkdownPath(path)) {
       if (options?.syncTreeSelection !== false) {
         get().selectInTree(path, false);
       }
       return;
     }
     const asPreview = options?.preview !== false;
-    const syncTreeSelection = options?.syncTreeSelection !== false;
+    const externalMd = isExternalMarkdownPath(path);
+    const syncTreeSelection = externalMd
+      ? options?.syncTreeSelection === true
+      : options?.syncTreeSelection !== false;
     const skipNavHistory = options?.skipNavHistory === true;
     const pdfPage =
       typeof options?.page === "number" && options.page >= 1
@@ -2256,7 +2289,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
     const loadContent = async (): Promise<string> => {
       if (isPdfPath(path)) return "";
-      return readNote(path);
+      return readDocumentText(path);
     };
 
     const afterActivate = () => {
@@ -2749,7 +2782,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
   loadActiveNoteComments: async () => {
     const { activePath } = get();
-    if (!activePath || !activePath.toLowerCase().endsWith(".md")) {
+    if (
+      !activePath ||
+      !activePath.toLowerCase().endsWith(".md") ||
+      isExternalMarkdownPath(activePath)
+    ) {
       if (get().activeNoteComments.length === 0) return;
       set({ activeNoteComments: [] });
       return;
@@ -2845,7 +2882,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     // thrash tree refresh / tag reindex while the user is still editing.
     set({ saving: true, suppressWatchUntil: Date.now() + 6_000 });
     try {
-      const savedContent = await writeNote(activePath, content);
+      const savedContent = await writeDocumentText(activePath, content);
       const current = get();
       if (
         current.activePath !== activePath ||
@@ -2860,16 +2897,20 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         saving: false,
         tabs: withTabBody(current.tabs, activePath, savedContent, false),
       });
-      if (isDrawioPath(activePath)) warmDrawioPreview(activePath, savedContent);
-      get().rememberDiaryDayMarker(activePath, savedContent);
-      if (activePath.toLowerCase().endsWith(".md")) {
-        useNoteTitlesStore.getState().patchFromMarkdown(activePath, savedContent);
-      }
-      // Tag index was already patched in write_note; refresh UI catalogs after
-      // a short settle so rapid saves do not spam listVaultTags IPC.
-      scheduleTagCatalogRefresh(() => get().refreshVaultTags());
-      if (activePath.toLowerCase().endsWith(".mddict")) {
-        void get().refreshDictionaryTags();
+      if (!isExternalMarkdownPath(activePath)) {
+        if (isDrawioPath(activePath)) warmDrawioPreview(activePath, savedContent);
+        get().rememberDiaryDayMarker(activePath, savedContent);
+        if (activePath.toLowerCase().endsWith(".md")) {
+          useNoteTitlesStore
+            .getState()
+            .patchFromMarkdown(activePath, savedContent);
+        }
+        // Tag index was already patched in write_note; refresh UI catalogs after
+        // a short settle so rapid saves do not spam listVaultTags IPC.
+        scheduleTagCatalogRefresh(() => get().refreshVaultTags());
+        if (activePath.toLowerCase().endsWith(".mddict")) {
+          void get().refreshDictionaryTags();
+        }
       }
     } catch (e) {
       set({
@@ -4288,7 +4329,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     for (const tab of targets) {
       if (tab.path === activePath && dirty) continue;
       try {
-        const next = await readNote(tab.path);
+        const next = await readDocumentText(tab.path);
         get().applyExternalContent(tab.path, next);
       } catch {
         // Missing files are closed by pruneMissingTabs via refreshTree.

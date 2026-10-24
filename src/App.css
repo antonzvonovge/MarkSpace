@@ -20004,6 +20004,17 @@ button.status-bar-jobs-menu-item:hover {
   line-height: 1.4;
 }
 
+.dashboard-markdown a {
+  color: #7b68ee;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.dashboard-markdown a:hover {
+  color: #6952eb;
+}
+
 :root[data-theme="dark"] .dashboard-markdown {
   color: #e2e4e9;
 }

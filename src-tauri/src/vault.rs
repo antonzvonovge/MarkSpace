@@ -1234,6 +1234,32 @@ pub fn read_external_text(path: String) -> Result<String, String> {
     Ok(normalize_newlines(&raw))
 }
 
+/// Write text to a user-opened absolute file outside (or inside) the vault.
+/// Does not update vault indexes (tags, embeddings, markers).
+#[tauri::command(async)]
+pub fn write_external_text(path: String, content: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path required".into());
+    }
+    let candidate = Path::new(trimmed);
+    if !candidate.is_absolute() {
+        return Err("Path must be absolute".into());
+    }
+    let content = normalize_newlines(&content);
+    let bytes = content.len() as u64;
+    if bytes > MAX_EXTERNAL_TEXT_BYTES {
+        return Err("File is too large".into());
+    }
+    if let Some(parent) = candidate.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| format!("Cannot create folders: {e}"))?;
+        }
+    }
+    fs::write(candidate, &content).map_err(|e| format!("Cannot write file: {e}"))?;
+    Ok(())
+}
+
 #[tauri::command(async)]
 pub fn write_note(path: String, content: String, state: State<VaultState>) -> Result<(), String> {
     let root = get_root(&state)?;

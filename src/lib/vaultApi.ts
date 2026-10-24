@@ -38,9 +38,48 @@ function skipMarkdownNormalize(path: string): boolean {
   );
 }
 
+/** Absolute OS path (POSIX, Windows drive, or UNC). */
+export function isAbsoluteFsPath(path: string): boolean {
+  const trimmed = path.trim();
+  return (
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("\\\\") ||
+    /^[A-Za-z]:[\\/]/.test(trimmed)
+  );
+}
+
+/** Absolute `.md` / `.markdown` path opened outside the vault tree. */
+export function isExternalMarkdownPath(path: string): boolean {
+  if (!isAbsoluteFsPath(path)) return false;
+  const lower = path.trim().toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".markdown");
+}
+
 /** Read a user-picked absolute file as text. It does not have to live in the vault. */
 export async function readExternalText(path: string): Promise<string> {
-  return invoke("read_external_text", { path });
+  const raw = await invoke<string>("read_external_text", { path });
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+    return normalizeMarkdown(raw);
+  }
+  return raw;
+}
+
+/** Write text to an absolute file; no vault tag/embedding index updates. */
+export async function writeExternalText(
+  path: string,
+  content: string,
+): Promise<string> {
+  const normalized = skipMarkdownNormalize(path)
+    ? content
+    : normalizeMarkdown(content);
+  const lower = path.toLowerCase();
+  const payload =
+    lower.endsWith(".md") || lower.endsWith(".markdown")
+      ? stampNoteTimestamps(normalized)
+      : normalized;
+  await invoke("write_external_text", { path, content: payload });
+  return payload;
 }
 
 export async function readNote(path: string): Promise<string> {
