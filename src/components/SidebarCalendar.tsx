@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { DayColorPicker } from "./DayColorPicker";
 import { DayMarkerPicker } from "./DayMarkerPicker";
 import { useLocalToday } from "../hooks/useLocalToday";
 import { dayMarkerById } from "../lib/dayMarkers";
-import { getNoteDayMarker } from "../lib/noteFrontmatter";
+import {
+  getNoteDayColor,
+  getNoteDayMarker,
+} from "../lib/noteFrontmatter";
 import {
   collectDailyNoteDayKeys,
   dayKey,
   parseDailyNoteDate,
   resolveDiaryProjectRoot,
 } from "../lib/diaryNotes";
+import { PROJECT_COLOR_SWATCHES } from "../lib/projectColors";
 import { useChatStore } from "../store/chatStore";
 import { useDiarySettingsStore } from "../store/diarySettingsStore";
 import { useVaultStore } from "../store/vaultStore";
@@ -49,6 +54,10 @@ function buildMonthCells(viewMonth: Date): Date[] {
     cells.push(d);
   }
   return cells;
+}
+
+function colorLabel(hex: string): string {
+  return PROJECT_COLOR_SWATCHES.find((s) => s.hex === hex)?.label ?? "Colored";
 }
 
 function ChevronLeftIcon() {
@@ -130,8 +139,10 @@ export function SidebarCalendar() {
   const openOrCreateDailyNote = useVaultStore((s) => s.openOrCreateDailyNote);
   const content = useVaultStore((s) => s.content);
   const diaryDayMarkers = useVaultStore((s) => s.diaryDayMarkers);
+  const diaryDayColors = useVaultStore((s) => s.diaryDayColors);
   const loadDiaryDayMarkers = useVaultStore((s) => s.loadDiaryDayMarkers);
   const setDailyNoteMarker = useVaultStore((s) => s.setDailyNoteMarker);
+  const setDailyNoteColor = useVaultStore((s) => s.setDailyNoteColor);
   const markerCatalog = useDiarySettingsStore((s) => s.markers);
   const hydrateDiarySettings = useDiarySettingsStore((s) => s.hydrateForVault);
   const vaultPath = useVaultStore((s) => s.vaultPath);
@@ -226,7 +237,15 @@ export function SidebarCalendar() {
     return diaryDayMarkers[dayKey(date)] ?? "";
   };
 
-  const openMarkerPicker = (date: Date, anchor: HTMLElement) => {
+  const colorFor = (date: Date): string => {
+    if (!diaryRoot) return "";
+    if (selectedDate && sameDay(date, selectedDate) && activePath) {
+      return getNoteDayColor(content);
+    }
+    return diaryDayColors[dayKey(date)] ?? "";
+  };
+
+  const openDayPicker = (date: Date, anchor: HTMLElement) => {
     if (!diaryRoot) {
       useVaultStore.setState({
         error:
@@ -236,7 +255,7 @@ export function SidebarCalendar() {
     }
     const rect = anchor.getBoundingClientRect();
     const width = 232;
-    const height = 128;
+    const height = 280;
     const left = Math.max(
       8,
       Math.min(rect.left, window.innerWidth - width - 8),
@@ -254,6 +273,13 @@ export function SidebarCalendar() {
     const date = picker.date;
     setPicker(null);
     void setDailyNoteMarker(diaryRoot, date, id);
+  };
+
+  const applyColor = (hex: string) => {
+    if (!picker || !diaryRoot) return;
+    const date = picker.date;
+    setPicker(null);
+    void setDailyNoteColor(diaryRoot, date, hex);
   };
 
   return (
@@ -298,6 +324,7 @@ export function SidebarCalendar() {
           const marker = markerId
             ? dayMarkerById(markerId, markerCatalog)
             : undefined;
+          const dayColor = colorFor(date);
           const className = [
             "sidebar-calendar-day",
             outside ? "is-outside" : "",
@@ -305,6 +332,7 @@ export function SidebarCalendar() {
             isSelected ? "is-selected" : "",
             hasNote ? "has-note" : "",
             marker ? "has-marker" : "",
+            dayColor ? "has-day-color" : "",
           ]
             .filter(Boolean)
             .join(" ");
@@ -317,9 +345,13 @@ export function SidebarCalendar() {
           const extras = [
             hasNote ? "has note" : "",
             marker ? marker.label : "",
+            dayColor ? colorLabel(dayColor) : "",
           ].filter(Boolean);
           const fullLabel =
             extras.length > 0 ? `${label}, ${extras.join(", ")}` : label;
+          const style = dayColor
+            ? ({ ["--day-color"]: dayColor } as CSSProperties)
+            : undefined;
 
           return (
             <button
@@ -327,6 +359,7 @@ export function SidebarCalendar() {
               type="button"
               role="gridcell"
               className={className}
+              style={style}
               aria-current={isToday ? "date" : undefined}
               aria-selected={isSelected}
               aria-label={fullLabel}
@@ -335,7 +368,7 @@ export function SidebarCalendar() {
               onContextMenu={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                openMarkerPicker(date, event.currentTarget);
+                openDayPicker(date, event.currentTarget);
               }}
             >
               {marker ? (
@@ -366,15 +399,31 @@ export function SidebarCalendar() {
         ? createPortal(
             <div
               ref={pickerRef}
-              className="day-marker-popover"
+              className="day-marker-popover day-meta-popover"
               role="dialog"
-              aria-label="Day marker"
+              aria-label="Day marker and color"
               style={{ left: picker.left, top: picker.top }}
             >
-              <DayMarkerPicker
-                value={markerIdFor(picker.date)}
-                onChange={applyMarker}
-              />
+              <div className="day-meta-popover-section">
+                <div className="day-meta-popover-label" id="cal-day-marker-label">
+                  Marker
+                </div>
+                <DayMarkerPicker
+                  value={markerIdFor(picker.date)}
+                  onChange={applyMarker}
+                  labelledBy="cal-day-marker-label"
+                />
+              </div>
+              <div className="day-meta-popover-section">
+                <div className="day-meta-popover-label" id="cal-day-color-label">
+                  Color
+                </div>
+                <DayColorPicker
+                  value={colorFor(picker.date)}
+                  onChange={applyColor}
+                  labelledBy="cal-day-color-label"
+                />
+              </div>
             </div>,
             document.body,
           )

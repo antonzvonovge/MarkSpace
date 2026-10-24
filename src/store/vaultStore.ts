@@ -131,15 +131,18 @@ import {
 } from "../lib/movieNotes";
 import {
   getMovieAttrs,
+  getNoteDayColor,
   getNoteDayMarker,
   getNoteFileMarker,
   setMovieAttrs,
+  setNoteDayColor,
   setNoteDayMarker,
   setNoteFileMarker,
   setNoteTags,
   getNoteTags,
   type MovieAttrs,
 } from "../lib/noteFrontmatter";
+import { normalizeProjectColor } from "../lib/projectColors";
 import { downloadPosterToAssets } from "../lib/omdb";
 
 async function nativeLanguageFromPrefs(): Promise<string> {
@@ -316,7 +319,9 @@ type VaultStore = {
   dictionaryTags: string[];
   /** dayKey → marker id for `diaryDayMarkersProject`. */
   diaryDayMarkers: Record<string, string>;
-  /** Diary project whose markers are currently cached. */
+  /** dayKey → Material hex for `diaryDayMarkersProject`. */
+  diaryDayColors: Record<string, string>;
+  /** Diary project whose markers/colors are currently cached. */
   diaryDayMarkersProject: string | null;
   /** Vault-relative `.md` path → `fileMarker` catalog id. */
   fileMarkersByPath: Record<string, string>;
@@ -335,11 +340,11 @@ type VaultStore = {
   refreshVaultTags: () => Promise<void>;
   /** Reload dictionary tag bank from all `.mddict` files. */
   refreshDictionaryTags: () => Promise<void>;
-  /** Load YAML day markers for a diary project into `diaryDayMarkers`. */
+  /** Load YAML day markers/colors for a diary project into calendar caches. */
   loadDiaryDayMarkers: (project: string) => Promise<void>;
   /** Reload in-memory `fileMarkersByPath` from the Rust index. */
   refreshFileMarkers: () => Promise<void>;
-  /** Patch the in-memory calendar marker map from a daily-note path + markdown. */
+  /** Patch in-memory calendar marker/color maps from a daily-note path + markdown. */
   rememberDiaryDayMarker: (path: string, markdown: string) => void;
   /**
    * Set or clear a diary day marker. Creates the daily note when missing
@@ -349,6 +354,15 @@ type VaultStore = {
     fromPath: string,
     date: Date,
     markerId: string,
+  ) => Promise<void>;
+  /**
+   * Set or clear a diary day color (Material 500 hex). Creates the daily note
+   * when missing (does not open a tab).
+   */
+  setDailyNoteColor: (
+    fromPath: string,
+    date: Date,
+    colorHex: string,
   ) => Promise<void>;
   /**
    * Set or clear a file marker on a `.md` note or folder (YAML `fileMarker:`
@@ -591,7 +605,7 @@ async function loadProjectPropertiesMap(): Promise<
 }
 
 function diaryMarkersFromList(
-  rows: { date: string; marker: string }[],
+  rows: { date: string; marker: string; color?: string }[],
 ): Record<string, string> {
   const map: Record<string, string> = {};
   for (const row of rows) {
@@ -599,6 +613,19 @@ function diaryMarkersFromList(
     const id = normalizeDayMarkerId(row.marker);
     if (!date || !id) continue;
     map[dayKey(date)] = id;
+  }
+  return map;
+}
+
+function diaryColorsFromList(
+  rows: { date: string; marker: string; color?: string }[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    const date = parseIsoDateOnly(row.date);
+    const color = normalizeProjectColor(row.color ?? "");
+    if (!date || !color) continue;
+    map[dayKey(date)] = color;
   }
   return map;
 }
@@ -618,6 +645,23 @@ function patchDiaryMarkerMap(
   }
   if (current[key] === id) return current;
   return { ...current, [key]: id };
+}
+
+function patchDiaryColorMap(
+  current: Record<string, string>,
+  date: Date,
+  colorHex: string,
+): Record<string, string> {
+  const key = dayKey(date);
+  const color = normalizeProjectColor(colorHex);
+  if (!color) {
+    if (!(key in current)) return current;
+    const next = { ...current };
+    delete next[key];
+    return next;
+  }
+  if (current[key] === color) return current;
+  return { ...current, [key]: color };
 }
 
 function remapExpanded(expanded: string[], from: string, to: string): string[] {
@@ -1560,6 +1604,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   vaultTags: [],
   dictionaryTags: [],
   diaryDayMarkers: {},
+  diaryDayColors: {},
   diaryDayMarkersProject: null,
   fileMarkersByPath: {},
   content: "",
@@ -1602,17 +1647,26 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   loadDiaryDayMarkers: async (project) => {
     const root = project.trim().replace(/^\/+|\/+$/g, "");
     if (!root) {
-      set({ diaryDayMarkers: {}, diaryDayMarkersProject: null });
+      set({
+        diaryDayMarkers: {},
+        diaryDayColors: {},
+        diaryDayMarkersProject: null,
+      });
       return;
     }
     try {
       const rows = await listDiaryDayMarkers(root);
       set({
         diaryDayMarkers: diaryMarkersFromList(rows),
+        diaryDayColors: diaryColorsFromList(rows),
         diaryDayMarkersProject: root,
       });
     } catch {
-      set({ diaryDayMarkers: {}, diaryDayMarkersProject: root });
+      set({
+        diaryDayMarkers: {},
+        diaryDayColors: {},
+        diaryDayMarkersProject: root,
+      });
     }
   },
 
@@ -1636,12 +1690,22 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     if (!project || st.diaryDayMarkersProject !== project) return;
     const date = parseDailyNoteDate(path);
     if (!date) return;
-    const next = patchDiaryMarkerMap(
+    const nextMarkers = patchDiaryMarkerMap(
       st.diaryDayMarkers,
       date,
       getNoteDayMarker(markdown),
     );
-    if (next !== st.diaryDayMarkers) set({ diaryDayMarkers: next });
+    const nextColors = patchDiaryColorMap(
+      st.diaryDayColors,
+      date,
+      getNoteDayColor(markdown),
+    );
+    if (
+      nextMarkers !== st.diaryDayMarkers ||
+      nextColors !== st.diaryDayColors
+    ) {
+      set({ diaryDayMarkers: nextMarkers, diaryDayColors: nextColors });
+    }
   },
 
   setDailyNoteMarker: async (fromPath, date, markerId) => {
@@ -1660,14 +1724,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     const normalized = normalizeDayMarkerId(markerId);
     const rel = dailyNotePath(projectRoot, date);
     const remember = (markdown: string) => {
-      const st = get();
-      if (st.diaryDayMarkersProject !== projectRoot) return;
-      const next = patchDiaryMarkerMap(
-        st.diaryDayMarkers,
-        date,
-        getNoteDayMarker(markdown),
-      );
-      if (next !== st.diaryDayMarkers) set({ diaryDayMarkers: next });
+      get().rememberDiaryDayMarker(rel, markdown);
     };
 
     try {
@@ -1696,7 +1753,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
       if (markdown == null) {
         if (!normalized) {
-          remember("");
+          const st = get();
+          if (st.diaryDayMarkersProject === projectRoot) {
+            const next = patchDiaryMarkerMap(st.diaryDayMarkers, date, "");
+            if (next !== st.diaryDayMarkers) set({ diaryDayMarkers: next });
+          }
           return;
         }
         const createdPath = await createNote(rel);
@@ -1714,6 +1775,83 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
 
       const next = setNoteDayMarker(markdown, normalized);
+      if (next !== markdown) {
+        set({ suppressWatchUntil: Date.now() + 6_000 });
+        await writeNote(rel, next);
+      }
+      remember(next);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  setDailyNoteColor: async (fromPath, date, colorHex) => {
+    const { projectPropertiesByPath } = get();
+    const projectRoot = diaryProjectRootForPath(
+      fromPath,
+      projectPropertiesByPath,
+    );
+    if (!projectRoot) {
+      set({
+        error:
+          "Select a diary project (or open a note in one) to use the calendar.",
+      });
+      return;
+    }
+    const normalized = normalizeProjectColor(colorHex);
+    const rel = dailyNotePath(projectRoot, date);
+    const remember = (markdown: string) => {
+      get().rememberDiaryDayMarker(rel, markdown);
+    };
+
+    try {
+      if (get().activePath === rel) {
+        flushActiveEditorBuffer(get);
+      }
+      const buf = tabBuffer(get(), rel);
+      if (buf) {
+        const next = setNoteDayColor(buf.body, normalized);
+        if (get().activePath === rel) {
+          get().setContent(next);
+        } else {
+          set({ tabs: withTabBody(get().tabs, rel, next, true) });
+          void persistDirtyTab(set, get, rel);
+        }
+        remember(next);
+        return;
+      }
+
+      let markdown: string | null = null;
+      try {
+        markdown = await readNote(rel);
+      } catch {
+        markdown = null;
+      }
+
+      if (markdown == null) {
+        if (!normalized) {
+          const st = get();
+          if (st.diaryDayMarkersProject === projectRoot) {
+            const next = patchDiaryColorMap(st.diaryDayColors, date, "");
+            if (next !== st.diaryDayColors) set({ diaryDayColors: next });
+          }
+          return;
+        }
+        const createdPath = await createNote(rel);
+        const language = await nativeLanguageFromPrefs();
+        const tagged = setNoteTags(dailyNoteOpeningMarkdown(date, language), [
+          "diary",
+        ]);
+        const colored = setNoteDayColor(tagged, normalized);
+        set({ suppressWatchUntil: Date.now() + 6_000 });
+        await writeNote(createdPath, colored);
+        await get().refreshTree();
+        void get().refreshVaultTags();
+        remember(colored);
+        return;
+      }
+
+      const next = setNoteDayColor(markdown, normalized);
       if (next !== markdown) {
         set({ suppressWatchUntil: Date.now() + 6_000 });
         await writeNote(rel, next);
@@ -1904,6 +2042,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         vaultTags: [],
         dictionaryTags: [],
         diaryDayMarkers: {},
+        diaryDayColors: {},
         diaryDayMarkersProject: null,
         fileMarkersByPath: {},
         allComments: [],

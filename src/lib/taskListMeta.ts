@@ -4,6 +4,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { normalizeProjectColor } from "./projectColors";
 import { TASKS_FOLDER, joinPath } from "./vaultApi";
 
+/** Smart task views that can be favorited without a vault folder. */
+export type TasksSmartFavoriteView = "inbox" | "today" | "overdue";
+
+const TASKS_SMART_FAVORITE_PREFIX = "markspace:tasks-view:";
+const TASKS_INBOX_PATH = joinPath(TASKS_FOLDER, "Inbox");
+
 export type TaskListGroup = {
   id: string;
   name: string;
@@ -39,6 +45,40 @@ export function taskListNameFromPath(path: string): string {
   const rest = path.slice(prefix.length);
   if (!rest || rest.includes("/")) return "";
   return rest;
+}
+
+export function tasksSmartFavoritePath(view: TasksSmartFavoriteView): string {
+  return `${TASKS_SMART_FAVORITE_PREFIX}${view}`;
+}
+
+/** Resolve a favorite path to a smart task view, if any. */
+export function parseTasksSmartFavorite(
+  path: string,
+): TasksSmartFavoriteView | null {
+  if (path === TASKS_INBOX_PATH) return "inbox";
+  if (!path.startsWith(TASKS_SMART_FAVORITE_PREFIX)) return null;
+  const view = path.slice(TASKS_SMART_FAVORITE_PREFIX.length);
+  if (view === "inbox" || view === "today" || view === "overdue") return view;
+  return null;
+}
+
+export function tasksSmartFavoriteLabel(view: TasksSmartFavoriteView): string {
+  switch (view) {
+    case "inbox":
+      return "Inbox";
+    case "today":
+      return "Today";
+    case "overdue":
+      return "Overdue";
+  }
+}
+
+export function isTasksSmartFavorited(
+  view: TasksSmartFavoriteView,
+  favoritePaths: readonly string[],
+): boolean {
+  if (favoritePaths.includes(tasksSmartFavoritePath(view))) return true;
+  return view === "inbox" && favoritePaths.includes(TASKS_INBOX_PATH);
 }
 
 export async function listTaskListGroups(): Promise<TaskListGroup[]> {

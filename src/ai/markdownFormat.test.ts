@@ -69,6 +69,12 @@ describe("markdownFormat", () => {
     expect(rules).toMatch(/holiday/);
   });
 
+  it("documents diary day colors in core rules", () => {
+    const rules = markdownCoreRules().join("\n");
+    expect(rules).toMatch(/dayColor:/);
+    expect(rules).toMatch(/#f44336/);
+  });
+
   it("documents Media library catalog cards in core rules and guide", () => {
     const rules = markdownCoreRules().join("\n");
     expect(rules).toMatch(/Media library projects/i);

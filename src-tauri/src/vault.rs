@@ -3510,6 +3510,46 @@ fn marker_from_frontmatter_yaml(yaml: &str) -> Option<String> {
     None
 }
 
+/// Material Design 500 swatches (same whitelist as `projectColors.ts`).
+const DAY_COLOR_HEXES: &[&str] = &[
+    "#f44336", "#e91e63", "#9c27b0", "#673ab7", "#3f51b5", "#2196f3",
+    "#03a9f4", "#00bcd4", "#009688", "#4caf50", "#8bc34a", "#cddc39",
+    "#ffc107", "#ff9800", "#ff5722", "#795548", "#607d8b",
+];
+
+fn normalize_day_color_hex(raw: &str) -> Option<String> {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if DAY_COLOR_HEXES.contains(&trimmed.as_str()) {
+        return Some(trimmed);
+    }
+    None
+}
+
+/// Top-level YAML `dayColor:` Material hex, if present and whitelisted.
+fn day_color_from_frontmatter_yaml(yaml: &str) -> Option<String> {
+    for raw_line in yaml.lines() {
+        if raw_line.starts_with(' ') || raw_line.starts_with('\t') {
+            continue;
+        }
+        let trimmed = raw_line.trim();
+        let Some(rest) = trimmed.strip_prefix("dayColor:") else {
+            continue;
+        };
+        let mut value = rest.trim();
+        if value.len() >= 2
+            && ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+        {
+            value = &value[1..value.len() - 1];
+        }
+        return normalize_day_color_hex(value);
+    }
+    None
+}
+
 /// Normalize a file-marker catalog id (lowercase slug), or None if invalid.
 fn normalize_file_marker_id(raw: &str) -> Option<String> {
     let id = raw.trim().to_ascii_lowercase();
@@ -3560,9 +3600,10 @@ fn file_marker_from_note_content(content: &str) -> Option<String> {
 pub struct DiaryDayMarker {
     pub date: String,
     pub marker: String,
+    pub color: String,
 }
 
-/// Walk a diary project for daily notes that have YAML `marker:`.
+/// Walk a diary project for daily notes that have YAML `marker:` and/or `dayColor:`.
 #[tauri::command(async)]
 pub fn list_diary_day_markers(
     project: String,
@@ -3609,12 +3650,15 @@ pub fn list_diary_day_markers(
         let Some(yaml) = frontmatter_yaml(&text) else {
             continue;
         };
-        let Some(marker) = marker_from_frontmatter_yaml(yaml) else {
+        let marker = marker_from_frontmatter_yaml(yaml).unwrap_or_default();
+        let color = day_color_from_frontmatter_yaml(yaml).unwrap_or_default();
+        if marker.is_empty() && color.is_empty() {
             continue;
-        };
+        }
         out.push(DiaryDayMarker {
             date: iso_date_ymd(year, month, day),
             marker,
+            color,
         });
     }
     out.sort_by(|a, b| a.date.cmp(&b.date));
@@ -4396,6 +4440,24 @@ mod diary_marker_tests {
         assert_eq!(marker_from_frontmatter_yaml("marker: \n"), None);
         assert_eq!(
             marker_from_frontmatter_yaml("tags:\n  - marker: nested\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn day_color_from_yaml_reads_whitelist_hex() {
+        assert_eq!(
+            day_color_from_frontmatter_yaml("dayColor: #F44336\n"),
+            Some("#f44336".into())
+        );
+        assert_eq!(
+            day_color_from_frontmatter_yaml("dayColor: \"#2196f3\"\n"),
+            Some("#2196f3".into())
+        );
+        assert_eq!(day_color_from_frontmatter_yaml("dayColor: #abcdef\n"), None);
+        assert_eq!(day_color_from_frontmatter_yaml("dayColor: \n"), None);
+        assert_eq!(
+            day_color_from_frontmatter_yaml("tags:\n  - dayColor: nested\n"),
             None
         );
     }

@@ -1,0 +1,22 @@
+---
+description: Keep rules/skills lean — do not dump large guides into always-on context
+alwaysApply: true
+---
+
+# Lean agent context
+
+**Always-on context is expensive.** Prefer short contracts; put long guides behind on-demand reads.
+
+## When authoring or editing rules / skills
+
+- **`alwaysApply: true`**: only short, high-signal contracts (ideally ≤40 lines). No token tables, no full API dumps, no pasted megaguides.
+- **File-scoped rules**: use `globs` + `alwaysApply: false`. Narrow globs (`src/components/**`) beat `**/*.{ts,tsx}`.
+- **Long reference**: separate file (e.g. `*-tokens.mdc`, `reference.md`, `rules/*.md`). In the stub: “Read X when doing Y” — do not inline X.
+- **Never name compiled megadoc `AGENTS.md`** in the repo — Cursor may inject it into every session. Prefer `COMPILED.md` / `reference.md` and progressive disclosure.
+- **Skills**: `SKILL.md` = index + workflow (≤~150 lines). Details in linked files; read only the slices needed for the task.
+- **No duplication**: one source of truth; other places link, don’t copy.
+
+## When working
+
+- Do not proactively `Read` megaguides (`COMPILED.md`, full design token dumps) unless the task needs them.
+- Prefer the smallest matching rule/skill file over the compiled whole.

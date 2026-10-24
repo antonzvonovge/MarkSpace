@@ -5,18 +5,12 @@ alwaysApply: true
 
 # Audio format and player
 
-Any change that affects **how audio is encoded, stored, loaded, or played** must be **proposed and approved by the user first**. Do not implement it on your own, even as a “fix” for silence, seeking, or load time.
+Changes to how audio is **encoded, stored, loaded, or played** need **explicit user approval** first (including "just testing" silence/seek/load).
 
-This includes, but is not limited to:
+In scope: codec/container/rate/channels; byte delivery (`asset://`, blob, Web Audio, HTTP); `AudioPlayer.tsx`; live `![[*.wav|…]]`; IELTS synth/stitch/save.
 
-- Container / codec / sample rate / channels (WAV vs MP3, PCM vs compressed, 24 kHz vs 44.1 kHz, mono/stereo, TTS output format).
-- How the player gets bytes (`asset://`, blob URL, Web Audio, decode-to-WAV, HTTP stream).
-- Shared player UI and behavior (`src/components/audio/AudioPlayer.tsx` and anything that replaces it).
-- Live embed `![[*.wav|mp3|m4a|ogg|aac]]` (`wikiMarkdown`, `AudioEmbedBlock`).
-- IELTS listening synthesis / stitch / save path (`ieltsAudio`, `ieltsPlayback`, session audio write).
+**OK without asking:** copy, layout, labels, CSS that does not change playback/seek/on-disk files.
 
-**Allowed without asking:** copy, layout spacing, labels, and CSS that does not change playback, seeking, or the file on disk.
+**Not OK without yes:** swap sources, decode/re-encode pipelines, `<audio>` vs Web Audio, native controls, filename/extension changes.
 
-**Not allowed without a yes:** swapping sources, adding decode/re-encode pipelines, changing `<audio>` vs Web Audio, native controls, or on-disk filenames/extensions.
-
-When the user has not explicitly asked for an audio-format or player change: describe the options in chat and wait. Do not “try another approach” in code.
+If the user did not ask for a format/player change: propose options in chat and wait — do not try another approach in code.

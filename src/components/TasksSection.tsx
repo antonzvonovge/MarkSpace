@@ -26,13 +26,16 @@ import {
 import {
   buildTaskListSidebar,
   deleteTaskListGroup,
+  isTasksSmartFavorited,
   taskListColor,
   taskListGroupId,
   taskListPath,
+  tasksSmartFavoritePath,
   upsertTaskListGroup,
   type SidebarListEntry,
+  type TasksSmartFavoriteView,
 } from "../lib/taskListMeta";
-import { collectTaskLists, type TasksViewId } from "../lib/taskNotes";
+import { collectTaskLists, TASKS_INBOX, type TasksViewId } from "../lib/taskNotes";
 import {
   loadTasksGroupsCollapsed,
   loadTasksSectionCollapsed,
@@ -71,6 +74,12 @@ type ListMenuState = {
   x: number;
   y: number;
   listName: string;
+};
+
+type SmartViewMenuState = {
+  x: number;
+  y: number;
+  view: TasksSmartFavoriteView;
 };
 
 type GroupMenuState = {
@@ -213,6 +222,63 @@ function TaskListContextMenu({
         }}
       >
         Delete
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+function SmartViewContextMenu({
+  menu,
+  isFavorite,
+  onClose,
+  onToggleFavorite,
+}: {
+  menu: SmartViewMenuState;
+  isFavorite: boolean;
+  onClose: () => void;
+  onToggleFavorite: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) onClose();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const onScroll = () => onClose();
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [onClose]);
+
+  const left = Math.min(menu.x, window.innerWidth - 220);
+  const top = Math.min(menu.y, window.innerHeight - 80);
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="tree-context-menu is-plaintext"
+      role="menu"
+      style={{ position: "fixed", left, top, zIndex: 1100 }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className="tree-context-item"
+        onClick={() => {
+          onClose();
+          onToggleFavorite();
+        }}
+      >
+        {isFavorite ? "Remove from favorites" : "Add to favorites"}
       </button>
     </div>,
     document.body,
@@ -370,12 +436,14 @@ const SmartViewRow = memo(function SmartViewRow({
   icon,
   selected,
   onOpen,
+  onContextMenu,
 }: {
   id: TasksViewId;
   label: string;
   icon: ReactNode;
   selected: boolean;
   onOpen: (view: TasksViewId) => void;
+  onContextMenu?: (view: TasksSmartFavoriteView, x: number, y: number) => void;
 }) {
   const counts = useTaskListCountsStore((s): TaskListCount =>
     id === "today"
@@ -384,6 +452,7 @@ const SmartViewRow = memo(function SmartViewRow({
         ? s.counts.overdue
         : EMPTY_TASK_LIST_COUNT,
   );
+  const canFavorite = id === "today" || id === "overdue";
   return (
     <li>
       <button
@@ -395,6 +464,22 @@ const SmartViewRow = memo(function SmartViewRow({
           .filter(Boolean)
           .join(" ")}
         onClick={() => onOpen(id)}
+        onMouseDown={
+          canFavorite
+            ? (e) => {
+                if (e.button === 2) e.preventDefault();
+              }
+            : undefined
+        }
+        onContextMenu={
+          canFavorite && onContextMenu
+            ? (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onContextMenu(id, e.clientX, e.clientY);
+              }
+            : undefined
+        }
       >
         <span className="tasks-section-row-icon" aria-hidden="true">
           {icon}
@@ -458,6 +543,9 @@ export const TasksSection = memo(function TasksSection() {
   );
   const [createOpen, setCreateOpen] = useState(false);
   const [listMenu, setListMenu] = useState<ListMenuState | null>(null);
+  const [smartViewMenu, setSmartViewMenu] = useState<SmartViewMenuState | null>(
+    null,
+  );
   const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [renameList, setRenameList] = useState<string | null>(null);
   const [renameGroup, setRenameGroup] = useState<GroupMenuState | null>(null);
@@ -582,6 +670,27 @@ export const TasksSection = memo(function TasksSection() {
     [setSidebarHighlight],
   );
 
+  const handleSmartViewContextMenu = useCallback(
+    (view: TasksSmartFavoriteView, x: number, y: number) => {
+      setSidebarHighlight({ kind: "view", view });
+      setSmartViewMenu({ x, y, view });
+    },
+    [setSidebarHighlight],
+  );
+
+  const toggleSmartFavorite = useCallback((view: TasksSmartFavoriteView) => {
+    const store = useVaultStore.getState();
+    const virtual = tasksSmartFavoritePath(view);
+    if (isTasksSmartFavorited(view, store.favoritePaths)) {
+      if (store.isFavorite(virtual)) void store.removeFromFavorites(virtual);
+      if (view === "inbox" && store.isFavorite(TASKS_INBOX)) {
+        void store.removeFromFavorites(TASKS_INBOX);
+      }
+      return;
+    }
+    void store.addToFavorites(virtual);
+  }, []);
+
   const headerSelected =
     effectiveHighlight?.kind === "view" &&
     effectiveHighlight.view === "inbox";
@@ -604,6 +713,11 @@ export const TasksSection = memo(function TasksSection() {
           .join(" ")}
         data-task-list-drop="Inbox"
         onClick={openInbox}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSmartViewContextMenu("inbox", e.clientX, e.clientY);
+        }}
       >
         <SectionCollapseChevron
           open={!sectionCollapsed}
@@ -663,6 +777,7 @@ export const TasksSection = memo(function TasksSection() {
                 effectiveHighlight.view === v.id
               }
               onOpen={openSmartView}
+              onContextMenu={handleSmartViewContextMenu}
             />
           ))}
           {listNames.length > 0 ? (
@@ -906,6 +1021,18 @@ export const TasksSection = memo(function TasksSection() {
           onRename={() => setRenameList(listMenu.listName)}
           onSettings={() => setSettingsList(listMenu.listName)}
           onDelete={() => setDeleteList(listMenu.listName)}
+        />
+      ) : null}
+
+      {smartViewMenu ? (
+        <SmartViewContextMenu
+          menu={smartViewMenu}
+          isFavorite={isTasksSmartFavorited(
+            smartViewMenu.view,
+            favoritePaths,
+          )}
+          onClose={() => setSmartViewMenu(null)}
+          onToggleFavorite={() => toggleSmartFavorite(smartViewMenu.view)}
         />
       ) : null}
 

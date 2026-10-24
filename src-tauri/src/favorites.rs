@@ -52,6 +52,20 @@ fn path_exists(root: &Path, rel: &str) -> bool {
     full.exists()
 }
 
+/// Smart task views (Inbox / Today / Overdue) — not vault filesystem paths.
+fn is_virtual_favorite(path: &str) -> bool {
+    matches!(
+        path,
+        "markspace:tasks-view:inbox"
+            | "markspace:tasks-view:today"
+            | "markspace:tasks-view:overdue"
+    )
+}
+
+fn favorite_target_ok(root: &Path, rel: &str) -> bool {
+    is_virtual_favorite(rel) || path_exists(root, rel)
+}
+
 fn read_favorite_file(path: &Path) -> Option<String> {
     let raw = fs::read_to_string(path).ok()?;
     let value: Value = serde_json::from_str(&raw).ok()?;
@@ -117,12 +131,12 @@ pub fn list_favorite_paths(root: &Path) -> Result<Vec<String>, String> {
         let expected = favorite_file_path(root, &rel);
         if file != expected {
             let _ = fs::remove_file(&file);
-            if path_exists(root, &rel) {
+            if favorite_target_ok(root, &rel) {
                 let _ = write_favorite_file(root, &rel);
             } else {
                 continue;
             }
-        } else if !path_exists(root, &rel) {
+        } else if !favorite_target_ok(root, &rel) {
             let _ = fs::remove_file(&file);
             continue;
         }
@@ -137,7 +151,7 @@ pub fn list_favorite_paths(root: &Path) -> Result<Vec<String>, String> {
 
 pub fn add_favorite_path(root: &Path, path: &str) -> Result<Vec<String>, String> {
     let rel = normalize_rel(path)?;
-    if !path_exists(root, &rel) {
+    if !favorite_target_ok(root, &rel) {
         return Err("Path not found".into());
     }
     write_favorite_file(root, &rel)?;
@@ -177,7 +191,7 @@ pub fn remap_favorites(root: &Path, from: &str, to: Option<&str>) -> Result<(), 
 
         let _ = remove_favorite_file(root, &old);
         if let Some(new_path) = next {
-            if !new_path.is_empty() && path_exists(root, &new_path) {
+            if !new_path.is_empty() && favorite_target_ok(root, &new_path) {
                 let _ = write_favorite_file(root, &new_path);
             }
         }
@@ -286,6 +300,25 @@ mod tests {
     fn rejects_root() {
         let root = temp_vault();
         assert!(add_favorite_path(&root, "").is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn virtual_task_views() {
+        let root = temp_vault();
+        let paths = add_favorite_path(&root, "markspace:tasks-view:today").unwrap();
+        assert_eq!(paths, vec!["markspace:tasks-view:today".to_string()]);
+        let paths = add_favorite_path(&root, "markspace:tasks-view:inbox").unwrap();
+        assert_eq!(
+            paths,
+            vec![
+                "markspace:tasks-view:inbox".to_string(),
+                "markspace:tasks-view:today".to_string(),
+            ]
+        );
+        assert!(add_favorite_path(&root, "markspace:tasks-view:filters").is_err());
+        let paths = remove_favorite_path(&root, "markspace:tasks-view:today").unwrap();
+        assert_eq!(paths, vec!["markspace:tasks-view:inbox".to_string()]);
         let _ = fs::remove_dir_all(&root);
     }
 }

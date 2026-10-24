@@ -1,31 +1,11 @@
 ---
-description: Keep MarkSpace Markdown dialect docs in sync with format code
-alwaysApply: true
+description: Keep docs/markdown-format.md in sync when Markdown dialect or editor format code changes
+globs: docs/markdown-format.md,src/lib/wikiMarkdown.ts,src/lib/hashtagMarkdown.ts,src/lib/imageMarkdown.ts,src/lib/tableMarkdown.ts,src/lib/normalizeMarkdown.ts,src/ai/markdownFormat.ts,src/editor/schema.ts,src/editor/NoteEditor.tsx,src/editor/mermaid/**,src/editor/plantuml/**,src/editor/drawio/**,src/editor/tag/**
+alwaysApply: false
 ---
 
-# Markdown format (agent knowledge)
+# Markdown format
 
-MarkSpace notes use a **dialect** of Markdown (wiki-links, Draw.io embeds, image widths, colored HTML tables, etc.). The built-in chat agent learns this from [`docs/markdown-format.md`](docs/markdown-format.md).
+Spec: [`docs/markdown-format.md`](docs/markdown-format.md). Core rules between `<!-- core-rules:start -->` / `<!-- core-rules:end -->`. Full guide inlined for Agent / specialists via `MARKDOWN_FORMAT_GUIDE` in `src/ai/markdownFormat.ts`.
 
-## Single source of truth
-
-- Spec: `docs/markdown-format.md`
-- Core rules (Ask system prompt, plus IELTS and lexicon writers) live between `<!-- core-rules:start -->` and `<!-- core-rules:end -->`.
-- The full guide is inlined into the Agent system prompt and into the `edit_notes` and `media` specialist prompts (`MARKDOWN_FORMAT_GUIDE` in `src/ai/markdownFormat.ts`).
-
-## When you change the format
-
-If you change on-disk syntax or round-trip behavior in any of these areas, **update `docs/markdown-format.md` in the same change** (including the core-rules block when the change is agent-critical):
-
-- `src/lib/wikiMarkdown.ts` — wiki-links, `![[*.drawio]]` embeds
-- `src/lib/hashtagMarkdown.ts` — inline `#tags` ↔ Live intermediate HTML
-- `src/lib/imageMarkdown.ts` — `![alt|width](…)` / assets
-- `src/lib/tableMarkdown.ts` — colored table HTML
-- `src/lib/normalizeMarkdown.ts` — CRLF / fence healing
-- `src/editor/schema.ts` and `src/editor/{mermaid,plantuml,drawio}/` — custom blocks
-- `src/editor/tag/` — Live hashtag decorations / `#` suggestions
-- `src/editor/NoteEditor.tsx` — load/save pipeline that affects on-disk markdown
-
-Otherwise the in-app agent will keep writing obsolete or unsupported syntax.
-
-Keep product UI copy in English; this rule is for developers and coding agents working on MarkSpace itself.
+If you change on-disk syntax or round-trip in the globbed files above, **update the spec in the same change** (core-rules block when agent-critical). UI copy stays English.

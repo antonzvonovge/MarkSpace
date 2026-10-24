@@ -2478,7 +2478,7 @@ export function buildSystemPrompt(opts: {
     }
     if (opts.projectType === "diary") {
       lines.push(
-        "This is a personal diary project. Prefer dated daily notes and keep entries personal and chronological unless the user asks otherwise. Optional YAML `marker:` on a daily note (catalog id from Settings → Diary, such as holiday, important, sad) shows an emoji on the sidebar calendar.",
+        "This is a personal diary project. Prefer dated daily notes and keep entries personal and chronological unless the user asks otherwise. Optional YAML `marker:` on a daily note (catalog id from Settings → Diary, such as holiday, important, sad) shows an emoji on the sidebar calendar. Optional YAML `dayColor:` is a Material 500 hex from the project-color palette (e.g. #f44336, #2196f3) and tints the day page and calendar cell; independent of marker.",
       );
       lines.push(
         opts.mode === "agent"

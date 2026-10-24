@@ -9,6 +9,7 @@ import {
   type MovieKindId,
   type MovieRatingId,
 } from "./movieNotes";
+import { normalizeProjectColor } from "./projectColors";
 
 export type FrontmatterData = Record<string, unknown>;
 
@@ -143,6 +144,40 @@ export function setNoteDayMarker(markdown: string, markerId: string): string {
     delete data.marker;
   } else {
     data.marker = next;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return split.body;
+  }
+  return mergeFrontmatter(data, split.body);
+}
+
+/** Diary day color (Material 500 hex) from YAML `dayColor:`, or empty when unset/invalid. */
+export function getNoteDayColor(markdown: string): string {
+  const { data } = splitFrontmatter(markdown);
+  if (!data) return "";
+  return normalizeProjectColor(data.dayColor);
+}
+
+/**
+ * Return markdown with an updated `dayColor` hex.
+ * Preserves other frontmatter keys. Removes the fence when nothing remains.
+ * When the existing fence has unparseable YAML, returns the original markdown
+ * unchanged (UI cannot safely rewrite it).
+ */
+export function setNoteDayColor(markdown: string, colorHex: string): string {
+  const split = splitFrontmatter(markdown);
+  const next = normalizeProjectColor(colorHex);
+
+  if (split.hasFence && split.data === null) {
+    return markdown;
+  }
+
+  const data: FrontmatterData = { ...(split.data ?? {}) };
+  if (!next) {
+    delete data.dayColor;
+  } else {
+    data.dayColor = next;
   }
 
   if (Object.keys(data).length === 0) {

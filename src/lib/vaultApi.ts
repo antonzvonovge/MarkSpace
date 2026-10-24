@@ -422,10 +422,13 @@ export async function listVaultTags(): Promise<string[]> {
 
 export type DiaryDayMarker = {
   date: string;
+  /** Catalog id from YAML `marker:`, or empty. */
   marker: string;
+  /** Material 500 hex from YAML `dayColor:`, or empty. */
+  color?: string;
 };
 
-/** Daily-note YAML `marker:` values under a diary project. */
+/** Daily-note YAML `marker:` / `dayColor:` values under a diary project. */
 export async function listDiaryDayMarkers(
   project: string,
 ): Promise<DiaryDayMarker[]> {

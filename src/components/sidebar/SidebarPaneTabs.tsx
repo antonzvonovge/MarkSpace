@@ -1,10 +1,10 @@
 import { useEffect, type ReactNode } from "react";
 import {
-  AlarmClock,
   Calendar,
   ChartHistogram,
   Comment,
   FolderClose,
+  Lightning,
   ListCheckbox,
   Tag,
 } from "@icon-park/react";
@@ -24,7 +24,7 @@ const PANES: readonly { id: SidebarPane; label: string; icon: ReactNode }[] = [
   { id: "files", label: "Files", icon: <FolderClose {...paneIcon} /> },
   { id: "tags", label: "Tags", icon: <Tag {...paneIcon} /> },
   { id: "tasks", label: "Tasks", icon: <ListCheckbox {...paneIcon} /> },
-  { id: "routines", label: "Routines", icon: <AlarmClock {...paneIcon} /> },
+  { id: "routines", label: "Routines", icon: <Lightning {...paneIcon} /> },
   { id: "comments", label: "Comments", icon: <Comment {...paneIcon} /> },
   { id: "dashboards", label: "Dashboards", icon: <ChartHistogram {...paneIcon} /> },
 ];

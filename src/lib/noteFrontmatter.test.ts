@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  getNoteDayColor,
   getNoteDayMarker,
   getNoteFileMarker,
   getNoteTags,
   mergeFrontmatter,
   noteBody,
+  setNoteDayColor,
   setNoteDayMarker,
   setNoteFileMarker,
   setNoteTags,
@@ -191,6 +193,31 @@ tags:
   it("leaves unparseable fence untouched on setNoteDayMarker", () => {
     const md = "---\n: bad: [yaml\n---\n\nBody\n";
     expect(setNoteDayMarker(md, "sad")).toBe(md);
+  });
+
+  it("reads and writes diary day colors", () => {
+    const md = `---
+tags:
+  - diary
+marker: holiday
+---
+
+# 15.Aug.2026
+`;
+    expect(getNoteDayColor(md)).toBe("");
+    const next = setNoteDayColor(md, "#F44336");
+    expect(getNoteDayColor(next)).toBe("#f44336");
+    expect(getNoteDayMarker(next)).toBe("holiday");
+    expect(getNoteTags(next)).toEqual(["diary"]);
+    expect(getNoteDayColor(setNoteDayColor(next, ""))).toBe("");
+    expect(getNoteDayColor(setNoteDayColor(next, "#abcdef"))).toBe("");
+  });
+
+  it("adds dayColor frontmatter when none existed", () => {
+    const next = setNoteDayColor("# Hi\n", "#2196f3");
+    expect(next.startsWith("---\n")).toBe(true);
+    expect(getNoteDayColor(next)).toBe("#2196f3");
+    expect(noteBody(next)).toBe("# Hi\n");
   });
 
   it("reads and writes file markers", () => {

@@ -47,7 +47,15 @@ import { placeFlyoutMenu, placePointerMenu } from "../lib/menuPlacement";
 import { isVaultLexiconFolder, isVaultLexiconMdNote } from "../lib/lexiconNotes";
 import { fileMarkerById } from "../lib/fileMarkers";
 import { canEditNoteTitle, treeRowTitleLabel } from "../lib/noteTitle";
-import { taskListNameFromPath } from "../lib/taskListMeta";
+import {
+  isTasksSmartFavorited,
+  parseTasksSmartFavorite,
+  taskListNameFromPath,
+  tasksSmartFavoriteLabel,
+  tasksSmartFavoritePath,
+  type TasksSmartFavoriteView,
+} from "../lib/taskListMeta";
+import { TASKS_INBOX, type TasksViewId } from "../lib/taskNotes";
 import {
   EMPTY_NOTE_TITLES,
   useNoteTitlesStore,
@@ -135,6 +143,9 @@ import {
   IncomingSectionIcon,
   PdfIcon,
   TasksListIcon,
+  TasksOverdueIcon,
+  TasksSectionIcon,
+  TasksTodayIcon,
 } from "./treeIcons";
 import type { TreeCreateKind } from "./TreeToolbar";
 import {
@@ -348,6 +359,21 @@ function openFavoriteTaskList(listName: string) {
   void useVaultStore.getState().openTasksTab({ syncTreeSelection: false });
 }
 
+/** Open a favorited smart task view (Inbox / Today / Overdue). */
+function openFavoriteSmartView(view: TasksSmartFavoriteView) {
+  const panel = useTasksPanelStore.getState();
+  panel.setSidebarHighlight({ kind: "view", view: view as TasksViewId });
+  panel.patchFilters({
+    list: "",
+    priority: "",
+    label: "",
+    query: "",
+    status: "open",
+  });
+  panel.setView(view);
+  void useVaultStore.getState().openTasksTab({ syncTreeSelection: false });
+}
+
 function FavoriteTaskListIcon({ listName }: { listName: string }) {
   const color = useTaskListMetaStore(
     (s) => s.metaByName[listName]?.color ?? "",
@@ -355,6 +381,20 @@ function FavoriteTaskListIcon({ listName }: { listName: string }) {
   return (
     <span className="tree-node-icon" aria-hidden>
       <TasksListIcon color={color || undefined} />
+    </span>
+  );
+}
+
+function FavoriteSmartViewIcon({ view }: { view: TasksSmartFavoriteView }) {
+  return (
+    <span className="tree-node-icon" aria-hidden>
+      {view === "today" ? (
+        <TasksTodayIcon />
+      ) : view === "overdue" ? (
+        <TasksOverdueIcon />
+      ) : (
+        <TasksSectionIcon />
+      )}
     </span>
   );
 }
@@ -590,16 +630,19 @@ function TreeContextMenu({
   const unsupportedFile = isUnsupportedTreeFile(menu.isDir, menu.path);
   const isIncomingRoot = isIncomingFolder(menu.path, menu.isDir);
   const isTasksRoot = isTasksFolder(menu.path, menu.isDir);
+  const smartFavoriteView = parseTasksSmartFavorite(menu.path);
   const favoriteShortcut =
     (menu.isDir && taskListNameFromPath(menu.path) !== "") ||
-    isDashboardFilePath(menu.path);
+    isDashboardFilePath(menu.path) ||
+    smartFavoriteView !== null;
   const showEditActions =
     !menu.createOnly &&
     menu.path !== "" &&
     !isSkills &&
     !isIncomingRoot &&
     !favoriteShortcut;
-  const showCopyPath = !menu.createOnly && menu.path !== "";
+  const showCopyPath =
+    !menu.createOnly && menu.path !== "" && smartFavoriteView === null;
   const showFavorite =
     !menu.createOnly && menu.path !== "" && !unsupportedFile;
   const showFileMarker =
@@ -1248,6 +1291,7 @@ function FavoritesTreeRows({
   treeSelectionVisible,
   renamingPath,
   activeTaskList,
+  activeSmartView,
   favoriteSet,
   projectPropertiesByPath,
   unresolvedCounts,
@@ -1276,6 +1320,8 @@ function FavoritesTreeRows({
   renamingPath: string | null;
   /** Open task list name while the Tasks tab (or its sidebar highlight) is that list. */
   activeTaskList: string;
+  /** Open smart task view while the Tasks tab highlights Inbox / Today / Overdue. */
+  activeSmartView: TasksSmartFavoriteView | "";
   favoriteSet: Set<string>;
   projectPropertiesByPath: Record<string, ProjectProperties>;
   unresolvedCounts: Map<string, number>;
@@ -1303,12 +1349,17 @@ function FavoritesTreeRows({
       {nodes.map((node) => {
         const path = node.path;
         const isDir = node.isDir;
-        const listName = isDir ? taskListNameFromPath(path) : "";
+        const smartView = parseTasksSmartFavorite(path);
+        const isSmartView = smartView !== null;
+        const listName =
+          !isSmartView && isDir ? taskListNameFromPath(path) : "";
         const isTaskList = listName !== "";
-        const isDashboard = isDashboardFilePath(path);
+        const isDashboard = !isSmartView && isDashboardFilePath(path);
         const children = node.children ?? [];
-        const hasChildren = isDir && !isTaskList && children.length > 0;
-        const isOpen = isDir && !isTaskList && expandedPaths.includes(path);
+        const hasChildren =
+          isDir && !isTaskList && !isSmartView && children.length > 0;
+        const isOpen =
+          isDir && !isTaskList && !isSmartView && expandedPaths.includes(path);
         const isProject = isVaultProjectFolder(path, isDir);
         const isSkills = isSkillsFolder(path, isDir);
         const isDrawio = !isDir && path.toLowerCase().endsWith(".drawio");
@@ -1318,15 +1369,18 @@ function FavoritesTreeRows({
         const isMdcourse = !isDir && path.toLowerCase().endsWith(".mdcourse");
         const isPdf = !isDir && path.toLowerCase().endsWith(".pdf");
         const unsupported = isUnsupportedTreeFile(isDir, path);
-        const selected = isTaskList
-          ? activeTaskList === listName
-          : isDashboard
-            ? activePath === path
-            : treeSelectionVisible &&
-              isDir &&
-              selectedFolderExplicit &&
-              selectedFolderPath === path;
+        const selected = isSmartView
+          ? activeSmartView === smartView
+          : isTaskList
+            ? activeTaskList === listName
+            : isDashboard
+              ? activePath === path
+              : treeSelectionVisible &&
+                isDir &&
+                selectedFolderExplicit &&
+                selectedFolderPath === path;
         const active =
+          !isSmartView &&
           !isTaskList &&
           !isDashboard &&
           treeSelectionVisible &&
@@ -1339,27 +1393,34 @@ function FavoritesTreeRows({
           fileMarkersByPath[path] ?? "",
           fileMarkerCatalog,
         );
-        const titleLabel = isDashboard
+        const titleLabel = isSmartView
           ? {
-              label: node.name.replace(/\.dashboard$/i, ""),
+              label: tasksSmartFavoriteLabel(smartView),
               literal: true,
               selectAll: false,
               tooltip: undefined,
             }
-          : isTaskList
+          : isDashboard
             ? {
-                label: listName,
+                label: node.name.replace(/\.dashboard$/i, ""),
                 literal: true,
                 selectAll: false,
                 tooltip: undefined,
               }
-            : treeRowTitleLabel(
-                path,
-                isDir,
-                node.name,
-                showNoteTitles,
-                titlesByPath ?? {},
-              );
+            : isTaskList
+              ? {
+                  label: listName,
+                  literal: true,
+                  selectAll: false,
+                  tooltip: undefined,
+                }
+              : treeRowTitleLabel(
+                  path,
+                  isDir,
+                  node.name,
+                  showNoteTitles,
+                  titlesByPath ?? {},
+                );
         const projectRoot = vaultProjectRootOf(path);
         const projectColor =
           projectRoot && projectPropertiesByPath[projectRoot]?.color
@@ -1404,6 +1465,10 @@ function FavoritesTreeRows({
               }
               onClick={(e) => {
                 if (renaming) return;
+                if (isSmartView) {
+                  openFavoriteSmartView(smartView);
+                  return;
+                }
                 if (isTaskList) {
                   openFavoriteTaskList(listName);
                   return;
@@ -1430,7 +1495,7 @@ function FavoritesTreeRows({
                 });
               }}
               onDoubleClick={() => {
-                if (isDir || isDashboard || renaming) return;
+                if (isDir || isDashboard || isSmartView || renaming) return;
                 if (isUnsupportedTreeFile(false, path)) return;
                 onOpenNote(path, { preview: false });
               }}
@@ -1440,15 +1505,24 @@ function FavoritesTreeRows({
                 onOpenContextMenu({
                   x: e.clientX,
                   y: e.clientY,
-                  path,
-                  name: node.name,
-                  isDir,
-                  isFavorite: favoriteSet.has(path),
+                  path: isSmartView
+                    ? tasksSmartFavoritePath(smartView)
+                    : path,
+                  name: isSmartView
+                    ? tasksSmartFavoriteLabel(smartView)
+                    : node.name,
+                  isDir: isSmartView ? false : isDir,
+                  isFavorite: isSmartView
+                    ? favoriteSet.has(tasksSmartFavoritePath(smartView)) ||
+                      (smartView === "inbox" && favoriteSet.has(TASKS_INBOX))
+                    : favoriteSet.has(path),
                 });
-                if (!isTaskList && !isDashboard) onSelectInTree(path, isDir);
+                if (!isTaskList && !isDashboard && !isSmartView) {
+                  onSelectInTree(path, isDir);
+                }
               }}
             >
-              {isDir && !isTaskList ? (
+              {isDir && !isTaskList && !isSmartView ? (
                 <span
                   role={hasChildren ? "button" : undefined}
                   tabIndex={hasChildren ? 0 : undefined}
@@ -1492,7 +1566,9 @@ function FavoritesTreeRows({
                 <span className="tree-file-spacer" />
               )}
 
-              {isTaskList ? (
+              {isSmartView ? (
+                <FavoriteSmartViewIcon view={smartView} />
+              ) : isTaskList ? (
                 <FavoriteTaskListIcon listName={listName} />
               ) : isDashboard ? (
                 <FavoriteDashboardIcon path={path} />
@@ -1570,6 +1646,7 @@ function FavoritesTreeRows({
                 treeSelectionVisible={treeSelectionVisible}
                 renamingPath={renamingPath}
                 activeTaskList={activeTaskList}
+                activeSmartView={activeSmartView}
                 favoriteSet={favoriteSet}
                 projectPropertiesByPath={projectPropertiesByPath}
                 unresolvedCounts={unresolvedCounts}
@@ -1844,9 +1921,20 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       isDir: boolean;
       isFavorite: boolean;
     }) => {
+      const smart = parseTasksSmartFavorite(menu.path);
+      if (smart) {
+        setContextMenu({
+          ...menu,
+          path: tasksSmartFavoritePath(smart),
+          name: tasksSmartFavoriteLabel(smart),
+          isDir: false,
+          isFavorite: isTasksSmartFavorited(smart, favoritePaths),
+        });
+        return;
+      }
       setContextMenu(menu);
     },
-    [],
+    [favoritePaths],
   );
 
   const onWorkspaceCreate = useCallback((kind: PromptKind) => {
@@ -2176,6 +2264,19 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     return "";
   }, [activePath, tasksFilterList, tasksHighlight, tasksView]);
 
+  const activeSmartView = useMemo((): TasksSmartFavoriteView | "" => {
+    const view =
+      tasksHighlight?.kind === "view"
+        ? tasksHighlight.view
+        : tasksHighlight?.kind === "list"
+          ? ""
+          : activePath === TASKS_TAB_PATH
+            ? tasksView
+            : "";
+    if (view === "inbox" || view === "today" || view === "overdue") return view;
+    return "";
+  }, [activePath, tasksHighlight, tasksView]);
+
   const unresolvedCounts = useMemo(
     () => buildUnresolvedCommentCounts(allComments),
     [allComments],
@@ -2233,7 +2334,21 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const favoriteNodes = useMemo(() => {
     if (!tree) return [] as TreeNode[];
     const nodes: TreeNode[] = [];
+    const seenSmart = new Set<TasksSmartFavoriteView>();
     for (const path of favoritePaths) {
+      const smart = parseTasksSmartFavorite(path);
+      if (smart) {
+        if (seenSmart.has(smart)) continue;
+        seenSmart.add(smart);
+        const virtual = tasksSmartFavoritePath(smart);
+        nodes.push({
+          name: tasksSmartFavoriteLabel(smart),
+          // Prefer the virtual key so remove/toggle clears the smart favorite cleanly.
+          path: favoritePaths.includes(virtual) ? virtual : path,
+          isDir: false,
+        });
+        continue;
+      }
       const node = findTreeNode(tree, path);
       if (node) nodes.push(node);
     }
@@ -2523,6 +2638,21 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             void copyAbsolutePath(contextMenu.path);
           }}
           onToggleFavorite={() => {
+            const smart = parseTasksSmartFavorite(contextMenu.path);
+            if (smart) {
+              const virtual = tasksSmartFavoritePath(smart);
+              if (isTasksSmartFavorited(smart, favoritePaths)) {
+                if (favoritePaths.includes(virtual)) {
+                  void removeFromFavorites(virtual);
+                }
+                if (smart === "inbox" && favoritePaths.includes(TASKS_INBOX)) {
+                  void removeFromFavorites(TASKS_INBOX);
+                }
+              } else {
+                void addToFavorites(virtual);
+              }
+              return;
+            }
             if (contextMenu.isFavorite) {
               void removeFromFavorites(contextMenu.path);
             } else {
@@ -2768,6 +2898,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             treeSelectionVisible={treeSelectionVisible}
             renamingPath={renamingPath}
             activeTaskList={activeTaskList}
+            activeSmartView={activeSmartView}
             favoriteSet={favoriteSet}
             projectPropertiesByPath={projectPropertiesByPath}
             unresolvedCounts={unresolvedCounts}
@@ -2846,6 +2977,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
                   treeSelectionVisible={treeSelectionVisible}
                   renamingPath={renamingPath}
                   activeTaskList={activeTaskList}
+                  activeSmartView={activeSmartView}
                   favoriteSet={favoriteSet}
                   projectPropertiesByPath={projectPropertiesByPath}
                   unresolvedCounts={unresolvedCounts}

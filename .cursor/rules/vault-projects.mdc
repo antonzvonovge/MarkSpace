@@ -1,37 +1,29 @@
 ---
-description: MarkSpace vault terminology — first-level folders are projects
+description: Vault projects — top-level folders, reserved roots, folder properties, chat project picker
 alwaysApply: true
 ---
 
 # Vault projects
 
-In MarkSpace, a **project** is a first-level folder directly under the vault root (relative path with no `/`). Nested folders are ordinary folders, not projects. Reserved root folders **Skills**, **Incoming**, **Tasks**, **Routines**, and **Dashboards** are not projects.
+A **project** is a first-level folder under the vault root (no `/` in relative path). Nested dirs are ordinary folders. Reserved roots (not projects): **Skills**, **Incoming**, **Tasks**, **Routines**, **Dashboards**.
 
-- Helper: `isVaultProjectFolder(path, isDir)` in `src/lib/vaultApi.ts`.
-- **Incoming** is a vault-root inbox folder (`Incoming/`). It is omitted from the workspace tree and shown only in the Incoming sidebar section. Clicking Incoming selects that folder and opens today’s diary daily note `{diary}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` when a Diary project exists (not `.folder.md`, not a note inside Incoming). Inside Incoming, create/move any vault objects like a normal folder. The folder cannot be renamed, moved, or deleted.
-- **Tasks** is a vault-root folder (`Tasks/`) for task notes. It is omitted from the workspace tree and shown only in the Tasks sidebar section / Tasks view. Task files are excluded from the graph. The folder cannot be renamed, moved, or deleted.
-- **Dashboards** is a vault-root folder (`Dashboards/`). Each `.dashboard` file is one dashboard (JSON layout of widgets: a routine report, weather for a chosen city via Open-Meteo, open tasks from one task list or the Today and Overdue views, or the rendered markdown of a chosen file, including one outside the vault). It is omitted from the workspace tree and shown only in the Dashboards sidebar section. The folder cannot be renamed, moved, or deleted.
+Helper: `isVaultProjectFolder` in `src/lib/vaultApi.ts`. Prefer the word **project** in product/agent copy for those top-level folders.
 
-- Helper: `isVaultProjectFolder(path, isDir)` in `src/lib/vaultApi.ts`.
-- Tree UI uses a package icon (`FcPackage`) for projects; nested dirs keep folder icons.
-- Language-learning projects with a set **Learning language** show that country's flag icon (SVG; Windows has no flag emoji glyphs) instead of the package icon (tree + chat project picker).
-- Diary projects use a planner icon (`FcPlanner`) instead of the package icon (tree + chat project picker).
-- Media library projects (`projectType: "movies"`) use a clapperboard icon (`FcClapperboard`) instead of the package icon (tree + chat project picker). Context menu **New film…**; Settings → Media library for Kinopoisk / OMDb API keys. Agent: `run_specialist` kind=`media` (`search_movies` / `get_movie_details` / `create_film_note`). Opening any folder under a Media library project shows a recursive tile catalog (search / kind / status / genre filters) instead of the folder overview editor.
-- Diary projects: context menu **New daily note** (instead of New note) opens or creates today's note at `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (helpers in `src/lib/diaryNotes.ts`). Toolbar create (+) is disabled when the selected folder is under a diary project. Agent tool: `open_or_create_daily_note` (date `YYYY-MM-DD`); system prompt documents the same layout.
-- Prefer the word "project" in product copy and agent language when referring to those top-level folders.
+## Reserved roots
+- **Incoming/** — inbox; hidden from workspace tree (Incoming sidebar). Click → select folder + open today’s diary note if a Diary project exists. Not rename/move/delete.
+- **Tasks/** — task notes; Tasks sidebar/view; excluded from graph. Not rename/move/delete.
+- **Dashboards/** — `.dashboard` JSON layouts. Dashboards sidebar. Not rename/move/delete.
+
+## Project types & tree icons
+- Default project: `FcPackage`. Nested dirs: folder icons.
+- `languageLearning` + language → country flag SVG (not emoji).
+- `diary` → `FcPlanner`; daily note `{project}/{yyyy}/{MM}/{dd.MMM.yyyy}.md` (`diaryNotes.ts`); tool `open_or_create_daily_note`.
+- `movies` (Media library) → `FcClapperboard`; film catalog under folders; specialist `media`.
 
 ## Folder properties
+Any non-root folder: **Project/Folder properties…** → `.markspace/projects/<sha256(path)>.json` (`path`, `about`, `projectType`, `learningLanguage`, `color`). Nested: empty type/lang/color. `about` = AI instructions (deeper path wins). APIs in Rust `projects.rs` / `vaultApi.ts`; remapped on rename/move/delete like favorites.
 
-Any vault folder except the root can have properties. Tree context menu: **Project properties…** on a first-level project, **Folder properties…** on nested folders.
+`projectType`: `""` | `knowledgeBase` | `languageLearning` | `diary` | `movies`.
 
-- Stored in `.markspace/projects/<sha256(relative path)>.json` (`path`, `about`, `projectType`, `learningLanguage`, `color`). Nested paths are allowed.
-- **`about`** — UI label **About and AI instructions**. Description and/or instructions the AI must follow when working with notes in that folder. Injected into chat, specialists, Quick Translate, and other file-scoped LLM calls (union of the active note, chat project picker, and composer path chips; one `about` per path; deeper folder wins on conflict).
-- **`projectType`** / **`learningLanguage`** / **`color`** — only for first-level projects (`isVaultProjectFolder`). Nested folders store empty values. `projectType`: `""` (None) | `knowledgeBase` | `languageLearning` | `diary` | `movies` (UI label **Media library**). Color: Material 500 from `src/lib/projectColors.ts`.
-- APIs: `get_project_properties` / `set_project_properties` / `list_project_properties` (Rust `projects.rs`); TS wrappers in `vaultApi.ts`.
-- Remapped on rename/move/delete of the folder **and descendants**, like favorites.
-
-## Chat project context
-
-Composer toolbar has a **project picker** (left of Ask/Agent). Selection is per chat thread (`projectPath` on the thread file).
-
-When a project is selected, `buildSystemPrompt` includes `Active project:` and optional **Project type** / **Learning language**. Folder `about` texts are injected once per path as **Folder context** (not a separate Project description block).
+## Chat
+Composer project picker → `projectPath` on thread. System prompt: `Active project:` + type/lang; folder `about` as **Folder context**.

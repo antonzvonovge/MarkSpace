@@ -1,0 +1,71 @@
+---
+description: ClickUp 3.0 design tokens, typography, and component anatomy (read when implementing ClickUp UI)
+alwaysApply: false
+---
+
+# ClickUp 3.0 — tokens & anatomy
+
+Read when building or restyling UI under the ClickUp contract (`clickup-design.mdc`).
+
+## 1. Palette (Tailwind)
+
+### Backgrounds & Surfaces
+- Canvas: `bg-[#F7F8FA]` / `dark:bg-[#18191B]`
+- Primary: `bg-[#FFFFFF]` / `dark:bg-[#242528]`
+- Secondary: `bg-[#F9FAFB]` / `dark:bg-[#1F2023]`
+- Row hover: `hover:bg-[#F0F1F3]` / `dark:hover:bg-[#2D2E32]`
+- Selected: `bg-[#EBECEF]` / `dark:bg-[#34363A]`
+
+### Borders
+- Base: `border border-[#E5E7EB]` / `dark:border-[#2F3136]`
+- Subtle: `border-[#F1F2F4]` / `dark:border-[#282A2D]`
+- Focus: `outline-2 outline-[#7B68EE] outline-offset-1`
+
+### Accent
+- Purple `#7B68EE`, hover `#6952EB`, magenta badge `#DA22FF`
+
+### Status badges
+- Urgent: `bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]` / dark `bg-[#451A1A] text-[#F87171] border-[#7F1D1D]`
+- High: `bg-[#FEF3C7] text-[#D97706] border-[#FDE68A]` / dark `bg-[#45361A] text-[#FBBF24] border-[#785412]`
+- Normal: `bg-[#E0F2FE] text-[#0284C7] border-[#BAE6FD]` / dark `bg-[#16364D] text-[#38BDF8] border-[#075985]`
+- Low: `bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]` / dark `bg-[#2B2D31] text-[#9CA3AF] border-[#3F4248]`
+- Done: `bg-[#DCFCE7] text-[#16A34A] border-[#BBF7D0]` / dark `bg-[#143D23] text-[#4ADE80] border-[#166534]`
+
+## 2. Typography
+- Font: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif
+- Headings: `text-[15px] font-semibold tracking-tight`
+- Body/cell: `text-[13px] leading-tight font-normal text-[#292D34] dark:text-[#E2E4E9]`
+- Meta: `text-[11px] font-medium text-[#7C828D] dark:text-[#9A9FA8]`
+- Column labels: `text-[11px] uppercase tracking-wider font-semibold text-[#8C939F]`
+
+## 3. Geometry
+- Badges `rounded-[4px]`; inputs/buttons `rounded-[6px]`; modals `rounded-[8px]`
+- Table row 32–36px (never >40); sidebar item `30px` `px-2 py-1`
+- Icon buttons `w-6 h-6` or `w-7 h-7`; cell padding `px-2.5`
+
+## 4. Component anatomy
+
+### Data rows
+- Full width, `border-b border-[#F1F2F4] dark:border-[#282A2D]`
+- Checkbox: `opacity-0 group-hover:opacity-100` (container `group relative flex items-center`)
+- Row actions: right-aligned, `opacity-0 group-hover:opacity-100`
+- Group cue: `3px` solid left border by status
+
+### Chevrons
+- 12–14px, `stroke-[2]`, `text-[#8C939F]`, `mr-1.5` before name
+- Open: `transition-transform duration-150 ease-out group-data-[state=open]:rotate-90`
+- Hover wrapper only: `hover:bg-[#E4E6EA] rounded-[3px] p-0.5`
+
+### Status pill
+- `inline-flex items-center gap-1.5 h-[22px] px-2 text-[11px] font-medium rounded-[4px]`
+- Optional 6px status dot; menu: `shadow-[0_4px_16px_rgba(0,0,0,0.12)] p-1 border border-[#E5E7EB] rounded-[6px] bg-white`
+
+### Group headers
+- Height `28px`; chevron + badge (`text-[11px] font-semibold uppercase px-2 py-0.5 rounded-[4px]`) + count
+- Add-task `+`: `opacity-0 group-hover:opacity-100`
+
+## 5. Refactoring
+1. Cards → border-delimited flat rows/columns
+2. No shadows > `shadow-sm` on content; shadows only on floating menus/modals
+3. Inline-editable cell controls
+4. SVG icons 14–16px, `stroke-width` 1.5 or 2
