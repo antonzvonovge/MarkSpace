@@ -14,6 +14,7 @@ import { buildTaskListSidebar, taskListColor } from "../../lib/taskListMeta";
 import { useTaskListMetaStore } from "../../store/taskListMetaStore";
 import { useVaultStore } from "../../store/vaultStore";
 import { TaskMetaLine } from "../../components/tasks/TaskMetaLine";
+import { TasksIconPriorityMark } from "../../components/tasks/tasksIcons";
 import { useDashboardsLive } from "../../store/dashboardEnabledStore";
 import { reloadTaskIndex, useTaskIndex } from "./taskIndex";
 import { WidgetTasksIcon } from "./widgetIcons";
@@ -81,20 +82,44 @@ const TaskListRowView = memo(function TaskListRowView({
   onOpen: (path: string) => void;
   onComplete: (entry: TaskIndexEntry) => void;
 }) {
+  const priority = entry.priority;
+  const showPriorityStripe =
+    priority === 1 || priority === 2 || priority === 3 || priority === 4;
+  const showDoBadge = priority === 1 && !completing;
+
   return (
     <li
       className="tasks-list-item"
       style={depth > 0 ? { paddingLeft: depth * INDENT } : undefined}
     >
-      <div className="tasks-row" onClick={() => onOpen(entry.path)}>
+      <div
+        className={[
+          "tasks-row",
+          showPriorityStripe ? `is-p${priority}` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onClick={() => onOpen(entry.path)}
+      >
+        {showPriorityStripe ? (
+          <span className="tasks-row-priority-stripe" aria-hidden="true" />
+        ) : null}
         <div className="tasks-row-content">
           <CircleCheck
             checked={completing}
-            priority={entry.priority}
+            priority={priority}
             onClick={() => onComplete(entry)}
           />
           <div className="tasks-row-body">
-            <span className="tasks-row-title">{entry.title}</span>
+            <div className="tasks-row-title-line">
+              {showDoBadge ? (
+                <span className="tasks-row-priority-badge is-p1" title="Do">
+                  <TasksIconPriorityMark size={11} />
+                  Do
+                </span>
+              ) : null}
+              <span className="tasks-row-title">{entry.title}</span>
+            </div>
             <TaskMetaLine
               due={entry.due}
               labels={entry.labels}

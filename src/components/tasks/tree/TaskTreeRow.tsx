@@ -17,6 +17,7 @@ import {
   TasksIconEdit,
   TasksIconGrip,
   TasksIconMore,
+  TasksIconPriorityMark,
   TasksIconSchedule,
   TasksIconSubtasks,
 } from "../tasksIcons";
@@ -155,6 +156,9 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
   const showChrome = !clone && !ghost && (hovered || selected);
   const listName = item.list?.trim() || "Inbox";
   const listColor = listColors[listName] ?? "";
+  const priority = isTask ? item.priority : null;
+  const showPriorityStripe = priority === 1 || priority === 2 || priority === 3 || priority === 4;
+  const showDoBadge = priority === 1 && !checked;
 
   return (
     <div
@@ -163,6 +167,7 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
         item.kind === "sub" ? "is-sub" : "",
         selected ? "is-selected" : "",
         showExpand ? "has-expand" : "",
+        showPriorityStripe ? `is-p${priority}` : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -176,6 +181,9 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
         actions.onSelect(item.path);
       }}
     >
+      {showPriorityStripe ? (
+        <span className="tasks-row-priority-stripe" aria-hidden="true" />
+      ) : null}
       {showDragHandle && handleProps && (showChrome || ghost) ? (
         <span
           ref={dragHandleRef}
@@ -208,15 +216,23 @@ const TaskRowDisplay = memo(function TaskRowDisplay({
       <div className="tasks-row-content">
         <CircleCheck
           checked={checked}
-          priority={isTask ? item.priority : null}
+          priority={priority}
           onClick={() => actions.onToggleStatus(item)}
         />
         <div className="tasks-row-body">
-          <span
-            className={checked ? "tasks-row-title is-done" : "tasks-row-title"}
-          >
-            {item.title}
-          </span>
+          <div className="tasks-row-title-line">
+            {showDoBadge ? (
+              <span className="tasks-row-priority-badge is-p1" title="Do">
+                <TasksIconPriorityMark size={11} />
+                Do
+              </span>
+            ) : null}
+            <span
+              className={checked ? "tasks-row-title is-done" : "tasks-row-title"}
+            >
+              {item.title}
+            </span>
+          </div>
           {isTask ? (
             <TaskMetaLine
               due={item.due}
