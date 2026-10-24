@@ -1506,19 +1506,14 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     };
   }, [refreshTree]);
 
-  // Drop sticky Filters chips when not on the Filters view (they used to
-  // empty Inbox / Today after leaving Filters).
+  // Drop sticky Filters-only chips when not on the Filters view (they used to
+  // empty Inbox / Today after leaving Filters). Label filters stay — they apply
+  // in every list view.
   useEffect(() => {
     if (view === "filters") return;
-    if (
-      filters.priority === "" &&
-      !filters.label &&
-      !filters.query
-    ) {
-      return;
-    }
-    patchFilters({ priority: "", label: "", query: "" });
-  }, [view, filters.priority, filters.label, filters.query, patchFilters]);
+    if (filters.priority === "" && !filters.query) return;
+    patchFilters({ priority: "", query: "" });
+  }, [view, filters.priority, filters.query, patchFilters]);
 
   useEffect(() => {
     void reloadIndex();
@@ -1623,6 +1618,22 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     return out;
   }, [lists, metaByName]);
   const labels = useMemo(() => collectTaskLabels(entries), [entries]);
+  const filtersWithoutLabelStrip = useMemo(
+    () => ({ ...filters, labels: [] as string[], unlabeledOnly: false }),
+    [filters],
+  );
+  const labelFilterBaseEntries = useMemo(
+    () => filterTaskIndex(entries, view, filtersWithoutLabelStrip, today),
+    [entries, view, filtersWithoutLabelStrip, today],
+  );
+  const filterLabelCatalog = useMemo(
+    () => collectTaskLabels(labelFilterBaseEntries),
+    [labelFilterBaseEntries],
+  );
+  const hasUnlabeledInView = useMemo(
+    () => labelFilterBaseEntries.some((e) => !e.labels.some((g) => g.trim())),
+    [labelFilterBaseEntries],
+  );
   const visible = useMemo(
     () =>
       filterTaskIndex(entries, view, filters, today).filter(
@@ -1649,6 +1660,12 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
   }, [view, filters.list]);
 
   const emptyMessage = useMemo(() => {
+    if (filters.unlabeledOnly) {
+      return "No tasks without labels.";
+    }
+    if (filters.labels.length > 0) {
+      return "No tasks match the selected labels.";
+    }
     if (view === "today") {
       const openElsewhere = entries.filter(
         (e) => e.status === "open" && e.due !== today,
@@ -1665,7 +1682,14 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
       return `No tasks in ${filters.list}.`;
     }
     return "No tasks in this view.";
-  }, [view, filters.list, entries, today]);
+  }, [
+    view,
+    filters.list,
+    filters.labels.length,
+    filters.unlabeledOnly,
+    entries,
+    today,
+  ]);
 
   // Keep composer List in sync when the sidebar list/view changes.
   useEffect(() => {
@@ -2096,6 +2120,8 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
         filters={filters}
         patchFilters={patchFilters}
         labels={labels}
+        filterLabelCatalog={filterLabelCatalog}
+        hasUnlabeledInView={hasUnlabeledInView}
         lists={lists}
         listColors={listColors}
         loading={loading}

@@ -1,5 +1,6 @@
-import { memo, type ReactNode, type RefObject } from "react";
+import { memo, useCallback, type ReactNode, type RefObject } from "react";
 import type { TaskIndexEntry, TaskPriority, TasksViewId } from "../../lib/taskNotes";
+import { pastelChipStyle } from "../../lib/pastelChipColors";
 import type { TreeNode } from "../../lib/vaultApi";
 import { Select } from "../ui/Select";
 import {
@@ -20,10 +21,16 @@ import { TASK_PRIORITY_OPTIONS } from "../../lib/taskPriorities";
 export type TasksListFilters = {
   list: string;
   priority: TaskPriority | "";
-  label: string;
+  labels: string[];
+  unlabeledOnly: boolean;
   query: string;
   status: "open" | "done" | "all";
 };
+
+function labelSelected(selected: readonly string[], name: string): boolean {
+  const key = name.trim().toLowerCase();
+  return selected.some((l) => l.trim().toLowerCase() === key);
+}
 
 export const TasksListColumn = memo(function TasksListColumn({
   viewTitle,
@@ -31,6 +38,8 @@ export const TasksListColumn = memo(function TasksListColumn({
   filters,
   patchFilters,
   labels,
+  filterLabelCatalog,
+  hasUnlabeledInView,
   lists,
   listColors,
   loading,
@@ -68,6 +77,10 @@ export const TasksListColumn = memo(function TasksListColumn({
   filters: TasksListFilters;
   patchFilters: (patch: Partial<TasksListFilters>) => void;
   labels: string[];
+  /** Labels present on tasks in the current view (before label filter). */
+  filterLabelCatalog: string[];
+  /** Whether the current view has any task with no labels. */
+  hasUnlabeledInView: boolean;
   lists: string[];
   listColors: Record<string, string>;
   loading: boolean;
@@ -104,6 +117,39 @@ export const TasksListColumn = memo(function TasksListColumn({
     view === "today" ||
     view === "overdue" ||
     (view === "filters" && !filters.list.trim());
+
+  const showLabelFilter =
+    filterLabelCatalog.length > 0 ||
+    hasUnlabeledInView ||
+    filters.labels.length > 0 ||
+    filters.unlabeledOnly;
+
+  const toggleLabel = useCallback(
+    (name: string) => {
+      const on = labelSelected(filters.labels, name);
+      if (on) {
+        patchFilters({
+          labels: filters.labels.filter(
+            (l) => l.trim().toLowerCase() !== name.trim().toLowerCase(),
+          ),
+        });
+        return;
+      }
+      patchFilters({
+        unlabeledOnly: false,
+        labels: [...filters.labels, name],
+      });
+    },
+    [filters.labels, patchFilters],
+  );
+
+  const toggleUnlabeled = useCallback(() => {
+    if (filters.unlabeledOnly) {
+      patchFilters({ unlabeledOnly: false });
+      return;
+    }
+    patchFilters({ unlabeledOnly: true, labels: [] });
+  }, [filters.unlabeledOnly, patchFilters]);
 
   return (
     <div className="tasks-list-column">
@@ -147,15 +193,6 @@ export const TasksListColumn = memo(function TasksListColumn({
               }
             />
             <Select
-              aria-label="Label"
-              value={filters.label}
-              options={[
-                { value: "", label: "Any label" },
-                ...labels.map((l) => ({ value: l, label: l })),
-              ]}
-              onChange={(v) => patchFilters({ label: v })}
-            />
-            <Select
               aria-label="Status"
               value={filters.status}
               options={[
@@ -170,6 +207,48 @@ export const TasksListColumn = memo(function TasksListColumn({
                 })
               }
             />
+          </div>
+        ) : null}
+        {showLabelFilter ? (
+          <div
+            className="tasks-view-label-filter"
+            role="group"
+            aria-label="Filter by labels"
+          >
+            {hasUnlabeledInView || filters.unlabeledOnly ? (
+              <button
+                type="button"
+                className={
+                  filters.unlabeledOnly
+                    ? "tasks-label-filter-chip is-active is-unlabeled"
+                    : "tasks-label-filter-chip is-unlabeled"
+                }
+                aria-pressed={filters.unlabeledOnly}
+                onClick={toggleUnlabeled}
+              >
+                No labels
+              </button>
+            ) : null}
+            {filterLabelCatalog.map((name) => {
+              const active =
+                !filters.unlabeledOnly && labelSelected(filters.labels, name);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  className={
+                    active
+                      ? "tasks-label-filter-chip is-active"
+                      : "tasks-label-filter-chip"
+                  }
+                  style={pastelChipStyle(name)}
+                  aria-pressed={active}
+                  onClick={() => toggleLabel(name)}
+                >
+                  {name}
+                </button>
+              );
+            })}
           </div>
         ) : null}
       </header>

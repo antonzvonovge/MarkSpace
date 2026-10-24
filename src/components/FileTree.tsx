@@ -351,7 +351,6 @@ function openFavoriteTaskList(listName: string) {
   panel.patchFilters({
     list: listName,
     priority: "",
-    label: "",
     query: "",
     status: "open",
   });
@@ -366,7 +365,6 @@ function openFavoriteSmartView(view: TasksSmartFavoriteView) {
   panel.patchFilters({
     list: "",
     priority: "",
-    label: "",
     query: "",
     status: "open",
   });

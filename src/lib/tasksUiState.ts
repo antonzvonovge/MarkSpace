@@ -67,11 +67,27 @@ export function saveTasksView(view: TasksViewId): void {
   }
 }
 
+function normalizeStoredLabels(parsed: {
+  labels?: unknown;
+  label?: unknown;
+}): string[] {
+  if (Array.isArray(parsed.labels)) {
+    return parsed.labels.filter(
+      (l): l is string => typeof l === "string" && l.trim().length > 0,
+    );
+  }
+  // Legacy single-label filter.
+  if (typeof parsed.label === "string" && parsed.label.trim()) {
+    return [parsed.label.trim()];
+  }
+  return [];
+}
+
 export function loadTasksFilters(): TasksFilters {
   try {
     const raw = localStorage.getItem(FILTERS_KEY);
     if (!raw) return emptyTasksFilters();
-    const parsed = JSON.parse(raw) as Partial<TasksFilters>;
+    const parsed = JSON.parse(raw) as Partial<TasksFilters> & { label?: string };
     const base = emptyTasksFilters();
     return {
       query: typeof parsed.query === "string" ? parsed.query : base.query,
@@ -83,7 +99,9 @@ export function loadTasksFilters(): TasksFilters {
         parsed.priority === 4
           ? parsed.priority
           : "",
-      label: typeof parsed.label === "string" ? parsed.label : base.label,
+      unlabeledOnly: parsed.unlabeledOnly === true,
+      labels:
+        parsed.unlabeledOnly === true ? [] : normalizeStoredLabels(parsed),
       status:
         parsed.status === "done" ||
         parsed.status === "all" ||

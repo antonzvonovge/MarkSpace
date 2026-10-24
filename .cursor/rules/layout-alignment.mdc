@@ -1,0 +1,29 @@
+---
+description: Layout alignment — flex axes, square icon boxes, column isolation; no pixel nudging. Apply when doing UI layout / CSS / row chrome.
+globs: src/**/*.{tsx,css}
+alwaysApply: false
+---
+
+# Layout alignment
+
+No eyeballing. Vertical alignment is the parent’s job (`display: flex; align-items: center`), not per-child `margin` / `padding` / `top`.
+
+## Shared row axis
+
+Text, buttons, and icons in one row share one horizontal flex container that centers them on a single visual axis.
+
+- Icons live in a **square fixed box** (e.g. 24×24) so the visual center does not drift.
+- For icon + label rows, prefer `.icon-text` / `.icon-text-glyph` (`icon-text.mdc`).
+
+## Two-line blocks (column isolation)
+
+Icon/avatar on the side; title + subtitle are **one** vertical stack (`flex-direction: column`) beside it — not wrapping under the icon. Line 2 starts on the same left edge as line 1.
+
+```
+[ icon ]  Title
+          Subtitle
+```
+
+## Anti-pattern
+
+If you need a custom `margin-top` or a +2px height tweak to “line up” — the container grid is wrong. Rebuild the flex structure; do not nudge pixels.

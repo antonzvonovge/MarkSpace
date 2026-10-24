@@ -213,7 +213,7 @@ describe("filterTaskIndex", () => {
     const out = filterTaskIndex(
       rows,
       "inbox",
-      { query: "", list: "", priority: "", label: "", status: "open" },
+      { query: "", list: "", priority: "", labels: [], unlabeledOnly: false, status: "open" },
       today,
     );
     expect(out.map((e) => e.path)).toEqual(["Tasks/Inbox/a.md"]);
@@ -237,7 +237,7 @@ describe("filterTaskIndex", () => {
     const out = filterTaskIndex(
       ordered,
       "inbox",
-      { query: "", list: "", priority: "", label: "", status: "open" },
+      { query: "", list: "", priority: "", labels: [], unlabeledOnly: false, status: "open" },
       today,
     );
     expect(out.map((e) => e.path)).toEqual([
@@ -250,7 +250,7 @@ describe("filterTaskIndex", () => {
     const out = filterTaskIndex(
       rows,
       "today",
-      { query: "", list: "", priority: "", label: "", status: "open" },
+      { query: "", list: "", priority: "", labels: [], unlabeledOnly: false, status: "open" },
       today,
     );
     expect(out.map((e) => e.path)).toEqual([
@@ -267,12 +267,78 @@ describe("filterTaskIndex", () => {
         query: "",
         list: "Work",
         priority: "",
-        label: "work",
+        labels: ["work"],
+        unlabeledOnly: false,
         status: "open",
       },
       today,
     );
     expect(out.map((e) => e.path)).toEqual(["Tasks/Work/b.md"]);
+  });
+
+  it("requires all selected labels (AND)", () => {
+    const multi: TaskIndexEntry[] = [
+      entry({
+        path: "Tasks/Work/both.md",
+        title: "Both",
+        list: "Work",
+        labels: ["work", "urgent"],
+      }),
+      entry({
+        path: "Tasks/Work/one.md",
+        title: "One",
+        list: "Work",
+        labels: ["work"],
+      }),
+    ];
+    const out = filterTaskIndex(
+      multi,
+      "all",
+      {
+        query: "",
+        list: "Work",
+        priority: "",
+        labels: ["work", "urgent"],
+        unlabeledOnly: false,
+        status: "open",
+      },
+      today,
+    );
+    expect(out.map((e) => e.path)).toEqual(["Tasks/Work/both.md"]);
+  });
+
+  it("applies label filter on Inbox and Today", () => {
+    const out = filterTaskIndex(
+      rows,
+      "today",
+      {
+        query: "",
+        list: "",
+        priority: "",
+        labels: ["work"],
+        unlabeledOnly: false,
+        status: "open",
+      },
+      today,
+    );
+    expect(out.map((e) => e.path)).toEqual(["Tasks/Work/b.md"]);
+  });
+
+  it("filters unlabeled-only tasks", () => {
+    const out = filterTaskIndex(
+      rows,
+      "today",
+      {
+        query: "",
+        list: "",
+        priority: "",
+        labels: ["work"],
+        unlabeledOnly: true,
+        status: "open",
+      },
+      today,
+    );
+    expect(out.map((e) => e.path)).toEqual(["Tasks/Inbox/a.md"]);
   });
 
   it("ignores sticky list filter on Today", () => {
@@ -283,7 +349,8 @@ describe("filterTaskIndex", () => {
         query: "",
         list: "Work",
         priority: "",
-        label: "",
+        labels: [],
+        unlabeledOnly: false,
         status: "open",
       },
       today,
@@ -326,11 +393,13 @@ describe("filterTaskIndex", () => {
         query: "late",
         list: "Work",
         priority: 1,
-        label: "work",
+        labels: [],
+        unlabeledOnly: false,
         status: "open",
       },
       today,
     );
+    // Sticky Filters query/priority/list ignored on Overdue.
     expect(out.map((e) => e.path)).toEqual([
       "Tasks/Work/late.md",
       "Tasks/Inbox/older.md",
@@ -345,7 +414,8 @@ describe("filterTaskIndex", () => {
         query: "",
         list: "",
         priority: 3,
-        label: "",
+        labels: [],
+        unlabeledOnly: false,
         status: "open",
       },
       today,
@@ -553,7 +623,7 @@ describe("summarizeTaskListCounts", () => {
     const sticky = {
       ...emptyTasksFilters(),
       list: "Work",
-      label: "red",
+      labels: ["red"],
     };
     const offView = summarizeTaskListCounts(rows, today, sticky, "all");
     expect(offView.filters).toEqual({ total: 2, overdue: 0 });

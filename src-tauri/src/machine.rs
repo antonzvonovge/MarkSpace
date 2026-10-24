@@ -77,6 +77,27 @@ fn normalize_name(name: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+fn random_bytes16() -> [u8; 16] {
+    let mut buf = [0u8; 16];
+    #[cfg(unix)]
+    {
+        use std::io::Read;
+        if let Ok(mut file) = fs::File::open("/dev/urandom") {
+            if file.read_exact(&mut buf).is_ok() {
+                return buf;
+            }
+        }
+    }
+    // Fallback when urandom is unavailable — still unique enough with hostname+time.
+    if let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
+        let nanos = duration.as_nanos().to_le_bytes();
+        let secs = duration.as_secs().to_le_bytes();
+        buf[..8].copy_from_slice(&nanos[..8]);
+        buf[8..].copy_from_slice(&secs);
+    }
+    buf
+}
+
 fn new_machine_id() -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"markspace-machine-v1");
@@ -84,11 +105,7 @@ fn new_machine_id() -> String {
     if let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
         hasher.update(duration.as_nanos().to_le_bytes());
     }
-    #[cfg(unix)]
-    if let Ok(bytes) = fs::read("/dev/urandom") {
-        let n = bytes.len().min(16);
-        hasher.update(&bytes[..n]);
-    }
+    hasher.update(random_bytes16());
     let digest = hasher.finalize();
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",

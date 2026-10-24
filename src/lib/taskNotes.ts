@@ -102,7 +102,10 @@ export type TasksFilters = {
   query: string;
   list: string;
   priority: TaskPriority | "";
-  label: string;
+  /** Selected task labels; task must include all (AND). */
+  labels: string[];
+  /** When true, only tasks with no labels (mutually exclusive with `labels`). */
+  unlabeledOnly: boolean;
   status: TaskStatus | "open" | "all";
 };
 
@@ -111,9 +114,37 @@ export function emptyTasksFilters(): TasksFilters {
     query: "",
     list: "",
     priority: "",
-    label: "",
+    labels: [],
+    unlabeledOnly: false,
     status: "open",
   };
+}
+
+export function taskHasNoLabels(
+  entry: Pick<TaskIndexEntry, "labels">,
+): boolean {
+  return !entry.labels.some((g) => g.trim());
+}
+
+/** True when every required label is present on the entry (case-insensitive). */
+export function entryHasAllLabels(
+  entry: Pick<TaskIndexEntry, "labels">,
+  required: readonly string[],
+): boolean {
+  if (required.length === 0) return true;
+  const have = new Set(
+    entry.labels.map((g) => g.trim().toLowerCase()).filter(Boolean),
+  );
+  return required.every((t) => have.has(t.trim().toLowerCase()));
+}
+
+/** Label strip filter: unlabeled-only, or AND of selected labels. */
+export function entryMatchesLabelFilter(
+  entry: Pick<TaskIndexEntry, "labels">,
+  filters: Pick<TasksFilters, "labels" | "unlabeledOnly">,
+): boolean {
+  if (filters.unlabeledOnly) return taskHasNoLabels(entry);
+  return entryHasAllLabels(entry, filters.labels);
 }
 
 export function emptyTaskAttrs(): TaskAttrs {
@@ -253,8 +284,7 @@ function taskMatchesFiltersRow(
   const list = filters.list.trim();
   if (list && entry.list !== list) return false;
   if (filters.priority !== "" && entry.priority !== filters.priority) return false;
-  const label = filters.label.trim().toLowerCase();
-  if (label && !entry.labels.some((g) => g.toLowerCase() === label)) return false;
+  if (!entryMatchesLabelFilter(entry, filters)) return false;
   const q = filters.query.trim().toLowerCase();
   if (!q) return true;
   const hay = [entry.title, entry.list, ...entry.labels, entry.due ?? ""]
@@ -931,7 +961,6 @@ export function filterTaskIndex(
   today: string = localDateYmd(),
 ): TaskIndexEntry[] {
   const q = filters.query.trim().toLowerCase();
-  const label = filters.label.trim().toLowerCase();
   const list = filters.list.trim();
 
   let list_ = entries.filter((e) => {
@@ -964,13 +993,13 @@ export function filterTaskIndex(
     if ((view === "all" || view === "filters") && list && e.list !== list) {
       return false;
     }
-    // Priority / label / query only on Filters — otherwise a sticky Filters
-    // selection empties Inbox / Today / lists.
+    // Label strip applies in every list view. Priority / query stay Filters-only
+    // so a sticky Filters selection does not empty Inbox / Today / lists.
+    if (!entryMatchesLabelFilter(e, filters)) {
+      return false;
+    }
     if (view === "filters") {
       if (filters.priority !== "" && e.priority !== filters.priority) {
-        return false;
-      }
-      if (label && !e.labels.some((g) => g.toLowerCase() === label)) {
         return false;
       }
       if (q) {

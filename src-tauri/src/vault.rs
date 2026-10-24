@@ -1127,7 +1127,13 @@ pub fn open_vault(
     replace_note_title_index(&state, titles);
     start_watcher(app.clone(), &state, &root)?;
     crate::embeddings::notify_vault_opened(&app, &root);
-    let _ = crate::machine::register_current_machine(&app, &root);
+    {
+        let app_reg = app.clone();
+        let root_reg = root.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let _ = crate::machine::register_current_machine(&app_reg, &root_reg);
+        });
+    }
     crate::routines::on_vault_opened(app.clone(), root.clone());
     let order = read_order(&root);
     make_root_node(&root, &order)

@@ -72,7 +72,7 @@ export function buildTasksTools(mode: ChatMode) {
 
     list_tasks: tool({
       description:
-        "List active tasks (skips Tasks/<list>/completed/). Filter like the Tasks UI: view inbox|today|overdue|all|filters plus list/status/priority/label/query. overdue = open tasks with due before today.",
+        "List active tasks (skips Tasks/<list>/completed/). Filter like the Tasks UI: view inbox|today|overdue|all|filters plus list/status/priority/labels/unlabeledOnly/query. labels = AND; unlabeledOnly = no labels. overdue = open tasks with due before today.",
       inputSchema: listTasksSchema,
       execute: async (input) => opListTasks(input),
     }),

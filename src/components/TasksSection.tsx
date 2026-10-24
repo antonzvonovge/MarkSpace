@@ -588,7 +588,6 @@ export const TasksSection = memo(function TasksSection() {
       patchFilters({
         list: "",
         priority: "",
-        label: "",
         query: "",
         status: "open",
       });
@@ -604,7 +603,6 @@ export const TasksSection = memo(function TasksSection() {
       patchFilters({
         list,
         priority: "",
-        label: "",
         query: "",
         status: "open",
       });

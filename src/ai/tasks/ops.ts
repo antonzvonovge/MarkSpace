@@ -116,7 +116,18 @@ const listTasksSchema = z.object({
   list: z.string().optional().describe("List/project name, e.g. Inbox or Work"),
   status: z.enum(["open", "done", "all"]).optional().describe("Default open"),
   priority: prioritySchema(),
-  label: z.string().optional().describe("Exact label match"),
+  label: z
+    .string()
+    .optional()
+    .describe("Exact label match (legacy; prefer labels)"),
+  labels: z
+    .array(z.string())
+    .optional()
+    .describe("Tasks must include all of these labels (AND)"),
+  unlabeledOnly: z
+    .boolean()
+    .optional()
+    .describe("Only tasks with no labels (ignores labels when true)"),
   query: z.string().optional().describe("Substring over title/list/labels/due"),
   limit: z.number().int().min(1).max(200).optional(),
 });
@@ -285,6 +296,8 @@ export async function opListTasks(input: z.infer<typeof listTasksSchema>) {
     status = "open",
     priority,
     label = "",
+    labels,
+    unlabeledOnly = false,
     query = "",
     limit = 80,
   } = input;
@@ -292,12 +305,21 @@ export async function opListTasks(input: z.infer<typeof listTasksSchema>) {
     requireVaultOpen();
     const tree = useVaultStore.getState().tree;
     const index = await loadTaskIndex(tree);
+    const labelList =
+      unlabeledOnly
+        ? []
+        : labels && labels.length > 0
+          ? labels.map((l) => l.trim()).filter(Boolean)
+          : label.trim()
+            ? [label.trim()]
+            : [];
     const filters = {
       ...emptyTasksFilters(),
       list: list.trim(),
       status,
       priority: (priority ?? "") as TaskPriority | "",
-      label: label.trim(),
+      labels: labelList,
+      unlabeledOnly: Boolean(unlabeledOnly),
       query: query.trim(),
     };
     const rows = filterTaskIndex(
@@ -763,7 +785,7 @@ export const TASK_MCP_TOOL_DEFS: McpToolDef[] = [
   {
     name: "list_tasks",
     description:
-      "List active tasks (skips Tasks/<list>/completed/). Filter like the Tasks UI: view inbox|today|overdue|all|filters plus list/status/priority/label/query. overdue = open tasks with due before today.",
+      "List active tasks (skips Tasks/<list>/completed/). Filter like the Tasks UI: view inbox|today|overdue|all|filters plus list/status/priority/labels/unlabeledOnly/query. labels = AND; unlabeledOnly = no labels. overdue = open tasks with due before today.",
     inputSchema: schemaJson(listTasksSchema),
   },
   {

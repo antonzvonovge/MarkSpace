@@ -1,6 +1,16 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
+import { MdChevronRight } from "react-icons/md";
 import { emptyDashboard, pickDashboardColor } from "../lib/dashboardFormat";
+import { placeFlyoutMenu, placePointerMenu } from "../lib/menuPlacement";
 import type { TreeNode } from "../lib/vaultApi";
 import {
   DASHBOARDS_FOLDER,
@@ -9,10 +19,12 @@ import {
 } from "../lib/vaultApi";
 import {
   loadDashboardColor,
+  setDashboardColor,
   useDashboardColorStore,
 } from "../store/dashboardColorStore";
 import { useVaultStore } from "../store/vaultStore";
 import { ConfirmDialog } from "./AppDialog";
+import { DayColorPicker } from "./DayColorPicker";
 import { DashboardIcon } from "./dashboardIcon";
 import { PlusIcon } from "./treeIcons";
 import { SectionCollapseChevron } from "./sidebar/SectionCollapseChevron";
@@ -136,21 +148,26 @@ function DashboardRowIcon({ path }: { path: string }) {
 function DashboardContextMenu({
   x,
   y,
+  color,
   isFavorite,
   onClose,
   onToggleFavorite,
+  onChangeColor,
   onRename,
   onDelete,
 }: {
   x: number;
   y: number;
+  color: string;
   isFavorite: boolean;
   onClose: () => void;
   onToggleFavorite: () => void;
+  onChangeColor: (hex: string) => void;
   onRename: () => void;
   onDelete: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [colorOpen, setColorOpen] = useState(false);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -169,15 +186,40 @@ function DashboardContextMenu({
     };
   }, [onClose]);
 
-  const left = Math.min(x, window.innerWidth - 220);
-  const top = Math.min(y, window.innerHeight - 140);
+  useLayoutEffect(() => {
+    const root = menuRef.current;
+    if (!root) return;
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const placed = placePointerMenu(
+      x,
+      y,
+      { width: root.offsetWidth, height: root.offsetHeight },
+      viewport,
+    );
+    root.style.left = `${placed.left}px`;
+    root.style.top = `${placed.top}px`;
+
+    for (const sub of root.querySelectorAll<HTMLElement>(".tree-context-submenu")) {
+      const wrap = sub.closest(".tree-context-submenu-wrap");
+      if (!(wrap instanceof HTMLElement)) continue;
+      const anchor = wrap.getBoundingClientRect();
+      const fly = placeFlyoutMenu(
+        anchor,
+        { width: sub.offsetWidth, height: sub.offsetHeight },
+        viewport,
+      );
+      sub.style.position = "fixed";
+      sub.style.left = `${fly.left}px`;
+      sub.style.top = `${fly.top}px`;
+    }
+  }, [x, y, colorOpen]);
 
   return createPortal(
     <div
       ref={menuRef}
       className="tree-context-menu is-plaintext"
       role="menu"
-      style={{ left, top }}
+      style={{ left: x, top: y }}
     >
       <button
         type="button"
@@ -190,6 +232,42 @@ function DashboardContextMenu({
       >
         {isFavorite ? "Remove from favorites" : "Add to favorites"}
       </button>
+      <div className="tree-context-sep" role="separator" />
+      <div
+        className="tree-context-submenu-wrap"
+        onMouseEnter={() => setColorOpen(true)}
+        onMouseLeave={() => setColorOpen(false)}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          onClick={(event) => {
+            event.preventDefault();
+            setColorOpen((open) => !open);
+          }}
+        >
+          Change color
+          <MdChevronRight size={16} className="tree-context-chevron" />
+        </button>
+        {colorOpen ? (
+          <div
+            className="tree-context-submenu is-color-swatches"
+            role="menu"
+            aria-label="Icon color"
+          >
+            <DayColorPicker
+              value={color}
+              allowNone={false}
+              aria-label="Icon color"
+              onChange={(hex) => {
+                onClose();
+                onChangeColor(hex);
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
       <div className="tree-context-sep" role="separator" />
       <button
         type="button"
@@ -239,6 +317,9 @@ export const DashboardsSection = memo(function DashboardsSection() {
   const files = useMemo(() => dashboardFiles(tree), [tree]);
   const pathKey = files.map((file) => file.path).join("\n");
   const confirmName = files.find((file) => file.path === confirmPath)?.name;
+  const menuColor = useDashboardColorStore((s) =>
+    menu ? (s.byPath[menu.path] ?? "") : "",
+  );
 
   useEffect(() => {
     const paths = pathKey ? pathKey.split("\n") : [];
@@ -377,6 +458,7 @@ export const DashboardsSection = memo(function DashboardsSection() {
         <DashboardContextMenu
           x={menu.x}
           y={menu.y}
+          color={menuColor}
           isFavorite={favoritePaths.includes(menu.path)}
           onClose={() => setMenu(null)}
           onToggleFavorite={() => {
@@ -384,6 +466,9 @@ export const DashboardsSection = memo(function DashboardsSection() {
             const store = useVaultStore.getState();
             if (store.isFavorite(path)) void store.removeFromFavorites(path);
             else void store.addToFavorites(path);
+          }}
+          onChangeColor={(hex) => {
+            void setDashboardColor(menu.path, hex);
           }}
           onRename={() => setRenamingPath(menu.path)}
           onDelete={() => setConfirmPath(menu.path)}
