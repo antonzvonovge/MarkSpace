@@ -17,6 +17,7 @@ mod md_merge;
 mod order_merge;
 mod pdf_text;
 mod projects;
+mod machine;
 mod routines;
 mod task_lists;
 mod terminal;
@@ -229,6 +230,9 @@ pub fn run() {
             projects::get_project_properties,
             projects::set_project_properties,
             projects::list_project_properties,
+            machine::get_machine_identity,
+            machine::set_machine_name,
+            machine::list_vault_machines,
             routines::list_routines,
             routines::upsert_routine,
             routines::set_routine_enabled,

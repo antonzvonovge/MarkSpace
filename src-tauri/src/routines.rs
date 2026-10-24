@@ -94,6 +94,46 @@ pub struct Routine {
     /// `0` means 60 seconds. Otherwise clamped to the terminal limits.
     #[serde(default)]
     pub command_timeout_ms: u64,
+    /// `all` (default) or `machine`. Missing on disk means `all`.
+    #[serde(default = "default_run_on")]
+    pub run_on: String,
+    /// Required when `run_on` is `machine`. Empty otherwise.
+    #[serde(default)]
+    pub run_on_machine_id: String,
+}
+
+fn default_run_on() -> String {
+    "all".into()
+}
+
+/// Schedule/catchup may run this routine on `machine_id`.
+fn routine_runs_on_machine(doc: &Routine, machine_id: &str) -> bool {
+    let run_on = doc.run_on.trim();
+    if run_on.is_empty() || run_on == "all" {
+        return true;
+    }
+    if run_on != "machine" {
+        return false;
+    }
+    let pinned = doc.run_on_machine_id.trim();
+    !pinned.is_empty() && pinned == machine_id.trim()
+}
+
+fn normalize_run_on(run_on: &str, machine_id: &str) -> Result<(String, String), String> {
+    match run_on.trim() {
+        "" | "all" => Ok(("all".into(), String::new())),
+        "machine" => {
+            let id = machine_id.trim();
+            if id.is_empty() {
+                return Err("Pick a machine for this routine".into());
+            }
+            if id.contains('\0') || id.chars().count() > 80 {
+                return Err("Invalid machine id".into());
+            }
+            Ok(("machine".into(), id.to_string()))
+        }
+        _ => Err("Invalid run-on value".into()),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -165,6 +205,12 @@ pub struct UpsertRoutineArgs {
     pub command_cwd: Option<String>,
     #[serde(default)]
     pub command_timeout_ms: Option<u64>,
+    /// `None` keeps the stored value. `Some("all"|"machine")` sets placement.
+    #[serde(default)]
+    pub run_on: Option<String>,
+    /// Used when `run_on` is `machine`. `None` keeps the stored value.
+    #[serde(default)]
+    pub run_on_machine_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -357,7 +403,10 @@ fn claim_locked(
 ) -> Result<Vec<PendingRun>, String> {
     let _io = runtime().io.lock();
     let enabled = load_enabled_ids(app, root);
-    claim_due(root, now, trigger, &enabled)
+    let machine_id = crate::machine::load_or_create_identity(app)
+        .map(|m| m.id)
+        .unwrap_or_default();
+    claim_due(root, now, trigger, &enabled, &machine_id)
 }
 
 async fn drive(
@@ -1042,11 +1091,15 @@ fn claim_due(
     now: DateTime<Local>,
     trigger: RunTrigger,
     enabled: &BTreeSet<String>,
+    machine_id: &str,
 ) -> Result<Vec<PendingRun>, String> {
     let docs = read_all(root)?;
     let mut claimed = Vec::new();
     for mut doc in docs {
         if !enabled.contains(&doc.id) {
+            continue;
+        }
+        if !routine_runs_on_machine(&doc, machine_id) {
             continue;
         }
         let due = match doc.next_run_at.as_deref().and_then(parse_local) {
@@ -1523,6 +1576,13 @@ fn upsert(root: &Path, input: UpsertRoutineArgs, now: DateTime<Local>) -> Result
         Some(ms) => ms,
         None => prev.map(|doc| doc.command_timeout_ms).unwrap_or(0),
     });
+    let prev_run_on = prev.map(|doc| doc.run_on.as_str()).unwrap_or("all");
+    let prev_machine = prev
+        .map(|doc| doc.run_on_machine_id.as_str())
+        .unwrap_or("");
+    let run_on_raw = keep_string(input.run_on, Some(prev_run_on));
+    let run_on_machine_raw = keep_string(input.run_on_machine_id, Some(prev_machine));
+    let (run_on, run_on_machine_id) = normalize_run_on(&run_on_raw, &run_on_machine_raw)?;
     let doc = Routine {
         id,
         name,
@@ -1548,6 +1608,8 @@ fn upsert(root: &Path, input: UpsertRoutineArgs, now: DateTime<Local>) -> Result
         command,
         command_cwd,
         command_timeout_ms,
+        run_on,
+        run_on_machine_id,
     };
     write_routine(root, &doc)?;
     Ok(doc)
@@ -1726,12 +1788,22 @@ pub fn delete_routine_run(
 }
 
 #[tauri::command]
-pub fn run_routine_now(state: State<VaultState>, id: String) -> Result<(), String> {
+pub fn run_routine_now(
+    app: AppHandle,
+    state: State<VaultState>,
+    id: String,
+) -> Result<(), String> {
     let root = get_root(&state)?;
     validate_id(&id)?;
     {
         let _io = runtime().io.lock();
-        let _doc = read_routine(&root, &id)?;
+        let doc = read_routine(&root, &id)?;
+        let identity = crate::machine::load_or_create_identity(&app)?;
+        if !routine_runs_on_machine(&doc, &identity.id) {
+            let name = crate::machine::machine_display_name(&root, &doc.run_on_machine_id)
+                .unwrap_or_else(|| "another computer".into());
+            return Err(format!("This routine runs only on {name}"));
+        }
     }
     let tx = runtime()
         .tx
@@ -1799,6 +1871,8 @@ mod tests {
             command: None,
             command_cwd: None,
             command_timeout_ms: None,
+            run_on: None,
+            run_on_machine_id: None,
         }
     }
 
@@ -1911,12 +1985,12 @@ mod tests {
         write_routine(&root, &overdue).unwrap();
 
         let enabled = BTreeSet::from(["daily".to_string()]);
-        let first = claim_due(&root, now, RunTrigger::Catchup, &enabled).unwrap();
+        let first = claim_due(&root, now, RunTrigger::Catchup, &enabled, "local").unwrap();
         assert_eq!(first.len(), 1);
         assert_eq!(first[0].id, "daily");
         assert_eq!(first[0].trigger, RunTrigger::Catchup);
 
-        let second = claim_due(&root, now, RunTrigger::Catchup, &enabled).unwrap();
+        let second = claim_due(&root, now, RunTrigger::Catchup, &enabled, "local").unwrap();
         assert!(second.is_empty());
 
         let loaded = read_routine(&root, "daily").unwrap();
@@ -1940,10 +2014,46 @@ mod tests {
         let raw = fs::read_to_string(routine_path(&root, "off")).unwrap();
         assert!(!raw.contains("enabled"));
         assert!(
-            claim_due(&root, now, RunTrigger::Schedule, &BTreeSet::new())
+            claim_due(&root, now, RunTrigger::Schedule, &BTreeSet::new(), "local")
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn machine_pinned_routine_is_not_claimed_elsewhere() {
+        let root = temp_root();
+        let now = Local::now();
+        let mut input = args(Some("pin"), "Pinned", "0 * * * *");
+        input.run_on = Some("machine".into());
+        input.run_on_machine_id = Some("laptop".into());
+        let mut doc = upsert(&root, input, now).unwrap();
+        assert_eq!(doc.run_on, "machine");
+        assert_eq!(doc.run_on_machine_id, "laptop");
+        doc.next_run_at = Some((now - chrono::Duration::hours(1)).to_rfc3339());
+        write_routine(&root, &doc).unwrap();
+
+        let enabled = BTreeSet::from(["pin".to_string()]);
+        assert!(
+            claim_due(&root, now, RunTrigger::Schedule, &enabled, "desktop")
+                .unwrap()
+                .is_empty()
+        );
+        let claimed = claim_due(&root, now, RunTrigger::Schedule, &enabled, "laptop").unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].id, "pin");
+    }
+
+    #[test]
+    fn missing_run_on_defaults_to_all() {
+        let root = temp_root();
+        fs::create_dir_all(routines_dir(&root)).unwrap();
+        let raw = r#"{"id":"legacy","name":"Legacy","cron":"0 9 * * *"}"#;
+        fs::write(routine_path(&root, "legacy"), raw).unwrap();
+        let loaded = read_routine(&root, "legacy").unwrap();
+        assert_eq!(loaded.run_on, "all");
+        assert!(loaded.run_on_machine_id.is_empty());
+        assert!(routine_runs_on_machine(&loaded, "any-host"));
     }
 
     #[test]

@@ -2039,6 +2039,25 @@ select {
   white-space: nowrap;
 }
 
+.routines-row-place {
+  flex: 0 0 auto;
+  max-width: 5.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.routine-job-runon-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 .routines-row-meta {
   flex-shrink: 0;
   color: var(--sidebar-muted, var(--muted));
@@ -10432,6 +10451,26 @@ button.status-bar-jobs-menu-item:hover {
 
 .chat-history-delete:hover {
   opacity: 1;
+}
+
+.chat-history-more {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.chat-history-more:hover {
+  background: var(--menu-item-hover);
+  color: var(--text);
 }
 
 .chat-gems-wrap {

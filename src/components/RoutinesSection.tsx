@@ -1,6 +1,14 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Routine } from "../lib/routinesApi";
+import {
+  getMachineIdentity,
+  listVaultMachines,
+} from "../lib/machineApi";
+import {
+  routineRunsEverywhere,
+  routineRunsOnThisMachine,
+  type Routine,
+} from "../lib/routinesApi";
 import { useRoutinesStore } from "../store/routinesStore";
 import { routineIdFromTab, useVaultStore } from "../store/vaultStore";
 import { ConfirmDialog } from "./AppDialog";
@@ -26,8 +34,18 @@ function saveRoutinesCollapsed(collapsed: boolean): void {
   }
 }
 
-function formatNextRun(iso: string | null | undefined, enabled: boolean): string {
-  if (!enabled) return "Off";
+function formatNextRun(
+  routine: Routine,
+  machineId: string | null,
+  machineNames: Map<string, string>,
+): string {
+  if (!routine.enabled) return "Off";
+  if (!routineRunsOnThisMachine(routine, machineId)) {
+    const pinned = (routine.runOnMachineId ?? "").trim();
+    const name = machineNames.get(pinned);
+    return name ? `On ${name}` : "Other PC";
+  }
+  const iso = routine.nextRunAt;
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -37,6 +55,17 @@ function formatNextRun(iso: string | null | undefined, enabled: boolean): string
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function placeLabel(
+  routine: Routine,
+  machineId: string | null,
+  machineNames: Map<string, string>,
+): string {
+  if (routineRunsEverywhere(routine)) return "Everywhere";
+  const pinned = (routine.runOnMachineId ?? "").trim();
+  if (pinned && pinned === (machineId ?? "").trim()) return "This PC";
+  return machineNames.get(pinned) ?? "Other PC";
 }
 
 function RoutineSpinner({ label }: { label?: string }) {
@@ -241,6 +270,8 @@ const RoutineRow = memo(function RoutineRow({
   selected,
   open,
   renaming,
+  machineId,
+  machineNames,
   onOpen,
   onContextMenu,
   onRenameCommit,
@@ -251,6 +282,8 @@ const RoutineRow = memo(function RoutineRow({
   selected: boolean;
   open: boolean;
   renaming: boolean;
+  machineId: string | null;
+  machineNames: Map<string, string>;
   onOpen: (id: string) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
   onRenameCommit: (id: string, name: string) => void;
@@ -307,9 +340,17 @@ const RoutineRow = memo(function RoutineRow({
           <span className="routines-row-label">{routine.name}</span>
         )}
         {renaming ? null : (
-          <span className="routines-row-meta">
-            {formatNextRun(routine.nextRunAt, routine.enabled)}
-          </span>
+          <>
+            <span
+              className="routines-row-place"
+              title={`Run on ${placeLabel(routine, machineId, machineNames)}`}
+            >
+              {placeLabel(routine, machineId, machineNames)}
+            </span>
+            <span className="routines-row-meta">
+              {formatNextRun(routine, machineId, machineNames)}
+            </span>
+          </>
         )}
         {running ? (
           <span className="routines-row-status">
@@ -340,11 +381,17 @@ export const RoutinesSection = memo(function RoutinesSection() {
   const [confirm, setConfirm] = useState<{ id: string; kind: "run" | "delete" } | null>(
     null,
   );
+  const [machineId, setMachineId] = useState<string | null>(null);
+  const [machineNames, setMachineNames] = useState<Map<string, string>>(
+    () => new Map(),
+  );
 
   useEffect(() => {
     if (!vaultPath) {
       reset();
       setReady(false);
+      setMachineId(null);
+      setMachineNames(new Map());
       return;
     }
     let cancelled = false;
@@ -356,6 +403,20 @@ export const RoutinesSection = memo(function RoutinesSection() {
       })
       .finally(() => {
         if (!cancelled) setReady(true);
+      });
+    void Promise.all([getMachineIdentity(), listVaultMachines()])
+      .then(([identity, machines]) => {
+        if (cancelled) return;
+        setMachineId(identity.id);
+        const names = new Map<string, string>();
+        names.set(identity.id, identity.name);
+        for (const machine of machines) {
+          names.set(machine.id, machine.name);
+        }
+        setMachineNames(names);
+      })
+      .catch(() => {
+        /* identity optional for list chrome */
       });
     return () => {
       cancelled = true;
@@ -441,6 +502,8 @@ export const RoutinesSection = memo(function RoutinesSection() {
               selected={routine.id === highlightedId}
               open={routine.id === openId}
               renaming={renamingId === routine.id}
+              machineId={machineId}
+              machineNames={machineNames}
               onOpen={openRoutine}
               onContextMenu={openRoutineMenu}
               onRenameCommit={renameRoutine}

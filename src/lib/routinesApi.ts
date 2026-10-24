@@ -10,6 +10,8 @@ export type RoutineAttachmentRef = {
   path: string;
 };
 
+export type RoutineRunOn = "all" | "machine";
+
 export type Routine = {
   id: string;
   name: string;
@@ -34,6 +36,10 @@ export type Routine = {
   commandCwd?: string;
   /** `0` means 60 seconds. */
   commandTimeoutMs?: number;
+  /** `all` (default) or `machine`. */
+  runOn?: RoutineRunOn | string;
+  /** Set when `runOn` is `machine`. */
+  runOnMachineId?: string;
 };
 
 export type RoutineRunFile = {
@@ -74,7 +80,24 @@ export type UpsertRoutineInput = {
   command?: string | null;
   commandCwd?: string | null;
   commandTimeoutMs?: number | null;
+  runOn?: RoutineRunOn | string | null;
+  runOnMachineId?: string | null;
 };
+
+export function routineRunsEverywhere(routine: Pick<Routine, "runOn">): boolean {
+  const runOn = (routine.runOn ?? "all").trim();
+  return !runOn || runOn === "all";
+}
+
+export function routineRunsOnThisMachine(
+  routine: Pick<Routine, "runOn" | "runOnMachineId">,
+  machineId: string | null | undefined,
+): boolean {
+  if (routineRunsEverywhere(routine)) return true;
+  const pinned = (routine.runOnMachineId ?? "").trim();
+  const local = (machineId ?? "").trim();
+  return Boolean(pinned && local && pinned === local);
+}
 
 export function routineIsCommand(kind: string | null | undefined): boolean {
   return kind === "command";
@@ -102,6 +125,8 @@ export async function upsertRoutine(input: UpsertRoutineInput): Promise<Routine>
       command: input.command ?? null,
       commandCwd: input.commandCwd ?? null,
       commandTimeoutMs: input.commandTimeoutMs ?? null,
+      runOn: input.runOn ?? null,
+      runOnMachineId: input.runOnMachineId ?? null,
     },
   });
 }

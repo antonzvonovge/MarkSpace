@@ -17,6 +17,7 @@ import { DiarySettingsPanel } from "./DiarySettingsPanel";
 import { FileMarkersSettingsPanel } from "./FileMarkersSettingsPanel";
 import { IndexingSettingsPanel } from "./IndexingSettingsPanel";
 import { KeysSettingsPanel } from "./KeysSettingsPanel";
+import { MachineSettingsPanel } from "./MachineSettingsPanel";
 import { MediaLibrarySettingsPanel } from "./MediaLibrarySettingsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
@@ -30,6 +31,7 @@ type Props = {
 };
 
 const PANEL_CATEGORIES = new Set([
+  "thisComputer",
   "sync",
   "keys",
   "models",
@@ -223,6 +225,19 @@ function queryMatchesAccent(query: string): boolean {
   );
 }
 
+function queryMatchesThisComputer(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (
+    q.includes("this computer") ||
+    q.includes("computer name") ||
+    q.includes("machine") ||
+    q.includes("hostname") ||
+    (q.includes("routine") && q.includes("computer")) ||
+    q === "computer"
+  );
+}
+
 function queryMatchesAbout(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
@@ -274,6 +289,8 @@ export function SettingsPage({ onClose }: Props) {
   const showIndexingInSearch = searching && queryMatchesIndexing(query);
   const showAboutInSearch = searching && queryMatchesAbout(query);
   const showAccentInSearch = searching && queryMatchesAccent(query);
+  const showThisComputerInSearch =
+    searching && queryMatchesThisComputer(query);
 
   const rows = useMemo(() => {
     if (searching) {
@@ -313,6 +330,8 @@ export function SettingsPage({ onClose }: Props) {
     (!searching && category === "indexing") || showIndexingInSearch;
   const showAboutPanel =
     (!searching && category === "about") || showAboutInSearch;
+  const showThisComputerPanel =
+    (!searching && category === "thisComputer") || showThisComputerInSearch;
   const showAccentRow =
     (!searching && category === "appearance") || showAccentInSearch;
 
@@ -394,6 +413,7 @@ export function SettingsPage({ onClose }: Props) {
             !showMediaLibraryInSearch &&
             !showIndexingInSearch &&
             !showAboutInSearch &&
+            !showThisComputerInSearch &&
             !showAccentInSearch && (
               <div className="settings-empty">
                 No settings match “{query.trim()}”
@@ -517,6 +537,15 @@ export function SettingsPage({ onClose }: Props) {
             <section className="settings-section">
               {searching && <h2 className="settings-section-title">About</h2>}
               <AboutSettingsPanel />
+            </section>
+          )}
+
+          {showThisComputerPanel && (
+            <section className="settings-section">
+              {searching && (
+                <h2 className="settings-section-title">This computer</h2>
+              )}
+              <MachineSettingsPanel />
             </section>
           )}
 

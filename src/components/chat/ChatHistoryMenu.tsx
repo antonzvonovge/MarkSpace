@@ -1,7 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { groupChatHistory } from "../../lib/chatHistoryGroups";
 import { useChatStore } from "../../store/chatStore";
 import { MenuTrashIcon } from "../menuIcons";
+
+const PAGE_SIZE = 20;
 
 type Props = {
   open: boolean;
@@ -25,10 +27,22 @@ export function ChatHistoryMenu({ open, onClose }: Props) {
   const activeThreadId = useChatStore((s) => s.activeThreadId);
   const selectThread = useChatStore((s) => s.selectThread);
   const deleteThread = useChatStore((s) => s.deleteThread);
-  const groups = groupChatHistory(threads);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const visibleThreads = useMemo(() => {
+    // Same newest-first order as groupChatHistory — do not re-sort buckets.
+    const sorted = [...threads].sort((a, b) => b.updatedAt - a.updatedAt);
+    return sorted.slice(0, visibleCount);
+  }, [threads, visibleCount]);
+
+  const groups = groupChatHistory(visibleThreads);
+  const hasMore = threads.length > visibleCount;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setVisibleCount(PAGE_SIZE);
+      return;
+    }
     const onDoc = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
@@ -94,6 +108,15 @@ export function ChatHistoryMenu({ open, onClose }: Props) {
           ))}
         </div>
       ))}
+      {hasMore ? (
+        <button
+          type="button"
+          className="chat-history-more"
+          onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+        >
+          Show more
+        </button>
+      ) : null}
     </div>
   );
 }

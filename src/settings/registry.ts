@@ -7,6 +7,7 @@ import {
 
 export type SettingCategory =
   | "profile"
+  | "thisComputer"
   | "appearance"
   | "editor"
   | "keys"
@@ -65,6 +66,7 @@ export type CategoryDescriptor = {
 
 export const CATEGORIES: CategoryDescriptor[] = [
   { id: "profile", label: "Profile", scope: "app" },
+  { id: "thisComputer", label: "This computer", scope: "app" },
   { id: "appearance", label: "Appearance", scope: "app" },
   { id: "editor", label: "Editor", scope: "app" },
   { id: "fileMarkers", label: "File markers", scope: "vault" },

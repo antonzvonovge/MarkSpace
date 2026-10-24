@@ -1,5 +1,11 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { WIDGET_SECTION_EXAMPLE } from "../ai/routineWidgetSection";
+import {
+  getMachineIdentity,
+  listVaultMachines,
+  type MachineIdentity,
+  type VaultMachine,
+} from "../lib/machineApi";
 import { formatSchedule } from "../lib/routineSchedule";
 import {
   briefStateFromRoutine,
@@ -9,6 +15,7 @@ import {
   deleteRoutineRun,
   listRoutineRuns,
   routineIsCommand,
+  routineRunsOnThisMachine,
   type RoutineRunFile,
   type RoutineTrigger,
 } from "../lib/routinesApi";
@@ -17,6 +24,7 @@ import { routineIdFromTab, useVaultStore } from "../store/vaultStore";
 import { ConfirmDialog } from "./AppDialog";
 import { RoutineBriefComposer } from "./RoutineBriefComposer";
 import { RoutineScheduleDialog } from "./RoutineScheduleDialog";
+import { Select } from "./ui/Select";
 
 function errorText(err: unknown): string {
   if (typeof err === "string") return err;
@@ -175,6 +183,9 @@ function RoutineJob({ id }: { id: string }) {
   const [deleteRun, setDeleteRun] = useState<RoutineRunFile | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [holdRun, setHoldRun] = useState(false);
+  const [identity, setIdentity] = useState<MachineIdentity | null>(null);
+  const [machines, setMachines] = useState<VaultMachine[]>([]);
+  const [runOnValue, setRunOnValue] = useState("all");
   const nameFocused = useRef(false);
   const commandFocused = useRef(false);
   const cwdFocused = useRef(false);
@@ -186,6 +197,8 @@ function RoutineJob({ id }: { id: string }) {
   const kindRef = useRef(kind);
   const commandRef = useRef(command);
   const cwdRef = useRef(commandCwd);
+  const runOnRef = useRef("all");
+  const runOnMachineIdRef = useRef("");
   const timeoutMsRef = useRef(timeoutSeconds(routine?.commandTimeoutMs) * 1000);
   const briefRef = useRef<RoutineBriefState | null>(routine ? briefStateFromRoutine(routine) : null);
   const saveQueue = useRef(Promise.resolve());
@@ -195,6 +208,23 @@ function RoutineJob({ id }: { id: string }) {
   kindRef.current = kind;
   commandRef.current = command;
   cwdRef.current = commandCwd;
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([getMachineIdentity(), listVaultMachines()])
+      .then(([nextIdentity, nextMachines]) => {
+        if (cancelled) return;
+        setIdentity(nextIdentity);
+        setMachines(nextMachines);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(errorText(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!routine) return;
@@ -220,6 +250,11 @@ function RoutineJob({ id }: { id: string }) {
       setTimeoutSec(String(seconds));
       timeoutMsRef.current = seconds * 1000;
     }
+    const nextRunOn = (routine.runOn ?? "all").trim() || "all";
+    const nextMachineId = (routine.runOnMachineId ?? "").trim();
+    runOnRef.current = nextRunOn;
+    runOnMachineIdRef.current = nextMachineId;
+    setRunOnValue(nextRunOn === "machine" && nextMachineId ? `machine:${nextMachineId}` : "all");
   }, [routine]);
 
   useEffect(() => {
@@ -278,6 +313,8 @@ function RoutineJob({ id }: { id: string }) {
           command: commandRef.current,
           commandCwd: cwdRef.current,
           commandTimeoutMs: timeoutMsRef.current,
+          runOn: runOnRef.current,
+          runOnMachineId: runOnMachineIdRef.current,
         });
       } catch (err) {
         setError(errorText(err));
@@ -290,6 +327,57 @@ function RoutineJob({ id }: { id: string }) {
       () => undefined,
     );
   };
+
+  const runOnOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [
+      { value: "all", label: "Everywhere" },
+    ];
+    const seen = new Set<string>();
+    if (identity) {
+      options.push({
+        value: `machine:${identity.id}`,
+        label: `${identity.name} (this computer)`,
+      });
+      seen.add(identity.id);
+    }
+    for (const machine of machines) {
+      if (seen.has(machine.id)) continue;
+      seen.add(machine.id);
+      options.push({
+        value: `machine:${machine.id}`,
+        label: machine.name,
+      });
+    }
+    const pinned = (routine?.runOnMachineId ?? "").trim();
+    if (
+      routine?.runOn === "machine" &&
+      pinned &&
+      !seen.has(pinned)
+    ) {
+      options.push({
+        value: `machine:${pinned}`,
+        label: "Unknown computer",
+      });
+    }
+    return options;
+  }, [identity, machines, routine?.runOn, routine?.runOnMachineId]);
+
+  const chooseRunOn = (value: string) => {
+    setRunOnValue(value);
+    if (value === "all") {
+      runOnRef.current = "all";
+      runOnMachineIdRef.current = "";
+    } else if (value.startsWith("machine:")) {
+      runOnRef.current = "machine";
+      runOnMachineIdRef.current = value.slice("machine:".length);
+    }
+    persistAll();
+  };
+
+  const runsHere = routineRunsOnThisMachine(routine ?? { runOn: "all" }, identity?.id);
+  const pinnedMachineName =
+    machines.find((m) => m.id === (routine?.runOnMachineId ?? "").trim())?.name ??
+    (identity?.id === (routine?.runOnMachineId ?? "").trim() ? identity.name : null);
 
   const scheduleBriefSave = () => {
     if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
@@ -350,9 +438,9 @@ function RoutineJob({ id }: { id: string }) {
           <button
             type="button"
             className="routine-job-icon-btn"
-            title="Run now"
+            title={runsHere ? "Run now" : `Runs only on ${pinnedMachineName ?? "another computer"}`}
             aria-label={`Run ${routine.name} now`}
-            disabled={running}
+            disabled={running || !runsHere}
             onClick={() => setConfirm("run")}
           >
             <PlayIcon />
@@ -409,6 +497,23 @@ function RoutineJob({ id }: { id: string }) {
                 <MoreIcon />
               </button>
             </div>
+          </div>
+          <div className="routine-job-field">
+            <div className="routine-job-label">Run on</div>
+            <Select
+              variant="field"
+              aria-label="Run on"
+              value={runOnValue}
+              options={runOnOptions}
+              disabled={busy}
+              onChange={chooseRunOn}
+            />
+            {!runsHere ? (
+              <p className="routine-job-runon-hint">
+                Scheduled runs and Run now only happen on{" "}
+                {pinnedMachineName ?? "the assigned computer"}.
+              </p>
+            ) : null}
           </div>
         </div>
         <div className="routine-job-field">
