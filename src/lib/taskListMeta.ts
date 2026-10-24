@@ -2,7 +2,12 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { normalizeProjectColor } from "./projectColors";
+import {
+  parseTaskGroupBy,
+  type TaskGroupBy,
+} from "./taskGrouping";
 import { TASKS_FOLDER, joinPath } from "./vaultApi";
+import type { TasksViewId } from "./taskNotes";
 
 /** Smart task views that can be favorited without a vault folder. */
 export type TasksSmartFavoriteView = "inbox" | "today" | "overdue";
@@ -22,6 +27,11 @@ export type TaskListMeta = {
   groupId: string;
   color: string;
   order: number;
+  groupBy: TaskGroupBy;
+};
+
+export type TaskViewPrefs = {
+  groupBy: TaskGroupBy;
 };
 
 export type TaskListMetaByName = Record<string, TaskListMeta>;
@@ -32,7 +42,12 @@ function normalizeMeta(raw: TaskListMeta): TaskListMeta {
     groupId: (raw.groupId ?? "").trim(),
     color: normalizeProjectColor(raw.color),
     order: typeof raw.order === "number" ? raw.order : 0,
+    groupBy: parseTaskGroupBy(raw.groupBy),
   };
+}
+
+function normalizeViewPrefs(raw: TaskViewPrefs | null | undefined): TaskViewPrefs {
+  return { groupBy: parseTaskGroupBy(raw?.groupBy) };
 }
 
 export function taskListPath(name: string): string {
@@ -129,6 +144,7 @@ export async function setTaskListMeta(
     groupId?: string;
     color?: string;
     order?: number;
+    groupBy?: TaskGroupBy;
   },
 ): Promise<TaskListMeta> {
   const current = await getTaskListMeta(listName);
@@ -137,8 +153,51 @@ export async function setTaskListMeta(
     groupId: patch.groupId ?? current.groupId,
     color: patch.color ?? current.color,
     order: patch.order ?? current.order,
+    groupBy: patch.groupBy ?? current.groupBy,
   });
   return normalizeMeta(raw);
+}
+
+export async function getTaskViewPrefs(view: TasksViewId): Promise<TaskViewPrefs> {
+  const raw = await invoke<TaskViewPrefs>("get_task_view_prefs", { view });
+  return normalizeViewPrefs(raw);
+}
+
+export async function listTaskViewPrefs(): Promise<
+  Partial<Record<TasksViewId, TaskViewPrefs>>
+> {
+  const raw = await invoke<Record<string, TaskViewPrefs>>("list_task_view_prefs");
+  const out: Partial<Record<TasksViewId, TaskViewPrefs>> = {};
+  for (const [k, v] of Object.entries(raw ?? {})) {
+    if (
+      k === "inbox" ||
+      k === "today" ||
+      k === "overdue" ||
+      k === "all" ||
+      k === "filters"
+    ) {
+      out[k] = normalizeViewPrefs(v);
+    }
+  }
+  return out;
+}
+
+export async function setTaskViewPrefs(
+  view: TasksViewId,
+  patch: { groupBy: TaskGroupBy },
+): Promise<TaskViewPrefs> {
+  const raw = await invoke<TaskViewPrefs>("set_task_view_prefs", {
+    view,
+    groupBy: patch.groupBy,
+  });
+  return normalizeViewPrefs(raw);
+}
+
+export function taskListGroupBy(
+  metaByName: TaskListMetaByName,
+  listName: string,
+): TaskGroupBy {
+  return metaByName[listName]?.groupBy ?? "none";
 }
 
 /** Map list folder name → meta (empty object when unset). */

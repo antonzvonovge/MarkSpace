@@ -256,6 +256,10 @@ const setListMetaSchema = z.object({
   groupId: z.string().optional().describe("Sidebar group id, or empty to ungroup"),
   color: z.string().optional().describe("Material 500 hex, or empty to clear"),
   order: z.number().int().optional(),
+  groupBy: z
+    .enum(["none", "due", "priority", "labels", "list"])
+    .optional()
+    .describe("In-list grouping axis"),
 });
 
 const upsertGroupSchema = z.object({
@@ -708,6 +712,7 @@ export async function opSetTaskListMeta(input: z.infer<typeof setListMetaSchema>
       groupId: input.groupId,
       color: input.color,
       order: input.order,
+      groupBy: input.groupBy,
     });
     return { ok: true as const, meta };
   } catch (e) {

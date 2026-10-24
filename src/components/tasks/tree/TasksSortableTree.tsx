@@ -42,6 +42,7 @@ import type { TasksComposerDraft } from "../TasksComposer";
 import type { RefObject } from "react";
 import { useTasksPanelStore } from "../../../store/tasksPanelStore";
 import { taskListDropTargetAt } from "./taskListDropTarget";
+import { taskGroupDropTargetAt } from "./taskGroupDropTarget";
 import {
   buildTree,
   flattenTree,
@@ -87,6 +88,10 @@ type TasksTreeProps = {
   onPersisted?: () => void | Promise<void>;
   /** Drop a dragged task onto a Tasks sidebar list (Inbox / named list). */
   onDropOnList?: (path: string, list: string) => void | Promise<void>;
+  /** Current group section id when the tree is rendered inside a groupBy section. */
+  groupSectionId?: string | null;
+  /** Drop onto another in-list group section (changes due/priority/labels/list). */
+  onDropOnGroup?: (path: string, sectionId: string) => void | Promise<void>;
   addComposerParentPath?: string | null;
   addDraft?: TasksComposerDraft;
   addTitleRef?: RefObject<HTMLTextAreaElement | null>;
@@ -144,6 +149,8 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
   onExpandPath,
   onPersisted,
   onDropOnList,
+  groupSectionId = null,
+  onDropOnGroup,
   addComposerParentPath = null,
   addDraft,
   addTitleRef,
@@ -168,8 +175,12 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
   const lastPointerRef = useRef({ x: 0, y: 0 });
   const stopPointerTrackingRef = useRef<(() => void) | null>(null);
   const listDropTargetRef = useRef<string | null>(null);
+  const groupDropTargetRef = useRef<string | null>(null);
   const setTaskListDropTarget = useTasksPanelStore(
     (s) => s.setTaskListDropTarget,
+  );
+  const setTaskGroupDropTarget = useTasksPanelStore(
+    (s) => s.setTaskGroupDropTarget,
   );
 
   const stopPointerTracking = () => {
@@ -182,12 +193,26 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
     setTaskListDropTarget(null);
   };
 
-  const syncListDropTarget = (clientX: number, clientY: number) => {
+  const clearGroupDropTarget = () => {
+    groupDropTargetRef.current = null;
+    setTaskGroupDropTarget(null);
+  };
+
+  const syncDropTargets = (clientX: number, clientY: number) => {
     lastPointerRef.current = { x: clientX, y: clientY };
-    const next = taskListDropTargetAt(clientX, clientY);
-    if (next === listDropTargetRef.current) return;
-    listDropTargetRef.current = next;
-    setTaskListDropTarget(next);
+    const nextList = taskListDropTargetAt(clientX, clientY);
+    if (nextList !== listDropTargetRef.current) {
+      listDropTargetRef.current = nextList;
+      setTaskListDropTarget(nextList);
+    }
+    // Sidebar list drop wins; clear group highlight while over a list.
+    const nextGroup = nextList
+      ? null
+      : taskGroupDropTargetAt(clientX, clientY);
+    if (nextGroup !== groupDropTargetRef.current) {
+      groupDropTargetRef.current = nextGroup;
+      setTaskGroupDropTarget(nextGroup);
+    }
   };
 
   const startPointerTracking = (startX: number, startY: number) => {
@@ -198,7 +223,7 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
       const x = event.clientX - dragStartXRef.current;
       setOffsetLeft(x);
       offsetLeftRef.current = x;
-      syncListDropTarget(event.clientX, event.clientY);
+      syncDropTargets(event.clientX, event.clientY);
     };
     document.addEventListener("pointermove", onPointerMove);
     stopPointerTrackingRef.current = () => {
@@ -296,6 +321,7 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
   const resetState = () => {
     stopPointerTracking();
     clearListDropTarget();
+    clearGroupDropTarget();
     setOverId(null);
     overIdRef.current = null;
     setActiveId(null);
@@ -315,6 +341,7 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
         : 0;
     startPointerTracking(startX, startY);
     clearListDropTarget();
+    clearGroupDropTarget();
     setActiveId(active.id);
     setOverId(active.id);
     overIdRef.current = active.id;
@@ -357,6 +384,44 @@ const SortableTaskTreeInner = memo(function SortableTaskTreeInner({
             await onDropOnList(activePath, listDrop);
           } catch (err) {
             console.error("Task list drop failed", err);
+            setItems(taskEntriesToTreeItems(entries, expanded));
+          } finally {
+            persisting.current = false;
+          }
+        })();
+      }
+      return;
+    }
+
+    const groupDrop =
+      groupDropTargetRef.current ??
+      taskGroupDropTargetAt(
+        lastPointerRef.current.x,
+        lastPointerRef.current.y,
+      );
+    if (
+      groupDrop &&
+      onDropOnGroup &&
+      groupDrop !== (groupSectionId ?? "")
+    ) {
+      const meta = parseTaskTreeId(active.id);
+      const activePath = meta?.kind === "task" ? meta.path : null;
+      const entry = activePath
+        ? entries.find((e) => e.path === activePath)
+        : undefined;
+      const byId = new Map(
+        entries.filter((e) => e.id).map((e) => [e.id, e] as const),
+      );
+      const isRoot = !entry?.parent || !byId.has(entry.parent);
+      resetState();
+      setItems(taskEntriesToTreeItems(entries, expanded));
+      if (activePath && isRoot) {
+        persisting.current = true;
+        void (async () => {
+          try {
+            await onDropOnGroup(activePath, groupDrop);
+          } catch (err) {
+            console.error("Task group drop failed", err);
             setItems(taskEntriesToTreeItems(entries, expanded));
           } finally {
             persisting.current = false;

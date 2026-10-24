@@ -206,9 +206,22 @@ export function Select<T extends string>({
         onClick={() => setOpen((v) => !v)}
       >
         <span className="ms-select-trigger-label">{label}</span>
-        <span className="ms-select-trigger-caret" aria-hidden="true">
-          ▾
-        </span>
+        <svg
+          className="ms-select-trigger-caret"
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M3.75 6 8 10.25 12.25 6"
+            stroke="currentColor"
+            strokeWidth="1.35"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
       {menu}
     </div>

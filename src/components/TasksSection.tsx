@@ -925,6 +925,11 @@ export const TasksSection = memo(function TasksSection() {
           settingsList ? taskListGroupId(metaByName, settingsList) : ""
         }
         color={settingsList ? taskListColor(metaByName, settingsList) : ""}
+        groupBy={
+          settingsList
+            ? (metaByName[settingsList]?.groupBy ?? "none")
+            : "none"
+        }
         groups={groups}
         saving={settingsSaving}
         onCancel={() => {

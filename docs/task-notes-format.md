@@ -9,7 +9,7 @@ Agents and UIs must prefer dedicated task helpers over inventing a second format
 - One task = one `.md` under `Tasks/<list>/` (not a special extension). Exclude `.folder.md`.
 - `Tasks/` is a reserved root folder (like Incoming): omitted from the workspace tree / wiki-link picker, not a vault project, excluded from the graph.
 - Lists are folders directly under `Tasks/` (e.g. `Inbox/`, `Work/`). Active task files in a list are a **flat** folder listing — hierarchy is not expressed with nested folders. Create lists from the Tasks sidebar **+** control.
-- Optional list metadata lives in `.markspace/task-lists/` (vault-synced): per-list `{ groupId, color, order }` and `groups.json` for sidebar groups. Color is a Material 500 swatch on the list icon only.
+- Optional list metadata lives in `.markspace/task-lists/` (vault-synced): per-list `{ groupId, color, order, groupBy }` and `groups.json` for sidebar groups; smart-view `groupBy` in `view-prefs.json`. Color is a Material 500 swatch on the list icon only. `groupBy` is `none` | `due` | `priority` | `labels` | `list` (in-list sections; DnD between sections updates the matching attrs).
 - Completing a task sets `status: done` and **moves** the file to `Tasks/<list>/completed/` (per-list archive). Completing a **parent** also completes and archives all child task files (`parent` = parent’s `id`). Moving a task to another list folder likewise moves its file children with it. The active task index skips `**/completed/**`. Do not name a list `completed`. Uncomplete / reopen is not in the product UI yet.
 - YAML frontmatter keys: `id` (stable UUID), `status` (`open` | `done`), optional `due` (`YYYY-MM-DD`), `priority` (1–4, 1 = highest), `labels` (string list — **task-scoped tags**, separate from note `tags:` / vault tags), `created` (`YYYY-MM-DD` or ISO), optional `parent` (**UUID of the parent task**, not a path or title). Preserve unknown keys.
 - Nesting is **two levels only**: a root task (`parent` empty) and child tasks whose `parent` is the parent’s `id`. No grandchildren — nesting a parent re-parents its children onto the new parent (or clears them to roots when promoting).
@@ -17,7 +17,7 @@ Agents and UIs must prefer dedicated task helpers over inventing a second format
 - Images in comments use note-relative `.assets/…` (sibling folder), e.g. `![](.assets/shot.png)`.
 - Active index and filters scan `Tasks/**/*.md` **excluding** `Tasks/<list>/completed/**`. Do not treat checklists outside `Tasks/` as tasks.
 - List order follows vault `order.json` (tree order under each list folder). Sibling order (among roots or among children of one parent) follows that order. Dragging a task onto another sets `parent` to the parent’s `id` (file is kept). Outdent clears `parent`.
-- Today and Overdue views may sort by priority and due; Inbox and per-list views keep manual order. Overdue lists open tasks whose `due` is a calendar day strictly before today (undated and done tasks are excluded).
+- Today and Overdue views may sort by priority and due when ungrouped; Inbox and per-list views keep manual order. With in-list `groupBy`, sections are shown and cross-section drag updates due/priority/labels/list. Overdue lists open tasks whose `due` is a calendar day strictly before today (undated and done tasks are excluded).
 - External MCP clients can use the **MarkSpace MCP host** (Settings → MCP → MarkSpace MCP host) while the app is running with a vault open; tools share the same semantics as `run_specialist` kind=`tasks`.
 <!-- core-rules:end -->
 
@@ -85,9 +85,10 @@ Stored under `.markspace/task-lists/` (not in the task note frontmatter):
 | File | Contents |
 |------|----------|
 | `groups.json` | `{ groups: [{ id, name, order }] }` — sidebar group headers |
-| `<sha256(Tasks/<list>)>.json` | `{ path, groupId, color, order }` — optional; omitted when all fields are default |
+| `<sha256(Tasks/<list>)>.json` | `{ path, groupId, color, order, groupBy }` — optional; omitted when all fields are default |
+| `view-prefs.json` | `{ views: { today\|overdue\|inbox\|all\|filters: { groupBy } } }` — smart-view grouping |
 
-`color` is a Material Design 500 hex (`#rrggbb`) or empty. Rename/move/delete of `Tasks/<list>/` remaps or removes the metadata file automatically.
+`color` is a Material Design 500 hex (`#rrggbb`) or empty. `groupBy` defaults to `none`. Rename/move/delete of `Tasks/<list>/` remaps or removes the metadata file automatically.
 
 ## Frontmatter
 

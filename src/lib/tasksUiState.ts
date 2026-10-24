@@ -8,6 +8,8 @@ const GROUPS_COLLAPSED_KEY = "markspace-tasks-groups-collapsed-v1";
 const VIEW_KEY = "markspace-tasks-view-v1";
 const FILTERS_KEY = "markspace-tasks-filters-v1";
 const EXPANDED_KEY = "markspace-tasks-expanded-v1";
+const LIST_GROUP_SECTIONS_COLLAPSED_KEY =
+  "markspace-tasks-list-group-sections-collapsed-v1";
 
 const VIEWS: TasksViewId[] = ["inbox", "today", "overdue", "all", "filters"];
 
@@ -154,6 +156,48 @@ export function loadTasksExpandedPaths(): string[] {
 export function saveTasksExpandedPaths(paths: readonly string[]): void {
   try {
     localStorage.setItem(EXPANDED_KEY, JSON.stringify([...paths]));
+  } catch {
+    // ignore
+  }
+}
+
+/** Collapsed in-list group section ids, keyed by `tasksListContextKey`. */
+export function loadTasksListGroupSectionsCollapsed(
+  contextKey: string,
+): string[] {
+  try {
+    const raw = localStorage.getItem(LIST_GROUP_SECTIONS_COLLAPSED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return [];
+    const list = (parsed as Record<string, unknown>)[contextKey];
+    if (!Array.isArray(list)) return [];
+    return list.filter(
+      (id): id is string => typeof id === "string" && id.length > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveTasksListGroupSectionsCollapsed(
+  contextKey: string,
+  ids: readonly string[],
+): void {
+  try {
+    const raw = localStorage.getItem(LIST_GROUP_SECTIONS_COLLAPSED_KEY);
+    let map: Record<string, string[]> = {};
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object") {
+        map = parsed as Record<string, string[]>;
+      }
+    }
+    map[contextKey] = [...ids];
+    localStorage.setItem(
+      LIST_GROUP_SECTIONS_COLLAPSED_KEY,
+      JSON.stringify(map),
+    );
   } catch {
     // ignore
   }

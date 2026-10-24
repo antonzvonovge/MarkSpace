@@ -38,9 +38,21 @@ import {
   readImagesFromSystemClipboard,
 } from "../editor/pasteImages";
 import { absolutePath, joinPath, parentPath, writeAsset } from "../lib/vaultApi";
-import { taskListColor } from "../lib/taskListMeta";
+import {
+  setTaskListMeta,
+  setTaskViewPrefs,
+  taskListColor,
+} from "../lib/taskListMeta";
+import {
+  composerPrefillForSection,
+  attrsForGroupDrop,
+  type TaskGroupBy,
+} from "../lib/taskGrouping";
 import { useTaskListCountsStore } from "../store/taskListCountsStore";
-import { useTaskListMetaStore } from "../store/taskListMetaStore";
+import {
+  resolveTaskGroupBy,
+  useTaskListMetaStore,
+} from "../store/taskListMetaStore";
 import { useTasksPanelStore } from "../store/tasksPanelStore";
 import { useVaultStore } from "../store/vaultStore";
 import { TagChipsInput } from "./TagChipsInput";
@@ -1416,7 +1428,13 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
   const expandPath = useTasksPanelStore((s) => s.expandPath);
 
   const metaByName = useTaskListMetaStore((s) => s.metaByName);
+  const viewPrefs = useTaskListMetaStore((s) => s.viewPrefs);
   const refreshMeta = useTaskListMetaStore((s) => s.refresh);
+
+  const groupBy = useMemo(
+    () => resolveTaskGroupBy(view, filters.list, metaByName, viewPrefs),
+    [filters.list, metaByName, view, viewPrefs],
+  );
 
   const [entries, setEntries] = useState<TaskIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1454,8 +1472,16 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
   const treeRef = useRef(tree);
   const today = localDateYmd();
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const addingSectionId =
+    addComposerAt && addComposerAt.startsWith("section:")
+      ? addComposerAt.slice("section:".length)
+      : null;
   const addComposerParentPath =
-    addComposerAt && addComposerAt !== "root" ? addComposerAt : null;
+    addComposerAt &&
+    addComposerAt !== "root" &&
+    !addComposerAt.startsWith("section:")
+      ? addComposerAt
+      : null;
   const adding = addComposerAt === "root";
 
   const quickDraftRef = useRef(quickDraft);
@@ -1777,13 +1803,17 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     }
     // Prefer explicit composer List; fall back to the open sidebar list.
     const list = quickDraft.list.trim() || contextList;
-    const due =
-      quickDraft.due ||
-      (view === "today"
-        ? today
-        : view === "overdue"
-          ? shiftYmd(today, -1)
-          : null);
+    const fromSection = Boolean(
+      addComposerAt?.startsWith("section:"),
+    );
+    const due = fromSection
+      ? quickDraft.due.trim() || null
+      : quickDraft.due ||
+        (view === "today"
+          ? today
+          : view === "overdue"
+            ? shiftYmd(today, -1)
+            : null);
     const priority = quickDraft.priority === "" ? null : quickDraft.priority;
     const labelList = quickDraft.labels;
     const id = newTaskId();
@@ -1827,6 +1857,7 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
       console.error(e);
     }
   }, [
+    addComposerAt,
     contextList,
     followListIfNeeded,
     refreshTree,
@@ -1863,7 +1894,28 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     });
   }, []);
 
-  const treeSortable = view !== "today" && view !== "overdue";
+  const treeSortable =
+    groupBy !== "none" || (view !== "today" && view !== "overdue");
+
+  const onGroupByChange = useCallback(
+    async (next: TaskGroupBy) => {
+      const list = filters.list.trim();
+      try {
+        if (view === "all" && list) {
+          await setTaskListMeta(list, { groupBy: next });
+        } else {
+          await setTaskViewPrefs(view, { groupBy: next });
+        }
+        await refreshMeta();
+        if (next === "none" && addComposerAt?.startsWith("section:")) {
+          setAddComposerAt(null);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    [addComposerAt, filters.list, refreshMeta, view],
+  );
 
   const onToggleStatus = useCallback(
     async (item: FlattenedTaskItem) => {
@@ -2005,6 +2057,27 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     setAddComposerAt("root");
   }, [cancelEdit, contextList, today, view]);
 
+  const onStartAddingInSection = useCallback(
+    (sectionId: string) => {
+      cancelEdit();
+      const prefill = composerPrefillForSection(
+        groupBy,
+        sectionId,
+        today,
+        contextList,
+      );
+      setQuickDraft({
+        title: "",
+        due: prefill.due ?? "",
+        priority: prefill.priority,
+        labels: prefill.labels,
+        list: prefill.list || contextList,
+      });
+      setAddComposerAt(`section:${sectionId}`);
+    },
+    [cancelEdit, contextList, groupBy, today],
+  );
+
   const onCancelQuickAdd = closeAddComposer;
 
   const treeActions = useMemo<TaskTreeActions>(
@@ -2112,6 +2185,49 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
     [refreshTree, reloadIndex, setSelectedPath],
   );
 
+  const onDropOnGroup = useCallback(
+    async (path: string, sectionId: string) => {
+      const drop = attrsForGroupDrop(groupBy, sectionId, today);
+      if (!drop) return;
+      if (drop.kind === "list") {
+        await onDropOnList(path, drop.list);
+        return;
+      }
+      const patch = drop.patch;
+      setEntries((prev) =>
+        prev.map((e) => {
+          if (e.path !== path) return e;
+          return {
+            ...e,
+            due: patch.due !== undefined ? patch.due : e.due,
+            priority:
+              patch.priority !== undefined ? patch.priority : e.priority,
+            labels: patch.labels !== undefined ? patch.labels : e.labels,
+          };
+        }),
+      );
+      try {
+        const note = await loadTaskNote(path);
+        await saveTaskNote({
+          ...note,
+          attrs: {
+            ...note.attrs,
+            ...(patch.due !== undefined ? { due: patch.due } : {}),
+            ...(patch.priority !== undefined
+              ? { priority: patch.priority }
+              : {}),
+            ...(patch.labels !== undefined ? { labels: patch.labels } : {}),
+          },
+        });
+        await reloadIndex();
+      } catch (e) {
+        console.error(e);
+        await reloadIndex();
+      }
+    },
+    [groupBy, onDropOnList, reloadIndex, today],
+  );
+
   return (
     <div className="tasks-view">
       <TasksListColumn
@@ -2129,6 +2245,11 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
         visible={visible}
         emptyMessage={emptyMessage}
         adding={adding}
+        addingSectionId={addingSectionId}
+        groupBy={groupBy}
+        onGroupByChange={(next) => {
+          void onGroupByChange(next);
+        }}
         expanded={expanded}
         selectedPath={selectedPath}
         treeSortable={treeSortable}
@@ -2142,10 +2263,12 @@ export function TasksView({ isActive = true }: { isActive?: boolean }) {
         onExpandPath={expandPath}
         onPersisted={onPersistedTree}
         onDropOnList={onDropOnList}
+        onDropOnGroup={onDropOnGroup}
         onPatchQuickDraft={patchQuickDraft}
         onSubmitQuickAdd={handleSubmitQuickAdd}
         onCancelQuickAdd={onCancelQuickAdd}
         onStartAdding={onStartAdding}
+        onStartAddingInSection={onStartAddingInSection}
         addComposerParentPath={addComposerParentPath}
         onPatchAddDraft={patchQuickDraft}
         onSubmitAddSubtask={submitSubtaskAdd}

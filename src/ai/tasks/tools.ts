@@ -195,7 +195,8 @@ export function buildTasksTools(mode: ChatMode) {
     }),
 
     set_task_list_meta: tool({
-      description: "Set group, color, and/or order for a task list.",
+      description:
+        "Set group, color, order, and/or in-list groupBy for a task list.",
       inputSchema: setListMetaSchema,
       execute: async (input) => opSetTaskListMeta(input),
     }),

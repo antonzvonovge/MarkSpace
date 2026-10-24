@@ -1,8 +1,9 @@
 //! Task list metadata under `.markspace/task-lists/` (vault-synced).
 //!
 //! Lists are folders directly under `Tasks/` (e.g. `Tasks/Work`). Each list may
-//! have optional `groupId`, Material swatch `color`, and sidebar `order`.
-//! Groups live in `groups.json`.
+//! have optional `groupId`, Material swatch `color`, sidebar `order`, and
+//! in-list `groupBy` (none|due|priority|labels|list).
+//! Groups live in `groups.json`. Smart-view prefs live in `view-prefs.json`.
 
 use crate::vault::VaultState;
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,37 @@ pub struct TaskListMeta {
     pub color: String,
     #[serde(default)]
     pub order: i32,
+    /// In-list grouping: none | due | priority | labels | list.
+    #[serde(default = "default_group_by")]
+    pub group_by: String,
+}
+
+fn default_group_by() -> String {
+    "none".into()
+}
+
+fn normalize_group_by(raw: &str) -> String {
+    match raw.trim() {
+        "due" | "priority" | "labels" | "list" => raw.trim().to_string(),
+        _ => "none".into(),
+    }
+}
+
+/// Per smart-view grouping prefs (`inbox` | `today` | `overdue` | `all` | `filters`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskViewPrefs {
+    #[serde(default = "default_group_by")]
+    pub group_by: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ViewPrefsDoc {
+    #[serde(default = "default_groups_version")]
+    version: u32,
+    #[serde(default)]
+    views: std::collections::BTreeMap<String, TaskViewPrefs>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -113,6 +145,17 @@ fn groups_file(root: &Path) -> PathBuf {
     task_lists_dir(root).join("groups.json")
 }
 
+fn view_prefs_file(root: &Path) -> PathBuf {
+    task_lists_dir(root).join("view-prefs.json")
+}
+
+fn normalize_view_id(raw: &str) -> Result<String, String> {
+    match raw.trim() {
+        "inbox" | "today" | "overdue" | "all" | "filters" => Ok(raw.trim().to_string()),
+        _ => Err("Invalid tasks view id".into()),
+    }
+}
+
 fn list_id(path: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(path.as_bytes());
@@ -182,6 +225,7 @@ fn empty_meta(path: String) -> TaskListMeta {
         group_id: String::new(),
         color: String::new(),
         order: 0,
+        group_by: default_group_by(),
     }
 }
 
@@ -189,7 +233,15 @@ fn sanitize_meta(mut meta: TaskListMeta) -> Result<TaskListMeta, String> {
     meta.path = normalize_task_list_path(&meta.path)?;
     meta.group_id = normalize_group_id(&meta.group_id);
     meta.color = normalize_list_color(&meta.color);
+    meta.group_by = normalize_group_by(&meta.group_by);
     Ok(meta)
+}
+
+fn meta_is_default(meta: &TaskListMeta) -> bool {
+    meta.group_id.is_empty()
+        && meta.color.is_empty()
+        && meta.order == 0
+        && (meta.group_by.is_empty() || meta.group_by == "none")
 }
 
 fn read_list_file(path: &Path) -> Option<TaskListMeta> {
@@ -210,6 +262,11 @@ fn read_list_file(path: &Path) -> Option<TaskListMeta> {
             .unwrap_or("")
             .to_string(),
         order: value.get("order").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+        group_by: value
+            .get("groupBy")
+            .and_then(|v| v.as_str())
+            .unwrap_or("none")
+            .to_string(),
     };
     sanitize_meta(meta).ok()
 }
@@ -224,6 +281,7 @@ fn write_list_file(root: &Path, meta: &TaskListMeta) -> Result<(), String> {
         "groupId": meta.group_id,
         "color": meta.color,
         "order": meta.order,
+        "groupBy": meta.group_by,
     }))
     .map_err(|e| format!("Cannot serialize task list meta: {e}"))?;
     fs::write(&file, format!("{body}\n")).map_err(|e| format!("Cannot write task list meta: {e}"))
@@ -253,7 +311,7 @@ fn scan_list_markers(root: &Path) -> Result<Vec<(PathBuf, TaskListMeta)>, String
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if name == "groups.json" || !name.ends_with(".json") {
+        if name == "groups.json" || name == "view-prefs.json" || !name.ends_with(".json") {
             continue;
         }
         if let Some(meta) = read_list_file(&path) {
@@ -301,6 +359,7 @@ pub fn remap_task_list_meta(root: &Path, from: &str, to: Option<&str>) -> Result
                     group_id: meta.group_id,
                     color: meta.color,
                     order: meta.order,
+                    group_by: meta.group_by,
                 };
                 let _ = write_list_file(root, &next);
             }
@@ -418,6 +477,7 @@ pub fn set_task_list_meta(
     group_id: String,
     color: String,
     order: i32,
+    group_by: Option<String>,
     state: State<VaultState>,
 ) -> Result<TaskListMeta, String> {
     let root = get_root(&state)?;
@@ -434,11 +494,17 @@ pub fn set_task_list_meta(
         }
     }
 
+    let existing_group_by = read_list_file(&list_file_path(&root, &rel))
+        .map(|m| m.group_by)
+        .unwrap_or_else(default_group_by);
+    let group_by = group_by.unwrap_or(existing_group_by);
+
     let meta = sanitize_meta(TaskListMeta {
         path: rel,
         group_id,
         color,
         order,
+        group_by,
     })?;
 
     for (marker, existing) in scan_list_markers(&root)? {
@@ -447,13 +513,98 @@ pub fn set_task_list_meta(
         }
     }
 
-    if meta.group_id.is_empty() && meta.color.is_empty() && meta.order == 0 {
+    if meta_is_default(&meta) {
         remove_list_file(&root, &meta.path)?;
         return Ok(meta);
     }
 
     write_list_file(&root, &meta)?;
     Ok(meta)
+}
+
+fn read_view_prefs_doc(root: &Path) -> Result<ViewPrefsDoc, String> {
+    let file = view_prefs_file(root);
+    if !file.is_file() {
+        return Ok(ViewPrefsDoc {
+            version: 1,
+            views: std::collections::BTreeMap::new(),
+        });
+    }
+    let raw =
+        fs::read_to_string(&file).map_err(|e| format!("Cannot read task view prefs: {e}"))?;
+    let doc: ViewPrefsDoc =
+        serde_json::from_str(&raw).map_err(|e| format!("Invalid task view prefs file: {e}"))?;
+    let mut views = std::collections::BTreeMap::new();
+    for (k, mut prefs) in doc.views {
+        if normalize_view_id(&k).is_err() {
+            continue;
+        }
+        prefs.group_by = normalize_group_by(&prefs.group_by);
+        views.insert(k, prefs);
+    }
+    Ok(ViewPrefsDoc {
+        version: doc.version,
+        views,
+    })
+}
+
+fn write_view_prefs_doc(root: &Path, doc: &ViewPrefsDoc) -> Result<(), String> {
+    let dir = task_lists_dir(root);
+    fs::create_dir_all(&dir).map_err(|e| format!("Cannot create task-lists dir: {e}"))?;
+    let body = serde_json::to_string_pretty(doc)
+        .map_err(|e| format!("Cannot serialize task view prefs: {e}"))?;
+    fs::write(view_prefs_file(root), format!("{body}\n"))
+        .map_err(|e| format!("Cannot write task view prefs: {e}"))
+}
+
+#[tauri::command(async)]
+pub fn get_task_view_prefs(
+    view: String,
+    state: State<VaultState>,
+) -> Result<TaskViewPrefs, String> {
+    let root = get_root(&state)?;
+    let view = normalize_view_id(&view)?;
+    let doc = read_view_prefs_doc(&root)?;
+    Ok(doc.views.get(&view).cloned().unwrap_or(TaskViewPrefs {
+        group_by: default_group_by(),
+    }))
+}
+
+#[tauri::command(async)]
+pub fn list_task_view_prefs(
+    state: State<VaultState>,
+) -> Result<std::collections::BTreeMap<String, TaskViewPrefs>, String> {
+    let root = get_root(&state)?;
+    let doc = read_view_prefs_doc(&root)?;
+    Ok(doc.views)
+}
+
+#[tauri::command(async)]
+pub fn set_task_view_prefs(
+    view: String,
+    group_by: String,
+    state: State<VaultState>,
+) -> Result<TaskViewPrefs, String> {
+    let root = get_root(&state)?;
+    let view = normalize_view_id(&view)?;
+    let prefs = TaskViewPrefs {
+        group_by: normalize_group_by(&group_by),
+    };
+    let mut doc = read_view_prefs_doc(&root)?;
+    if prefs.group_by == "none" {
+        doc.views.remove(&view);
+    } else {
+        doc.views.insert(view, prefs.clone());
+    }
+    if doc.views.is_empty() {
+        let file = view_prefs_file(&root);
+        if file.exists() {
+            fs::remove_file(&file).map_err(|e| format!("Cannot remove task view prefs: {e}"))?;
+        }
+    } else {
+        write_view_prefs_doc(&root, &doc)?;
+    }
+    Ok(prefs)
 }
 
 #[cfg(test)]
@@ -482,12 +633,14 @@ mod tests {
             group_id: "g1".into(),
             color: "#2196f3".into(),
             order: 2,
+            group_by: "priority".into(),
         };
         write_list_file(&root, &meta).unwrap();
         let file = list_file_path(&root, "Tasks/Work");
         let loaded = read_list_file(&file).unwrap();
         assert_eq!(loaded.color, "#2196f3");
         assert_eq!(loaded.group_id, "g1");
+        assert_eq!(loaded.group_by, "priority");
     }
 
     #[test]
@@ -498,6 +651,7 @@ mod tests {
             group_id: String::new(),
             color: "#4caf50".into(),
             order: 0,
+            group_by: "due".into(),
         };
         write_list_file(&root, &meta).unwrap();
         fs::rename(root.join("Tasks/Work"), root.join("Tasks/Personal")).unwrap();

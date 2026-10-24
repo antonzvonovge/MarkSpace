@@ -1,4 +1,12 @@
-import { memo, useCallback, type ReactNode, type RefObject } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import type { TaskIndexEntry, TaskPriority, TasksViewId } from "../../lib/taskNotes";
 import { pastelChipStyle } from "../../lib/pastelChipColors";
 import type { TreeNode } from "../../lib/vaultApi";
@@ -8,6 +16,7 @@ import {
   type TasksComposerDraft,
 } from "./TasksComposer";
 import { TasksSortableTree } from "./tree/TasksSortableTree";
+import { TASK_GROUP_DROP_ATTR } from "./tree/taskGroupDropTarget";
 import type {
   TaskTreeActions,
   TaskTreeEditState,
@@ -17,6 +26,18 @@ import {
   TasksIconAddPlusIdle,
 } from "./tasksIcons";
 import { TASK_PRIORITY_OPTIONS } from "../../lib/taskPriorities";
+import {
+  groupByOptions,
+  parseTaskGroupBy,
+  partitionTasksByGroup,
+  type TaskGroupBy,
+} from "../../lib/taskGrouping";
+import {
+  loadTasksListGroupSectionsCollapsed,
+  saveTasksListGroupSectionsCollapsed,
+  tasksListContextKey,
+} from "../../lib/tasksUiState";
+import { useTasksPanelStore } from "../../store/tasksPanelStore";
 
 export type TasksListFilters = {
   list: string;
@@ -30,6 +51,18 @@ export type TasksListFilters = {
 function labelSelected(selected: readonly string[], name: string): boolean {
   const key = name.trim().toLowerCase();
   return selected.some((l) => l.trim().toLowerCase() === key);
+}
+
+function AddTaskTrigger({ onClick }: { onClick: () => void }): ReactNode {
+  return (
+    <button type="button" className="tasks-add-trigger" onClick={onClick}>
+      <span className="tasks-add-icon" aria-hidden="true">
+        <TasksIconAddPlusIdle className="tasks-add-icon-idle" size={18} />
+        <TasksIconAddPlusActive className="tasks-add-icon-active" size={18} />
+      </span>
+      Add task
+    </button>
+  );
 }
 
 export const TasksListColumn = memo(function TasksListColumn({
@@ -47,6 +80,9 @@ export const TasksListColumn = memo(function TasksListColumn({
   visible,
   emptyMessage,
   adding,
+  addingSectionId = null,
+  groupBy,
+  onGroupByChange,
   expanded,
   selectedPath,
   treeSortable,
@@ -60,10 +96,12 @@ export const TasksListColumn = memo(function TasksListColumn({
   onExpandPath,
   onPersisted,
   onDropOnList,
+  onDropOnGroup,
   onPatchQuickDraft,
   onSubmitQuickAdd,
   onCancelQuickAdd,
   onStartAdding,
+  onStartAddingInSection,
   addComposerParentPath = null,
   addDraft,
   addTitleRef,
@@ -88,6 +126,10 @@ export const TasksListColumn = memo(function TasksListColumn({
   visible: readonly TaskIndexEntry[];
   emptyMessage: string;
   adding: boolean;
+  /** Section id when adding via a grouped Add task control. */
+  addingSectionId?: string | null;
+  groupBy: TaskGroupBy;
+  onGroupByChange: (next: TaskGroupBy) => void;
   expanded: ReadonlySet<string>;
   selectedPath: string | null;
   treeSortable: boolean;
@@ -101,10 +143,12 @@ export const TasksListColumn = memo(function TasksListColumn({
   onExpandPath: (path: string) => void;
   onPersisted: () => void | Promise<void>;
   onDropOnList?: (path: string, list: string) => void | Promise<void>;
+  onDropOnGroup?: (path: string, sectionId: string) => void | Promise<void>;
   onPatchQuickDraft: (patch: Partial<TasksComposerDraft>) => void;
   onSubmitQuickAdd: () => void;
   onCancelQuickAdd: () => void;
   onStartAdding: () => void;
+  onStartAddingInSection: (sectionId: string) => void;
   addComposerParentPath?: string | null;
   addDraft?: TasksComposerDraft;
   addTitleRef?: RefObject<HTMLTextAreaElement | null>;
@@ -123,6 +167,59 @@ export const TasksListColumn = memo(function TasksListColumn({
     hasUnlabeledInView ||
     filters.labels.length > 0 ||
     filters.unlabeledOnly;
+
+  const grouped = groupBy !== "none";
+  const contextKey = tasksListContextKey(view, filters.list);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+    () => new Set(loadTasksListGroupSectionsCollapsed(contextKey)),
+  );
+  const taskGroupDropTarget = useTasksPanelStore((s) => s.taskGroupDropTarget);
+
+  useEffect(() => {
+    setCollapsedSections(
+      new Set(loadTasksListGroupSectionsCollapsed(contextKey)),
+    );
+  }, [contextKey]);
+
+  const toggleSectionCollapsed = useCallback(
+    (sectionId: string) => {
+      setCollapsedSections((prev) => {
+        const next = new Set(prev);
+        if (next.has(sectionId)) next.delete(sectionId);
+        else next.add(sectionId);
+        saveTasksListGroupSectionsCollapsed(contextKey, [...next]);
+        return next;
+      });
+    },
+    [contextKey],
+  );
+
+  const sections = useMemo(() => {
+    if (!grouped) return null;
+    const all = partitionTasksByGroup(visible, {
+      groupBy,
+      today: todayYmd,
+      labelCatalog: filterLabelCatalog,
+      listCatalog: lists,
+    });
+    // Hide empty sections; keep the one currently used for Add.
+    return all.filter(
+      (s) => s.items.length > 0 || s.id === (addingSectionId ?? ""),
+    );
+  }, [
+    addingSectionId,
+    filterLabelCatalog,
+    groupBy,
+    grouped,
+    lists,
+    todayYmd,
+    visible,
+  ]);
+
+  const groupBySelectOptions = useMemo(
+    () => groupByOptions(view, filters.list),
+    [filters.list, view],
+  );
 
   const toggleLabel = useCallback(
     (name: string) => {
@@ -151,10 +248,51 @@ export const TasksListColumn = memo(function TasksListColumn({
     patchFilters({ unlabeledOnly: true, labels: [] });
   }, [filters.unlabeledOnly, patchFilters]);
 
+  const treeShared = {
+    expanded,
+    selectedPath,
+    sortable: treeSortable,
+    vaultTree,
+    actions: treeActions,
+    edit: treeEdit,
+    completingPaths,
+    todayYmd,
+    showListChip,
+    listColors,
+    onExpandPath,
+    onPersisted,
+    onDropOnList,
+    onDropOnGroup,
+    addComposerParentPath,
+    addDraft: addDraft ?? quickDraft,
+    addTitleRef: addTitleRef ?? titleRef,
+    addLists: lists,
+    addListColors: listColors,
+    addLabelCatalog: labels,
+    onPatchAddDraft: onPatchAddDraft ?? onPatchQuickDraft,
+    onSubmitAddSubtask,
+    onCancelAddSubtask,
+    onStartAddSubtask,
+  };
+
+  const showEmpty =
+    !loading &&
+    visible.length === 0 &&
+    !adding &&
+    !addingSectionId;
+
   return (
     <div className="tasks-list-column">
       <header className="tasks-view-header">
-        <h1 className="tasks-view-title">{viewTitle}</h1>
+        <div className="tasks-view-title-row">
+          <h1 className="tasks-view-title">{viewTitle}</h1>
+          <Select
+            aria-label="Group by"
+            value={groupBy}
+            options={groupBySelectOptions}
+            onChange={(v) => onGroupByChange(parseTaskGroupBy(v))}
+          />
+        </div>
         {view === "filters" ? (
           <div className="tasks-view-filters">
             <Select
@@ -255,38 +393,98 @@ export const TasksListColumn = memo(function TasksListColumn({
 
       {loading && entriesLength === 0 ? (
         <p className="tasks-empty">Loading…</p>
-      ) : visible.length === 0 && !adding ? (
+      ) : showEmpty ? (
         <p className="tasks-empty">{emptyMessage}</p>
+      ) : grouped && sections && sections.length > 0 ? (
+        <div className="tasks-group-sections">
+          {sections.map((section) => {
+            const collapsed = collapsedSections.has(section.id);
+            const isDropTarget = taskGroupDropTarget === section.id;
+            const sectionAdding = addingSectionId === section.id;
+            const rootCount = section.items.filter((e) => {
+              if (!e.parent) return true;
+              return !section.items.some((x) => x.id === e.parent);
+            }).length;
+            return (
+              <section
+                key={section.id}
+                className={
+                  isDropTarget
+                    ? "tasks-group-section is-drop-target"
+                    : "tasks-group-section"
+                }
+                {...{ [TASK_GROUP_DROP_ATTR]: section.id }}
+              >
+                <button
+                  type="button"
+                  className="tasks-group-section-header"
+                  aria-expanded={!collapsed}
+                  onClick={() => toggleSectionCollapsed(section.id)}
+                >
+                  <svg
+                    className={
+                      collapsed
+                        ? "tasks-group-section-chevron"
+                        : "tasks-group-section-chevron is-open"
+                    }
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6 3.75 10.25 8 6 12.25"
+                      stroke="currentColor"
+                      strokeWidth="1.35"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span className="tasks-group-section-title">
+                    {section.label}
+                  </span>
+                  <span className="tasks-group-section-count">{rootCount}</span>
+                </button>
+                {!collapsed ? (
+                  <>
+                    {section.items.length > 0 || sectionAdding ? (
+                      <TasksSortableTree
+                        {...treeShared}
+                        entries={section.items}
+                        groupSectionId={section.id}
+                      />
+                    ) : null}
+                    {sectionAdding ? (
+                      <TasksComposer
+                        draft={quickDraft}
+                        lists={lists}
+                        listColors={listColors}
+                        labelCatalog={labels}
+                        titleRef={titleRef}
+                        submitLabel="Add task"
+                        onChange={onPatchQuickDraft}
+                        onSubmit={onSubmitQuickAdd}
+                        onCancel={onCancelQuickAdd}
+                        onBlurEmpty={onCancelQuickAdd}
+                      />
+                    ) : (
+                      <AddTaskTrigger
+                        onClick={() => onStartAddingInSection(section.id)}
+                      />
+                    )}
+                  </>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
       ) : (
-        <TasksSortableTree
-            entries={visible}
-            expanded={expanded}
-            selectedPath={selectedPath}
-            sortable={treeSortable}
-            vaultTree={vaultTree}
-            actions={treeActions}
-            edit={treeEdit}
-            completingPaths={completingPaths}
-            todayYmd={todayYmd}
-            showListChip={showListChip}
-            listColors={listColors}
-            onExpandPath={onExpandPath}
-            onPersisted={onPersisted}
-            onDropOnList={onDropOnList}
-            addComposerParentPath={addComposerParentPath}
-            addDraft={addDraft ?? quickDraft}
-            addTitleRef={addTitleRef ?? titleRef}
-            addLists={lists}
-            addListColors={listColors}
-            addLabelCatalog={labels}
-            onPatchAddDraft={onPatchAddDraft ?? onPatchQuickDraft}
-            onSubmitAddSubtask={onSubmitAddSubtask}
-            onCancelAddSubtask={onCancelAddSubtask}
-            onStartAddSubtask={onStartAddSubtask}
-        />
+        <TasksSortableTree {...treeShared} entries={visible} />
       )}
 
-      {adding ? (
+      {!grouped || showEmpty || (sections != null && sections.length === 0) ? (
+        adding ? (
           <TasksComposer
             draft={quickDraft}
             lists={lists}
@@ -300,24 +498,9 @@ export const TasksListColumn = memo(function TasksListColumn({
             onBlurEmpty={onCancelQuickAdd}
           />
         ) : (
-          <button
-            type="button"
-            className="tasks-add-trigger"
-            onClick={onStartAdding}
-          >
-            <span className="tasks-add-icon" aria-hidden="true">
-              <TasksIconAddPlusIdle
-                className="tasks-add-icon-idle"
-                size={18}
-              />
-              <TasksIconAddPlusActive
-                className="tasks-add-icon-active"
-                size={18}
-              />
-            </span>
-          Add task
-        </button>
-      )}
+          <AddTaskTrigger onClick={onStartAdding} />
+        )
+      ) : null}
     </div>
   );
 });

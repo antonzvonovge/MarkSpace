@@ -9,6 +9,7 @@ import {
   upsertTaskListGroup,
   type TaskListGroup,
 } from "../lib/taskListMeta";
+import { parseTaskGroupBy, type TaskGroupBy } from "../lib/taskGrouping";
 
 export const NEW_TASK_LIST_GROUP = "__new_group__";
 
@@ -16,8 +17,16 @@ export type TaskListDialogSaveValue = {
   name: string;
   groupId: string;
   color: string;
+  groupBy?: TaskGroupBy;
   newGroupName?: string;
 };
+
+const GROUP_BY_OPTIONS: { value: TaskGroupBy; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "due", label: "Due date" },
+  { value: "priority", label: "Priority" },
+  { value: "labels", label: "Labels" },
+];
 
 export function TaskListPropertiesDialog({
   open,
@@ -25,6 +34,7 @@ export function TaskListPropertiesDialog({
   listName,
   groupId,
   color,
+  groupBy: groupByProp = "none",
   groups,
   saving,
   onCancel,
@@ -35,6 +45,7 @@ export function TaskListPropertiesDialog({
   listName: string;
   groupId: string;
   color: string;
+  groupBy?: TaskGroupBy;
   groups: readonly TaskListGroup[];
   saving?: boolean;
   onCancel: () => void;
@@ -44,12 +55,14 @@ export function TaskListPropertiesDialog({
   const nameId = useId();
   const groupIdLabel = useId();
   const colorId = useId();
+  const groupById = useId();
   const newGroupFieldId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(listName);
   const [group, setGroup] = useState(groupId);
   const [newGroupName, setNewGroupName] = useState("");
   const [listColor, setListColor] = useState(color);
+  const [groupBy, setGroupBy] = useState<TaskGroupBy>(groupByProp);
 
   useEffect(() => {
     if (!open) return;
@@ -57,12 +70,13 @@ export function TaskListPropertiesDialog({
     setGroup(groupId);
     setNewGroupName("");
     setListColor(color);
+    setGroupBy(parseTaskGroupBy(groupByProp));
     const id = window.requestAnimationFrame(() => {
       nameRef.current?.focus();
       if (!isCreate) nameRef.current?.select();
     });
     return () => window.cancelAnimationFrame(id);
-  }, [open, listName, groupId, color, isCreate]);
+  }, [open, listName, groupId, color, groupByProp, isCreate]);
 
   const groupOptions = useMemo(
     () => [
@@ -85,6 +99,7 @@ export function TaskListPropertiesDialog({
       name: name.trim(),
       groupId: showNewGroup ? NEW_TASK_LIST_GROUP : group,
       color: listColor,
+      groupBy: isCreate ? undefined : groupBy,
       newGroupName: showNewGroup ? newGroupName.trim() : undefined,
     });
   };
@@ -186,6 +201,24 @@ export function TaskListPropertiesDialog({
           disabled={saving}
           onChange={setListColor}
         />
+        {!isCreate ? (
+          <>
+            <label className="app-dialog-label" id={groupById}>
+              Group by
+            </label>
+            <p className="app-dialog-hint">
+              Split tasks in this list into sections (due, priority, or labels).
+            </p>
+            <Select
+              variant="field"
+              aria-labelledby={groupById}
+              value={groupBy}
+              disabled={saving}
+              options={GROUP_BY_OPTIONS}
+              onChange={(v) => setGroupBy(parseTaskGroupBy(v))}
+            />
+          </>
+        ) : null}
       </div>
     </DialogShell>
   );
@@ -215,6 +248,7 @@ export async function saveTaskListProperties(
     name: string;
     groupId: string;
     color: string;
+    groupBy?: TaskGroupBy;
     newGroupName?: string;
   },
   opts: {
@@ -237,6 +271,7 @@ export async function saveTaskListProperties(
 
   await setTaskListMeta(finalName, {
     groupId: resolvedGroupId,
+    groupBy: value.groupBy,
     color: value.color,
   });
   return finalName;
