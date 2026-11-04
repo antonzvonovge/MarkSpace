@@ -4343,50 +4343,13 @@ button.status-bar-item.status-bar-timer-time:hover {
   }
 }
 
+/* Position only — visuals from `.tree-context-menu` */
 .status-bar-menu {
   position: absolute;
   right: 4px;
   bottom: calc(100% + 6px);
   z-index: 40;
   min-width: 168px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--editor-surface);
-  color: var(--text);
-  box-shadow: 0 10px 28px rgba(20, 30, 34, 0.16);
-  animation: tree-create-in 0.16s ease;
-}
-
-.status-bar-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: 0;
-  border-radius: 7px;
-  padding: 8px 10px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.875rem;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.status-bar-menu-item:hover:not(:disabled) {
-  background: var(--menu-item-hover);
-}
-
-.status-bar-menu-item:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.status-bar-menu-item svg {
-  flex-shrink: 0;
 }
 
 .status-bar-jobs-menu {
@@ -6739,74 +6702,74 @@ button.status-bar-jobs-menu-item:hover {
 /* BlockNote sizes headings via --level / --prev-level (defaults 3em / 2em / …),
    not plain font-size. Override those vars so sizes stick. */
 .editor-canvas [data-content-type="heading"] {
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
   line-height: 1.3;
-  --level: 2.2em;
-  padding-bottom: 0.55em;
+  --level: 1.75em;
+  padding-bottom: 0.3em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="1"] {
   color: var(--heading-1);
-  --level: 2.2em;
-  font-weight: 700;
+  --level: 1.75em;
+  font-weight: 650;
   margin-top: 0.6em;
-  padding-bottom: 0.65em;
+  padding-bottom: 0.35em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="2"] {
-  --level: 2em;
-  font-weight: 680;
+  --level: 1.4em;
+  font-weight: 650;
   margin-top: 0.55em;
-  padding-bottom: 0.6em;
+  padding-bottom: 0.3em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="3"] {
-  --level: 1.3em;
-  font-weight: 650;
+  --level: 1.2em;
+  font-weight: 600;
   margin-top: 0.5em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="4"] {
-  --level: 1em;
+  --level: 1.05em;
   font-weight: 650;
   margin-top: 0.45em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="5"] {
-  --level: 0.9em;
+  --level: 1em;
   font-weight: 620;
   margin-top: 0.4em;
 }
 
 .editor-canvas [data-content-type="heading"][data-level="6"] {
-  --level: 0.8em;
+  --level: 0.95em;
   font-weight: 620;
   margin-top: 0.4em;
   color: var(--muted);
 }
 
 .editor-canvas [data-prev-level="1"] {
-  --prev-level: 2.2em;
+  --prev-level: 1.75em;
 }
 
 .editor-canvas [data-prev-level="2"] {
-  --prev-level: 2em;
+  --prev-level: 1.4em;
 }
 
 .editor-canvas [data-prev-level="3"] {
-  --prev-level: 1.3em;
+  --prev-level: 1.2em;
 }
 
 .editor-canvas [data-prev-level="4"] {
-  --prev-level: 1em;
+  --prev-level: 1.05em;
 }
 
 .editor-canvas [data-prev-level="5"] {
-  --prev-level: 0.9em;
+  --prev-level: 1em;
 }
 
 .editor-canvas [data-prev-level="6"] {
-  --prev-level: 0.8em;
+  --prev-level: 0.95em;
 }
 
 .editor-canvas [data-content-type="divider"] hr {

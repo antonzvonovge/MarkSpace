@@ -24,7 +24,6 @@ import {
   FcReading,
   FcRight,
   FcSettings,
-  FcSynchronize,
   FcTemplate,
   FcVoicePresentation,
 } from "react-icons/fc";
@@ -127,14 +126,6 @@ export function MenuDeleteRowIcon() {
 
 export function MenuDuplicateIcon() {
   return <FcTemplate size={S} />;
-}
-
-export function MenuSyncIcon() {
-  return <FcSynchronize size={S} />;
-}
-
-export function MenuSettingsIcon() {
-  return <FcSettings size={S} />;
 }
 
 export function MenuIeltsReadingIcon() {

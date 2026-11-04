@@ -5,8 +5,6 @@ import { useSyncStore } from "../store/syncStore";
 import { useVaultStore } from "../store/vaultStore";
 import { documentKind } from "../lib/vaultApi";
 import { countWords } from "../lib/wordCount";
-import { MenuSettingsIcon, MenuSyncIcon } from "./menuIcons";
-
 function SyncIcon({ spinning }: { spinning?: boolean }) {
   return (
     <svg
@@ -514,28 +512,29 @@ export function StatusBar() {
         </button>
 
         {menuOpen && (
-          <div className="status-bar-menu" role="menu">
+          <div
+            className="tree-context-menu is-plaintext status-bar-menu"
+            role="menu"
+          >
             <button
               type="button"
               role="menuitem"
-              className="status-bar-menu-item"
+              className="tree-context-item"
               disabled={busy || !vaultPath}
               onClick={() => void forceSync()}
             >
-              <MenuSyncIcon />
-              <span>Synchronize</span>
+              Synchronize
             </button>
             <button
               type="button"
               role="menuitem"
-              className="status-bar-menu-item"
+              className="tree-context-item"
               onClick={() => {
                 setMenuOpen(false);
                 openSettings("sync");
               }}
             >
-              <MenuSettingsIcon />
-              <span>Sync settings…</span>
+              Sync settings…
             </button>
           </div>
         )}
