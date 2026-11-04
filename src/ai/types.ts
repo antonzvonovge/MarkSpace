@@ -39,6 +39,10 @@ export type AiModelKind = "chat" | "reasoning";
 export type AiModelTier = "flagship" | "worker";
 
 export type AiModelOption = {
+  /**
+   * Catalog key: `vendor/model` (auto route) or `vendor/model@prv_…`
+   * when bound to a specific OpenAI-compatible provider.
+   */
   id: string;
   label: string;
   vendor: AiModelVendor;
@@ -47,10 +51,37 @@ export type AiModelOption = {
   contextWindow?: number;
 };
 
-export type AiSettings = {
-  /** OpenAI-compatible API base URL (OpenAI, OpenRouter, Azure OpenAI, local proxies). */
+/** OpenAI-compatible gateway (LiteLLM, OpenRouter, Ollama, …). */
+export type AiProviderKind = "openaiCompatible";
+
+export type AiProvider = {
+  id: string;
+  name: string;
+  kind: AiProviderKind;
   baseUrl: string;
-  /** OpenAI-compatible API key — direct OpenAI models and gateway fallback. */
+  apiKey: string;
+  enabled: boolean;
+  /** Optional extra HTTP headers (LiteLLM team/user keys, etc.). */
+  headers?: Record<string, string>;
+};
+
+export type AiSettings = {
+  /**
+   * OpenAI-compatible gateways. Source of truth for gateway routing.
+   * `openaiApiKey` / `baseUrl` mirror the default provider for legacy callers.
+   */
+  providers: AiProvider[];
+  /** Which provider serves auto-routed models and IELTS OpenAI TTS/STT. */
+  defaultProviderId: string | null;
+  /**
+   * Mirror of the default provider base URL (kept for migration / IELTS).
+   * Prefer `providers` + `defaultProviderId` in new code.
+   */
+  baseUrl: string;
+  /**
+   * Mirror of the default provider API key.
+   * Prefer `providers` + `defaultProviderId` in new code.
+   */
   openaiApiKey: string;
   /** Direct Google AI API key — bypasses gateway when set. */
   googleApiKey: string;
@@ -109,6 +140,8 @@ export function clampAgentMaxSteps(value: unknown): number {
 }
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
+  providers: [],
+  defaultProviderId: null,
   baseUrl: OPENAI_BASE_URL,
   openaiApiKey: "",
   googleApiKey: "",
@@ -127,6 +160,19 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   contextWindow: 200_000,
   models: [...OPENROUTER_MODELS],
 };
+
+/** Default (or first enabled) OpenAI-compatible provider. */
+export function getDefaultProvider(
+  settings: Pick<AiSettings, "providers" | "defaultProviderId">,
+): AiProvider | null {
+  const list = settings.providers ?? [];
+  if (!list.length) return null;
+  const byId = settings.defaultProviderId
+    ? list.find((p) => p.id === settings.defaultProviderId)
+    : undefined;
+  if (byId?.enabled) return byId;
+  return list.find((p) => p.enabled) ?? list[0] ?? null;
+}
 
 export function contextWindowForModel(
   settings: AiSettings,

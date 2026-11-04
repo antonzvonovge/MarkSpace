@@ -20,6 +20,47 @@ describe("normalizeAiSettings", () => {
     expect(merged.googleApiKey).toBe("");
     expect(merged.modelId).toBe("openai/gpt-4.1-mini");
     expect(merged.baseUrl).toContain("openrouter.ai");
+    expect(merged.providers).toHaveLength(1);
+    expect(merged.providers[0]!.name).toBe("OpenRouter");
+    expect(merged.providers[0]!.apiKey).toBe("sk-or-legacy");
+    expect(merged.defaultProviderId).toBe(merged.providers[0]!.id);
+  });
+
+  it("migrates legacy openaiApiKey+baseUrl into a single provider", () => {
+    const merged = normalizeAiSettings({
+      openaiApiKey: "sk-litellm",
+      baseUrl: "https://litellm.example.com/v1",
+    });
+    expect(merged.providers).toHaveLength(1);
+    expect(merged.providers[0]!.apiKey).toBe("sk-litellm");
+    expect(merged.providers[0]!.baseUrl).toContain("litellm.example.com");
+    expect(merged.openaiApiKey).toBe("sk-litellm");
+    expect(aiSettingsNeedPersistRewrite(
+      { openaiApiKey: "sk-litellm", baseUrl: "https://litellm.example.com/v1" },
+      merged,
+    )).toBe(true);
+  });
+
+  it("keeps an existing providers list", () => {
+    const merged = normalizeAiSettings({
+      providers: [
+        {
+          id: "prv_abc",
+          name: "Work",
+          kind: "openaiCompatible",
+          baseUrl: "https://proxy.work/v1",
+          apiKey: "sk-work",
+          enabled: true,
+        },
+      ],
+      defaultProviderId: "prv_abc",
+      googleApiKey: "AIza",
+    });
+    expect(merged.providers).toHaveLength(1);
+    expect(merged.providers[0]!.id).toBe("prv_abc");
+    expect(merged.openaiApiKey).toBe("sk-work");
+    expect(merged.baseUrl).toContain("proxy.work");
+    expect(merged.googleApiKey).toBe("AIza");
   });
 
   it("persists direct provider keys when present", () => {
@@ -37,6 +78,7 @@ describe("normalizeAiSettings", () => {
     expect(merged.firecrawlApiKey).toBe("fc-");
     expect(merged.omdbApiKey).toBe("omdb");
     expect(merged.kinopoiskApiKey).toBe("kp");
+    expect(merged.providers).toHaveLength(1);
   });
 
   it("does not rewrite disk for models-catalog-only drift", () => {

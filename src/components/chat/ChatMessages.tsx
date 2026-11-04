@@ -199,10 +199,11 @@ function streamTargetLabel(
 ): { model: string; via: string } | null {
   try {
     const id = resolveModelId(settings.baseUrl, modelId || vaultChatModelId());
-    const plan = planModelRoute(id, credentialsFromSettings(settings));
+    const keys = credentialsFromSettings(settings);
+    const plan = planModelRoute(id, keys);
     return {
-      model: plan.catalogModelId,
-      via: modelRouteViaLabel(plan, settings.baseUrl),
+      model: plan.bareModelId,
+      via: modelRouteViaLabel(plan, keys.openaiBaseUrl),
     };
   } catch {
     return null;

@@ -3,8 +3,10 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { JSONObject, SharedV4ProviderOptions } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
 import { modelSupportsReasoning, VENDOR_LABEL } from "./models";
+import { parseModelRef } from "./modelRef";
 import { resolveModelId } from "./resolveModelId";
-import type { AiModelVendor, AiSettings } from "./types";
+import type { AiModelVendor, AiProvider, AiSettings } from "./types";
+import { getDefaultProvider } from "./types";
 import { DEFAULT_WORKER_MODEL_ID } from "../lib/vaultAiSettings";
 import {
   isOfficialOpenAiEndpoint,
@@ -14,9 +16,13 @@ import {
 import { gatewayLlmFetch } from "./gatewayCostCapture";
 
 export type AiProviderCredentials = {
+  /** Mirrored default gateway key (legacy + IELTS). */
   openaiApiKey: string;
+  /** Mirrored default gateway base URL. */
   openaiBaseUrl: string;
   googleApiKey: string;
+  providers: AiProvider[];
+  defaultProviderId: string | null;
 };
 
 export type ModelTransport = "direct" | "gateway";
@@ -24,10 +30,16 @@ export type ModelTransport = "direct" | "gateway";
 export type ModelRoutePlan = {
   transport: ModelTransport;
   vendor: AiModelVendor;
-  /** Catalog id with vendor prefix (`openai/gpt-5.6-sol`). */
+  /** Full catalog ref (`openai/gpt-5` or `openai/gpt-5@prv_…`). */
   catalogModelId: string;
+  /** Bare model id without `@prv_…` (used for vendor/heuristics). */
+  bareModelId: string;
   /** Id passed to the chosen SDK. */
   providerModelId: string;
+  /** Gateway provider used when transport is gateway; null for direct. */
+  providerId: string | null;
+  /** Display name of the gateway provider, when known. */
+  providerName: string | null;
 };
 
 export type ResolvedLanguageModel = {
@@ -36,39 +48,95 @@ export type ResolvedLanguageModel = {
   vendor: AiModelVendor;
   catalogModelId: string;
   providerModelId: string;
+  providerId: string | null;
   /** Pass through to `streamText` / `generateText` when non-empty. */
   providerOptions?: SharedV4ProviderOptions;
 };
 
-export function credentialsFromSettings(
-  settings: Pick<AiSettings, "openaiApiKey" | "googleApiKey" | "baseUrl">,
-): AiProviderCredentials {
+function findProvider(
+  keys: AiProviderCredentials,
+  providerId: string | null | undefined,
+): AiProvider | null {
+  if (!providerId) return null;
+  return keys.providers.find((p) => p.id === providerId) ?? null;
+}
+
+function gatewayFromKeys(keys: AiProviderCredentials): {
+  apiKey: string;
+  baseUrl: string;
+  provider: AiProvider | null;
+} {
+  const def = getDefaultProvider({
+    providers: keys.providers,
+    defaultProviderId: keys.defaultProviderId,
+  });
+  if (def) {
+    return {
+      apiKey: def.apiKey.trim(),
+      baseUrl: normalizeOpenAiBaseUrl(def.baseUrl),
+      provider: def,
+    };
+  }
   return {
-    openaiApiKey: settings.openaiApiKey?.trim() ?? "",
-    openaiBaseUrl: normalizeOpenAiBaseUrl(settings.baseUrl ?? ""),
+    apiKey: keys.openaiApiKey?.trim() ?? "",
+    baseUrl: normalizeOpenAiBaseUrl(keys.openaiBaseUrl ?? ""),
+    provider: null,
+  };
+}
+
+export function credentialsFromSettings(
+  settings: Pick<
+    AiSettings,
+    | "openaiApiKey"
+    | "googleApiKey"
+    | "baseUrl"
+    | "providers"
+    | "defaultProviderId"
+  >,
+): AiProviderCredentials {
+  const providers = Array.isArray(settings.providers) ? settings.providers : [];
+  const defaultProviderId = settings.defaultProviderId ?? null;
+  const def = getDefaultProvider({ providers, defaultProviderId });
+  return {
+    openaiApiKey:
+      def?.apiKey?.trim() || settings.openaiApiKey?.trim() || "",
+    openaiBaseUrl: normalizeOpenAiBaseUrl(
+      def?.baseUrl || settings.baseUrl || "",
+    ),
     googleApiKey: settings.googleApiKey?.trim() ?? "",
+    providers,
+    defaultProviderId,
   };
 }
 
 export function hasAnyLlmCredentials(
-  settings: Pick<AiSettings, "openaiApiKey" | "googleApiKey" | "baseUrl">,
+  settings: Pick<
+    AiSettings,
+    | "openaiApiKey"
+    | "googleApiKey"
+    | "baseUrl"
+    | "providers"
+    | "defaultProviderId"
+  >,
 ): boolean {
   const c = credentialsFromSettings(settings);
-  return !!(c.openaiApiKey || c.googleApiKey);
+  if (c.googleApiKey) return true;
+  if (c.openaiApiKey) return true;
+  return c.providers.some((p) => p.enabled && p.apiKey.trim());
 }
 
 export function vendorFromModelId(modelId: string): AiModelVendor {
-  const id = resolveModelId("", modelId);
-  if (id.startsWith("google/")) return "google";
+  const { modelId: bare } = parseModelRef(resolveModelId("", modelId));
+  if (bare.startsWith("google/")) return "google";
   return "openai";
 }
 
 /** Strip `vendor/` prefix for direct provider APIs. */
 export function stripVendorPrefix(catalogModelId: string): string {
-  const id = catalogModelId.trim();
-  const slash = id.indexOf("/");
-  if (slash < 0) return id;
-  return id.slice(slash + 1);
+  const { modelId } = parseModelRef(catalogModelId);
+  const slash = modelId.indexOf("/");
+  if (slash < 0) return modelId;
+  return modelId.slice(slash + 1);
 }
 
 /** Map catalog ids to native provider model ids. */
@@ -84,8 +152,19 @@ function directKeyForVendor(
   keys: AiProviderCredentials,
 ): string {
   switch (vendor) {
-    case "openai":
-      return keys.openaiApiKey;
+    case "openai": {
+      // Direct OpenAI only when default gateway is the official endpoint.
+      const gw = gatewayFromKeys(keys);
+      if (isOfficialOpenAiEndpoint(gw.baseUrl) && gw.apiKey) return gw.apiKey;
+      // Also allow a dedicated OpenAI provider that is not default.
+      const official = keys.providers.find(
+        (p) =>
+          p.enabled &&
+          p.apiKey.trim() &&
+          isOfficialOpenAiEndpoint(p.baseUrl),
+      );
+      return official?.apiKey.trim() ?? "";
+    }
     case "google":
       return keys.googleApiKey;
   }
@@ -95,11 +174,22 @@ function directKeyForVendor(
 function usesDirectProviderTransport(
   vendor: AiModelVendor,
   keys: AiProviderCredentials,
+  /** Bound gateway refs never use direct transport. */
+  boundProviderId: string | null,
 ): boolean {
+  if (boundProviderId) return false;
   if (!directKeyForVendor(vendor, keys)) return false;
-  // openaiApiKey doubles as the gateway key — only direct on api.openai.com.
-  if (vendor === "openai" && !isOfficialOpenAiEndpoint(keys.openaiBaseUrl)) {
-    return false;
+  if (vendor === "openai") {
+    const gw = gatewayFromKeys(keys);
+    if (!isOfficialOpenAiEndpoint(gw.baseUrl)) {
+      // Direct only if some enabled provider is official OpenAI.
+      return keys.providers.some(
+        (p) =>
+          p.enabled &&
+          p.apiKey.trim() &&
+          isOfficialOpenAiEndpoint(p.baseUrl),
+      );
+    }
   }
   return true;
 }
@@ -108,26 +198,49 @@ export function missingCredentialsMessage(
   modelId: string,
   keys: AiProviderCredentials,
 ): string {
+  const { providerId } = parseModelRef(modelId);
+  if (providerId) {
+    const p = findProvider(keys, providerId);
+    if (!p) {
+      return `Provider for this model was removed. Pick another model in the chat picker.`;
+    }
+    if (!p.enabled) {
+      return `Provider “${p.name}” is disabled. Enable it in Settings → API keys.`;
+    }
+    if (!p.apiKey.trim()) {
+      return `Add an API key for “${p.name}” in Settings → API keys`;
+    }
+  }
   const vendor = vendorFromModelId(modelId);
   const label = VENDOR_LABEL[vendor];
+  const gw = gatewayFromKeys(keys);
   if (directKeyForVendor(vendor, keys)) {
     return `Add an API key in Settings → API keys`;
   }
   if (
-    keys.openaiApiKey &&
-    !supportsMultiVendorGateway(keys.openaiBaseUrl) &&
+    gw.apiKey &&
+    !supportsMultiVendorGateway(gw.baseUrl) &&
     vendor !== "openai"
   ) {
     return `Add a ${label} API key in Settings → API keys, or set Base URL to an OpenAI-compatible gateway (LiteLLM, OpenRouter, …) that routes ${label} models.`;
   }
-  if (!keys.openaiApiKey) {
+  if (!gw.apiKey) {
     return `Add a ${label} or OpenAI-compatible gateway API key in Settings → API keys`;
   }
   return `Add an API key in Settings → API keys`;
 }
 
+function gatewayProviderModelId(
+  vendor: AiModelVendor,
+  bareModelId: string,
+): string {
+  return vendor === "openai"
+    ? toDirectProviderModelId("openai", bareModelId)
+    : bareModelId;
+}
+
 /**
- * Choose transport: direct provider key first, else OpenAI-compatible gateway.
+ * Choose transport: bound provider, else direct vendor key, else default gateway.
  * Pure — no SDK clients created.
  */
 export function planModelRoute(
@@ -135,21 +248,27 @@ export function planModelRoute(
   keys: AiProviderCredentials,
 ): ModelRoutePlan {
   const catalogModelId = resolveModelId("", modelId);
-  const vendor = vendorFromModelId(catalogModelId);
+  const { modelId: bareModelId, providerId: boundId } =
+    parseModelRef(catalogModelId);
+  const vendor = vendorFromModelId(bareModelId);
 
-  if (usesDirectProviderTransport(vendor, keys)) {
-    return {
-      transport: "direct",
-      vendor,
-      catalogModelId,
-      providerModelId: toDirectProviderModelId(vendor, catalogModelId),
-    };
-  }
-
-  if (keys.openaiApiKey) {
+  if (boundId) {
+    const provider = findProvider(keys, boundId);
+    if (!provider) {
+      throw new Error(missingCredentialsMessage(catalogModelId, keys));
+    }
+    if (!provider.enabled) {
+      throw new Error(missingCredentialsMessage(catalogModelId, keys));
+    }
+    // Local servers may omit a key; require either a key or a non-official URL.
+    const apiKey = provider.apiKey.trim();
+    const baseUrl = normalizeOpenAiBaseUrl(provider.baseUrl);
+    if (!apiKey && isOfficialOpenAiEndpoint(baseUrl)) {
+      throw new Error(missingCredentialsMessage(catalogModelId, keys));
+    }
     if (
       vendor !== "openai" &&
-      !supportsMultiVendorGateway(keys.openaiBaseUrl)
+      !supportsMultiVendorGateway(baseUrl)
     ) {
       throw new Error(missingCredentialsMessage(catalogModelId, keys));
     }
@@ -157,10 +276,44 @@ export function planModelRoute(
       transport: "gateway",
       vendor,
       catalogModelId,
-      providerModelId:
-        vendor === "openai"
-          ? toDirectProviderModelId("openai", catalogModelId)
-          : catalogModelId,
+      bareModelId,
+      providerModelId: gatewayProviderModelId(vendor, bareModelId),
+      providerId: provider.id,
+      providerName: provider.name,
+    };
+  }
+
+  if (usesDirectProviderTransport(vendor, keys, null)) {
+    return {
+      transport: "direct",
+      vendor,
+      catalogModelId,
+      bareModelId,
+      providerModelId: toDirectProviderModelId(vendor, bareModelId),
+      providerId: null,
+      providerName: null,
+    };
+  }
+
+  const gw = gatewayFromKeys(keys);
+  if (gw.apiKey || (gw.provider && !isOfficialOpenAiEndpoint(gw.baseUrl))) {
+    if (
+      vendor !== "openai" &&
+      !supportsMultiVendorGateway(gw.baseUrl)
+    ) {
+      throw new Error(missingCredentialsMessage(catalogModelId, keys));
+    }
+    if (!gw.apiKey && isOfficialOpenAiEndpoint(gw.baseUrl)) {
+      throw new Error(missingCredentialsMessage(catalogModelId, keys));
+    }
+    return {
+      transport: "gateway",
+      vendor,
+      catalogModelId,
+      bareModelId,
+      providerModelId: gatewayProviderModelId(vendor, bareModelId),
+      providerId: gw.provider?.id ?? null,
+      providerName: gw.provider?.name ?? null,
     };
   }
 
@@ -310,13 +463,73 @@ function buildProviderOptions(
   }
 }
 
-function createOpenAiClient(keys: AiProviderCredentials) {
-  const gateway = !isOfficialOpenAiEndpoint(keys.openaiBaseUrl);
-  return createOpenAI({
-    apiKey: keys.openaiApiKey,
-    baseURL: keys.openaiBaseUrl,
+type OpenAiClient = ReturnType<typeof createOpenAI>;
+
+type CachedClient = {
+  fingerprint: string;
+  client: OpenAiClient;
+};
+
+const openAiClientCache = new Map<string, CachedClient>();
+
+function clientFingerprint(
+  apiKey: string,
+  baseUrl: string,
+  headers: Record<string, string> | undefined,
+): string {
+  const headerPart = headers
+    ? Object.keys(headers)
+        .sort()
+        .map((k) => `${k}=${headers[k]}`)
+        .join("&")
+    : "";
+  return `${baseUrl}|${apiKey}|${headerPart}`;
+}
+
+function resolveGatewayEndpoint(
+  plan: ModelRoutePlan,
+  keys: AiProviderCredentials,
+): { apiKey: string; baseUrl: string; headers?: Record<string, string>; cacheKey: string } {
+  if (plan.providerId) {
+    const p = findProvider(keys, plan.providerId);
+    if (p) {
+      return {
+        apiKey: p.apiKey.trim() || "no-key",
+        baseUrl: normalizeOpenAiBaseUrl(p.baseUrl),
+        headers: p.headers,
+        cacheKey: p.id,
+      };
+    }
+  }
+  const gw = gatewayFromKeys(keys);
+  return {
+    apiKey: gw.apiKey || "no-key",
+    baseUrl: gw.baseUrl,
+    headers: gw.provider?.headers,
+    cacheKey: gw.provider?.id ?? "default",
+  };
+}
+
+function createOpenAiClientForEndpoint(opts: {
+  cacheKey: string;
+  apiKey: string;
+  baseUrl: string;
+  headers?: Record<string, string>;
+}): OpenAiClient {
+  const fingerprint = clientFingerprint(opts.apiKey, opts.baseUrl, opts.headers);
+  const cached = openAiClientCache.get(opts.cacheKey);
+  if (cached && cached.fingerprint === fingerprint) {
+    return cached.client;
+  }
+  const gateway = !isOfficialOpenAiEndpoint(opts.baseUrl);
+  const client = createOpenAI({
+    apiKey: opts.apiKey,
+    baseURL: opts.baseUrl,
+    headers: opts.headers,
     ...(gateway ? { fetch: gatewayLlmFetch() } : {}),
   });
+  openAiClientCache.set(opts.cacheKey, { fingerprint, client });
+  return client;
 }
 
 /**
@@ -329,15 +542,17 @@ function createOpenAiClient(keys: AiProviderCredentials) {
  * `reasoning_effort: none`). Prefer Responses when reasoning is enabled.
  */
 function createOpenAiCompatibleModel(
-  keys: AiProviderCredentials,
+  endpoint: {
+    apiKey: string;
+    baseUrl: string;
+    headers?: Record<string, string>;
+    cacheKey: string;
+  },
   providerModelId: string,
   opts?: { preferResponses?: boolean },
 ): LanguageModel {
-  const openai = createOpenAiClient(keys);
-  if (
-    isOfficialOpenAiEndpoint(keys.openaiBaseUrl) ||
-    opts?.preferResponses
-  ) {
+  const openai = createOpenAiClientForEndpoint(endpoint);
+  if (isOfficialOpenAiEndpoint(endpoint.baseUrl) || opts?.preferResponses) {
     return openai(providerModelId);
   }
   return openai.chat(providerModelId);
@@ -349,8 +564,28 @@ function createDirectModel(
   keys: AiProviderCredentials,
 ): LanguageModel {
   switch (vendor) {
-    case "openai":
-      return createOpenAiCompatibleModel(keys, providerModelId);
+    case "openai": {
+      // Prefer an official OpenAI provider entry; else mirrored default.
+      const official = keys.providers.find(
+        (p) =>
+          p.enabled &&
+          p.apiKey.trim() &&
+          isOfficialOpenAiEndpoint(p.baseUrl),
+      );
+      const endpoint = official
+        ? {
+            apiKey: official.apiKey.trim(),
+            baseUrl: normalizeOpenAiBaseUrl(official.baseUrl),
+            headers: official.headers,
+            cacheKey: official.id,
+          }
+        : {
+            apiKey: keys.openaiApiKey,
+            baseUrl: keys.openaiBaseUrl,
+            cacheKey: "direct-openai",
+          };
+      return createOpenAiCompatibleModel(endpoint, providerModelId);
+    }
     case "google": {
       const google = createGoogle({ apiKey: keys.googleApiKey });
       return google(providerModelId);
@@ -366,7 +601,7 @@ export function resolveLanguageModel(params: {
 }): ResolvedLanguageModel {
   const plan = planModelRoute(params.modelId, params.keys);
   const enableReasoning =
-    params.enableReasoning ?? modelSupportsReasoning(plan.catalogModelId);
+    params.enableReasoning ?? modelSupportsReasoning(plan.bareModelId);
   // Chat Completions + tools + reasoning_effort → 400 on gpt-5.x via LiteLLM.
   const preferResponses =
     plan.transport === "gateway" &&
@@ -377,7 +612,8 @@ export function resolveLanguageModel(params: {
   if (plan.transport === "direct") {
     model = createDirectModel(plan.vendor, plan.providerModelId, params.keys);
   } else {
-    model = createOpenAiCompatibleModel(params.keys, plan.providerModelId, {
+    const endpoint = resolveGatewayEndpoint(plan, params.keys);
+    model = createOpenAiCompatibleModel(endpoint, plan.providerModelId, {
       preferResponses,
     });
   }
@@ -388,6 +624,7 @@ export function resolveLanguageModel(params: {
     vendor: plan.vendor,
     catalogModelId: plan.catalogModelId,
     providerModelId: plan.providerModelId,
+    providerId: plan.providerId,
     providerOptions: buildProviderOptions(plan, enableReasoning),
   };
 }
@@ -403,12 +640,18 @@ export function gatewayTransportLabel(baseUrl: string): string {
   }
 }
 
-/** Human-readable route for chat status (`Gateway · host` or `Direct · Vendor`). */
+/** Human-readable route for chat status (`Via name`, `Gateway · host`, or `Direct · Vendor`). */
 export function modelRouteViaLabel(
-  plan: Pick<ModelRoutePlan, "transport" | "vendor">,
+  plan: Pick<
+    ModelRoutePlan,
+    "transport" | "vendor" | "providerName" | "providerId"
+  >,
   baseUrl: string,
 ): string {
   if (plan.transport === "gateway") {
+    if (plan.providerName?.trim()) {
+      return `Via ${plan.providerName.trim()}`;
+    }
     return `Gateway · ${gatewayTransportLabel(baseUrl)}`;
   }
   return `Direct · ${VENDOR_LABEL[plan.vendor]}`;

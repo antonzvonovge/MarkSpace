@@ -109,13 +109,14 @@ export function modelSupportsReasoning(
 ): boolean {
   const found = findModel(models, modelId);
   if (found) return found.kind === "reasoning";
-  // Fallback heuristics for custom / legacy ids
+  // Strip `@prv_…` for heuristics on unbound/custom ids.
+  const bare = modelId.includes("@")
+    ? modelId.slice(0, modelId.lastIndexOf("@"))
+    : modelId;
   if (
-    /gpt-4\.1|gpt-4o|gpt-5(\.\d+)?-chat|gpt-chat-latest|flash-lite/i.test(
-      modelId,
-    )
+    /gpt-4\.1|gpt-4o|gpt-5(\.\d+)?-chat|gpt-chat-latest|flash-lite/i.test(bare)
   ) {
     return false;
   }
-  return /\/(o[0-9]|gpt-5)/i.test(modelId) || modelId.startsWith("google/");
+  return /\/(o[0-9]|gpt-5)/i.test(bare) || bare.startsWith("google/");
 }

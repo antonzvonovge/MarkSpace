@@ -72,6 +72,8 @@ function queryMatchesKeys(query: string): boolean {
     q.includes("openrouter") ||
     q.includes("litellm") ||
     q.includes("gateway") ||
+    q.includes("provider") ||
+    q.includes("ollama") ||
     q.includes("openai") ||
     q.includes("google") ||
     q.includes("tavily") ||

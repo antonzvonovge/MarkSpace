@@ -15,6 +15,7 @@ import { ChatGemBanner } from "./ChatGemBanner";
 import { ChatMessages } from "./ChatMessages";
 import { ChatTabBar } from "./ChatTabBar";
 import { ChatTerminalApprovalBar } from "./ChatTerminalApprovalBar";
+import { ProviderRouteBanner } from "./ProviderRouteBanner";
 
 export const ChatSidebar = memo(function ChatSidebar() {
   const vaultPath = useVaultStore((s) => s.vaultPath);
@@ -98,6 +99,7 @@ export const ChatSidebar = memo(function ChatSidebar() {
             streaming={status === "streaming" || status === "compacting"}
             compacting={status === "compacting"}
           />
+          <ProviderRouteBanner />
           {error && (
             <div className="chat-error" role="alert">
               <div className="chat-error-text">{error}</div>

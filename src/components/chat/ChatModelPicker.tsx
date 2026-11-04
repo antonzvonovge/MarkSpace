@@ -7,12 +7,13 @@ import {
   lookupModelPrice,
   type ModelPricePerMillion,
 } from "../../ai/modelPrices";
-import { KIND_LABEL, TIER_LABEL, VENDOR_LABEL } from "../../ai/models";
-import type { AiModelOption, AiModelVendor } from "../../ai/types";
+import { parseModelRef } from "../../ai/modelRef";
+import { KIND_LABEL, TIER_LABEL } from "../../ai/models";
+import type { AiModelOption, AiProvider } from "../../ai/types";
 import { placeChatComposerMenu } from "../../lib/chatMenuPlacement";
+import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useModelPricesStore } from "../../store/modelPricesStore";
 
-const VENDOR_ORDER: AiModelVendor[] = ["openai", "google"];
 const MENU_MIN_WIDTH = 260;
 
 type ModelTab = "chat" | "specialists";
@@ -32,6 +33,13 @@ type Props = {
   specialistsLinked?: boolean;
   onSpecialistChange?: (modelId: string) => void;
   onSpecialistsLinkedChange?: (linked: boolean) => void;
+};
+
+type ProviderGroup = {
+  key: string;
+  label: string;
+  disabled: boolean;
+  models: AiModelOption[];
 };
 
 function modelDisplayName(model: AiModelOption | null, fallback: string) {
@@ -88,14 +96,77 @@ function LinkIcon() {
   );
 }
 
-function modelsForVendor(models: AiModelOption[], vendor: AiModelVendor) {
-  return models
-    .filter((m) => m.vendor === vendor)
-    .sort((a, b) => {
-      const ta = (a.tier ?? "flagship") === "worker" ? 1 : 0;
-      const tb = (b.tier ?? "flagship") === "worker" ? 1 : 0;
-      return ta - tb;
+function sortByTier(models: AiModelOption[]): AiModelOption[] {
+  return [...models].sort((a, b) => {
+    const ta = (a.tier ?? "flagship") === "worker" ? 1 : 0;
+    const tb = (b.tier ?? "flagship") === "worker" ? 1 : 0;
+    return ta - tb;
+  });
+}
+
+/** Group catalog models: Auto first, then each provider in settings order. */
+export function groupModelsByProvider(
+  models: AiModelOption[],
+  providers: AiProvider[],
+): ProviderGroup[] {
+  const byProvider = new Map<string | null, AiModelOption[]>();
+  for (const m of models) {
+    const { providerId } = parseModelRef(m.id);
+    const key = providerId;
+    const list = byProvider.get(key) ?? [];
+    list.push(m);
+    byProvider.set(key, list);
+  }
+
+  const groups: ProviderGroup[] = [];
+  const auto = byProvider.get(null);
+  if (auto?.length) {
+    groups.push({
+      key: "auto",
+      label: "Auto",
+      disabled: false,
+      models: sortByTier(auto),
     });
+  }
+
+  for (const p of providers) {
+    const list = byProvider.get(p.id);
+    if (!list?.length) continue;
+    groups.push({
+      key: p.id,
+      label: p.enabled ? p.name : `${p.name} (disabled)`,
+      disabled: !p.enabled,
+      models: sortByTier(list),
+    });
+    byProvider.delete(p.id);
+  }
+
+  // Orphan bindings (provider deleted) still show so the user can switch.
+  for (const [pid, list] of byProvider) {
+    if (pid == null || !list.length) continue;
+    groups.push({
+      key: pid,
+      label: "Missing provider",
+      disabled: true,
+      models: sortByTier(list),
+    });
+  }
+
+  return groups;
+}
+
+/** Bare model ids that appear under more than one catalog entry. */
+function duplicateBareIds(models: AiModelOption[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const m of models) {
+    const bare = parseModelRef(m.id).modelId;
+    counts.set(bare, (counts.get(bare) ?? 0) + 1);
+  }
+  const dups = new Set<string>();
+  for (const [id, n] of counts) {
+    if (n > 1) dups.add(id);
+  }
+  return dups;
 }
 
 type MenuPos = {
@@ -126,6 +197,8 @@ export function ChatModelPicker({
     typeof onSpecialistChange === "function" &&
     typeof onSpecialistsLinkedChange === "function";
 
+  const providers = useAiSettingsStore((s) => s.settings.providers);
+
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<ModelTab>("chat");
   const [pos, setPos] = useState<MenuPos | null>(null);
@@ -134,6 +207,13 @@ export function ChatModelPicker({
   const menuRef = useRef<HTMLDivElement>(null);
   const prices = useModelPricesStore((s) => s.prices);
   const ensureFresh = useModelPricesStore((s) => s.ensureFresh);
+
+  const groups = useMemo(
+    () => groupModelsByProvider(models, providers),
+    [models, providers],
+  );
+
+  const dups = useMemo(() => duplicateBareIds(models), [models]);
 
   const selected = useMemo(
     () => models.find((m) => m.id === value) ?? null,
@@ -219,6 +299,15 @@ export function ChatModelPicker({
     setOpen(false);
   };
 
+  const optionLabel = (m: AiModelOption, groupLabel: string) => {
+    const bare = parseModelRef(m.id).modelId;
+    const base = modelDisplayName(m, m.id);
+    if (dups.has(bare) && groupLabel !== "Auto") {
+      return `${base} · ${groupLabel.replace(/ \(disabled\)$/, "")}`;
+    }
+    return base;
+  };
+
   const menu =
     open && pos
       ? createPortal(
@@ -298,19 +387,17 @@ export function ChatModelPicker({
                 Using chat model
               </div>
             ) : null}
-            {VENDOR_ORDER.map((vendor) => {
-              const group = modelsForVendor(models, vendor);
-              if (!group.length) return null;
+            {groups.map((group) => {
               const listDisabled =
-                dual && tab === "specialists" && specialistsLinked;
+                (dual && tab === "specialists" && specialistsLinked) ||
+                group.disabled;
               return (
-                <div key={vendor} className="chat-model-group">
-                  <div className="chat-model-group-label">
-                    {VENDOR_LABEL[vendor]}
-                  </div>
-                  {group.map((m) => {
+                <div key={group.key} className="chat-model-group">
+                  <div className="chat-model-group-label">{group.label}</div>
+                  {group.models.map((m) => {
                     const price = lookupModelPrice(m.id, prices);
                     const isActive = m.id === activeValue;
+                    const name = optionLabel(m, group.label);
                     return (
                       <button
                         key={m.id}
@@ -318,6 +405,11 @@ export function ChatModelPicker({
                         role="option"
                         aria-selected={isActive}
                         disabled={listDisabled}
+                        title={
+                          group.disabled
+                            ? "Provider disabled — enable it in Settings → API keys"
+                            : m.id
+                        }
                         className={
                           isActive
                             ? "chat-model-option is-active"
@@ -328,7 +420,7 @@ export function ChatModelPicker({
                         <span className="chat-model-option-main">
                           <ModelTierDot model={m} />
                           <span className="chat-model-option-name" title={m.id}>
-                            {modelDisplayName(m, m.id)}
+                            {name}
                           </span>
                         </span>
                         <span className="chat-model-option-price-col">
@@ -349,6 +441,16 @@ export function ChatModelPicker({
       : null;
 
   const isField = variant === "field";
+  const triggerName = selected
+    ? optionLabel(
+        selected,
+        (() => {
+          const { providerId } = parseModelRef(selected.id);
+          if (!providerId) return "Auto";
+          return providers.find((p) => p.id === providerId)?.name ?? "Provider";
+        })(),
+      )
+    : modelDisplayName(selected, value);
 
   return (
     <div
@@ -377,9 +479,7 @@ export function ChatModelPicker({
         onClick={() => setOpen((v) => !v)}
       >
         <ModelTierDot model={selected} />
-        <span className="chat-model-trigger-label">
-          {modelDisplayName(selected, value)}
-        </span>
+        <span className="chat-model-trigger-label">{triggerName}</span>
         {dual && specialistsLinked ? (
           <span className="chat-model-trigger-link" aria-hidden="true">
             <LinkIcon />

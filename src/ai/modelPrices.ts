@@ -1,4 +1,5 @@
 import { stripVendorPrefix } from "./languageModel";
+import { parseModelRef } from "./modelRef";
 
 /** Same public map LiteLLM loads at startup. */
 export const LITELLM_MODEL_PRICES_URL =
@@ -90,7 +91,8 @@ export function parseLiteLlmPriceMap(raw: unknown): ModelPriceMap {
 
 /** Candidate LiteLLM keys for a MarkSpace catalog id (`openai/gpt-5.6-sol`). */
 export function modelPriceLookupKeys(modelId: string): string[] {
-  const id = modelId.trim();
+  // Strip `@prv_…` so bound catalog entries still hit LiteLLM meta/prices.
+  const id = parseModelRef(modelId).modelId.trim();
   if (!id) return [];
   const bare = stripVendorPrefix(id);
   const keys = [id, bare];

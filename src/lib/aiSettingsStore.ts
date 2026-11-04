@@ -10,6 +10,7 @@ import {
   clampAgentMaxSteps,
   type AiSettings,
   type AiModelOption,
+  type AiProvider,
   type ChatMode,
 } from "../ai/types";
 import { normalizeOpenAiBaseUrl } from "./openAiBaseUrl";
@@ -18,6 +19,10 @@ import {
   mergeUserModels,
   normalizeCatalogModels,
 } from "./modelCatalog";
+import {
+  resolveProvidersFromRaw,
+  syncDefaultProviderMirrors,
+} from "./aiProviders";
 
 const STORE_FILE = "settings.json";
 const AI_KEY = "ai";
@@ -87,15 +92,41 @@ function parseRawModels(
     );
 }
 
+function providersEqual(a: AiProvider[], b: AiProvider[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (
+      x.id !== y.id ||
+      x.name !== y.name ||
+      x.baseUrl !== y.baseUrl ||
+      x.apiKey !== y.apiKey ||
+      x.enabled !== y.enabled ||
+      x.kind !== y.kind
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Normalize persisted / partial AI settings (exported for tests). */
 export function normalizeAiSettings(
   raw: Partial<AiSettings> & { apiKey?: string } | null | undefined,
 ): AiSettings {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_AI_SETTINGS };
 
-  const { openaiApiKey, migratedFromLegacyOpenRouter } =
+  const { openaiApiKey: legacyKey, migratedFromLegacyOpenRouter } =
     resolveOpenAiApiKey(raw);
-  const baseUrl = resolveBaseUrl(raw, migratedFromLegacyOpenRouter);
+  const legacyBaseUrl = resolveBaseUrl(raw, migratedFromLegacyOpenRouter);
+
+  const {
+    providers,
+    defaultProviderId,
+    openaiApiKey,
+    baseUrl,
+  } = resolveProvidersFromRaw(raw, legacyKey, legacyBaseUrl);
 
   const mode: ChatMode =
     raw.defaultMode === "agent" || raw.defaultMode === "ask"
@@ -114,6 +145,8 @@ export function normalizeAiSettings(
     : (models[0]?.id ?? DEFAULT_AI_SETTINGS.modelId);
 
   return {
+    providers,
+    defaultProviderId,
     baseUrl,
     openaiApiKey,
     googleApiKey: stringField(raw, "googleApiKey"),
@@ -150,11 +183,29 @@ function withAiStoreLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 function buildPersistedAiSettings(settings: AiSettings): AiSettings {
+  const normalized = normalizeAiSettings(settings);
+  const mirrors = syncDefaultProviderMirrors({
+    providers: settings.providers?.length
+      ? settings.providers
+      : normalized.providers,
+    defaultProviderId:
+      settings.defaultProviderId ?? normalized.defaultProviderId,
+  });
   return {
-    ...normalizeAiSettings(settings),
-    // Preserve keys/mode from the in-memory object after normalize defaults.
-    baseUrl: normalizeOpenAiBaseUrl(settings.baseUrl ?? OPENAI_BASE_URL),
-    openaiApiKey: settings.openaiApiKey ?? "",
+    ...normalized,
+    providers: settings.providers?.length
+      ? settings.providers.map((p) => ({
+          ...p,
+          baseUrl: normalizeOpenAiBaseUrl(p.baseUrl),
+          apiKey: p.apiKey ?? "",
+          enabled: p.enabled !== false,
+          kind: "openaiCompatible" as const,
+        }))
+      : normalized.providers,
+    defaultProviderId:
+      settings.defaultProviderId ?? normalized.defaultProviderId,
+    baseUrl: mirrors.baseUrl,
+    openaiApiKey: mirrors.openaiApiKey,
     googleApiKey: settings.googleApiKey ?? "",
     tavilyApiKey: settings.tavilyApiKey ?? "",
     omdbApiKey: settings.omdbApiKey ?? "",
@@ -186,11 +237,19 @@ export function aiSettingsNeedPersistRewrite(
   merged: AiSettings,
 ): boolean {
   if (!raw) return true;
+  const rawHadNoProviders =
+    !Array.isArray(raw.providers) || raw.providers.length === 0;
+  const migratedProviders =
+    rawHadNoProviders && merged.providers.length > 0;
   return (
     raw.baseUrl !== merged.baseUrl ||
     raw.modelId !== merged.modelId ||
     raw.openaiApiKey !== merged.openaiApiKey ||
     raw.googleApiKey !== merged.googleApiKey ||
+    raw.defaultProviderId !== merged.defaultProviderId ||
+    migratedProviders ||
+    (Array.isArray(raw.providers) &&
+      !providersEqual(raw.providers as AiProvider[], merged.providers)) ||
     // Strip removed Anthropic key from on-disk settings.
     typeof raw.anthropicApiKey === "string" ||
     (typeof raw.apiKey === "string" &&

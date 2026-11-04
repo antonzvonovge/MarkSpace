@@ -1,4 +1,5 @@
 import { resolveModelId } from "../ai/resolveModelId";
+import { formatModelRef, parseModelRef } from "../ai/modelRef";
 import { OPENROUTER_BASE_URL, OPENROUTER_MODELS } from "../ai/models";
 import { stripVendorPrefix } from "../ai/languageModel";
 import {
@@ -16,41 +17,48 @@ const VENDORS: AiModelVendor[] = ["openai", "google"];
 const KINDS: AiModelKind[] = ["chat", "reasoning"];
 const TIERS: AiModelTier[] = ["flagship", "worker"];
 
-/** Same shape as vault AI model ids. */
+/** Same shape as vault AI model ids (`vendor/model` or `vendor/model@prv_…`). */
 export function isValidCatalogModelId(raw: string): boolean {
-  const id = raw.trim();
+  const { modelId } = parseModelRef(raw);
+  const id = modelId.trim();
   if (!id || id.length > 160 || !id.includes("/")) return false;
   if (!/^[\x21-\x7E]+$/.test(id) || /[<>"]/.test(id)) return false;
   return true;
 }
 
 export function vendorFromModelId(id: string): AiModelVendor {
-  if (id.startsWith("google/")) return "google";
+  const { modelId } = parseModelRef(id);
+  if (modelId.startsWith("google/")) return "google";
   return "openai";
 }
 
 /** Fallback when LiteLLM omits `supports_reasoning`. */
 export function kindFromModelId(id: string): AiModelKind {
+  const { modelId } = parseModelRef(id);
   if (
-    /(^|\/)(gpt-4\.1|gpt-4o|gpt-5(\.\d+)?-chat|gpt-chat-latest)(-|$)/i.test(id)
+    /(^|\/)(gpt-4\.1|gpt-4o|gpt-5(\.\d+)?-chat|gpt-chat-latest)(-|$)/i.test(
+      modelId,
+    )
   ) {
     return "chat";
   }
-  if (/flash-lite/i.test(id)) return "chat";
-  if (/\/(o[0-9]|gpt-5)/i.test(id)) return "reasoning";
-  if (id.startsWith("google/")) return "reasoning";
+  if (/flash-lite/i.test(modelId)) return "chat";
+  if (/\/(o[0-9]|gpt-5)/i.test(modelId)) return "reasoning";
+  if (modelId.startsWith("google/")) return "reasoning";
   return "chat";
 }
 
 /** MarkSpace-only role class — not present in LiteLLM JSON. */
 export function tierFromModelId(id: string): AiModelTier {
-  if (/luna|flash-lite|(^|\/).*-mini(\b|$)/i.test(id)) return "worker";
+  const { modelId } = parseModelRef(id);
+  if (/luna|flash-lite|(^|\/).*-mini(\b|$)/i.test(modelId)) return "worker";
   return "flagship";
 }
 
 /** Human label from bare model id (`gemini-3.8-flash` → `Gemini 3.8 Flash`). */
 export function labelFromModelId(id: string): string {
-  const bare = stripVendorPrefix(id.trim()) || id.trim();
+  const { modelId } = parseModelRef(id);
+  const bare = stripVendorPrefix(modelId.trim()) || modelId.trim();
   return bare
     .split(/[-_]/)
     .filter(Boolean)
@@ -116,10 +124,14 @@ export function normalizeCatalogModels(
   const out: AiModelOption[] = [];
   for (const m of mapped) {
     if (seen.has(m.id)) continue;
-    if (m.id.startsWith("anthropic/") || (m.vendor as string) === "anthropic") {
+    const { modelId } = parseModelRef(m.id);
+    if (
+      modelId.startsWith("anthropic/") ||
+      (m.vendor as string) === "anthropic"
+    ) {
       continue;
     }
-    if (!m.id.includes("/")) continue;
+    if (!modelId.includes("/")) continue;
     seen.add(m.id);
     out.push(m);
   }
@@ -150,30 +162,36 @@ export type EnrichModelResult = {
 export function enrichModelFromLiteLlm(
   modelId: string,
   meta: ModelMetaMap | null | undefined,
-  opts?: { label?: string },
+  opts?: { label?: string; providerId?: string | null },
 ): EnrichModelResult {
-  const id = resolveModelId(OPENROUTER_BASE_URL, modelId.trim());
-  const hit = lookupModelMeta(id, meta);
+  const parsed = parseModelRef(modelId.trim());
+  const providerId = opts?.providerId !== undefined
+    ? opts.providerId
+    : parsed.providerId;
+  const resolvedModel = resolveModelId(OPENROUTER_BASE_URL, parsed.modelId);
+  const { modelId: bareId } = parseModelRef(resolvedModel);
+  const id = formatModelRef(bareId, providerId);
+  const hit = lookupModelMeta(bareId, meta);
   const kind: AiModelKind =
     hit?.supportsReasoning === true
       ? "reasoning"
       : hit?.supportsReasoning === false
         ? "chat"
-        : kindFromModelId(id);
+        : kindFromModelId(bareId);
   const contextWindow =
     hit?.maxInputTokens != null && hit.maxInputTokens > 0
       ? Math.round(hit.maxInputTokens)
       : undefined;
   const label =
-    (opts?.label?.trim() && opts.label.trim()) || labelFromModelId(id);
+    (opts?.label?.trim() && opts.label.trim()) || labelFromModelId(bareId);
   return {
     inMap: hit != null,
     model: coerceCatalogModel({
       id,
       label,
-      vendor: vendorFromModelId(id),
+      vendor: vendorFromModelId(bareId),
       kind,
-      tier: tierFromModelId(id),
+      tier: tierFromModelId(bareId),
       contextWindow,
     }),
   };

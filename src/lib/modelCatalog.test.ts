@@ -68,6 +68,31 @@ describe("enrichModelFromLiteLlm", () => {
     expect(model.vendor).toBe("google");
   });
 
+  it("preserves a provider binding suffix and still hits LiteLLM meta", () => {
+    const { model, inMap } = enrichModelFromLiteLlm(
+      "google/gemini-3.8-flash",
+      meta,
+      { providerId: "prv_work" },
+    );
+    expect(inMap).toBe(true);
+    expect(model.id).toBe("google/gemini-3.8-flash@prv_work");
+    expect(model.contextWindow).toBe(1_048_576);
+  });
+
+  it("allows the same bare id under two providers in the catalog", () => {
+    const a = enrichModelFromLiteLlm("openai/gpt-4.1-mini", meta, {
+      providerId: "prv_a",
+    }).model;
+    const b = enrichModelFromLiteLlm("openai/gpt-4.1-mini", meta, {
+      providerId: "prv_b",
+    }).model;
+    const merged = normalizeCatalogModels([a, b]);
+    expect(merged.map((m) => m.id).sort()).toEqual([
+      "openai/gpt-4.1-mini@prv_a",
+      "openai/gpt-4.1-mini@prv_b",
+    ]);
+  });
+
   it("marks flash-lite as reasoning when LiteLLM says so, worker via heuristic", () => {
     const { model } = enrichModelFromLiteLlm(
       "google/gemini-3.5-flash-lite",

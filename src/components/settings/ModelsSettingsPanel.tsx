@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   formatPerMillionPair,
   formatPerMillionTitle,
   lookupModelPrice,
 } from "../../ai/modelPrices";
+import { parseModelRef } from "../../ai/modelRef";
 import { KIND_LABEL, TIER_LABEL } from "../../ai/models";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { useModelPricesStore } from "../../store/modelPricesStore";
+import { Select, type SelectOption } from "../ui/Select";
 
 function formatContextWindow(n: number | undefined): string {
   if (n == null || n <= 0) return "—";
@@ -16,10 +18,14 @@ function formatContextWindow(n: number | undefined): string {
   return String(n);
 }
 
+const AUTO_PROVIDER = "__auto__";
+
 export function ModelsSettingsPanel() {
   const models = useAiSettingsStore((s) => s.settings.models);
+  const providers = useAiSettingsStore((s) => s.settings.providers);
   const addModel = useAiSettingsStore((s) => s.addModel);
   const removeModel = useAiSettingsStore((s) => s.removeModel);
+  const setModelProvider = useAiSettingsStore((s) => s.setModelProvider);
   const refreshModelsFromLiteLlm = useAiSettingsStore(
     (s) => s.refreshModelsFromLiteLlm,
   );
@@ -28,6 +34,7 @@ export function ModelsSettingsPanel() {
   const ensureFresh = useModelPricesStore((s) => s.ensureFresh);
 
   const [draftId, setDraftId] = useState("");
+  const [draftProvider, setDraftProvider] = useState<string>(AUTO_PROVIDER);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,12 +43,30 @@ export function ModelsSettingsPanel() {
     void ensureFresh();
   }, [ensureFresh]);
 
+  const providerOptions: SelectOption[] = useMemo(() => {
+    const opts: SelectOption[] = [{ value: AUTO_PROVIDER, label: "Auto" }];
+    for (const p of providers) {
+      opts.push({
+        value: p.id,
+        label: p.enabled ? p.name : `${p.name} (disabled)`,
+      });
+    }
+    return opts;
+  }, [providers]);
+
+  const providerName = (id: string | null) => {
+    if (!id) return "Auto";
+    return providers.find((p) => p.id === id)?.name ?? "Missing provider";
+  };
+
   const onAdd = async () => {
     setError(null);
     setMessage(null);
     setBusy(true);
     try {
-      const result = await addModel(draftId);
+      const providerId =
+        draftProvider === AUTO_PROVIDER ? null : draftProvider;
+      const result = await addModel(draftId, providerId);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -64,6 +89,16 @@ export function ModelsSettingsPanel() {
     if (!result.ok) setError(result.error);
   };
 
+  const onProviderChange = (modelId: string, next: string) => {
+    setError(null);
+    setMessage(null);
+    const result = setModelProvider(
+      modelId,
+      next === AUTO_PROVIDER ? null : next,
+    );
+    if (!result.ok) setError(result.error);
+  };
+
   const onRefresh = async () => {
     setError(null);
     setMessage(null);
@@ -83,7 +118,8 @@ export function ModelsSettingsPanel() {
       <p className="sync-panel-lead">
         Catalog for chat and worker pickers. Metadata (reasoning, context,
         price) comes from the LiteLLM model map — refresh after new releases
-        instead of rebuilding the app.
+        instead of rebuilding the app. Bind a model to a provider to force
+        routing through that gateway.
       </p>
 
       <section className="sync-block">
@@ -96,8 +132,10 @@ export function ModelsSettingsPanel() {
 
         <ul className="ai-models-catalog" aria-label="Model catalog">
           {models.map((m) => {
-            const price = lookupModelPrice(m.id, prices);
+            const { modelId: bare, providerId } = parseModelRef(m.id);
+            const price = lookupModelPrice(bare, prices);
             const tier = m.tier ?? "flagship";
+            const providerValue = providerId ?? AUTO_PROVIDER;
             return (
               <li key={m.id} className="ai-models-catalog-row">
                 <span
@@ -134,7 +172,20 @@ export function ModelsSettingsPanel() {
                     ) : (
                       <span className="ai-models-catalog-muted">no price</span>
                     )}
+                    <span className="ai-models-catalog-muted">
+                      {providerName(providerId)}
+                    </span>
                   </div>
+                </div>
+                <div className="ai-models-catalog-provider">
+                  <Select
+                    variant="setting"
+                    aria-label={`Provider for ${m.label}`}
+                    value={providerValue}
+                    options={providerOptions}
+                    disabled={busy}
+                    onChange={(v) => onProviderChange(m.id, v)}
+                  />
                 </div>
                 <button
                   type="button"
@@ -167,6 +218,18 @@ export function ModelsSettingsPanel() {
               }
             }}
           />
+          <div className="sync-actions" style={{ marginBottom: 8 }}>
+            <div style={{ minWidth: 160 }}>
+              <Select
+                variant="field"
+                aria-label="Provider for new model"
+                value={draftProvider}
+                options={providerOptions}
+                disabled={busy}
+                onChange={setDraftProvider}
+              />
+            </div>
+          </div>
           <div className="sync-actions">
             <button
               type="button"

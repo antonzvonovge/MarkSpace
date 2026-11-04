@@ -1,108 +1,24 @@
-import { useState } from "react";
 import { IELTS_KEY_CHIPS } from "../../ai/ieltsFit";
-import { OPENAI_BASE_URL } from "../../ai/models";
-import { verifyOpenAiCredentials } from "../../lib/openAiBaseUrl";
 import { useAiSettingsStore } from "../../store/aiSettingsStore";
 import { IeltsKeyChips } from "./IeltsKeyChips";
+import { ProvidersSection } from "./ProvidersSection";
 
 export function KeysSettingsPanel() {
   const settings = useAiSettingsStore((s) => s.settings);
   const setSettings = useAiSettingsStore((s) => s.setSettings);
-  const [verifyState, setVerifyState] = useState<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
-  const [verifyMessage, setVerifyMessage] = useState("");
-
-  const onVerifyOpenAi = async () => {
-    setVerifyState("checking");
-    setVerifyMessage("");
-    const result = await verifyOpenAiCredentials(
-      settings.openaiApiKey,
-      settings.baseUrl,
-    );
-    if (result.ok) {
-      setVerifyState("ok");
-      setVerifyMessage("Connection successful.");
-      return;
-    }
-    setVerifyState("error");
-    setVerifyMessage(result.error);
-  };
 
   return (
     <div className="sync-panel">
       <p className="sync-panel-lead">
         Add provider API keys to call models directly. When a Google key is
         set, chat uses that API first for Gemini. Otherwise chat falls back to
-        the OpenAI-compatible gateway below — LiteLLM, OpenRouter, or any proxy
+        an OpenAI-compatible gateway below — LiteLLM, OpenRouter, or any proxy
         that speaks the OpenAI API. Keys stay on this machine and are never
         written into the vault. Hover an IELTS chip for a 1–3 fit score (3 is
         best). Practice sessions pick filled keys from strongest to weakest.
       </p>
 
-      <section className="sync-block">
-        <h3 className="sync-block-title">OpenAI-compatible gateway</h3>
-        <p className="sync-block-desc">
-          API key + base URL for OpenAI, LiteLLM, OpenRouter, or another
-          OpenAI-compatible proxy. Used for GPT models and as a fallback when
-          the matching provider key is empty (e.g. Gemini via LiteLLM). Also
-          powers IELTS Listening TTS and Speaking Whisper when pointing at
-          OpenAI.
-        </p>
-        <input
-          type="password"
-          className="sync-input"
-          value={settings.openaiApiKey}
-          onChange={(e) => {
-            setVerifyState("idle");
-            setVerifyMessage("");
-            setSettings({ openaiApiKey: e.target.value });
-          }}
-          placeholder="sk-…"
-          autoComplete="off"
-        />
-        <input
-          type="text"
-          className="sync-input"
-          style={{ marginTop: 8 }}
-          value={settings.baseUrl}
-          onChange={(e) => {
-            setVerifyState("idle");
-            setVerifyMessage("");
-            setSettings({ baseUrl: e.target.value });
-          }}
-          placeholder={OPENAI_BASE_URL}
-          autoComplete="off"
-          spellCheck={false}
-        />
-        <div className="sync-actions" style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            className="sync-btn"
-            disabled={
-              verifyState === "checking" || !settings.openaiApiKey.trim()
-            }
-            onClick={() => void onVerifyOpenAi()}
-          >
-            {verifyState === "checking" ? "Verifying…" : "Verify"}
-          </button>
-        </div>
-        {verifyMessage ? (
-          <p
-            className="sync-block-desc"
-            style={{
-              marginTop: 8,
-              color: verifyState === "ok" ? "var(--text)" : "var(--danger)",
-            }}
-          >
-            {verifyMessage}
-          </p>
-        ) : null}
-        <IeltsKeyChips
-          chips={IELTS_KEY_CHIPS.openai}
-          keyFilled={Boolean(settings.openaiApiKey.trim())}
-        />
-      </section>
+      <ProvidersSection />
 
       <section className="sync-block">
         <h3 className="sync-block-title">Google AI API key</h3>
