@@ -71,7 +71,10 @@ jobs:
             macOS: `.dmg` for Apple Silicon (`aarch64`) or Intel (`x86_64`). Unsigned builds may need System Settings → Privacy & Security → Open Anyway.
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: true
+          # Matrix legs must not touch latest.json — parallel upload races and
+          # last-writer-wins leave Windows/macOS out of the updater manifest.
+          # A dedicated publish-updater job writes it once after all builds.
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
 
       - name: Upload Windows portable zip
@@ -97,3 +100,33 @@ jobs:
 
           $tag = "v$version"
           gh release upload $tag $zipPath --clobber
+
+  # Single writer for the Tauri updater manifest. Runs after every matrix leg
+  # so all .sig files are on the release; fails if a required platform is missing.
+  publish-updater:
+    needs: publish-tauri
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and upload latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" != v* ]]; then
+            # workflow_dispatch without a tag — use version from tauri.conf.json
+            TAG="v$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
+          fi
+          OUT="${RUNNER_TEMP}/latest.json"
+          python3 .github/scripts/build-updater-latest-json.py \
+            --repo "${GITHUB_REPOSITORY}" \
+            --tag "$TAG" \
+            --out "$OUT"
+          gh release upload "$TAG" "$OUT" --clobber
+          echo "Uploaded complete updater manifest for $TAG"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("platforms:", ", ".join(sorted(d["platforms"])))' "$OUT"

@@ -131,12 +131,16 @@ export function vendorFromModelId(modelId: string): AiModelVendor {
   return "openai";
 }
 
-/** Strip `vendor/` prefix for direct provider APIs. */
+/**
+ * Strip MarkSpace catalog vendor prefixes (`openai/`, `google/`) only.
+ * Arbitrary namespaces from custom gateways (`SMLab/gpt-…`) stay intact —
+ * those are part of the upstream model id, not our vendor tag.
+ */
 export function stripVendorPrefix(catalogModelId: string): string {
   const { modelId } = parseModelRef(catalogModelId);
-  const slash = modelId.indexOf("/");
-  if (slash < 0) return modelId;
-  return modelId.slice(slash + 1);
+  if (modelId.startsWith("openai/")) return modelId.slice("openai/".length);
+  if (modelId.startsWith("google/")) return modelId.slice("google/".length);
+  return modelId;
 }
 
 /** Map catalog ids to native provider model ids. */

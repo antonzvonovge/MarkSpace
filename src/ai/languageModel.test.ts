@@ -68,11 +68,17 @@ describe("vendor / id helpers", () => {
     expect(vendorFromModelId("gpt-4.1")).toBe("openai");
   });
 
-  it("strips vendor prefix", () => {
+  it("strips only known catalog vendor prefixes", () => {
     expect(stripVendorPrefix("google/gemini-3.7-flash")).toBe(
       "gemini-3.7-flash",
     );
+    expect(stripVendorPrefix("openai/gpt-4.1")).toBe("gpt-4.1");
     expect(stripVendorPrefix("gpt-4.1")).toBe("gpt-4.1");
+    // Custom gateway namespaces are part of the upstream model id.
+    expect(stripVendorPrefix("SMLab/gpt-oss-120b")).toBe("SMLab/gpt-oss-120b");
+    expect(stripVendorPrefix("openai/SMLab/gpt-oss-120b")).toBe(
+      "SMLab/gpt-oss-120b",
+    );
   });
 
   it("maps catalog ids to native provider ids", () => {
@@ -82,6 +88,9 @@ describe("vendor / id helpers", () => {
     expect(
       toDirectProviderModelId("google", "google/gemini-3.1-pro-preview"),
     ).toBe("gemini-3.1-pro-preview");
+    expect(toDirectProviderModelId("openai", "SMLab/gpt-oss-120b")).toBe(
+      "SMLab/gpt-oss-120b",
+    );
   });
 });
 
@@ -183,7 +192,31 @@ describe("planModelRoute", () => {
       providerName: "Work LiteLLM",
       bareModelId: "openai/gpt-5",
       catalogModelId: "openai/gpt-5@prv_work",
+      providerModelId: "gpt-5",
     });
+  });
+
+  it("keeps custom gateway namespaces in the provider model id", () => {
+    const keys: AiProviderCredentials = {
+      ...emptyKeys,
+      providers: [
+        {
+          id: "prv_corp",
+          name: "API.AI",
+          kind: "openaiCompatible",
+          baseUrl: "https://api.ai.example/v1",
+          apiKey: "sk-corp",
+          enabled: true,
+        },
+      ],
+      defaultProviderId: "prv_corp",
+      openaiApiKey: "sk-corp",
+      openaiBaseUrl: "https://api.ai.example/v1",
+    };
+    const plan = planModelRoute("SMLab/gpt-oss-120b@prv_corp", keys);
+    expect(plan.providerModelId).toBe("SMLab/gpt-oss-120b");
+    expect(planModelRoute("openai/SMLab/gpt-oss-120b@prv_corp", keys)
+      .providerModelId).toBe("SMLab/gpt-oss-120b");
   });
 
   it("rejects a bound model whose provider was removed", () => {
